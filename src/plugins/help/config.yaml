@@ -1,0 +1,34 @@
+# 帮助插件配置文件
+# 此文件用于配置帮助插件的样式和其他选项
+
+# 默认使用的样式名称
+# 可选值包括:
+# - "default" - 默认样式
+# - "style1" - 独角兽Sugar风格，可爱系
+# - "style2" - 独角兽Suagar-GIF风格，GIF示例
+# - "style3" - 函数绘制背景示例
+# - "style4" - 朴素米黄风格
+# - "style5" - 最朴素的复古风格
+# - 自定义的样式名称（在custom_styles中定义）
+default_style: "style2"
+
+# 是否启用自定义样式加载功能
+enable_custom_style_loading: false
+
+# 自定义样式配置列表
+# 每个样式需要指定名称和路径
+# 路径应指向包含elements.json/yml和setting.json/yml的目录
+custom_styles: []
+  # 示例：添加一个自定义样式
+  # - name: "my_custom_style"
+  #   path: "./styles/my_style"
+  
+  # 示例：添加多个自定义样式
+  # - name: "dark_style"
+  #   path: "./styles/dark"
+  # - name: "colorful_style"
+  #   path: "./styles/colorful"
+
+# 忽略的插件列表
+# 在帮助菜单中不显示这些插件
+ignored_plugins: ["auto_accept","callback","block","nonebot_plugin_apscheduler", "nonebot_plugin_picstatus", "nonebot_plugin_github_release_notifier"]

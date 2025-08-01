@@ -2,6 +2,8 @@ from pydantic import BaseModel
 
 
 class Config(BaseModel, extra="ignore"):
+    # 是否启用插件
+    enabled: bool = True
     # answer 相关阈值，值越大，牛牛废话越少；越小，牛牛废话越多
     answer_threshold: int = 3
     # answer 阈值权重
