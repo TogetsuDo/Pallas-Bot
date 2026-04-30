@@ -62,14 +62,12 @@ jobs:
             )
           else
             mkdir -p pallas-webui/dist
-            cat > pallas-webui/dist/console-version.json <<'EOF'
-            {
-              "version": "${{ steps.get_version.outputs.version }}",
-              "commit": "${{ github.sha }}",
-              "build_time": "__BUILD_TIME__"
-            }
-            EOF
-            sed -i "s/__BUILD_TIME__/${BUILD_TIME}/g" pallas-webui/dist/console-version.json
+            printf '%s\n' \
+              '{' \
+              '  "version": "${{ steps.get_version.outputs.version }}",' \
+              '  "commit": "${{ github.sha }}",' \
+              "  \"build_time\": \"${BUILD_TIME}\"" \
+              '}' > pallas-webui/dist/console-version.json
           fi
 
       - name: Pack dist artifact
