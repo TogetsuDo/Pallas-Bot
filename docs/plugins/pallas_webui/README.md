@@ -15,7 +15,7 @@ PALLAS_WEBUI_API_TOKEN=你的控制台口令
 
 说明：
 
-- `PALLAS_WEBUI_API_TOKEN`：必填，用于管理页/API 鉴权；必须按字符串填写（纯数字请加引号，如 `"1234"`）；请求时请携带 `X-Pallas-Token` 或 `token` 参数
+- `PALLAS_WEBUI_API_TOKEN`：必填，用于管理页/API 鉴权；插件加载时会将数字转为字符串，纯数字可不写引号（如 `1234`）；请求时请携带 `X-Pallas-Token` 或 `token` 参数
 - 页面默认地址是 `/pallas/`，改了 `HTTP_BASE` 后地址会跟着变
 
 ## 前端静态资源
@@ -35,6 +35,7 @@ PALLAS_WEBUI_API_TOKEN=你的控制台口令
 
 ## 常见问题
 
+- `PALLAS_WEBUI_API_TOKEN` 为纯数字时：`.env` 可不写引号（插件加载时会转为字符串）
 - 页面打不开：先确认 `PALLAS_WEBUI_ENABLED=true`，以及访问路径是否与 `PALLAS_WEBUI_HTTP_BASE` 一致
 - 接口提示未授权：检查请求头 `X-Pallas-Token` 或 URL 参数 `token`
 - 升级前端后没变化：检查 `data/pallas_webui/public/` 是否被旧文件覆盖，必要时删除后重启触发重拉

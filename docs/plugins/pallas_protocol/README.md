@@ -37,7 +37,7 @@ PALLAS_PROTOCOL_TOKEN=你的管理口令
 
 - `PALLAS_PROTOCOL_ENABLED`：是否启用插件
 - `PALLAS_PROTOCOL_WEBUI_ENABLED`：是否启用管理页
-- `PALLAS_PROTOCOL_TOKEN`：必填，用于管理页/API 鉴权；必须按字符串填写（纯数字请加引号，如 `"1234"`）
+- `PALLAS_PROTOCOL_TOKEN`：必填，用于管理页/API 鉴权；插件加载时会将数字转为字符串，纯数字可不写引号（如 `1234`）
 
 很多情况下，默认值就已经够用，连这几项都不一定需要额外改。
 
@@ -86,7 +86,7 @@ PALLAS_PROTOCOL_PROGRAM_DIR=你的运行时目录
 
 ## 常见的进阶配置项
 
-- `PALLAS_PROTOCOL_TOKEN`：管理页/API 鉴权
+- `PALLAS_PROTOCOL_TOKEN`：管理页/API 鉴权（纯数字可不写引号，加载时转为字符串）
 - `PALLAS_PROTOCOL_PROGRAM_DIR`：运行时目录（手动模式常用）
 - `PALLAS_PROTOCOL_AUTO_DOWNLOAD_RUNTIME`：无运行时时自动下载
 - `PALLAS_PROTOCOL_DOCKER_IMAGE`：Docker 模式镜像版本
@@ -95,6 +95,7 @@ PALLAS_PROTOCOL_PROGRAM_DIR=你的运行时目录
 
 ## 排障速查
 
+- `PALLAS_PROTOCOL_TOKEN` 为纯数字时：`.env` 可不写引号（插件加载时会转为字符串）
 - 创建/启动时报 `program_dir 为空`：先在「更新/下载」页下载运行时，或设置 `PALLAS_PROTOCOL_PROGRAM_DIR`
 - Docker 启动失败并提示端口冲突：当前版本会自动换可用端口；若仍失败，检查是否有外部服务长期占用端口段
 - 重启后镜像版本变回 `latest`：确认你在「更新/下载」页点过「保存设置」，并检查 `data/pallas_protocol/runtime_profile.json`
