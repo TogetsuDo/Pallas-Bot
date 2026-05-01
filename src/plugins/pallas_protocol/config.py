@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .contract import resolve_public_mount_path
 from .runtime.installer import default_release_asset_for_platform, default_release_repo_for_platform
@@ -27,6 +27,17 @@ class Config(BaseModel):
         default="",
         description="与页内 token 一致时鉴权本插件 HTTP；非 NapCat 内置 WebUI 密码",
     )
+
+    @field_validator("pallas_protocol_token", mode="before")
+    @classmethod
+    def coerce_pallas_protocol_token(cls, value: object) -> str:
+        """env / 配置源可能把纯数字解析成 int/float，统一成字符串以免漏鉴权或校验失败。"""
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value
+        return str(value)
+
     pallas_protocol_bind_host: str = "127.0.0.1"
     pallas_protocol_default_command: str = "node"
     pallas_protocol_default_args: list[str] = ["napcat.mjs"]

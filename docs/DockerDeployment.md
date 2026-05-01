@@ -53,7 +53,7 @@
 
 2. 默认提供的 `docker-compose.yml` 中包含了 `NapCat` 作为 QQ 客户端，你可以根据需要将其替换为 [Lagrange](https://github.com/LagrangeDev/Lagrange.Core/blob/master/Docker_zh.md) 或其他支持 `Docker` 部署的客户端。如果你想手动部署，可将 `NapCat` service 删除。
 
-3. （可选）如有需要，在你映射的目录下复制一份 [`.env`](../.env) 文件，并根据需要填写相关参数。具体请参考 [`.env`](../.env) 文件中的注释。
+3. （可选）如有需要，在你映射的目录下复制一份 [`.env`](../.env) 文件，并根据需要填写相关参数。具体请参考 [`.env`](../.env) 文件中的注释。若填写 `PALLAS_WEBUI_API_TOKEN`、`PALLAS_PROTOCOL_TOKEN` 等口令，纯数字可不写引号（插件加载时会转为字符串）。
 
 4. 3.0 同时支持 `MongoDB` 与 `PostgreSQL` 数据后端；如果你是从历史数据升级，请先参考 [`3.0 迁移指南`](Migration-v3.md)。
 

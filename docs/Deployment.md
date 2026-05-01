@@ -122,6 +122,8 @@ Linux 用户推荐使用 [Termux](https://termux.dev/) 或 [GNU Screen](https://
 
 若你修改了 `.env` 中的 `HOST` / `PORT` 或 `pallas_webui_http_base`，请按实际值替换地址。
 
+控制台写接口需配置 `PALLAS_WEBUI_API_TOKEN`（与前端「偏好与连接 → 访问与鉴权」一致）；口令为纯数字时可不写引号。协议端管理同理使用 `PALLAS_PROTOCOL_TOKEN`，详见插件文档。
+
 ## 后续更新
 
 如果牛牛出了新功能或修复了 bug，同样在项目目录下打开 Powershell，执行以下命令后重新运行牛牛即可：
