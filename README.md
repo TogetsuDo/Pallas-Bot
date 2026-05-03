@@ -124,6 +124,7 @@ uv sync                 # 安装依赖
 uv run nb run
 ```
 > 完整部署细节请查看 [部署教程](docs/Deployment.md) 和 [Docker 部署](docs/DockerDeployment.md)。  
+> **Docker Compose**：默认只起 **MongoDB + Bot**；需要本编排内的 **PostgreSQL** 时在 **`pallas-bot/.env`** 配好 **`PG_*`** 与 **`DB_BACKEND=postgres`**，再执行 **`docker compose --env-file ./pallas-bot/.env --profile postgres up -d`**（compose 会把 **`PG_USER`/`PG_PASSWORD`/`PG_DB`** 映射进 postgres 镜像，无需另写 **`POSTGRES_*`**）。**NapCat** 不在默认 Compose 里单独起容器，请在 **`/protocol/napcat/`** 协议端管理页创建实例（见 Docker 部署文档）。  
 > 部署好自己牛牛之后，如果托管别人的账号成为你的牛牛，别忘记将他设置为牛牛的管理员!号主们都应该有控制自己牛牛的权力。
 
 <a id="使用指南"></a>
@@ -197,7 +198,7 @@ uv run nb run
 | `PG_POOL_SIZE`    | `10`                                | PostgreSQL 连接池基础连接数   | 否 |
 | `PG_MAX_OVERFLOW` | `20`                                | PostgreSQL 连接池最大额外连接数 | 否 |
 | `PG_POOL_RECYCLE` | `1800`                              | PostgreSQL 连接回收时间（秒）  | 否 |
-| `OneBot WS URL`   | `ws://localhost:8088/onebot/v11/ws` | 协议端连接地址               | 是       |
+| `OneBot WS URL`   | `ws` + `://` + `localhost:8088/onebot/v11/ws` | 协议端连接地址               | 是       |
 
 启用 Web 控制台写接口或协议端管理页/API 时，请在 `.env` 配置 `PALLAS_WEBUI_API_TOKEN` 与 `PALLAS_PROTOCOL_TOKEN`（字段说明见 [控制台（pallas_webui）](docs/plugins/pallas_webui/README.md)、[协议端管理（pallas_protocol）](docs/plugins/pallas_protocol/README.md)）。
 
