@@ -12,6 +12,14 @@ class ContextRepository(Protocol):
         """根据 keywords 查找 Context 文档"""
         ...
 
+    async def context_exists_by_keywords(self, keywords: str) -> bool:
+        """是否已有 Context(keywords)；用于仅需分支判断时避免全量加载。
+
+        自定义后端若暂无轻量查询，可混入 `ContextRepositoryExistenceMixin`，
+        由 `find_by_keywords` 推导存在性（仍会全量加载）。
+        """
+        ...
+
     async def save(self, context: Context) -> None:
         """保存/更新已有的 Context 文档（整文档覆盖写）
 
@@ -51,7 +59,7 @@ class ContextRepository(Protocol):
 
         要求实现具备并发原子性（Mongo 可用 $inc/$push + positional 更新；PG 用事务 + upsert）。
         前置条件：Context(keywords=keywords) 必须已存在，否则行为未定义 —— 调用方
-        应先 find_by_keywords，不存在时走 insert(Context(...)) 路径。
+        应先 context_exists_by_keywords / find_by_keywords，不存在时走 insert(Context(...)) 路径。
         """
         ...
 
@@ -68,6 +76,13 @@ class ContextRepository(Protocol):
         若 Context(keywords=keywords) 不存在，则应为 no-op。
         """
         ...
+
+
+class ContextRepositoryExistenceMixin:
+    """为已实现 `find_by_keywords` 的仓储提供 `context_exists_by_keywords` 默认实现。"""
+
+    async def context_exists_by_keywords(self, keywords: str) -> bool:
+        return (await self.find_by_keywords(keywords)) is not None
 
 
 @runtime_checkable

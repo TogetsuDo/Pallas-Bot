@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import pytest
 
+from src.common.db.repository import ContextRepositoryExistenceMixin
 
-class _FakeContextRepo:
+
+class _FakeContextRepo(ContextRepositoryExistenceMixin):
     async def find_by_keywords(self, keywords):  # noqa: ARG002
         return None
 
