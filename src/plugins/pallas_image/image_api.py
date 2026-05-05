@@ -304,6 +304,14 @@ async def post_edits_with_transport(image_blobs: list[bytes], prompt: str) -> tu
         return await curl_post_edits(image_blobs, prompt)
 
 
+def strip_data_url_base64(value: str) -> str:
+    """部分网关把 b64_json 填成 data:image/png;base64,...，需去掉前缀再解码。"""
+    t = value.strip()
+    if t.startswith("data:") and ";base64," in t:
+        return t.split(";base64,", 1)[1]
+    return t
+
+
 def extract_image_from_generation_payload(data: object) -> tuple[str | None, bytes | None]:
     if not isinstance(data, dict):
         return None, None
@@ -317,7 +325,7 @@ def extract_image_from_generation_payload(data: object) -> tuple[str | None, byt
             b64 = first.get("b64_json")
             if isinstance(b64, str) and b64.strip():
                 try:
-                    return None, base64.b64decode(b64)
+                    return None, base64.b64decode(strip_data_url_base64(b64))
                 except Exception:
                     return None, None
     inner = data.get("data")
