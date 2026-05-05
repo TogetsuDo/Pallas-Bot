@@ -29,13 +29,14 @@ from src.plugins.request_handler.config import Config
 __plugin_meta__ = PluginMetadata(
     name="申请管理",
     description=(
-        "处理好友申请与入群邀请：通知管理员，支持命令审批或引用牛牛发出的提醒消息审批；"
+        "处理好友申请与入群邀请：通知管理员，支持命令同意/拒绝或引用牛牛发出的提醒消息审批；"
         "被过滤好友申请每 4 小时轮询并提醒"
     ),
     usage="""
 查看好友申请 — 列出待处理好友（含需单独看的可疑申请）
 同意 — 同意最新一条提醒，或引用某条提醒后发送「同意」「好」或留空
 同意好友 <QQ> — 同意指定 QQ 的好友申请
+拒绝好友 <QQ> — 拒绝指定 QQ 的好友申请
 同意所有好友 — 同意当前全部好友申请
 查看入群邀请 — 列出待处理入群邀请
 同意入群 <群号> — 同意指定群的邀请
@@ -71,6 +72,13 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_condition": "同意好友 <QQ号>",
                 "brief_des": "按 QQ 同意好友",
                 "detail_des": "同意指定 QQ 的好友申请（含普通与可疑申请）",
+            },
+            {
+                "func": "好友申请拒绝",
+                "trigger_method": "on_cmd",
+                "trigger_condition": "拒绝好友 <QQ号>",
+                "brief_des": "按 QQ 拒绝好友",
+                "detail_des": "拒绝指定 QQ 的好友申请（含普通与可疑申请）",
             },
             {
                 "func": "批量审批",
@@ -125,7 +133,7 @@ RH_LIST_TAIL_FRIEND = (
     "怎么操作：\n"
     "• 私聊只发「同意」→ 处理牛牛最新一条好友审批提醒；\n"
     "• 引用某条审批消息后再发 同意 → 只处理那条对应的申请；\n"
-    "• 「同意好友 <QQ号>」→ 按号码同意这一条；\n"
+    "• 「同意好友 <QQ号>」→ 按号码同意、「拒绝好友 <QQ号>」→ 按号码拒绝；\n"
     "• 「同意所有好友」→ 当前表里剩余的全部同意。"
 )
 RH_LIST_TAIL_GROUP = (
@@ -493,6 +501,46 @@ async def approve_friend_by_uid(bot: Bot, bot_key: str, uid_str: str) -> tuple[b
     return True, f"已同意好友：{nickname}（{uid_str}）"
 
 
+async def reject_friend_by_uid(bot: Bot, bot_key: str, uid_str: str) -> tuple[bool, str]:
+    bot_pending = pending_friend.get(bot_key, {})
+    flag = bot_pending.get(uid_str)
+    if flag:
+        try:
+            await bot.set_friend_add_request(flag=flag, approve=False)
+        except ActionFailed as e:
+            if api_failure_is_request_gone(e):
+                bot_pending.pop(uid_str, None)
+                save_json(FRIEND_REQ_FILE, pending_friend)
+                return False, f"失败：{e}（请求失效或已处理）"
+            return False, f"操作未成功：{e}（请稍后重试）"
+        except Exception as e:
+            return False, f"操作未成功：{e}（请稍后重试）"
+        bot_pending.pop(uid_str, None)
+        save_json(FRIEND_REQ_FILE, pending_friend)
+        nickname = await get_nickname(bot, int(uid_str))
+        return True, f"已拒绝好友：{nickname}（{uid_str}）"
+
+    doubt_cache = cached_doubt_friend.get(bot_key) or await fetch_doubt_friends(bot)
+    cached_doubt_friend[bot_key] = doubt_cache
+    doubt_flag = doubt_cache.get(uid_str)
+    if not doubt_flag:
+        nickname = await get_nickname(bot, int(uid_str))
+        return False, f"未找到待处理申请：{nickname}（{uid_str}）"
+
+    try:
+        await bot.call_api("set_doubt_friends_add_request", flag=doubt_flag, approve=False)
+    except ActionFailed as e:
+        if api_failure_is_request_gone(e):
+            cached_doubt_friend[bot_key].pop(uid_str, None)
+            return False, f"失败：{e}（请求失效或已处理）"
+        return False, f"操作未成功：{e}（请稍后重试）"
+    except Exception as e:
+        return False, f"操作未成功：{e}（请稍后重试）"
+    cached_doubt_friend[bot_key].pop(uid_str, None)
+    nickname = await get_nickname(bot, int(uid_str))
+    return True, f"已拒绝好友：{nickname}（{uid_str}）"
+
+
 async def approve_group_invite_by_gid(bot: Bot, bot_key: str, group_key: str) -> tuple[bool, str]:
     bot_pending = pending_group.get(bot_key, {})
     req = bot_pending.get(group_key)
@@ -527,6 +575,7 @@ approve_all_friends_cmd = on_command("同意所有好友", priority=5, block=Tru
 list_groups_cmd = on_command("查看入群邀请", priority=5, block=True)
 approve_group_cmd = on_command("同意入群", priority=5, block=True)
 approve_all_groups_cmd = on_command("同意所有入群", priority=5, block=True)
+reject_friend_cmd = on_command("拒绝好友", priority=5, block=True)
 reject_group_cmd = on_command("拒绝入群", priority=5, block=True)
 auto_accept_status_cmd = on_command("查看自动同意", priority=5, block=True)
 enable_auto_friend_cmd = on_command("开启自动同意好友", priority=5, block=True)
@@ -622,7 +671,12 @@ async def poll_doubt_friends_job() -> None:
             if uid in notified_set:
                 continue
             nickname = await get_nickname(bot, int(uid))
-            msg = f"[好友申请·被过滤]\n申请人：{nickname}（{uid}）\n{RH_APPROVE_HINT}\n{RH_HELP_HINT}"
+            msg = (
+                f"[好友申请·被过滤]\n申请人：{nickname}（{uid}）\n"
+                f"{RH_APPROVE_HINT}\n"
+                f"拒绝：拒绝好友 {uid}\n"
+                f"{RH_HELP_HINT}"
+            )
             if await notify_admins(bot, msg, kind="friend", target_id=uid):
                 set_last_notified(bot_key, "friend", uid)
                 notified_set.add(uid)
@@ -704,6 +758,7 @@ async def handle_friend_request(bot: Bot, event: FriendRequestEvent):
             f"申请人：{nickname}（{event.user_id}）\n"
             f"验证：{event.comment or '-'}\n"
             f"{RH_APPROVE_HINT}\n"
+            f"拒绝：拒绝好友 {event.user_id}\n"
             f"{RH_HELP_HINT}"
         )
         if await notify_admins(bot, msg, kind="friend", target_id=str(event.user_id)):
@@ -775,6 +830,21 @@ async def handle_approve_friend(bot: Bot, event: MessageEvent, args: Message = C
     if ok:
         clear_quick_approve_state(bot_key, "friend", arg)
     await approve_friend_cmd.finish(msg)
+
+
+@reject_friend_cmd.handle()
+async def handle_reject_friend(bot: Bot, event: MessageEvent, args: Message = CommandArg()):  # noqa: B008
+    if not await PERM(bot, event):
+        return
+    arg = args.extract_plain_text().strip()
+    if not arg.isdigit():
+        await reject_friend_cmd.finish("格式：拒绝好友 <QQ号>")
+
+    bot_key = str(bot.self_id)
+    ok, msg = await reject_friend_by_uid(bot, bot_key, arg)
+    if ok:
+        clear_quick_approve_state(bot_key, "friend", arg)
+    await reject_friend_cmd.finish(msg)
 
 
 @list_groups_cmd.handle()
