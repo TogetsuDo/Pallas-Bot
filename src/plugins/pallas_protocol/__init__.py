@@ -4,6 +4,7 @@ import logging
 from nonebot import get_app, get_driver, get_plugin_config, logger
 from nonebot.plugin import PluginMetadata
 
+from src.common.pallas_console_login import prime_shared_console_login
 from src.common.paths import plugin_data_dir
 from src.common.web import public_base_url
 
@@ -16,7 +17,7 @@ __plugin_meta__ = PluginMetadata(
     description="提供协议端账号管理与启动控制页面。",
     usage="""
 默认挂载：
-/protocol/napcat
+/protocol/console
 
 常用能力：
 新增账号、启动/停止/重启账号、查看日志、同步配置
@@ -33,7 +34,7 @@ X-Pallas-Protocol-Token 或 ?token=
             {
                 "func": "协议端管理页",
                 "trigger_method": "http",
-                "trigger_condition": "/protocol/napcat",
+                "trigger_condition": "/protocol/console",
                 "brief_des": "管理协议账号与进程",
                 "detail_des": "可在页面执行创建账号、启动、停止、重启与日志查看。",
             },
@@ -42,7 +43,7 @@ X-Pallas-Protocol-Token 或 ?token=
                 "trigger_method": "http",
                 "trigger_condition": "/protocol/*",
                 "brief_des": "提供协议管理接口",
-                "detail_des": "提供账号、配置、运行时下载与状态查询接口。",
+                "detail_des": "提供账号、配置、协议端发行包下载与状态查询接口。",
             },
         ],
     },
@@ -54,6 +55,11 @@ driver = get_driver()
 manager = PallasProtocolService(plugin_data_dir("pallas_protocol"), plugin_config)
 
 register_pallas_protocol_routes(app, manager=manager, plugin_config=plugin_config)
+
+
+@driver.on_startup
+async def _pallas_protocol_prime_shared_console_login() -> None:
+    prime_shared_console_login()
 
 
 @driver.on_startup
@@ -70,11 +76,6 @@ async def _startup() -> None:
         )
         path = resolve_protocol_webui_base_path(plugin_config)
         logger.info(f"Pallas 协议端 | WebUI={base_u}{path}/")
-        if not (plugin_config.pallas_protocol_token or "").strip():
-            logger.warning(
-                "Pallas 协议端: 未配置 PALLAS_PROTOCOL_TOKEN，协议端管理 API 已禁用；"
-                "请在 .env 中设置 PALLAS_PROTOCOL_TOKEN 后重启"
-            )
     profile = manager.runtime_profile()
     if bool(profile.get("follow_bot_lifecycle", True)):
         await manager.start_all_enabled_accounts()
