@@ -1,3 +1,5 @@
+import re
+import textwrap
 from enum import StrEnum
 
 from nonebot import get_loaded_plugins
@@ -5,6 +7,53 @@ from nonebot import get_loaded_plugins
 from .config import Config
 from .plugin_manager import find_plugin, plugin_display_name
 from .visibility import load_help_hidden_plugins
+
+# 成图宽度与 pillowmd 默认版心大致对齐；总表「简介」列更窄
+_HELP_DETAIL_WRAP = 44
+_HELP_LIST_INTRO_WRAP = 22
+
+
+def _sanitize_pipe(cell: str) -> str:
+    return (cell or "").replace("|", "｜")
+
+
+def _markdown_table_cell_linebreaks(text: str, width: int) -> str:
+    """表格单元内换行：Markdown 管道表用 HTML <br>，避免超长一行撑破版式。"""
+    t = (text or "").strip()
+    if not t:
+        return "暂无"
+    single = re.sub(r"\s+", " ", t.replace("\n", " "))
+    single = _sanitize_pipe(single)
+    wrapped = textwrap.fill(
+        single,
+        width=max(8, width),
+        break_long_words=True,
+        break_on_hyphens=True,
+    )
+    return wrapped.replace("\n", "<br>")
+
+
+def _wrap_paragraphs_for_help_page(text: str, width: int = _HELP_DETAIL_WRAP) -> str:
+    """详情页「说明」「用法」等：按空行分段后对每段 soft-wrap。"""
+    if not (text or "").strip():
+        return text or ""
+    chunks: list[str] = []
+    for block in (text or "").split("\n\n"):
+        b = block.strip()
+        if not b:
+            continue
+        line = re.sub(r"[ \t\r\f\v]+", " ", b.replace("\n", " ")).strip()
+        if not line:
+            continue
+        chunks.append(
+            textwrap.fill(
+                line,
+                width=max(12, width),
+                break_long_words=True,
+                break_on_hyphens=True,
+            )
+        )
+    return "\n\n".join(chunks)
 
 
 class HelpMarkdownIssue(StrEnum):
@@ -53,6 +102,7 @@ def generate_plugins_markdown(
             description = metadata.description or "暂无描述"
         else:
             description = "暂无描述"
+        description = _markdown_table_cell_linebreaks(description, _HELP_LIST_INTRO_WRAP)
 
         status_placeholder = "{status}"
 
@@ -105,8 +155,8 @@ def generate_plugin_functions_markdown(
 
     if target_plugin.metadata:
         metadata = target_plugin.metadata
-        description = metadata.description or "暂无描述"
-        usage = metadata.usage or "暂无说明"
+        description = _wrap_paragraphs_for_help_page(metadata.description or "暂无描述")
+        usage = _wrap_paragraphs_for_help_page(metadata.usage or "暂无说明")
         markdown_content += "## 说明\n\n"
         markdown_content += f"{description}\n\n"
         markdown_content += "## 插件内用法\n\n"
@@ -119,8 +169,9 @@ def generate_plugin_functions_markdown(
                 markdown_content += "| 序号 | 功能 | 简介 |\n"
                 markdown_content += "|------|------|------|\n"
                 for i, item in enumerate(menu_data, 1):
-                    func_name = item.get("func", f"未命名功能 {i}")
-                    brief_des = item.get("brief_des", "暂无简介")
+                    func_name = _sanitize_pipe(str(item.get("func", f"未命名功能 {i}") or ""))
+                    brief_raw = item.get("brief_des", "暂无简介") or "暂无简介"
+                    brief_des = _markdown_table_cell_linebreaks(str(brief_raw), 26)
                     markdown_content += f"| {i} | {func_name} | {brief_des} |\n"
                 markdown_content += "\n### 查看功能详情\n\n"
                 markdown_content += f"**示例**（当前插件为「{plugin_name_display}」）\n\n"
@@ -195,19 +246,20 @@ def generate_function_detail_markdown(plugin_name: str, function_name: str) -> t
     markdown_content += "|----|------|\n"
 
     markdown_content += f"| 功能序号 | {target_index} |\n"
-    markdown_content += f"| 功能名称 | {func_name} |\n"
-    markdown_content += f"| 简介 | {target_function.get('brief_des', '暂无简介') or '暂无简介'} |\n"
+    markdown_content += f"| 功能名称 | {_sanitize_pipe(str(func_name))} |\n"
+    brief_cell = target_function.get("brief_des", "暂无简介") or "暂无简介"
+    markdown_content += f"| 简介 | {_markdown_table_cell_linebreaks(str(brief_cell), 28)} |\n"
 
-    trigger_method = target_function.get("trigger_method", "未知")
-    trigger_condition = target_function.get("trigger_condition", "未知")
-    markdown_content += f"| 触发方式 | {trigger_method} |\n"
-    markdown_content += f"| 触发条件 | {trigger_condition} |\n"
+    trigger_method = str(target_function.get("trigger_method", "未知") or "未知")
+    trigger_condition = str(target_function.get("trigger_condition", "未知") or "未知")
+    markdown_content += f"| 触发方式 | {_markdown_table_cell_linebreaks(trigger_method, 28)} |\n"
+    markdown_content += f"| 触发条件 | {_markdown_table_cell_linebreaks(trigger_condition, 28)} |\n"
 
     markdown_content += "\n"
 
     detail_des = target_function.get("detail_des", "")
     if detail_des:
-        markdown_content += f"## 补充说明\n\n{detail_des}\n\n"
+        markdown_content += f"## 补充说明\n\n{_wrap_paragraphs_for_help_page(str(detail_des))}\n\n"
 
     markdown_content += "---\n\n"
     markdown_content += f"- **回到本插件功能列表**：「牛牛帮助 {plugin_name_display}」\n"
