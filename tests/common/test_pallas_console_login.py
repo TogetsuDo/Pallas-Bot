@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shutil
+
 import pytest
 
 
@@ -37,7 +39,8 @@ def test_get_shared_console_login_token_empty() -> None:
 
 
 def test_default_password_plain_file_and_clear_on_user_change(
-    monkeypatch: pytest.MonkeyPatch, tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
 ) -> None:
     from src.common import pallas_console_login as m
 
@@ -61,7 +64,8 @@ def test_default_password_plain_file_and_clear_on_user_change(
 
 
 def test_orphan_default_password_file_removed_when_mismatch(
-    monkeypatch: pytest.MonkeyPatch, tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
 ) -> None:
     from src.common import pallas_console_login as m
 
@@ -72,3 +76,54 @@ def test_orphan_default_password_file_removed_when_mismatch(
     plain_path.write_text("wrong-old\n", encoding="utf-8")
     m.prime_shared_console_login()
     assert not plain_path.is_file()
+
+
+def test_prime_shared_console_login_announces_default_password_once(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    from src.common import pallas_console_login as m
+
+    root = tmp_path / "pc_once"
+    monkeypatch.setattr(m, "console_auth_dir", lambda: root)
+    writes: list[str] = []
+
+    def capture_write(s: str) -> int:
+        writes.append(s)
+        return len(s)
+
+    monkeypatch.setattr(m.sys.stderr, "write", capture_write)
+    m.prime_shared_console_login()
+    m.prime_shared_console_login()
+    hits = [w for w in writes if "[Pallas] 默认口令:" in w]
+    assert len(hits) == 1
+
+
+def test_prime_reannounces_default_password_when_auth_dir_changes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    from src.common import pallas_console_login as m
+
+    m._announced_default_password_auth_path = None
+    root1 = tmp_path / "pc_a"
+    root1.mkdir()
+    monkeypatch.setattr(m, "console_auth_dir", lambda: root1)
+    writes: list[str] = []
+
+    def capture_write(s: str) -> int:
+        writes.append(s)
+        return len(s)
+
+    monkeypatch.setattr(m.sys.stderr, "write", capture_write)
+    m.prime_shared_console_login()
+    root2 = tmp_path / "pc_b"
+    root2.mkdir()
+    for name in ("auth_state.json", "default_login_password.txt"):
+        src = root1 / name
+        if src.is_file():
+            shutil.copy2(src, root2 / name)
+    monkeypatch.setattr(m, "console_auth_dir", lambda: root2)
+    m.prime_shared_console_login()
+    hits = [w for w in writes if "[Pallas] 默认口令:" in w]
+    assert len(hits) == 2
