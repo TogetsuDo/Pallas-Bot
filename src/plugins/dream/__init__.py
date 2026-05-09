@@ -7,7 +7,7 @@ from nonebot.exception import ActionFailed
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from src.common.config import BotConfig
+from src.common.config import BotConfig, GroupConfig
 
 from .http_utils import download_image_url
 from .payload import DriftPayload
@@ -54,6 +54,8 @@ __plugin_meta__ = PluginMetadata(
 )
 
 _PLAIN_TRIGGERS = frozenset({"牛牛做梦", "牛牛醒梦", "牛牛别做梦"})
+DREAM_GROUP_COOLDOWN_KEY = "dream"
+DREAM_GROUP_COOLDOWN_SEC = 10
 
 
 async def is_dream_start(event: GroupMessageEvent) -> bool:
@@ -73,6 +75,10 @@ async def _(event: GroupMessageEvent):
     config = BotConfig(event.self_id, event.group_id, cooldown=3)
     if not await config.is_cooldown("dream"):
         return
+    group_cfg = GroupConfig(event.group_id, cooldown=DREAM_GROUP_COOLDOWN_SEC)
+    if not await group_cfg.is_cooldown(DREAM_GROUP_COOLDOWN_KEY):
+        return
+    await group_cfg.refresh_cooldown(DREAM_GROUP_COOLDOWN_KEY)
     await config.refresh_cooldown("dream")
     duration = random.randint(300, 900)
     try:
