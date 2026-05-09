@@ -48,6 +48,7 @@
 </a>
 
 <!-- Made with [OSS Insight](https://ossinsight.io/) -->
+>喜欢牛牛，就给牛牛点个 [**⭐**](https://github.com/PallasBot/Pallas-Bot/stargazers) 吧！
 
 ## 📑 目录
 
