@@ -9,6 +9,7 @@ from nonebot.rule import Rule
 
 from src.common.config import BotConfig, GroupConfig
 
+from . import ban_handlers as _dream_ban_handlers  # noqa: F401 — 注册梦库「不可以」/撤回清理
 from .http_utils import download_image_url
 from .payload import DriftPayload
 from .runtime import (
@@ -20,16 +21,26 @@ from .runtime import (
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛做梦",
-    description="牛牛的梦话，来自其他群友的聊天！ 多群同时做梦时联机互传；随机投放梦话！",
+    description=(
+        "牛牛的梦话：多群同时做梦时漂流互通，随机间隔推送历史梦、归档画或已学句。"
+        "做梦中群聊写入 message 梦库（is_dream）；与复读共用入站过滤与管理员「不可以」触发方式，"
+        "梦库清理由本插件独立处理。"
+    ),
     usage="""
-牛牛做梦 - 进入做梦状态（跨群漂流瓶式互通，随机间隔推送）
-牛牛醒梦 / 牛牛别做梦 - 结束本群做梦
+指令：
+- 牛牛做梦 — 进入做梦（持续约 5～15 分钟；推送间隔约 20～45s）
+- 牛牛醒梦 / 牛牛别做梦 — 结束本群做梦
+
+做梦中会自动采集群消息入梦库，并向其它做梦群漂流（图/文有上限）。
+
+管理员（与复读相同权限）：回复牛牛消息后 发送「不可以」，或撤回牛牛消息 —
+会从梦库删除与所针对内容匹配的消息
     """.strip(),
     type="application",
     homepage="https://github.com/PallasBot",
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "1.0.0",
+        "version": "3.0.0",
         "menu_data": [
             {
                 "func": "牛牛做梦",
@@ -37,8 +48,8 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_condition": "牛牛做梦",
                 "brief_des": "进入做梦漂流状态",
                 "detail_des": (
-                    "进梦可随机收到库中历史梦记录；多群同时做梦时联机互传。"
-                    "间隔随机，会将牛牛画画存的图，其他群友的漂流梦话，或者已经学过的句子，随机投放给群友。"
+                    "进梦后可收到他群漂流、历史梦、牛牛画画归档图或已学句；同一场梦内已发过的正文/图片不重复投放。"
+                    "多 Bot 同群时有群级冷却，避免同时抢触发。"
                 ),
             },
             {
@@ -46,7 +57,31 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_method": "on_message",
                 "trigger_condition": "牛牛醒梦/牛牛别做梦",
                 "brief_des": "结束做梦",
-                "detail_des": "立即结束本群的做梦状态。",
+                "detail_des": "立即结束本群的做梦状态并停止后台推送。",
+            },
+            {
+                "func": "梦话采集",
+                "trigger_method": "on_message",
+                "trigger_condition": "本群处于做梦中",
+                "brief_des": "群聊写入梦库并可跨群漂流",
+                "detail_des": (
+                    "做梦期间群友消息异步写入 message（is_dream）；"
+                    "纯文本与少量图片可随机投递到同 Bot 其它正在做梦的群。"
+                ),
+            },
+            {
+                "func": "梦库清理（不可以）",
+                "trigger_method": "on_message",
+                "trigger_condition": "回复消息后 @牛牛 发送不可以",
+                "brief_des": "按所回复内容删除梦库记录",
+                "detail_des": ("与复读「不可以」操作方式相同"),
+            },
+            {
+                "func": "梦库清理（撤回）",
+                "trigger_method": "on_notice",
+                "trigger_condition": "管理员撤回牛牛消息",
+                "brief_des": "按被撤回消息删除梦库记录",
+                "detail_des": ("与复读撤回封禁同一触发场景；删到梦库且复读未 finish 时才发确认句。"),
             },
         ],
         "menu_template": "default",

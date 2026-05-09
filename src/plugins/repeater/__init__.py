@@ -18,6 +18,7 @@ from src.common.config import BotConfig
 from src.common.utils.array2cqcode import try_convert_to_cqcode
 from src.common.utils.media_cache import get_image, insert_image
 
+from .ban_state import REPEATER_BAN_ACK_SENT_STATE_KEY
 from .emoji_reaction import reaction_msg
 from .model import Chat
 
@@ -299,6 +300,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         logger.warning(f"bot [{event.self_id}] failed to delete [{raw_message}] in group [{event.group_id}]")
 
     if await Chat.ban(event.group_id, event.self_id, raw_message, str(event.user_id)):
+        event.state[REPEATER_BAN_ACK_SENT_STATE_KEY] = True
         await ban_msg.finish("这对角可能会不小心撞倒些家具，我会尽量小心。")
 
 
@@ -344,6 +346,7 @@ async def _(bot: Bot, event: GroupRecallNoticeEvent, state: T_State):
     logger.info(f"bot [{event.self_id}] ready to ban [{raw_message}] in group [{event.group_id}]")
 
     if await Chat.ban(event.group_id, event.self_id, raw_message, str(f"recall by {event.operator_id}")):
+        event.state[REPEATER_BAN_ACK_SENT_STATE_KEY] = True
         await ban_recalled_msg.finish("这对角可能会不小心撞倒些家具，我会尽量小心。")
 
 

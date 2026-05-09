@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import random
 import time
 from typing import TYPE_CHECKING
@@ -24,6 +25,21 @@ if TYPE_CHECKING:
 message_repo = make_message_repository()
 
 _MAX_QUEUE = 800
+_SLEEP_MIN_SEC = 20.0
+_SLEEP_MAX_SEC = 45.0
+_HIST_RESAMPLE_ATTEMPTS = 12
+_ARCHIVE_RESAMPLE_ATTEMPTS = 6
+_ECHO_RESAMPLE_ATTEMPTS = 10
+
+
+def dream_text_dedupe_key(text: str) -> str:
+    return " ".join((text or "").strip().lower().split())
+
+
+def dream_image_dedupe_key(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
 _dream_lock = asyncio.Lock()
 _dream_active: set[tuple[int, int]] = set()
 _dream_tasks: dict[tuple[int, int], asyncio.Task] = {}
@@ -90,10 +106,12 @@ async def _dream_worker_loop(bot_id: int, group_id: int) -> None:
     key = (bot_id, group_id)
     cfg = BotConfig(bot_id, group_id)
     sent_images = 0
+    sent_text_keys: set[str] = set()
+    sent_image_keys: set[str] = set()
     q = get_drift_queue(key)
     try:
         while await cfg.is_dreaming():
-            await asyncio.sleep(random.uniform(0.0, 15.0))
+            await asyncio.sleep(random.uniform(_SLEEP_MIN_SEC, _SLEEP_MAX_SEC))
             if not await cfg.is_dreaming():
                 break
             try:
@@ -107,32 +125,78 @@ async def _dream_worker_loop(bot_id: int, group_id: int) -> None:
             except asyncio.QueueEmpty:
                 item = None
             try:
-                # 联机漂流优先：有队列则先发他群传来的内容，再走图或学到的句子
+                sent_queue_text = False
+                sent_queue_image = False
+                # 联机漂流优先：有队列则先发他群传来的内容；与本场已发去重
                 if item and item.image_bytes and sent_images < 3:
-                    await _send_group_drift_image(bot, group_id, item.nickname, item.image_bytes)
-                    sent_images += 1
+                    ik = dream_image_dedupe_key(item.image_bytes)
+                    if ik not in sent_image_keys:
+                        await _send_group_drift_image(bot, group_id, item.nickname, item.image_bytes)
+                        sent_image_keys.add(ik)
+                        sent_images += 1
+                        sent_queue_image = True
                 elif item and item.text:
-                    await _send_group_drift_text(bot, group_id, item.nickname, item.text)
-                else:
+                    tk = dream_text_dedupe_key(item.text)
+                    if tk not in sent_text_keys:
+                        await _send_group_drift_text(bot, group_id, item.nickname, item.text)
+                        sent_text_keys.add(tk)
+                        sent_queue_text = True
+
+                if sent_queue_text or sent_queue_image:
+                    continue
+
+                sent_from_hist = False
+                for _ in range(_HIST_RESAMPLE_ATTEMPTS):
                     hist = await sample_historical_drift(bot_id=bot_id, exclude_group_id=group_id)
                     if hist is None:
                         hist = await sample_historical_drift(bot_id=bot_id, exclude_group_id=None)
-                    if hist and hist.image_bytes and sent_images < 3:
-                        await _send_group_drift_image(bot, group_id, hist.nickname, hist.image_bytes)
-                        sent_images += 1
-                        continue
-                    if hist and hist.text:
-                        await _send_group_drift_text(bot, group_id, hist.nickname, hist.text)
-                        continue
-                    if sent_images < 3 and random.random() < 0.38:
-                        data = await random_archived_png_bytes()
-                        if data:
-                            await _send_group_archived_draw_image(bot, group_id, data)
+                    if hist is None:
+                        break
+                    if hist.image_bytes and sent_images < 3:
+                        ik = dream_image_dedupe_key(hist.image_bytes)
+                        if ik not in sent_image_keys:
+                            await _send_group_drift_image(bot, group_id, hist.nickname, hist.image_bytes)
+                            sent_image_keys.add(ik)
                             sent_images += 1
-                            continue
+                            sent_from_hist = True
+                            break
+                    if hist.text:
+                        tk = dream_text_dedupe_key(hist.text)
+                        if tk not in sent_text_keys:
+                            await _send_group_drift_text(bot, group_id, hist.nickname, hist.text)
+                            sent_text_keys.add(tk)
+                            sent_from_hist = True
+                            break
+
+                if sent_from_hist:
+                    continue
+
+                sent_archive = False
+                if sent_images < 3 and random.random() < 0.38:
+                    for _ in range(_ARCHIVE_RESAMPLE_ATTEMPTS):
+                        data = await random_archived_png_bytes()
+                        if not data:
+                            break
+                        ik = dream_image_dedupe_key(data)
+                        if ik not in sent_image_keys:
+                            await _send_group_archived_draw_image(bot, group_id, data)
+                            sent_image_keys.add(ik)
+                            sent_images += 1
+                            sent_archive = True
+                            break
+
+                if sent_archive:
+                    continue
+
+                for _ in range(_ECHO_RESAMPLE_ATTEMPTS):
                     line = await sample_learned_echo_line()
-                    if line:
+                    if not line:
+                        break
+                    tk = dream_text_dedupe_key(line)
+                    if tk not in sent_text_keys:
                         await _send_group_drift_text(bot, group_id, random_echo_nickname(), line)
+                        sent_text_keys.add(tk)
+                        break
             except ActionFailed as e:
                 logger.debug("dream send failed: {}", e)
             except Exception as e:
