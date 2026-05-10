@@ -10,6 +10,7 @@ from nonebot.rule import Rule
 from src.common.config import BotConfig, GroupConfig
 
 from . import ban_handlers as _dream_ban_handlers  # noqa: F401 — 注册梦库「不可以」/撤回清理
+from . import library_cleanup as _dream_library_cleanup  # noqa: F401 — 注册梦库定时清理
 from .capture_filter import dream_capture_blocked_by_substrings
 from .http_utils import download_image_url
 from .payload import DriftPayload

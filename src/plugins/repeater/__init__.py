@@ -17,6 +17,7 @@ from nonebot_plugin_apscheduler import scheduler
 from src.common.config import BotConfig
 from src.common.utils.array2cqcode import try_convert_to_cqcode
 from src.common.utils.media_cache import get_image, insert_image
+from src.plugins.dream.ban_ack_state import DREAM_BAN_ACK_SENT_STATE_KEY
 
 from .ban_state import REPEATER_BAN_ACK_SENT_STATE_KEY
 from .emoji_reaction import reaction_msg
@@ -299,9 +300,13 @@ async def _(bot: Bot, event: GroupMessageEvent):
     except ActionFailed:
         logger.warning(f"bot [{event.self_id}] failed to delete [{raw_message}] in group [{event.group_id}]")
 
-    if await Chat.ban(event.group_id, event.self_id, raw_message, str(event.user_id)):
-        event.state[REPEATER_BAN_ACK_SENT_STATE_KEY] = True
-        await ban_msg.finish("这对角可能会不小心撞倒些家具，我会尽量小心。")
+    banned = await Chat.ban(event.group_id, event.self_id, raw_message, str(event.user_id))
+    if banned:
+        if not event.state.get(DREAM_BAN_ACK_SENT_STATE_KEY):
+            event.state[REPEATER_BAN_ACK_SENT_STATE_KEY] = True
+            await ban_msg.finish("这对角可能会不小心撞倒些家具，我会尽量小心。")
+    elif not event.state.get(DREAM_BAN_ACK_SENT_STATE_KEY):
+        pass
 
 
 async def is_admin_recall_self_msg(bot: Bot, event: GroupRecallNoticeEvent):
@@ -345,9 +350,13 @@ async def _(bot: Bot, event: GroupRecallNoticeEvent, state: T_State):
 
     logger.info(f"bot [{event.self_id}] ready to ban [{raw_message}] in group [{event.group_id}]")
 
-    if await Chat.ban(event.group_id, event.self_id, raw_message, str(f"recall by {event.operator_id}")):
-        event.state[REPEATER_BAN_ACK_SENT_STATE_KEY] = True
-        await ban_recalled_msg.finish("这对角可能会不小心撞倒些家具，我会尽量小心。")
+    banned = await Chat.ban(event.group_id, event.self_id, raw_message, str(f"recall by {event.operator_id}"))
+    if banned:
+        if not state.get(DREAM_BAN_ACK_SENT_STATE_KEY):
+            state[REPEATER_BAN_ACK_SENT_STATE_KEY] = True
+            await ban_recalled_msg.finish("这对角可能会不小心撞倒些家具，我会尽量小心。")
+    elif not state.get(DREAM_BAN_ACK_SENT_STATE_KEY):
+        pass
 
 
 async def message_is_ban(bot: Bot, event: GroupMessageEvent, state: T_State) -> bool:

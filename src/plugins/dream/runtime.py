@@ -15,6 +15,7 @@ from src.common.db import Message as MessageModel
 from src.common.db import make_message_repository
 from src.plugins.pallas_image.draw_archive import random_archived_png_bytes
 
+from .config import plugin_config as dream_plugin_config
 from .dream_labels import pick_pseudo_sender_at
 from .drunk_synergy import send_one_random_history_line, try_drunk_dream_take_name
 from .echo_sample import random_echo_nickname, sample_learned_echo_line
@@ -32,9 +33,7 @@ _DRUNK_DREAM_FAST_SLEEP_MIN = 5.0
 _DRUNK_DREAM_FAST_SLEEP_MAX = 20.0
 _DEFAULT_IMAGE_CAP = 3
 _DRUNK_DREAM_IMAGE_CAP = 5
-_HIST_RESAMPLE_ATTEMPTS = 12
 _ARCHIVE_RESAMPLE_ATTEMPTS = 6
-_ECHO_RESAMPLE_ATTEMPTS = 10
 
 
 def dream_text_dedupe_key(text: str) -> str:
@@ -151,14 +150,15 @@ async def _dream_worker_loop(bot_id: int, group_id: int) -> None:
                     logger.warning("dream drunk synergy error: {}", e)
                 continue
             item: DriftPayload | None = None
-            try:
-                item = q.get_nowait()
-            except asyncio.QueueEmpty:
-                item = None
+            if random.random() < dream_plugin_config.dream_drift_queue_tick_probability:
+                try:
+                    item = q.get_nowait()
+                except asyncio.QueueEmpty:
+                    item = None
             try:
                 sent_queue_text = False
                 sent_queue_image = False
-                # 联机漂流优先：有队列则先发他群传来的内容；与本场已发去重
+                # 联机漂流：按配置概率消费队列，降低他群实时句占比
                 if item and item.image_bytes and sent_images < image_cap:
                     ik = dream_image_dedupe_key(item.image_bytes)
                     if ik not in sent_image_keys:
@@ -177,7 +177,7 @@ async def _dream_worker_loop(bot_id: int, group_id: int) -> None:
                     continue
 
                 sent_from_hist = False
-                for _ in range(_HIST_RESAMPLE_ATTEMPTS):
+                for _ in range(dream_plugin_config.dream_hist_resample_attempts):
                     hist = await sample_historical_drift(bot_id=bot_id, exclude_group_id=group_id)
                     if hist is None:
                         hist = await sample_historical_drift(bot_id=bot_id, exclude_group_id=None)
@@ -202,8 +202,23 @@ async def _dream_worker_loop(bot_id: int, group_id: int) -> None:
                 if sent_from_hist:
                     continue
 
+                sent_echo = False
+                for _ in range(dream_plugin_config.dream_echo_resample_attempts):
+                    line = await sample_learned_echo_line()
+                    if not line:
+                        break
+                    tk = dream_text_dedupe_key(line)
+                    if tk not in sent_text_keys:
+                        await _send_group_drift_text(bot, group_id, random_echo_nickname(), line)
+                        sent_text_keys.add(tk)
+                        sent_echo = True
+                        break
+
+                if sent_echo:
+                    continue
+
                 sent_archive = False
-                if sent_images < image_cap and random.random() < 0.38:
+                if sent_images < image_cap and random.random() < dream_plugin_config.dream_archive_image_probability:
                     for _ in range(_ARCHIVE_RESAMPLE_ATTEMPTS):
                         data = await random_archived_png_bytes()
                         if not data:
@@ -218,16 +233,6 @@ async def _dream_worker_loop(bot_id: int, group_id: int) -> None:
 
                 if sent_archive:
                     continue
-
-                for _ in range(_ECHO_RESAMPLE_ATTEMPTS):
-                    line = await sample_learned_echo_line()
-                    if not line:
-                        break
-                    tk = dream_text_dedupe_key(line)
-                    if tk not in sent_text_keys:
-                        await _send_group_drift_text(bot, group_id, random_echo_nickname(), line)
-                        sent_text_keys.add(tk)
-                        break
             except ActionFailed as e:
                 logger.debug("dream send failed: {}", e)
             except Exception as e:

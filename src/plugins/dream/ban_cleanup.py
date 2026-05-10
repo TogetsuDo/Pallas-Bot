@@ -6,7 +6,7 @@ from nonebot import logger
 
 from src.common.db import get_db_backend
 
-from .history_bottle import DREAM_KEY_PREFIX
+from .history_bottle import DREAM_KEY_PREFIX, dream_history_bot_ids
 from .runtime import dream_text_dedupe_key
 
 _STRIP_CQ_IMG_URL = re.compile(r",\s*url=[^,\]]*")
@@ -43,20 +43,21 @@ def dream_ban_plain_variants(plain: str) -> set[str]:
 async def delete_dream_messages_from_ban_reply(*, bot_id: int, reply_cq_raw: str, reply_plain: str) -> int:
     raw_norm = strip_cq_image_urls(reply_cq_raw or "")
     plains = dream_ban_plain_variants(reply_plain)
+    bot_ids = dream_history_bot_ids(bot_id)
     backend = get_db_backend()
     if backend == "mongodb":
-        return await _mongo_delete(bot_id, raw_norm, plains)
+        return await _mongo_delete(bot_ids, raw_norm, plains)
     if backend == "postgresql":
-        return await _pg_delete(bot_id, raw_norm, plains)
+        return await _pg_delete(bot_ids, raw_norm, plains)
     return 0
 
 
-async def _mongo_delete(bot_id: int, raw_norm: str, plains: set[str]) -> int:
+async def _mongo_delete(bot_ids: list[int], raw_norm: str, plains: set[str]) -> int:
     from src.common.db.modules import Message
 
     coll = Message.get_pymongo_collection()
     key_pat = f"^{re.escape(DREAM_KEY_PREFIX)}"
-    q: dict = {"bot_id": bot_id, "keywords": {"$regex": key_pat}}
+    q: dict = {"bot_id": {"$in": bot_ids}, "keywords": {"$regex": key_pat}}
     ors: list[dict] = []
     if plains:
         ors.append({"plain_text": {"$in": list(plains)}})
@@ -73,7 +74,7 @@ async def _mongo_delete(bot_id: int, raw_norm: str, plains: set[str]) -> int:
         return 0
 
 
-async def _pg_delete(bot_id: int, raw_norm: str, plains: set[str]) -> int:
+async def _pg_delete(bot_ids: list[int], raw_norm: str, plains: set[str]) -> int:
     from sqlalchemy import delete, or_
 
     from src.common.db.repository_pg import MessageRow, get_session
@@ -90,7 +91,7 @@ async def _pg_delete(bot_id: int, raw_norm: str, plains: set[str]) -> int:
     try:
         async with get_session() as session:
             stmt = delete(MessageRow).where(
-                MessageRow.bot_id == bot_id,
+                MessageRow.bot_id.in_(bot_ids),
                 MessageRow.keywords.startswith(DREAM_KEY_PREFIX),
                 or_(*conds),
             )

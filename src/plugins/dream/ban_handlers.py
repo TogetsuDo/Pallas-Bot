@@ -8,10 +8,12 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, GroupRecallNoticeEven
 from nonebot.exception import ActionFailed
 from nonebot.permission import SUPERUSER, Permission
 from nonebot.rule import Rule, keyword, to_me
+from nonebot.typing import T_State  # noqa: TC002
 
 from src.common.config import BotConfig
 from src.common.utils.array2cqcode import try_convert_to_cqcode
 
+from .ban_ack_state import DREAM_BAN_ACK_SENT_STATE_KEY
 from .ban_cleanup import delete_dream_messages_from_ban_reply
 
 _BAN_ACK_TEXT = "这对角可能会不小心撞倒些家具，我会尽量小心。"
@@ -30,7 +32,7 @@ async def is_reply_for_ban(event: GroupMessageEvent) -> bool:
 
 dream_ban_cleanup_msg = on_message(
     rule=to_me() & keyword("不可以") & Rule(is_reply_for_ban),
-    priority=6,
+    priority=4,
     block=False,
     permission=IsAdminDream,
 )
@@ -57,6 +59,7 @@ async def _(_bot: Bot, event: GroupMessageEvent):
     )
     if n:
         logger.info("bot [{}] removed {} dream record(s) via 不可以 (dream plugin)", event.self_id, n)
+        event.state[DREAM_BAN_ACK_SENT_STATE_KEY] = True
         try:
             await dream_ban_cleanup_msg.send(_BAN_ACK_TEXT)
         except ActionFailed as e:
@@ -78,13 +81,13 @@ async def is_admin_recall_dream_cleanup(bot: Bot, event: GroupRecallNoticeEvent)
 
 dream_ban_cleanup_recall = on_notice(
     rule=Rule(is_admin_recall_dream_cleanup),
-    priority=6,
+    priority=4,
     block=False,
 )
 
 
 @dream_ban_cleanup_recall.handle()
-async def _(bot: Bot, event: GroupRecallNoticeEvent):
+async def _(bot: Bot, event: GroupRecallNoticeEvent, state: T_State):
     try:
         msg = await bot.get_msg(message_id=event.message_id)
     except ActionFailed:
@@ -108,6 +111,7 @@ async def _(bot: Bot, event: GroupRecallNoticeEvent):
     )
     if n:
         logger.info("bot [{}] removed {} dream record(s) via recall (dream plugin)", event.self_id, n)
+        state[DREAM_BAN_ACK_SENT_STATE_KEY] = True
         try:
             await bot.send_group_msg(group_id=event.group_id, message=_BAN_ACK_TEXT)
         except ActionFailed as e:
