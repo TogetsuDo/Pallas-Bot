@@ -18,19 +18,24 @@ def _sanitize_pipe(cell: str) -> str:
 
 
 def _markdown_table_cell_linebreaks(text: str, width: int) -> str:
-    """表格单元内换行：Markdown 管道表用 HTML <br>，避免超长一行撑破版式。"""
+    """一级菜单：折叠空白为单行"""
+    t = (text or "").strip()
+    if not t:
+        return "暂无"
+    single = re.sub(r"\s+", " ", t.replace("\n", " "))
+    return _sanitize_pipe(single)
+
+
+def _markdown_table_cell_truncate(text: str, width: int) -> str:
+    """二/三级菜单：折叠空白为单行，超过 width 时截断并加省略号。"""
     t = (text or "").strip()
     if not t:
         return "暂无"
     single = re.sub(r"\s+", " ", t.replace("\n", " "))
     single = _sanitize_pipe(single)
-    wrapped = textwrap.fill(
-        single,
-        width=max(8, width),
-        break_long_words=True,
-        break_on_hyphens=True,
-    )
-    return wrapped.replace("\n", "<br>")
+    if len(single) > width:
+        return single[: width - 1] + "…"
+    return single
 
 
 def _wrap_paragraphs_for_help_page(text: str, width: int = _HELP_DETAIL_WRAP) -> str:
@@ -171,7 +176,7 @@ def generate_plugin_functions_markdown(
                 for i, item in enumerate(menu_data, 1):
                     func_name = _sanitize_pipe(str(item.get("func", f"未命名功能 {i}") or ""))
                     brief_raw = item.get("brief_des", "暂无简介") or "暂无简介"
-                    brief_des = _markdown_table_cell_linebreaks(str(brief_raw), 26)
+                    brief_des = _markdown_table_cell_truncate(str(brief_raw), 26)
                     markdown_content += f"| {i} | {func_name} | {brief_des} |\n"
                 markdown_content += "\n### 查看功能详情\n\n"
                 markdown_content += f"**示例**（当前插件为「{plugin_name_display}」）\n\n"
@@ -248,12 +253,12 @@ def generate_function_detail_markdown(plugin_name: str, function_name: str) -> t
     markdown_content += f"| 功能序号 | {target_index} |\n"
     markdown_content += f"| 功能名称 | {_sanitize_pipe(str(func_name))} |\n"
     brief_cell = target_function.get("brief_des", "暂无简介") or "暂无简介"
-    markdown_content += f"| 简介 | {_markdown_table_cell_linebreaks(str(brief_cell), 28)} |\n"
+    markdown_content += f"| 简介 | {_markdown_table_cell_truncate(str(brief_cell), 28)} |\n"
 
     trigger_method = str(target_function.get("trigger_method", "未知") or "未知")
     trigger_condition = str(target_function.get("trigger_condition", "未知") or "未知")
-    markdown_content += f"| 触发方式 | {_markdown_table_cell_linebreaks(trigger_method, 28)} |\n"
-    markdown_content += f"| 触发条件 | {_markdown_table_cell_linebreaks(trigger_condition, 28)} |\n"
+    markdown_content += f"| 触发方式 | {_markdown_table_cell_truncate(trigger_method, 28)} |\n"
+    markdown_content += f"| 触发条件 | {_markdown_table_cell_truncate(trigger_condition, 28)} |\n"
 
     markdown_content += "\n"
 
