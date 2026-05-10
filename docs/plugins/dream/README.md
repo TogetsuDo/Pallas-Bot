@@ -9,7 +9,7 @@
 | `牛牛做梦` | **10 秒群级冷却**+ 每 Bot 每群 **3 秒**（`BotConfig`）；冷却内可能静默；成功后随机持续 **300～900 秒**；随后 worker 在**未醉酒**时按 **20～45 秒** 随机间隔推送；**本群醉酒度 > 0 期间**整段改为 **5～20 秒** 间隔。 |
 | `牛牛醒梦` / `牛牛别做梦` | 仅在本群已在做梦时生效，结束做梦并清理本群 worker。 |
 
-做梦期间，群友正常聊天会被**异步**写入 `message` 表（与复读学习链路独立），并可能把**最多 2 张**图片（按 CQ 中的 http 链接下载）与**不超过 800 字**的纯文本，**随机投递**到同一 Bot 下**其它正在做梦的群**（若没有其它做梦群则只积累历史，不跨群）。**历史梦抽样**则对当前 NoneBot 进程内**所有已连接账号**合并查询同一库（多开一号一进程时仍各查各库）。
+做梦期间，群友正常聊天会被**异步**写入 `message` 表（与复读学习链路独立），并可能把**最多 2 张**图片（按 CQ 中的 http 链接下载）与**不超过 800 字**的纯文本，**随机投递**到同一 Bot 下**其它正在做梦的群**（若没有其它做梦群则只积累历史，不跨群）。**明文或 raw 含「不可以」** 的消息**不写入梦库、不参与漂流**（避免管理指令进梦）。**历史梦抽样**则对当前 NoneBot 进程内**所有已连接账号**合并查询同一库（多开一号一进程时仍各查各库）。
 
 ## 推送优先级（单次 tick）
 
@@ -53,6 +53,6 @@
 - **牛牛画画** [`pallas_image`](../pallas_image/README.md)：归档图来源与清理策略见该文档。
 - **复读**：做梦兜底文案来自已学 `Context`，与做梦写入的 `message` 路径分离。
 - **自动夺舍** [`take_name`](../take_name/README.md)：醉酒改名片逻辑与做梦醉酒联动对齐（不含定时里的戳一戳）。
-- **管理员「不可以」**：与复读相同触发（回复目标消息后 `@牛牛` + `不可以`，或管理员撤回牛牛消息）时，由本插件 [`ban_handlers.py`](../../../src/plugins/dream/ban_handlers.py) 注册（`priority=6`，略晚于复读封禁）从 `message` 表删除 `keywords` 以 `is_dream` 开头且内容匹配的记录；删除逻辑见 [`ban_cleanup.py`](../../../src/plugins/dream/ban_cleanup.py)。**仅当删到梦库且复读未 `finish` 确认句**（`event.state` 约定键见复读 [`ban_state.py`](../../../src/plugins/repeater/ban_state.py)）时，本插件才发同一句确认话。
+- **管理员「不可以」**：与复读相同触发（回复目标消息后 `@牛牛` + `不可以`，或管理员撤回牛牛消息）时，由本插件 [`ban_handlers.py`](../../../src/plugins/dream/ban_handlers.py) 注册（`priority=6`，略晚于复读封禁）从 `message` 表删除 `keywords` 以 `is_dream` 开头且内容匹配的记录；删除逻辑见 [`ban_cleanup.py`](../../../src/plugins/dream/ban_cleanup.py)。**只要实际删到梦库记录**，本插件即发送与复读侧相同的确认句（可能与复读确认句重复各一条，属预期）。
 
-实现见 [`src/plugins/dream/`](../../../src/plugins/dream/)（入口 [`__init__.py`](../../../src/plugins/dream/__init__.py)，调度 [`runtime.py`](../../../src/plugins/dream/runtime.py)，历史 [`history_bottle.py`](../../../src/plugins/dream/history_bottle.py)，醉酒联动 [`drunk_synergy.py`](../../../src/plugins/dream/drunk_synergy.py)）。
+实现见 [`src/plugins/dream/`](../../../src/plugins/dream/)（入口 [`__init__.py`](../../../src/plugins/dream/__init__.py)，调度 [`runtime.py`](../../../src/plugins/dream/runtime.py)，历史 [`history_bottle.py`](../../../src/plugins/dream/history_bottle.py)，醉酒联动 [`drunk_synergy.py`](../../../src/plugins/dream/drunk_synergy.py)，采集黑名单 [`capture_filter.py`](../../../src/plugins/dream/capture_filter.py)）。

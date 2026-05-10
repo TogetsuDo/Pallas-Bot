@@ -10,6 +10,7 @@ from nonebot.rule import Rule
 from src.common.config import BotConfig, GroupConfig
 
 from . import ban_handlers as _dream_ban_handlers  # noqa: F401 — 注册梦库「不可以」/撤回清理
+from .capture_filter import dream_capture_blocked_by_substrings
 from .http_utils import download_image_url
 from .payload import DriftPayload
 from .runtime import (
@@ -25,7 +26,8 @@ __plugin_meta__ = PluginMetadata(
         "牛牛的梦话：多群同时做梦时同 Bot 漂流互通；历史梦抽样合并本进程内已连接各账号的同一消息库。"
         "随机间隔推送历史梦、归档画或已学句。未醉酒时约 20～45 秒一轮；本群醉酒期间整段改为约 5～20 秒一轮。"
         "每场梦首次检测到醉酒时另有一次夺舍联动：发图上限 3→5，并按「自动夺舍」逻辑尝试改名片并可能发一条"
-        "被改名片者的非梦库历史句（如有）。与复读共用管理员的「不可以」触发梦库清理。"
+        "被改名片者的非梦库历史句（如有）。明文或 raw 含「不可以」不入梦库。"
+        "与复读共用管理员的「不可以」触发梦库清理。"
     ),
     usage="""
 指令：
@@ -67,7 +69,9 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_condition": "本群处于做梦中",
                 "brief_des": "群聊写入梦库并可跨群漂流",
                 "detail_des": (
-                    "做梦期间群友消息异步写入 message纯文本与最多 2 张图可随机投递到同 Bot 其它正在做梦的群。"
+                    "做梦期间群友消息异步写入 message（keywords 以 is_dream 为前缀）；"
+                    "纯文本与最多 2 张图可随机投递到同 Bot 其它正在做梦的群。"
+                    "明文或 raw 含「不可以」时不采集、不漂流。"
                 ),
             },
             {
@@ -76,7 +80,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_condition": "本群做梦中且醉酒度>0",
                 "brief_des": "醉酒全程短间隔；首场另有一次夺舍与历史一句",
                 "detail_des": (
-                    "醉酒度>0 时每一轮等待均为约 5～20 秒"
+                    "醉酒度>0 时每一轮等待均为约 5～20 秒；"
                     "首场醉酒另有一轮不发常规梦话：尝试与 take_name 醉酒夺舍一致的改名片并 update_taken_name，"
                     "若选中成员再随机发其近 90 天内非梦库纯文本历史一句；本场发图上限 3→5 在该轮后保持。"
                     "牛牛非群管或无可用成员/历史时仍消耗首场夺舍轮。"
@@ -93,6 +97,7 @@ __plugin_meta__ = PluginMetadata(
         "menu_template": "default",
     },
 )
+
 
 _PLAIN_TRIGGERS = frozenset({"牛牛做梦", "牛牛醒梦", "牛牛别做梦"})
 DREAM_GROUP_COOLDOWN_KEY = "dream"
@@ -174,6 +179,8 @@ dream_capture = on_message(
 async def _(event: GroupMessageEvent):
     plain = event.get_plaintext().strip()
     if plain in _PLAIN_TRIGGERS:
+        return
+    if dream_capture_blocked_by_substrings(plain, event.raw_message):
         return
 
     async def job():

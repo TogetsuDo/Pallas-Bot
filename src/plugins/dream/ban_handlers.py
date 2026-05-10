@@ -11,7 +11,6 @@ from nonebot.rule import Rule, keyword, to_me
 
 from src.common.config import BotConfig
 from src.common.utils.array2cqcode import try_convert_to_cqcode
-from src.plugins.repeater.ban_state import REPEATER_BAN_ACK_SENT_STATE_KEY
 
 from .ban_cleanup import delete_dream_messages_from_ban_reply
 
@@ -58,11 +57,10 @@ async def _(_bot: Bot, event: GroupMessageEvent):
     )
     if n:
         logger.info("bot [{}] removed {} dream record(s) via 不可以 (dream plugin)", event.self_id, n)
-        if not event.state.get(REPEATER_BAN_ACK_SENT_STATE_KEY):
-            try:
-                await dream_ban_cleanup_msg.send(_BAN_ACK_TEXT)
-            except ActionFailed as e:
-                logger.debug("dream ban_cleanup_msg send ack failed: {}", e)
+        try:
+            await dream_ban_cleanup_msg.send(_BAN_ACK_TEXT)
+        except ActionFailed as e:
+            logger.debug("dream ban_cleanup_msg send ack failed: {}", e)
 
 
 async def is_admin_recall_dream_cleanup(bot: Bot, event: GroupRecallNoticeEvent) -> bool:
@@ -110,8 +108,7 @@ async def _(bot: Bot, event: GroupRecallNoticeEvent):
     )
     if n:
         logger.info("bot [{}] removed {} dream record(s) via recall (dream plugin)", event.self_id, n)
-        if not event.state.get(REPEATER_BAN_ACK_SENT_STATE_KEY):
-            try:
-                await bot.send_group_msg(group_id=event.group_id, message=_BAN_ACK_TEXT)
-            except ActionFailed as e:
-                logger.debug("dream ban_cleanup_recall send ack failed: {}", e)
+        try:
+            await bot.send_group_msg(group_id=event.group_id, message=_BAN_ACK_TEXT)
+        except ActionFailed as e:
+            logger.debug("dream ban_cleanup_recall send ack failed: {}", e)
