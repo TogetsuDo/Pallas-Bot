@@ -283,7 +283,7 @@ ban_msg = on_message(
 
 
 @ban_msg.handle()
-async def _(bot: Bot, event: GroupMessageEvent):
+async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
     if "[CQ:reply," not in try_convert_to_cqcode(event.raw_message):
         return False
 
@@ -302,10 +302,10 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     banned = await Chat.ban(event.group_id, event.self_id, raw_message, str(event.user_id))
     if banned:
-        if not event.state.get(DREAM_BAN_ACK_SENT_STATE_KEY):
-            event.state[REPEATER_BAN_ACK_SENT_STATE_KEY] = True
+        if not state.get(DREAM_BAN_ACK_SENT_STATE_KEY):
+            state[REPEATER_BAN_ACK_SENT_STATE_KEY] = True
             await ban_msg.finish("这对角可能会不小心撞倒些家具，我会尽量小心。")
-    elif not event.state.get(DREAM_BAN_ACK_SENT_STATE_KEY):
+    elif not state.get(DREAM_BAN_ACK_SENT_STATE_KEY):
         pass
 
 

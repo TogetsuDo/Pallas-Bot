@@ -39,7 +39,7 @@ dream_ban_cleanup_msg = on_message(
 
 
 @dream_ban_cleanup_msg.handle()
-async def _(_bot: Bot, event: GroupMessageEvent):
+async def _(_bot: Bot, event: GroupMessageEvent, state: T_State):
     if "[CQ:reply," not in try_convert_to_cqcode(event.raw_message):
         return
     raw_message = ""
@@ -59,7 +59,7 @@ async def _(_bot: Bot, event: GroupMessageEvent):
     )
     if n:
         logger.info("bot [{}] removed {} dream record(s) via 不可以 (dream plugin)", event.self_id, n)
-        event.state[DREAM_BAN_ACK_SENT_STATE_KEY] = True
+        state[DREAM_BAN_ACK_SENT_STATE_KEY] = True
         try:
             await dream_ban_cleanup_msg.send(_BAN_ACK_TEXT)
         except ActionFailed as e:
