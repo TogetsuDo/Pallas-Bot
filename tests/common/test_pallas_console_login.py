@@ -95,7 +95,7 @@ def test_prime_shared_console_login_announces_default_password_once(
     monkeypatch.setattr(m.sys.stderr, "write", capture_write)
     m.prime_shared_console_login()
     m.prime_shared_console_login()
-    hits = [w for w in writes if "[Pallas] 默认口令:" in w]
+    hits = [w for w in writes if "[Pallas-Bot] 默认口令:" in w]
     assert len(hits) == 1
 
 
@@ -125,5 +125,5 @@ def test_prime_reannounces_default_password_when_auth_dir_changes(
             shutil.copy2(src, root2 / name)
     monkeypatch.setattr(m, "console_auth_dir", lambda: root2)
     m.prime_shared_console_login()
-    hits = [w for w in writes if "[Pallas] 默认口令:" in w]
+    hits = [w for w in writes if "[Pallas-Bot] 默认口令:" in w]
     assert len(hits) == 2

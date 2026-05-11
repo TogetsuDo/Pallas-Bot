@@ -1,4 +1,4 @@
-"""Pallas 控制台 API 用的数据读取/概览，与具体 HTTP 层解耦。"""
+"""Pallas-Bot 控制台 API 用的数据读取/概览，与具体 HTTP 层解耦。"""
 
 from __future__ import annotations
 

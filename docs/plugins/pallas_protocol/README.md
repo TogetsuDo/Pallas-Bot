@@ -31,7 +31,7 @@
 | `PALLAS_PROTOCOL_DOCKER_IMAGE` | NapCat 镜像（可被 profile 覆盖） |
 | `PALLAS_PROTOCOL_SNOWLUMA_DOCKER_IMAGE` | SnowLuma 镜像（可被 profile 覆盖） |
 
-鉴权与 Pallas 控制台共用会话（`data/pallas_console/auth_state.json`），不再从 `.env` 读控制台口令。
+鉴权与 Pallas-Bot 控制台共用会话（`data/pallas_console/auth_state.json`），不再从 `.env` 读控制台口令。
 
 ## Docker 与反向 WebSocket（OneBot）
 

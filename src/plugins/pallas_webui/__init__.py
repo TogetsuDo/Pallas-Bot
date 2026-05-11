@@ -27,8 +27,8 @@ from .manager import (
 from .public import register_routes
 
 __plugin_meta__ = PluginMetadata(
-    name="Pallas 控制台",
-    description="提供 Pallas 控制台页面与扩展 API。",
+    name="Pallas-Bot 控制台",
+    description="提供 Pallas-Bot 控制台页面与扩展 API。",
     usage="""
 浏览器入口：
 /pallas/
@@ -74,13 +74,17 @@ install_pallas_http_request_context_middleware(app)
 if plugin_config.pallas_webui_enabled and plugin_config.pallas_webui_cors:
     _cors_origins = [str(o).strip() for o in (plugin_config.pallas_webui_allowed_origins or []) if str(o).strip()]
     if not _cors_origins:
-        logger.warning("Pallas 控制台: pallas_webui_cors=True 但 pallas_webui_allowed_origins 为空，未挂载 CORS 中间件")
+        logger.warning(
+            "Pallas-Bot 控制台: pallas_webui_cors=True 但 pallas_webui_allowed_origins 为空，未挂载 CORS 中间件"
+        )
     else:
         from fastapi.middleware.cors import CORSMiddleware
 
         _has_wildcard = "*" in _cors_origins
         if _has_wildcard:
-            logger.warning("Pallas 控制台: pallas_webui_allowed_origins 含 '*'，已强制关闭 allow_credentials 以防 CSRF")
+            logger.warning(
+                "Pallas-Bot 控制台: pallas_webui_allowed_origins 含 '*'，已强制关闭 allow_credentials 以防 CSRF"
+            )
         app.add_middleware(
             CORSMiddleware,
             allow_origins=_cors_origins,
@@ -108,7 +112,7 @@ async def _pallas_webui_startup() -> None:
     )
     webui_version = get_webui_dist_version() or get_installed_webui_version().get("tag", "")
     if plugin_config.pallas_webui_dev_mode:
-        logger.warning("Pallas 控制台: 已关闭 API 与静态页鉴权（仅限本机开发）")
+        logger.warning("Pallas-Bot 控制台: 已关闭 API 与静态页鉴权（仅限本机开发）")
     set_console_meta({
         "static_root": str(public),
         "http_base": base,
@@ -127,12 +131,12 @@ async def _pallas_webui_startup() -> None:
         host=getattr(dconf, "host", None),
         port=getattr(dconf, "port", None),
     )
-    logger.info(f"Pallas 控制台 | WebUI={open_base}{base}/")
+    logger.info(f"Pallas-Bot 控制台 | WebUI={open_base}{base}/")
 
     async def _bootstrap_webui_dist() -> None:
         if check_webui_exists(public):
             return
-        logger.info("Pallas 控制台: 首次部署，后台拉取 WebUI 静态资源；就绪后请刷新控制台")
+        logger.info("Pallas-Bot 控制台: 首次部署，后台拉取 WebUI 静态资源；就绪后请刷新控制台")
         tok = str(getattr(plugin_config, "pallas_protocol_github_token", "") or "").strip()
         url = (plugin_config.pallas_webui_dist_zip_url or "").strip()
         url_candidates: list[str] = []
@@ -157,12 +161,12 @@ async def _pallas_webui_startup() -> None:
         if not url:
             if resolve_err:
                 logger.error(
-                    "Pallas 控制台: 无法解析 WebUI 下载地址（{}），请配置 dist zip 直链或手动放置构建产物到 data/pallas_webui/public",
+                    "Pallas-Bot 控制台: 无法解析 WebUI 下载地址（{}），请配置 dist zip 直链或手动放置构建产物到 data/pallas_webui/public",
                     resolve_err,
                 )
             else:
                 logger.error(
-                    "Pallas 控制台: 无法解析 WebUI 下载地址，请配置 dist zip 直链或手动放置构建产物到 data/pallas_webui/public"
+                    "Pallas-Bot 控制台: 无法解析 WebUI 下载地址，请配置 dist zip 直链或手动放置构建产物到 data/pallas_webui/public"
                 )
             return
         errors: list[str] = []
@@ -177,7 +181,7 @@ async def _pallas_webui_startup() -> None:
                 err_msg = format_exception_for_log(e)
                 errors.append(f"{candidate} -> {err_msg}")
         if errors:
-            logger.error("Pallas 控制台: 下载或解压 dist zip 失败，已尝试: {}", " | ".join(errors))
+            logger.error("Pallas-Bot 控制台: 下载或解压 dist zip 失败，已尝试: {}", " | ".join(errors))
         elif succeeded_url:
             try:
                 tag = str(getattr(plugin_config, "pallas_webui_dist_zip_tag", "") or "").strip()
@@ -192,7 +196,7 @@ async def _pallas_webui_startup() -> None:
                 save_installed_webui_version(tag, succeeded_url)
             except Exception:
                 pass
-            logger.info("Pallas 控制台: WebUI 静态资源后台部署完成，请刷新控制台页面")
+            logger.info("Pallas-Bot 控制台: WebUI 静态资源后台部署完成，请刷新控制台页面")
         webui_ver = get_webui_dist_version() or get_installed_webui_version().get("tag", "")
         set_console_meta({"static_root": str(public), "http_base": base, "version": webui_ver})
 
@@ -208,14 +212,14 @@ async def _pallas_webui_startup() -> None:
             if latest_tag and current_tag != latest_tag:
                 release_url = str(latest_info.get("html_url", "") or "").strip()
                 logger.info(
-                    f"Pallas 控制台: 发现新版本 WebUI {latest_tag}（当前: {current_tag or '未知'}）"
+                    f"Pallas-Bot 控制台: 发现新版本 WebUI {latest_tag}（当前: {current_tag or '未知'}）"
                     + (f" → {release_url}" if release_url else "")
                     + "，可在控制台更新页面一键更新"
                 )
             else:
-                logger.info(f"Pallas 控制台: WebUI 已是最新版本（{current_tag or '未知'}）")
+                logger.info(f"Pallas-Bot 控制台: WebUI 已是最新版本（{current_tag or '未知'}）")
         except Exception as e:
-            logger.debug("Pallas 控制台: 检查 WebUI 更新失败: {}", format_exception_for_log(e))
+            logger.debug("Pallas-Bot 控制台: 检查 WebUI 更新失败: {}", format_exception_for_log(e))
         try:
             bot_current = get_bot_current_version()
             bot_current_tag = bot_current.get("tag", "")
@@ -225,22 +229,22 @@ async def _pallas_webui_startup() -> None:
             if bot_latest_tag and bot_current_tag and bot_current_tag != bot_latest_tag:
                 bot_release_url = str(bot_latest_info.get("html_url", "") or "").strip()
                 logger.info(
-                    f"Pallas 控制台: 发现新版本 Bot {bot_latest_tag}（当前: {bot_current_tag}）"
+                    f"Pallas-Bot 控制台: 发现新版本 Bot {bot_latest_tag}（当前: {bot_current_tag}）"
                     + (f" → {bot_release_url}" if bot_release_url else "")
                     + "，可在控制台查看更新"
                 )
             elif bot_current_tag:
-                logger.info(f"Pallas 控制台: Bot 已是最新版本（{bot_current_tag}）")
+                logger.info(f"Pallas-Bot 控制台: Bot 已是最新版本（{bot_current_tag}）")
             else:
-                logger.info(f"Pallas 控制台: Bot under development,commit={bot_current_commit or '未知'}")
+                logger.info(f"Pallas-Bot 控制台: Bot under development,commit={bot_current_commit or '未知'}")
         except Exception as e:
-            logger.debug("Pallas 控制台: 检查 Bot 更新失败: {}", format_exception_for_log(e))
+            logger.debug("Pallas-Bot 控制台: 检查 Bot 更新失败: {}", format_exception_for_log(e))
 
     async def _guarded(name: str, fn):
         try:
             await fn()
         except Exception as e:
-            logger.error("Pallas 控制台: 后台任务「{}」异常: {}", name, format_exception_for_log(e))
+            logger.error("Pallas-Bot 控制台: 后台任务「{}」异常: {}", name, format_exception_for_log(e))
 
     if not check_webui_exists(public):
         asyncio.create_task(_guarded("webui-dist-bootstrap", _bootstrap_webui_dist))

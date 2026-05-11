@@ -1,6 +1,6 @@
 # pallas_webui
 
-`pallas_webui` 是 Pallas 控制台页面插件，负责两件事：
+`pallas_webui` 是 Pallas-Bot 控制台页面插件，负责两件事：
 
 - 提供页面与 API 入口（默认 `/pallas/` 与 `/pallas/api/*`）
 - 在本地没有前端静态文件时，自动下载并解压 WebUI 产物

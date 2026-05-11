@@ -1,4 +1,4 @@
-"""Pallas 控制台（/pallas）与协议端管理页共用的鉴权。"""
+"""Pallas-Bot 控制台（/pallas）与协议端管理页共用的鉴权。"""
 
 from __future__ import annotations
 
@@ -191,10 +191,10 @@ def prime_shared_console_login() -> None:
     plain, rnd = _materialize_auth_state()
     auth_path = str(auth_state_path().resolve())
     if plain is not None and rnd:
-        logger.info("Pallas 控制台鉴权已初始化，状态文件: {}", auth_state_path())
-        logger.success("Pallas 默认口令: {}", plain)
+        logger.info("Pallas-Bot 控制台鉴权已初始化，状态文件: {}", auth_state_path())
+        logger.success("Pallas-Bot 默认口令: {}", plain)
         try:
-            sys.stderr.write(f"[Pallas] 默认口令: {plain}\n")
+            sys.stderr.write(f"[Pallas-Bot] 默认口令: {plain}\n")
             sys.stderr.flush()
         except OSError:
             pass
@@ -205,9 +205,9 @@ def prime_shared_console_login() -> None:
             _unlink_default_login_password_plain()
         elif boot:
             if _announced_default_password_auth_path != auth_path:
-                logger.success("Pallas 默认口令: {}", boot)
+                logger.success("Pallas-Bot 默认口令: {}", boot)
                 try:
-                    sys.stderr.write(f"[Pallas] 默认口令: {boot}\n")
+                    sys.stderr.write(f"[Pallas-Bot] 默认口令: {boot}\n")
                     sys.stderr.flush()
                 except OSError:
                     pass

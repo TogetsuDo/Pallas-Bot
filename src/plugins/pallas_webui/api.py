@@ -1,4 +1,4 @@
-"""Pallas 控制台 JSON API 前缀（如 /pallas/api）；健康检查等轻量路由可在此注册或再拆子路由。"""
+"""Pallas-Bot 控制台 JSON API 前缀（如 /pallas/api）；健康检查等轻量路由可在此注册或再拆子路由。"""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def register_api(
         x = "/" + x
     x = x.rstrip("/")  # /pallas/api
 
-    router = APIRouter(tags=["Pallas 控制台"])
+    router = APIRouter(tags=["Pallas-Bot 控制台"])
 
     console_meta = dict(extra_meta or {})
     static_root = Path(str(console_meta.get("static_root", "")).strip()) if console_meta.get("static_root") else None

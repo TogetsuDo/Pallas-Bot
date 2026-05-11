@@ -1,4 +1,4 @@
-"""Pallas 控制台：与主程序分离的 Web 前端，通过本插件挂载静态与 API；配置原因见主插件 __init__ 说明。"""
+"""Pallas-Bot 控制台：与主程序分离的 Web 前端，通过本插件挂载静态与 API；配置原因见主插件 __init__ 说明。"""
 
 from pydantic import BaseModel, Field
 

@@ -105,7 +105,7 @@ A: 不再从 `.env` 读取口令。首次启动在日志里打印随机口令，
 A: 磁盘上只有哈希，**没有「忘记密码」邮件或在线找回**；需能访问 Bot 的数据目录或历史日志。
 
 - **从未在设置里改过口令**：可看同目录下的 **`data/pallas_console/default_login_password.txt`**（若仍存在）。
-- **仍保留首次启动时的终端 / 容器日志**：其中会有「Pallas 默认口令」一类输出。
+- **仍保留首次启动时的终端 / 容器日志**：其中会有「Pallas-Bot 默认口令」一类输出。
 - **以上都没有**：停掉 Bot，删除或移走 **`data/pallas_console/auth_state.json`** 后重启；进程会重新生成随机口令并写入日志（必要时可一并删除 **`session_secret.bin`**，避免旧会话状态干扰）。**所有已登录会话会失效**，新口令请妥善保存。
 
 ### Q: 执行 `docker compose` 时报 `project name must not be empty` 怎么办？

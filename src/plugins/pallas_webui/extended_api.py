@@ -59,7 +59,7 @@ def _ensure_log_sink() -> None:
 
     install_nonebot_log_sink()
     _INIT_LOG_SINK = True
-    logger.info("Pallas 控制台: 已接入 NoneBot 日志环（/pallas/api/logs）")
+    logger.info("Pallas-Bot 控制台: 已接入 NoneBot 日志环（/pallas/api/logs）")
 
 
 async def _cached_read(
@@ -78,7 +78,7 @@ async def _cached_read(
         data = await loader()
     except Exception:
         if hit and now < float(hit["stale_exp"]):
-            logger.warning("Pallas 控制台: 使用缓存兜底 key={}", key)
+            logger.warning("Pallas-Bot 控制台: 使用缓存兜底 key={}", key)
             return hit["data"]
         raise
     _READ_CACHE[key] = {
@@ -580,7 +580,7 @@ async def _call_get_group_list(
     try:
         raw = await bot.call_api("get_group_list")  # type: ignore[union-attr]
     except Exception as e:  # noqa: BLE001
-        logger.warning("Pallas 控制台: get_group_list 调用失败: {}", e)
+        logger.warning("Pallas-Bot 控制台: get_group_list 调用失败: {}", e)
         return [], str(e), False
     groups_raw: list[Any]
     if isinstance(raw, list):
@@ -593,16 +593,16 @@ async def _call_get_group_list(
                 groups_raw = v
                 break
         if not groups_raw:
-            logger.warning("Pallas 控制台: get_group_list 返回 dict 但未找到列表字段, keys={}", list(raw.keys()))
+            logger.warning("Pallas-Bot 控制台: get_group_list 返回 dict 但未找到列表字段, keys={}", list(raw.keys()))
     else:
-        logger.warning("Pallas 控制台: get_group_list 返回意外类型 {}", type(raw).__name__)
+        logger.warning("Pallas-Bot 控制台: get_group_list 返回意外类型 {}", type(raw).__name__)
         groups_raw = []
     out: list[dict[str, Any]] = []
     for it in groups_raw:
         try:
             row = _normalize_group_list_item(it)
         except Exception as e:  # noqa: BLE001
-            logger.warning("Pallas 控制台: 群列表条目解析失败 item={} err={}", repr(it), e)
+            logger.warning("Pallas-Bot 控制台: 群列表条目解析失败 item={} err={}", repr(it), e)
             continue
         if row:
             out.append(row)
@@ -1002,7 +1002,7 @@ async def _collect_online_bot_profiles() -> dict[str, dict[str, Any]]:
         try:
             raw = await bot.call_api("get_login_info")  # type: ignore[union-attr]
         except Exception:  # noqa: BLE001
-            logger.debug("Pallas 控制台: get_login_info 失败 key={} self_id={}", key, self_id)
+            logger.debug("Pallas-Bot 控制台: get_login_info 失败 key={} self_id={}", key, self_id)
             continue
         if not isinstance(raw, dict):
             continue
@@ -1139,7 +1139,7 @@ def _runtime_metrics() -> dict[str, Any]:
 
         boot_time = float(_psutil_boot.boot_time())
     except Exception as e:  # noqa: BLE001
-        logger.debug("Pallas 控制台: psutil.boot_time 不可用，将尝试其它方式 err={}", e)
+        logger.debug("Pallas-Bot 控制台: psutil.boot_time 不可用，将尝试其它方式 err={}", e)
 
     if boot_time is None and sys.platform == "win32":
         try:
@@ -1148,7 +1148,7 @@ def _runtime_metrics() -> dict[str, Any]:
             ms = int(ctypes.windll.kernel32.GetTickCount64())
             boot_time = float(time.time() - ms / 1000.0)
         except Exception as e:  # noqa: BLE001
-            logger.debug("Pallas 控制台: Windows GetTickCount64 推算启动时间失败 err={}", e)
+            logger.debug("Pallas-Bot 控制台: Windows GetTickCount64 推算启动时间失败 err={}", e)
 
     return {
         "platform": platform.platform(),
@@ -1501,7 +1501,7 @@ def register_extended_api(
 
         password: str = Field(min_length=1, max_length=512)
 
-    router_pub = APIRouter(tags=["Pallas 控制台"])
+    router_pub = APIRouter(tags=["Pallas-Bot 控制台"])
 
     @router_pub.post(f"{x}/auth/login", include_in_schema=False)
     async def _auth_login(request: Request, body: _AuthLoginBody) -> JSONResponse:
@@ -1522,7 +1522,7 @@ def register_extended_api(
         )
         return resp
 
-    router = APIRouter(tags=["Pallas 控制台"], dependencies=[Depends(_pallas_token_dep)])
+    router = APIRouter(tags=["Pallas-Bot 控制台"], dependencies=[Depends(_pallas_token_dep)])
 
     @router.get(f"{x}/system", include_in_schema=True)
     async def _system() -> JSONResponse:
@@ -1701,7 +1701,7 @@ def register_extended_api(
                 stale_sec=30.0,
             )
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas 控制台: 数据库概览失败")
+            logger.exception("Pallas-Bot 控制台: 数据库概览失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": data})
 
@@ -1727,7 +1727,7 @@ def register_extended_api(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas 控制台: Mongo aggregate 失败")
+            logger.exception("Pallas-Bot 控制台: Mongo aggregate 失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": {"rows": rows, "truncated_to": len(rows)}})
 
@@ -1741,7 +1741,7 @@ def register_extended_api(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas 控制台: 读取表行失败")
+            logger.exception("Pallas-Bot 控制台: 读取表行失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
         if data is None:
             raise HTTPException(status_code=404, detail="未找到该行")
@@ -1761,7 +1761,7 @@ def register_extended_api(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas 控制台: 写入表行失败")
+            logger.exception("Pallas-Bot 控制台: 写入表行失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
         _drop_read_cache(("db_overview", "bot_configs_list", "group_configs_list", "instances"))
         return JSONResponse({"ok": True, "data": data})
@@ -1779,7 +1779,7 @@ def register_extended_api(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas 控制台: 删除表行失败")
+            logger.exception("Pallas-Bot 控制台: 删除表行失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
         _drop_read_cache(("db_overview", "bot_configs_list", "group_configs_list", "instances"))
         if not deleted:
@@ -1812,7 +1812,7 @@ def register_extended_api(
                 stale_sec=20.0,
             )
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas 控制台: 加载实例视图失败")
+            logger.exception("Pallas-Bot 控制台: 加载实例视图失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": payload})
 
@@ -1859,7 +1859,7 @@ def register_extended_api(
         except HTTPException:
             raise
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas 控制台: 更新 Bot 配置失败")
+            logger.exception("Pallas-Bot 控制台: 更新 Bot 配置失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
         _drop_read_cache(("instances", "bot_configs_list", "db_overview"))
         return JSONResponse({"ok": True, "data": data})
@@ -1963,7 +1963,7 @@ def register_extended_api(
         except HTTPException:
             raise
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas 控制台: 更新群配置失败")
+            logger.exception("Pallas-Bot 控制台: 更新群配置失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
         _drop_read_cache(("group_configs_list", "db_overview"))
         return JSONResponse({"ok": True, "data": data})
@@ -1994,7 +1994,7 @@ def register_extended_api(
         except HTTPException:
             raise
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas 控制台: 更新 User 配置失败")
+            logger.exception("Pallas-Bot 控制台: 更新 User 配置失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
         _drop_read_cache(("db_overview",))
         return JSONResponse({"ok": True, "data": data})
@@ -2222,7 +2222,7 @@ def register_extended_api(
                 stale_sec=12.0,
             )
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas 控制台: 读取好友申请概览失败")
+            logger.exception("Pallas-Bot 控制台: 读取好友申请概览失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": data})
 
@@ -2397,7 +2397,7 @@ def register_extended_api(
             asset_url = str(latest.get("asset_url", "") or "").strip()
         except Exception as e:  # noqa: BLE001
             err_msg = format_exception_for_log(e)
-            logger.warning("Pallas 控制台: WebUI 更新检查失败（GitHub），repo={} err={}", repo, err_msg)
+            logger.warning("Pallas-Bot 控制台: WebUI 更新检查失败（GitHub），repo={} err={}", repo, err_msg)
             return JSONResponse({
                 "ok": True,
                 "data": {
@@ -2440,7 +2440,7 @@ def register_extended_api(
             release_url = str(latest.get("html_url", "") or "").strip()
         except Exception as e:  # noqa: BLE001
             err_msg = format_exception_for_log(e)
-            logger.warning("Pallas 控制台: Bot 版本更新检查失败（GitHub） err={}", err_msg)
+            logger.warning("Pallas-Bot 控制台: Bot 版本更新检查失败（GitHub） err={}", err_msg)
             return JSONResponse({
                 "ok": True,
                 "data": {
@@ -2491,21 +2491,21 @@ def register_extended_api(
         public = webui_public_path()
         try:
             logger.info(
-                "Pallas 控制台: WebUI 在线更新开始 repo={} asset={} tag={}",
+                "Pallas-Bot 控制台: WebUI 在线更新开始 repo={} asset={} tag={}",
                 repo,
                 asset,
                 tag or "(latest)",
             )
             url_candidates = await resolve_github_release_asset_urls(repo, asset, tag, token=github_token)
             if not url_candidates:
-                logger.warning("Pallas 控制台: WebUI 更新未得到任何下载 URL（resolve 为空）")
+                logger.warning("Pallas-Bot 控制台: WebUI 更新未得到任何下载 URL（resolve 为空）")
                 raise ValueError("未找到可用的下载地址")
-            logger.info("Pallas 控制台: WebUI 更新候选地址 {} 条", len(url_candidates))
+            logger.info("Pallas-Bot 控制台: WebUI 更新候选地址 {} 条", len(url_candidates))
             errors: list[str] = []
             succeeded_url = ""
             for i, candidate in enumerate(url_candidates, start=1):
                 short = candidate if len(candidate) <= 160 else candidate[:157] + "..."
-                logger.info("Pallas 控制台: WebUI 更新尝试 {}/{} {}", i, len(url_candidates), short)
+                logger.info("Pallas-Bot 控制台: WebUI 更新尝试 {}/{} {}", i, len(url_candidates), short)
                 try:
                     await download_and_extract_dist_zip(public, candidate)
                     succeeded_url = candidate
@@ -2514,7 +2514,7 @@ def register_extended_api(
                 except Exception as e:  # noqa: BLE001
                     err_msg = format_exception_for_log(e)
                     errors.append(f"{candidate} -> {err_msg}")
-                    logger.warning("Pallas 控制台: WebUI 下载/解压失败 {}", err_msg)
+                    logger.warning("Pallas-Bot 控制台: WebUI 下载/解压失败 {}", err_msg)
             if errors:
                 raise ValueError("下载失败: " + " | ".join(errors))
             try:
@@ -2522,7 +2522,7 @@ def register_extended_api(
                 new_tag = str(info.get("tag", "") or tag).strip()
             except Exception as e:  # noqa: BLE001
                 logger.warning(
-                    "Pallas 控制台: 获取 WebUI release 元数据失败，使用配置 tag={} err={}",
+                    "Pallas-Bot 控制台: 获取 WebUI release 元数据失败，使用配置 tag={} err={}",
                     tag or "(空)",
                     format_exception_for_log(e),
                 )
@@ -2535,7 +2535,7 @@ def register_extended_api(
                 dist_ver = ""
             effective_version = (dist_ver or "").strip() or new_tag or "unknown"
             set_console_meta({**_CONSOLE_EXTRA, "version": effective_version})
-            logger.info("Pallas 控制台: WebUI 已更新至 {}（发布 tag: {}）", effective_version, new_tag)
+            logger.info("Pallas-Bot 控制台: WebUI 已更新至 {}（发布 tag: {}）", effective_version, new_tag)
             return JSONResponse({
                 "ok": True,
                 "data": {
@@ -2547,7 +2547,7 @@ def register_extended_api(
         except HTTPException:
             raise
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas 控制台: WebUI 更新失败")
+            logger.exception("Pallas-Bot 控制台: WebUI 更新失败")
             raise HTTPException(status_code=500, detail=format_exception_for_log(e)) from e
 
     @router.post(f"{x}/security/console-login", include_in_schema=False)

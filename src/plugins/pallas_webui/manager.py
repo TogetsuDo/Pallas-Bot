@@ -56,14 +56,14 @@ async def resolve_github_release_asset_urls(
             except Exception as e:
                 # API 失败仍会追加 releases/download 直链候选，默认不打 WARNING 以免刷屏
                 logger.debug(
-                    "Pallas 控制台: GitHub Release API 请求异常（将尝试直链）api={} err={}",
+                    "Pallas-Bot 控制台: GitHub Release API 请求异常（将尝试直链）api={} err={}",
                     api,
                     format_exception_for_log(e),
                 )
                 continue
             if resp.status_code != 200:
                 logger.debug(
-                    "Pallas 控制台: GitHub Release API 非 200（将尝试直链）status={} api={}",
+                    "Pallas-Bot 控制台: GitHub Release API 非 200（将尝试直链）status={} api={}",
                     resp.status_code,
                     api,
                 )
@@ -174,26 +174,26 @@ def _unlink_ignore_missing(path: Path) -> None:
 def _webui_download_progress_log(ev: StreamDownloadProgress) -> None:
     if ev["event"] == "percent":
         logger.info(
-            "Pallas 控制台: WebUI dist 下载进度 {}%（{}/{}）",
+            "Pallas-Bot 控制台: WebUI dist 下载进度 {}%（{}/{}）",
             ev["milestone_percent"],
             format_download_byte_size(ev["received"]),
             format_download_byte_size(ev["total"]),
         )
     elif ev["event"] == "unknown_step":
         logger.info(
-            "Pallas 控制台: WebUI dist 已下载 {}（服务器未提供文件大小）",
+            "Pallas-Bot 控制台: WebUI dist 已下载 {}（服务器未提供文件大小）",
             format_download_byte_size(ev["received"]),
         )
     elif ev["event"] == "complete":
         if ev["total"] is not None:
             logger.info(
-                "Pallas 控制台: WebUI dist 下载完成 {} / {}",
+                "Pallas-Bot 控制台: WebUI dist 下载完成 {} / {}",
                 format_download_byte_size(ev["received"]),
                 format_download_byte_size(ev["total"]),
             )
         elif ev["received"] > 0:
             logger.info(
-                "Pallas 控制台: WebUI dist 下载完成 {}",
+                "Pallas-Bot 控制台: WebUI dist 下载完成 {}",
                 format_download_byte_size(ev["received"]),
             )
 
@@ -213,7 +213,7 @@ async def download_and_extract_dist_zip(public_dir: Path, url: str, *, follow_re
     if not url:
         return False
     preview = url if len(url) <= 200 else url[:197] + "..."
-    logger.info("Pallas 控制台: 正在下载 WebUI dist {}", preview)
+    logger.info("Pallas-Bot 控制台: 正在下载 WebUI dist {}", preview)
 
     tmp_zip = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
     zip_path = Path(tmp_zip.name)
@@ -222,7 +222,7 @@ async def download_and_extract_dist_zip(public_dir: Path, url: str, *, follow_re
     try:
         await asyncio.to_thread(_sync_download_webui_zip, url, zip_path, follow_redirects=follow_redirects)
         await asyncio.to_thread(_sync_extract_dist_zip_file, zip_path, public_dir)
-        logger.info("Pallas 控制台: 已解压 dist 到 data/pallas_webui/public")
+        logger.info("Pallas-Bot 控制台: 已解压 dist 到 data/pallas_webui/public")
     finally:
         await asyncio.to_thread(_unlink_ignore_missing, zip_path)
 
@@ -329,7 +329,7 @@ async def fetch_latest_bot_release(repo: str = "PallasBot/Pallas-Bot", *, token:
                 user_agent="Pallas-Bot-PallasWebUI/1.0",
             )
             logger.debug(
-                "Pallas 控制台: GitHub Release API 不可用，已用 github.com/releases/latest 兜底（Bot）tag={}",
+                "Pallas-Bot 控制台: GitHub Release API 不可用，已用 github.com/releases/latest 兜底（Bot）tag={}",
                 fb["tag"],
             )
             return {"tag": fb["tag"], "html_url": fb["html_url"]}
@@ -357,7 +357,7 @@ async def fetch_latest_webui_release(repo: str, *, token: str = "", asset_name: 
             tag_fb = fb["tag"]
             asset_url_fb = github_release_asset_url(repo, asset_clean, tag_fb)
             logger.debug(
-                "Pallas 控制台: GitHub Release API 不可用，已用 github.com/releases/latest 兜底（WebUI）tag={}",
+                "Pallas-Bot 控制台: GitHub Release API 不可用，已用 github.com/releases/latest 兜底（WebUI）tag={}",
                 tag_fb,
             )
             return {"tag": tag_fb, "html_url": fb["html_url"], "asset_url": asset_url_fb}

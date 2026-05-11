@@ -118,7 +118,7 @@ def register_pallas_protocol_routes(
         head = shell_font_stylesheet_link(base)
         footer_note = (detail or "").strip()
         html = render_pallas_login_page_html(
-            document_title="协议端登录 · Pallas",
+            document_title="协议端登录 · Pallas-Bot",
             surface_label="协议端",
             tagline="与 Web 控制台（/pallas）共用登录口令。",
             form_action=f"{base}/login",
@@ -218,7 +218,7 @@ def register_pallas_protocol_routes(
         x_pallas_protocol_token: str | None = Header(default=None, alias="X-Pallas-Protocol-Token"),
     ):
         if not plugin_config.pallas_protocol_webui_enabled:
-            raise HTTPException(status_code=404, detail="Pallas 协议端管理页已关闭")
+            raise HTTPException(status_code=404, detail="Pallas-Bot 协议端管理页已关闭")
         redirect = _ensure_page_auth(
             request=request,
             token=token,
@@ -236,7 +236,7 @@ def register_pallas_protocol_routes(
         x_pallas_protocol_token: str | None = Header(default=None, alias="X-Pallas-Protocol-Token"),
     ):
         if not plugin_config.pallas_protocol_webui_enabled:
-            raise HTTPException(status_code=404, detail="Pallas 协议端管理页已关闭")
+            raise HTTPException(status_code=404, detail="Pallas-Bot 协议端管理页已关闭")
         redirect = _ensure_page_auth(
             request=request,
             token=token,
@@ -254,7 +254,7 @@ def register_pallas_protocol_routes(
         x_pallas_protocol_token: str | None = Header(default=None, alias="X-Pallas-Protocol-Token"),
     ):
         if not plugin_config.pallas_protocol_webui_enabled:
-            raise HTTPException(status_code=404, detail="Pallas 协议端管理页已关闭")
+            raise HTTPException(status_code=404, detail="Pallas-Bot 协议端管理页已关闭")
         redirect = _ensure_page_auth(
             request=request,
             token=token,
@@ -272,7 +272,7 @@ def register_pallas_protocol_routes(
         x_pallas_protocol_token: str | None = Header(default=None, alias="X-Pallas-Protocol-Token"),
     ):
         if not plugin_config.pallas_protocol_webui_enabled:
-            raise HTTPException(status_code=404, detail="Pallas 协议端管理页已关闭")
+            raise HTTPException(status_code=404, detail="Pallas-Bot 协议端管理页已关闭")
         redirect = _ensure_page_auth(
             request=request,
             token=token,
@@ -340,7 +340,7 @@ def register_pallas_protocol_routes(
         x_pallas_protocol_token: str | None = Header(default=None, alias="X-Pallas-Protocol-Token"),
     ):
         if not plugin_config.pallas_protocol_webui_enabled:
-            raise HTTPException(status_code=404, detail="Pallas 协议端管理页已关闭")
+            raise HTTPException(status_code=404, detail="Pallas-Bot 协议端管理页已关闭")
         redirect = _ensure_page_auth(
             request=request,
             token=token,
@@ -365,7 +365,7 @@ def register_pallas_protocol_routes(
     ):
         """旧书签 ``…/edit`` → 账号子路径设置页。"""
         if not plugin_config.pallas_protocol_webui_enabled:
-            raise HTTPException(status_code=404, detail="Pallas 协议端管理页已关闭")
+            raise HTTPException(status_code=404, detail="Pallas-Bot 协议端管理页已关闭")
         redirect = _ensure_page_auth(
             request=request,
             token=token,
@@ -388,7 +388,7 @@ def register_pallas_protocol_routes(
         x_pallas_protocol_token: str | None = Header(default=None, alias="X-Pallas-Protocol-Token"),
     ):
         if not plugin_config.pallas_protocol_webui_enabled:
-            raise HTTPException(status_code=404, detail="Pallas 协议端管理页已关闭")
+            raise HTTPException(status_code=404, detail="Pallas-Bot 协议端管理页已关闭")
         redirect = _ensure_page_auth(
             request=request,
             token=token,

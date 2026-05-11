@@ -34,10 +34,10 @@ _PLACEHOLDER_HTML = """\
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Pallas 控制台</title>
+  <title>Pallas-Bot 控制台</title>
 </head>
 <body style="font-family: system-ui, sans-serif; padding: 2rem">
-  <h1>Pallas 控制台</h1>
+  <h1>Pallas-Bot 控制台</h1>
   <p>尚未部署前端资源。请将 Vite 等构建产物放入 <code>data/pallas_webui/public</code>，
   或设置 <code>pallas_webui_dist_zip_url</code> 为 dist 的 zip 直链，由插件在启动时自动解压。</p>
   <p>API 探测请访问 <a href="api/health">api/health</a>（相对本页，即
@@ -136,7 +136,7 @@ def register_routes(
         if token_submitted:
             err = "口令无效，请重试。"
         html = render_pallas_login_page_html(
-            document_title="控制台登录 · Pallas",
+            document_title="控制台登录 · Pallas-Bot",
             surface_label="控制台",
             tagline="与协议端管理共用口令。",
             form_action=f"{base}/login",
@@ -214,7 +214,8 @@ def register_routes(
                 _refresh_page_cookie(response, request, got)
             return response
         logger.warning(
-            f"Pallas 控制台: 未找到 {public_dir / 'index.html'}，可设置 pallas_webui_dist_zip_url 或手动放置构建产物。",
+            "Pallas-Bot 控制台: 未找到 {}，可设置 pallas_webui_dist_zip_url 或手动放置构建产物。",
+            public_dir / "index.html",
         )
         return HTMLResponse(
             content=_PLACEHOLDER_HTML,

@@ -102,7 +102,7 @@
     启动 `Pallas-Bot` 后，在浏览器打开 **协议端管理页**（默认与 Bot 同机同端口）：
 
     - 地址：`http://<主机IP>:8088/protocol/console/`（若改了 `HOST`/`PORT` 或插件里自定义了 `PALLAS_PROTOCOL_WEBUI_PATH`，请按实际为准）
-    - 管理页鉴权与 Pallas 控制台共用（浏览器登录，口令哈希在 `data/pallas_console/`）。可选：`PALLAS_PROTOCOL_ENABLED`、`PALLAS_PROTOCOL_WEBUI_ENABLED`（默认一般为开，详见 `.env` 注释）
+    - 管理页鉴权与 Pallas-Bot 控制台共用（浏览器登录，口令哈希在 `data/pallas_console/`）。可选：`PALLAS_PROTOCOL_ENABLED`、`PALLAS_PROTOCOL_WEBUI_ENABLED`（默认一般为开，详见 `.env` 注释）
 
     在页面内可完成 NapCat **运行模式**（如 Docker / AppImage / Shell）、**镜像或本地下载**、**实例创建与启停**、日志等；具体步骤与排障见 [`pallas_protocol` 插件说明](plugins/pallas_protocol/README.md)。
 

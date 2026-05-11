@@ -1,4 +1,4 @@
-"""Pallas 控制台与协议端管理共用的独立登录页 HTML（与 WebUI / 协议壳主题变量对齐）。"""
+"""Pallas-Bot 控制台与协议端管理共用的独立登录页 HTML（与 WebUI / 协议壳主题变量对齐）。"""
 
 from __future__ import annotations
 
@@ -446,7 +446,7 @@ def render_pallas_login_page_html(
         <div class="{logo_wrap_class}" aria-hidden="true">{logo_inner}</div>
         <div class="login-brand">
           <div class="login-brand-row">
-            <span class="login-brand-name" id="loginTitle">Pallas</span>
+            <span class="login-brand-name" id="loginTitle">Pallas-Bot</span>
             <span class="login-brand-badge">{label_esc}</span>
           </div>
           <p class="login-tagline">{tag_esc}</p>

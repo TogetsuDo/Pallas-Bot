@@ -13,7 +13,7 @@ from .service import PallasProtocolService
 from .web import register_pallas_protocol_routes
 
 __plugin_meta__ = PluginMetadata(
-    name="Pallas 协议端",
+    name="Pallas-Bot 协议端",
     description="提供协议端账号管理与启动控制页面。",
     usage="""
 默认挂载：
@@ -75,7 +75,7 @@ async def _startup() -> None:
             port=getattr(dconf, "port", None),
         )
         path = resolve_protocol_webui_base_path(plugin_config)
-        logger.info(f"Pallas 协议端 | WebUI={base_u}{path}/")
+        logger.info(f"Pallas-Bot 协议端 | WebUI={base_u}{path}/")
     profile = manager.runtime_profile()
     if bool(profile.get("follow_bot_lifecycle", True)):
         await manager.start_all_enabled_accounts()

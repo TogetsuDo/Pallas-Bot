@@ -280,7 +280,7 @@ class PallasProtocolService:
             try:
                 await self.stop_account(account_id)
             except Exception:
-                logger.exception(f"Pallas 协议端: 全局 runtime 切换时停止账号 {account_id} 异常")
+                logger.exception(f"Pallas-Bot 协议端: 全局 runtime 切换时停止账号 {account_id} 异常")
             try:
                 if prune_containers == "all":
                     await self._remove_both_linux_docker_container_names_for_account(account)
@@ -289,7 +289,7 @@ class PallasProtocolService:
                 else:
                     await self._remove_snowluma_linux_docker_container_for_account(account)
             except Exception:
-                logger.exception(f"Pallas 协议端: 全局 runtime 切换时删除 Docker 容器 {account_id} 异常")
+                logger.exception(f"Pallas-Bot 协议端: 全局 runtime 切换时删除 Docker 容器 {account_id} 异常")
         for account in self._accounts.values():
             self._launch.apply_defaults(account, self._resolve_qq)
             be = self._protocol_runtime_backend(account)
@@ -703,9 +703,9 @@ class PallasProtocolService:
             try:
                 await self.start_account(account_id)
             except ValueError as e:
-                logger.warning(f"Pallas 协议端: 自动启动账号 {account_id} 失败：{e}")
+                logger.warning(f"Pallas-Bot 协议端: 自动启动账号 {account_id} 失败：{e}")
             except Exception:
-                logger.exception(f"Pallas 协议端: 自动启动账号 {account_id} 出现未预期异常")
+                logger.exception(f"Pallas-Bot 协议端: 自动启动账号 {account_id} 出现未预期异常")
 
     async def stop_all_enabled_accounts(self) -> None:
         from nonebot import logger
@@ -718,7 +718,7 @@ class PallasProtocolService:
             try:
                 await self.stop_account(account_id)
             except Exception:
-                logger.exception(f"Pallas 协议端: 自动停止账号 {account_id} 出现未预期异常")
+                logger.exception(f"Pallas-Bot 协议端: 自动停止账号 {account_id} 出现未预期异常")
 
     def _snowluma_docker_mapped_host_ports_on_account(self, account: dict) -> set[int]:
         ports: set[int] = set()
