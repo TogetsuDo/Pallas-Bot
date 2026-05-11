@@ -453,7 +453,7 @@ def _normalize_ai_extension_config(raw: dict[str, Any] | None) -> dict[str, Any]
     root = Path(__file__).resolve().parents[3]
     default_ai_root = (root.parent / "Pallas-Bot-AI").resolve()
     default_uvicorn_log = str(default_ai_root / "logs" / "app.log")
-    default_celery_log = str(default_ai_root / "logs" / "app.log")
+    default_celery_log = str(default_ai_root / "logs" / "celery.log")
     uvicorn_log_file = str(d.get("uvicorn_log_file", "")).strip() or default_uvicorn_log
     celery_log_file = str(d.get("celery_log_file", "")).strip() or default_celery_log
     # 任一路径越界即回退默认值，避免被持票攻击者污染配置后读任意文件
