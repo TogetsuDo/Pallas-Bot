@@ -40,7 +40,7 @@ if typing.TYPE_CHECKING:
 _CONSOLE_EXTRA: dict[str, Any] = {}
 _INIT_LOG_SINK = False
 _READ_CACHE: dict[str, dict[str, Any]] = {}
-_MSG_STATS: dict[str, dict[str, int]] = {}  # {self_id: {"sent": N, "received": N}}
+_MSG_STATS: dict[str, dict[str, Any]] = {}  # self_id -> sent/received + 按本地日切片的 day_*
 _MSG_TRACKING_INIT = False
 
 
@@ -818,6 +818,24 @@ def _extract_message_stats(raw: object) -> dict[str, int]:
     return {"sent": sent, "received": recv}
 
 
+def _msg_stats_get_mut(sid: str) -> dict[str, Any]:
+    """返回可写的内存统计行；跨本地自然日时清零当日计数。"""
+    today = time.strftime("%Y-%m-%d", time.localtime())
+    rec = _MSG_STATS.setdefault(
+        sid,
+        {"sent": 0, "received": 0, "day_sent": 0, "day_received": 0, "day_key": today},
+    )
+    if str(rec.get("day_key", "")) != today:
+        rec["day_key"] = today
+        rec["day_sent"] = 0
+        rec["day_received"] = 0
+    rec.setdefault("sent", 0)
+    rec.setdefault("received", 0)
+    rec.setdefault("day_sent", 0)
+    rec.setdefault("day_received", 0)
+    return rec
+
+
 def _init_message_tracking() -> None:
     """注册 NoneBot2 钩子，在内存中统计每个 Bot 的收发消息数。
     - 收消息：event_preprocessor，事件类型为 "message" 时计数
@@ -844,7 +862,9 @@ def _init_message_tracking() -> None:
         if exception is None and api in _send_apis:
             sid = str(getattr(bot, "self_id", "") or "").strip()
             if sid:
-                _MSG_STATS.setdefault(sid, {"sent": 0, "received": 0})["sent"] += 1
+                row = _msg_stats_get_mut(sid)
+                row["sent"] = int(row["sent"]) + 1
+                row["day_sent"] = int(row["day_sent"]) + 1
 
     @event_preprocessor
     async def _count_received(bot: BaseBot, event: Event) -> None:
@@ -852,7 +872,9 @@ def _init_message_tracking() -> None:
             if event.get_type() == "message":
                 sid = str(getattr(bot, "self_id", "") or "").strip()
                 if sid:
-                    _MSG_STATS.setdefault(sid, {"sent": 0, "received": 0})["received"] += 1
+                    row = _msg_stats_get_mut(sid)
+                    row["received"] = int(row["received"]) + 1
+                    row["day_received"] = int(row["day_received"]) + 1
         except Exception:  # noqa: BLE001
             pass
 
@@ -861,6 +883,8 @@ async def _message_stats_overview(*, self_id: str | None) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     total_sent = 0
     total_received = 0
+    total_today_sent = 0
+    total_today_received = 0
     for key, bot in get_bots().items():
         sid = str(getattr(bot, "self_id", "") or "").strip()
         if not sid:
@@ -871,9 +895,11 @@ async def _message_stats_overview(*, self_id: str | None) -> dict[str, Any]:
             continue
 
         # 优先使用内存计数器（兼容 NapCat 等 stat:{} 为空的实现）
-        mem = _MSG_STATS.get(sid, {"sent": 0, "received": 0})
-        sent = mem["sent"]
-        received = mem["received"]
+        mem = _msg_stats_get_mut(sid)
+        sent = int(mem["sent"])
+        received = int(mem["received"])
+        today_sent = int(mem["day_sent"])
+        today_received = int(mem["day_received"])
 
         # 同时尝试 get_status（go-cqhttp 等会返回真实统计），取较大值
         try:
@@ -886,13 +912,23 @@ async def _message_stats_overview(*, self_id: str | None) -> dict[str, Any]:
 
         total_sent += sent
         total_received += received
+        total_today_sent += today_sent
+        total_today_received += today_received
         rows.append({
             "self_id": sid,
             "connection_key": str(key),
             "sent": sent,
             "received": received,
+            "today_sent": today_sent,
+            "today_received": today_received,
         })
-    return {"total_sent": total_sent, "total_received": total_received, "bots": rows}
+    return {
+        "total_sent": total_sent,
+        "total_received": total_received,
+        "today_sent": total_today_sent,
+        "today_received": total_today_received,
+        "bots": rows,
+    }
 
 
 async def _call_get_message_history(
