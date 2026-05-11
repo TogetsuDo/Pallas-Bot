@@ -1,5 +1,6 @@
+from src.plugins.dream.dedupe_keys import dream_image_dedupe_key, dream_text_dedupe_key
 from src.plugins.dream.echo_sample import random_echo_nickname
-from src.plugins.dream.runtime import dream_image_dedupe_key, dream_text_dedupe_key, drift_at_nickname
+from src.plugins.dream.runtime import drift_at_nickname
 
 
 def test_random_echo_nickname_prefixed_with_at() -> None:

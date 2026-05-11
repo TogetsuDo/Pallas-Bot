@@ -9,6 +9,7 @@ import pytest
 from src.plugins.dream.history_bottle import (
     DREAM_KEY_PREFIX,
     DREAM_RECORD_SEP,
+    _recency_weight,
     dream_display_name_from_keywords,
     dream_history_bot_ids,
     dream_keywords_for_insert,
@@ -84,6 +85,20 @@ def test_first_http_image_url_plain_text() -> None:
 def test_dream_history_bot_ids_fallback_when_no_bots() -> None:
     with patch("src.plugins.dream.history_bottle.get_bots", return_value={}):
         assert dream_history_bot_ids(12345) == [12345]
+
+
+def test_recency_weight_favors_newer_rows() -> None:
+    now = 2_000_000
+    cutoff = now - 500_000
+    w_old = _recency_weight(cutoff + 5_000, cutoff=cutoff, now=now, power=2.0)
+    w_new = _recency_weight(now - 2_000, cutoff=cutoff, now=now, power=2.0)
+    assert w_new > w_old > 0
+
+
+def test_recency_weight_zero_power_is_flat() -> None:
+    now = 2_000_000
+    cutoff = now - 100_000
+    assert _recency_weight(cutoff + 1, cutoff=cutoff, now=now, power=0.0) == 1.0
 
 
 def test_dream_history_bot_ids_unions_process_bots() -> None:

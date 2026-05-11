@@ -10,7 +10,6 @@ from nonebot.rule import Rule
 from src.common.config import BotConfig, GroupConfig
 
 from . import ban_handlers as _dream_ban_handlers  # noqa: F401 — 注册梦库「不可以」/撤回清理
-from . import library_cleanup as _dream_library_cleanup  # noqa: F401 — 注册梦库定时清理
 from .capture_filter import dream_capture_blocked_by_substrings
 from .http_utils import download_image_url
 from .payload import DriftPayload
@@ -23,10 +22,10 @@ from .runtime import (
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛做梦",
-    description=("牛牛的梦话：多群同时做梦时同 Bot 漂流互通，随机间隔推送与复读共用管理员的「不可以」触发梦库清理。"),
+    description=("牛牛的梦话：多群同时做梦时同 Bot 漂流互通，随机间隔推送与复读共用管理员的「不可以」触发梦库删除。"),
     usage="""
 指令：
-- 牛牛做梦 — 进入做梦（持续约 5～15 分钟；未醉酒时推送梦话间隔约 20～45s）
+- 牛牛做梦 — 进入做梦（持续约 5～15 分钟；未醉酒时推送梦话间隔约 45～165s）
 - 牛牛醒梦 / 牛牛别做梦 — 结束本群做梦
 
 做梦中采集群消息入梦库，并向同 Bot 其它正在做梦的群漂流（图/文有上限）。
@@ -47,7 +46,7 @@ __plugin_meta__ = PluginMetadata(
                 "brief_des": "进入做梦漂流状态",
                 "detail_des": (
                     "进梦后可收到他群漂流、历史梦（本进程多账号并库抽样）、归档图或已学句；"
-                    "同一场内已发正文/图片去重。未醉酒时间隔约 20～45s，醉酒整段约 5～20s。"
+                    "同一场内已发正文/图片去重。未醉酒时间隔约 45～165s，醉酒整段约 5～20s。"
                     "默认本会话最多发 3 张图，首场醉酒联动后提升至 5 张。多 Bot 同群时有群级冷却。"
                 ),
             },

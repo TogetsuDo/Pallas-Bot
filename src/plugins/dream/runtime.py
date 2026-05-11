@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import random
 import time
 from typing import TYPE_CHECKING
@@ -16,10 +15,11 @@ from src.common.db import make_message_repository
 from src.plugins.pallas_image.draw_archive import random_archived_png_bytes
 
 from .config import plugin_config as dream_plugin_config
+from .dedupe_keys import dream_image_dedupe_key, dream_text_dedupe_key
 from .dream_labels import pick_pseudo_sender_at
 from .drunk_synergy import send_one_random_history_line, try_drunk_dream_take_name
 from .echo_sample import random_echo_nickname, sample_learned_echo_line
-from .history_bottle import dream_keywords_for_insert, sample_historical_drift
+from .history_bottle import dream_keywords_for_insert, register_recent_drift_dedupe_key, sample_historical_drift
 
 if TYPE_CHECKING:
     from .payload import DriftPayload
@@ -27,21 +27,11 @@ if TYPE_CHECKING:
 message_repo = make_message_repository()
 
 _MAX_QUEUE = 800
-_SLEEP_MIN_SEC = 20.0
-_SLEEP_MAX_SEC = 45.0
 _DRUNK_DREAM_FAST_SLEEP_MIN = 5.0
 _DRUNK_DREAM_FAST_SLEEP_MAX = 20.0
 _DEFAULT_IMAGE_CAP = 3
 _DRUNK_DREAM_IMAGE_CAP = 5
 _ARCHIVE_RESAMPLE_ATTEMPTS = 6
-
-
-def dream_text_dedupe_key(text: str) -> str:
-    return " ".join((text or "").strip().lower().split())
-
-
-def dream_image_dedupe_key(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 _dream_lock = asyncio.Lock()
@@ -122,7 +112,9 @@ async def _dream_worker_loop(bot_id: int, group_id: int) -> None:
             if drunk_now:
                 await asyncio.sleep(random.uniform(_DRUNK_DREAM_FAST_SLEEP_MIN, _DRUNK_DREAM_FAST_SLEEP_MAX))
             else:
-                await asyncio.sleep(random.uniform(_SLEEP_MIN_SEC, _SLEEP_MAX_SEC))
+                lo = float(dream_plugin_config.dream_worker_sleep_min_sec)
+                hi = float(dream_plugin_config.dream_worker_sleep_max_sec)
+                await asyncio.sleep(random.uniform(lo, hi))
             if not await cfg.is_dreaming():
                 break
             try:
@@ -176,46 +168,37 @@ async def _dream_worker_loop(bot_id: int, group_id: int) -> None:
                 if sent_queue_text or sent_queue_image:
                     continue
 
-                sent_from_hist = False
-                for _ in range(dream_plugin_config.dream_hist_resample_attempts):
-                    hist = await sample_historical_drift(bot_id=bot_id, exclude_group_id=group_id)
-                    if hist is None:
-                        hist = await sample_historical_drift(bot_id=bot_id, exclude_group_id=None)
-                    if hist is None:
-                        break
-                    if hist.image_bytes and sent_images < image_cap:
-                        ik = dream_image_dedupe_key(hist.image_bytes)
-                        if ik not in sent_image_keys:
-                            await _send_group_drift_image(bot, group_id, hist.nickname, hist.image_bytes)
-                            sent_image_keys.add(ik)
-                            sent_images += 1
-                            sent_from_hist = True
-                            break
-                    if hist.text:
-                        tk = dream_text_dedupe_key(hist.text)
-                        if tk not in sent_text_keys:
-                            await _send_group_drift_text(bot, group_id, hist.nickname, hist.text)
-                            sent_text_keys.add(tk)
-                            sent_from_hist = True
-                            break
-
-                if sent_from_hist:
-                    continue
-
-                sent_echo = False
-                for _ in range(dream_plugin_config.dream_echo_resample_attempts):
-                    line = await sample_learned_echo_line()
-                    if not line:
-                        break
-                    tk = dream_text_dedupe_key(line)
-                    if tk not in sent_text_keys:
-                        await _send_group_drift_text(bot, group_id, random_echo_nickname(), line)
-                        sent_text_keys.add(tk)
-                        sent_echo = True
-                        break
-
-                if sent_echo:
-                    continue
+                prefer_echo = random.random() < dream_plugin_config.dream_prefer_learned_echo_probability
+                if prefer_echo:
+                    if await _dream_tick_try_learned_echo(bot, group_id=group_id, sent_text_keys=sent_text_keys):
+                        continue
+                    sent_h, inc = await _dream_tick_try_historical(
+                        bot,
+                        bot_id=bot_id,
+                        group_id=group_id,
+                        sent_text_keys=sent_text_keys,
+                        sent_image_keys=sent_image_keys,
+                        sent_images=sent_images,
+                        image_cap=image_cap,
+                    )
+                    sent_images += inc
+                    if sent_h:
+                        continue
+                else:
+                    sent_h, inc = await _dream_tick_try_historical(
+                        bot,
+                        bot_id=bot_id,
+                        group_id=group_id,
+                        sent_text_keys=sent_text_keys,
+                        sent_image_keys=sent_image_keys,
+                        sent_images=sent_images,
+                        image_cap=image_cap,
+                    )
+                    sent_images += inc
+                    if sent_h:
+                        continue
+                    if await _dream_tick_try_learned_echo(bot, group_id=group_id, sent_text_keys=sent_text_keys):
+                        continue
 
                 sent_archive = False
                 if sent_images < image_cap and random.random() < dream_plugin_config.dream_archive_image_probability:
@@ -269,6 +252,59 @@ async def _send_group_archived_draw_image(bot: Bot, group_id: int, data: bytes) 
         group_id=group_id,
         message=MessageSegment.text(head) + MessageSegment.image(data),
     )
+
+
+async def _dream_tick_try_historical(
+    bot: Bot,
+    *,
+    bot_id: int,
+    group_id: int,
+    sent_text_keys: set[str],
+    sent_image_keys: set[str],
+    sent_images: int,
+    image_cap: int,
+) -> tuple[bool, int]:
+    """尝试发一条 is_dream 历史。返回 (是否已发送, 本 tick 图片计数增量)。"""
+    for _ in range(dream_plugin_config.dream_hist_resample_attempts):
+        hist = await sample_historical_drift(bot_id=bot_id, consumer_group_id=group_id, exclude_group_id=group_id)
+        if hist is None:
+            hist = await sample_historical_drift(bot_id=bot_id, consumer_group_id=group_id, exclude_group_id=None)
+        if hist is None:
+            break
+        if hist.image_bytes and sent_images < image_cap:
+            ik = dream_image_dedupe_key(hist.image_bytes)
+            if ik not in sent_image_keys:
+                await _send_group_drift_image(bot, group_id, hist.nickname, hist.image_bytes)
+                sent_image_keys.add(ik)
+                await register_recent_drift_dedupe_key(group_id, ik)
+                return True, 1
+        if hist.text:
+            tk = dream_text_dedupe_key(hist.text)
+            if tk not in sent_text_keys:
+                await _send_group_drift_text(bot, group_id, hist.nickname, hist.text)
+                sent_text_keys.add(tk)
+                await register_recent_drift_dedupe_key(group_id, tk)
+                return True, 0
+    return False, 0
+
+
+async def _dream_tick_try_learned_echo(
+    bot: Bot,
+    *,
+    group_id: int,
+    sent_text_keys: set[str],
+) -> bool:
+    """从复读 Context 已学句抽一条，随机昵称当梦话发出。成功返回 True。"""
+    for _ in range(dream_plugin_config.dream_echo_resample_attempts):
+        line = await sample_learned_echo_line()
+        if not line:
+            break
+        tk = dream_text_dedupe_key(line)
+        if tk not in sent_text_keys:
+            await _send_group_drift_text(bot, group_id, random_echo_nickname(), line)
+            sent_text_keys.add(tk)
+            return True
+    return False
 
 
 async def log_dream_chat_to_db(event: GroupMessageEvent) -> None:

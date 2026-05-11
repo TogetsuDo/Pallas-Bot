@@ -6,8 +6,8 @@ from nonebot import logger
 
 from src.common.db import get_db_backend
 
+from .dedupe_keys import dream_text_dedupe_key
 from .history_bottle import DREAM_KEY_PREFIX, dream_history_bot_ids
-from .runtime import dream_text_dedupe_key
 
 _STRIP_CQ_IMG_URL = re.compile(r",\s*url=[^,\]]*")
 _AFTER_AT_PREFIX = re.compile(r"^@\S+\s*[：:]\s*(.+)$", re.DOTALL)

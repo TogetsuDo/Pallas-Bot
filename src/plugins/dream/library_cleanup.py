@@ -1,16 +1,12 @@
-"""定时清理 message 中过期的 is_dream 梦库记录。"""
-
 from __future__ import annotations
 
 import re
 import time
 
 from nonebot import logger
-from nonebot_plugin_apscheduler import scheduler
 
 from src.common.db import get_db_backend
 
-from .config import plugin_config
 from .history_bottle import DREAM_KEY_PREFIX
 
 
@@ -56,14 +52,3 @@ async def _pg_delete_expired(cutoff: int) -> int:
     except Exception as e:
         logger.warning("dream library_cleanup pg delete failed: {}", e)
         return 0
-
-
-@scheduler.scheduled_job(
-    "cron",
-    hour=plugin_config.dream_library_cleanup_cron_hour,
-    minute=plugin_config.dream_library_cleanup_cron_minute,
-)
-async def dream_library_cleanup_job() -> None:
-    n = await delete_expired_dream_messages(retention_days=plugin_config.dream_message_retention_days)
-    if n:
-        logger.info("dream library_cleanup removed {} expired is_dream row(s)", n)
