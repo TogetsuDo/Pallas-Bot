@@ -21,7 +21,7 @@
 | `bot_status_notice_email` | `""` | 固定收件人（与号主邮件并列发送离线通知） |
 | `bot_status_offline_grace_time` | `30` | 协议 `disconnect` 后等待秒数，到期仍无连接再发邮件，减轻闪断误报 |
 
-`.env` 中有示例注释块可参考。
+推荐使用 Web 控制台 **「插件」** → `bot_status` 编辑并写入 `.env`；亦可直接编辑根目录 `.env` 中的同名键。
 
 ## 号主邮件说明
 
