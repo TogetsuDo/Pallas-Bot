@@ -933,6 +933,10 @@ class PallasProtocolService:
     def _save_accounts(self) -> None:
         self._accounts_file.write_text(json.dumps(self._accounts, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    def _docker_logs_follow_tail(self) -> str:
+        n = int(getattr(self._config, "pallas_protocol_max_log_lines", 500) or 500)
+        return str(max(100, min(n, 3000)))
+
     def _linux_docker_container_name(self, account: dict) -> str:
         if account.get("snowluma_linux_docker"):
             from .snowluma_docker import snowluma_docker_container_name
@@ -1487,8 +1491,8 @@ class PallasProtocolService:
             "docker",
             "logs",
             "-f",
-            "--since",
-            "0s",
+            "--tail",
+            self._docker_logs_follow_tail(),
             name,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
@@ -1566,8 +1570,8 @@ class PallasProtocolService:
             "docker",
             "logs",
             "-f",
-            "--since",
-            "0s",
+            "--tail",
+            self._docker_logs_follow_tail(),
             name,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
@@ -1652,8 +1656,8 @@ class PallasProtocolService:
             "docker",
             "logs",
             "-f",
-            "--since",
-            "0s",
+            "--tail",
+            self._docker_logs_follow_tail(),
             name,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
