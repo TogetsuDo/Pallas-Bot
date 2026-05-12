@@ -15,6 +15,45 @@ def test_list_webui_env_sections_contains_message_scrub():
     assert "message_scrub" in ids
 
 
+def test_list_webui_env_sections_contains_plugin_common_sections():
+    from src.common.webui_env_sections import list_webui_env_sections
+
+    rows = list_webui_env_sections()
+    ids = {r["id"] for r in rows}
+    assert "pallas_webui" in ids
+    assert "pallas_protocol" in ids
+    assert "help" in ids
+
+
+def test_field_to_env_uppercase_keys_matches_plugin_api():
+    from src.common.webui_env_sections import field_to_env_uppercase_keys
+    from src.plugins.pallas_webui.config import Config
+
+    m = field_to_env_uppercase_keys(Config)
+    assert m["pallas_webui_enabled"] == "PALLAS_WEBUI_ENABLED"
+
+
+def test_pallas_webui_section_payload_env_keys_uppercase():
+    from src.common.webui_env_sections import webui_env_section_payload
+
+    data = webui_env_section_payload("pallas_webui")
+    assert data["plugin"] == "pallas_webui"
+    assert data["module"] == "src.plugins.pallas_webui"
+    for f in data["fields"]:
+        assert f["env_key"] == f["name"].upper()
+
+
+def test_pallas_webui_patch_writes_uppercase_env(tmp_path, monkeypatch):
+    from src.common import env_dotenv as ed
+    from src.common.webui_env_sections import apply_webui_env_section_patch
+
+    env_file = tmp_path / ".env"
+    monkeypatch.setattr(ed, "repo_env_path", lambda: env_file)
+    apply_webui_env_section_patch("pallas_webui", {"pallas_webui_log_lines_max": 120})
+    text = env_file.read_text(encoding="utf-8")
+    assert "PALLAS_WEBUI_LOG_LINES_MAX=120" in text
+
+
 @skip_no_message_scrub
 def test_message_scrub_payload_shape():
     from src.common.webui_env_sections import webui_env_section_payload

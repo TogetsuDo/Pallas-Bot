@@ -1,10 +1,14 @@
-"""在 WebUI 中暴露的「通用配置段」：对应 src/common 下走 .env 的 Pydantic 模型。
+"""在 WebUI 中暴露的「通用配置段」：对应走根目录 `.env` 的 Pydantic 模型。
 
-新增段：在本文件 `_SECTIONS` 中追加 `WebuiEnvSection` 即可。
+- `message_scrub`：显式 `field_to_env`（与历史 `PALLAS_*` 键名一致）。
+- 若干 NoneBot 插件：字段名大写写入 `.env`，与控制台「插件」配置 PUT 规则一致。
+
+新增段：在 `_registered_sections` 中追加构建函数；插件段优先用 `_plugin_env_section_from_module`。
 """
 
 from __future__ import annotations
 
+import importlib
 from dataclasses import dataclass
 from functools import lru_cache
 from importlib import util as importlib_util
@@ -96,6 +100,49 @@ def _message_scrub_section() -> WebuiEnvSection:
     )
 
 
+def clear_webui_env_sections_cache() -> None:
+    """供测试或热重载场景清空段注册缓存。"""
+    global _sections_cache
+    _sections_cache = None
+
+
+def field_to_env_uppercase_keys(model_cls: type[BaseModel]) -> dict[str, str]:
+    """与 `extended_api` 插件配置 PUT 一致：环境变量键为字段名的全大写形式。"""
+    return {name: name.upper() for name in model_cls.model_fields}
+
+
+def _plugin_env_section_from_module(
+    *,
+    section_id: str,
+    title: str,
+    module_label: str,
+    config_module: str,
+) -> WebuiEnvSection | None:
+    """从 `*.config` 模块加载 `Config`（BaseModel），运行时通过 `get_plugin_config` 读当前值。"""
+    try:
+        mod = importlib.import_module(config_module)
+    except Exception:
+        return None
+    cfg_cls = getattr(mod, "Config", None)
+    if cfg_cls is None or not isinstance(cfg_cls, type) or not issubclass(cfg_cls, BaseModel):
+        return None
+
+    def read_current() -> BaseModel:
+        from nonebot import get_plugin_config
+
+        return get_plugin_config(cfg_cls)
+
+    return WebuiEnvSection(
+        id=section_id,
+        title=title,
+        module_label=module_label,
+        model_cls=cfg_cls,
+        read_current=read_current,
+        field_to_env=field_to_env_uppercase_keys(cfg_cls),
+        skip_fields=frozenset(),
+    )
+
+
 _sections_cache: tuple[WebuiEnvSection, ...] | None = None
 
 
@@ -106,6 +153,30 @@ def _registered_sections() -> tuple[WebuiEnvSection, ...]:
     parts: list[WebuiEnvSection] = []
     if (Path(__file__).resolve().parent / "message_scrub" / "config.py").is_file():
         parts.append(_message_scrub_section())
+    parts.extend(
+        s
+        for s in (
+            _plugin_env_section_from_module(
+                section_id="pallas_webui",
+                title="控制台 / Pallas WebUI",
+                module_label="src.plugins.pallas_webui",
+                config_module="src.plugins.pallas_webui.config",
+            ),
+            _plugin_env_section_from_module(
+                section_id="pallas_protocol",
+                title="协议端 / Pallas Protocol",
+                module_label="src.plugins.pallas_protocol",
+                config_module="src.plugins.pallas_protocol.config",
+            ),
+            _plugin_env_section_from_module(
+                section_id="help",
+                title="帮助 / Help",
+                module_label="src.plugins.help",
+                config_module="src.plugins.help.config",
+            ),
+        )
+        if s is not None
+    )
     _sections_cache = tuple(parts)
     return _sections_cache
 
