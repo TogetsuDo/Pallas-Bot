@@ -27,34 +27,45 @@ voice_set = {
 voices_source = resource_dir("voices")
 _extra_dir = voices_source / "extra"
 
+_extra_cache: set[str] | None = None
+_extra_mtime: float | None = None
+
 
 def _load_extra_voices() -> set[str]:
-    """从 extra 目录加载侧载语音集合。"""
-    extra_set = set()
-    if _extra_dir.exists():
-        for f in _extra_dir.iterdir():
-            if f.suffix == ".wav" and f.stem in voice_set:
-                extra_set.add(f.stem)
-    return extra_set
+    """从 extra 目录加载侧载语音集合，使用 mtime 缓存避免频繁磁盘扫描。"""
+    global _extra_cache, _extra_mtime
+    if not _extra_dir.exists():
+        _extra_cache = set()
+        _extra_mtime = None
+        return _extra_cache
+
+    current_mtime = _extra_dir.stat().st_mtime
+    if _extra_cache is None or _extra_mtime != current_mtime:
+        _extra_cache = {f.stem for f in _extra_dir.iterdir() if f.suffix == ".wav"}
+        _extra_mtime = current_mtime
+    return _extra_cache
+
+
+def _is_voice_available(voice_name: str) -> bool:
+    """检查语音是否可用（内置或侧载）。"""
+    if voice_name in voice_set:
+        return True
+    return voice_name in _load_extra_voices()
 
 
 def get_voice_filepath(operator, voice_name) -> Path | None:
-    if voice_name not in voice_set:
+    if not _is_voice_available(voice_name):
         return None
     f = voices_source / operator / f"{voice_name}.wav"
     if f.exists():
         return f
-    # 查找 extra 目录中的侧载语音
     extra_f = _extra_dir / f"{voice_name}.wav"
     return extra_f if extra_f.exists() else None
 
 
 def get_random_voice(operator, ranges) -> Path | None:
     extra_set = _load_extra_voices()
-    # 合并 ranges 和 extra 中的可用语音
-    available = [r for r in ranges if r in voice_set]
-    if extra_set:
-        available.extend([r for r in ranges if r in extra_set])
+    available = [r for r in ranges if r in voice_set or r in extra_set]
     if not available:
         return None
     key = random.choice(available)
