@@ -127,8 +127,8 @@ PLUGIN_NAME = "request_handler"
 # 审批提醒元数据：超过此时长视为过期，不再用于「同意」与引用回复（秒）
 _NOTIFY_RECORD_MAX_AGE_SEC = 7 * 24 * 3600
 
-RH_HELP_CMD = "牛牛帮助 request_handler"
-RH_APPROVE_HINT = "通过：引用本条，发送「同意」「好」或留空；或直接私聊发送「同意」（按最新一条提醒）"
+RH_HELP_CMD = "牛牛帮助 申请管理"
+RH_APPROVE_HINT = "同意：回复此消息「同意」或留空（什么都不发）；或直接发送「同意」处理最新一条申请"
 RH_HELP_HINT = f"帮助：{RH_HELP_CMD}"
 RH_LIST_TAIL_FRIEND = (
     "怎么操作：\n"
