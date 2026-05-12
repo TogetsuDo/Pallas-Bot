@@ -32,6 +32,7 @@ _DRUNK_DREAM_FAST_SLEEP_MAX = 20.0
 _DEFAULT_IMAGE_CAP = 3
 _DRUNK_DREAM_IMAGE_CAP = 5
 _ARCHIVE_RESAMPLE_ATTEMPTS = 6
+DREAM_WAKE_TEXT = "……梦醒了。"
 
 
 _dream_lock = asyncio.Lock()
@@ -84,6 +85,21 @@ async def broadcast_drift(bot_id: int, source_group_id: int, payload: DriftPaylo
         q.put_nowait(payload)
     except asyncio.QueueFull:
         pass
+
+
+async def send_dream_wake_text(bot_id: int, group_id: int) -> None:
+    try:
+        bot = get_bot(str(bot_id))
+    except Exception as e:
+        logger.debug("dream wake send get_bot failed: {}", e)
+        return
+    try:
+        await bot.send_group_msg(
+            group_id=group_id,
+            message=Message(MessageSegment.text(DREAM_WAKE_TEXT)),
+        )
+    except ActionFailed as e:
+        logger.debug("dream wake send failed: {}", e)
 
 
 async def launch_dream_worker(bot_id: int, group_id: int, duration_sec: int) -> None:
@@ -220,6 +236,10 @@ async def _dream_worker_loop(bot_id: int, group_id: int) -> None:
                 logger.debug("dream send failed: {}", e)
             except Exception as e:
                 logger.warning("dream worker tick error: {}", e)
+        await cfg.stop_dream()
+        await send_dream_wake_text(bot_id, group_id)
+    except asyncio.CancelledError:
+        raise
     finally:
         async with _dream_lock:
             _dream_active.discard(key)

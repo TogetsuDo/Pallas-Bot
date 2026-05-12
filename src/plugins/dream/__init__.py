@@ -17,6 +17,7 @@ from .runtime import (
     broadcast_drift,
     launch_dream_worker,
     log_dream_chat_to_db,
+    send_dream_wake_text,
     stop_dream_worker,
 )
 
@@ -25,7 +26,7 @@ __plugin_meta__ = PluginMetadata(
     description=("牛牛的梦话：多群同时做梦时同 Bot 漂流互通，随机间隔推送与复读共用管理员的「不可以」触发梦库删除。"),
     usage="""
 指令：
-- 牛牛做梦 — 进入做梦（持续约 5～15 分钟；未醉酒时推送梦话间隔约 45～165s）
+- 牛牛做梦 — 进入做梦（持续约 5～15 分钟；未醉酒时推送梦话间隔约 45～165）
 - 牛牛醒梦 / 牛牛别做梦 — 结束本群做梦
 
 做梦中采集群消息入梦库，并向同 Bot 其它正在做梦的群漂流（图/文有上限）。
@@ -55,7 +56,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_method": "on_message",
                 "trigger_condition": "牛牛醒梦/牛牛别做梦",
                 "brief_des": "结束做梦",
-                "detail_des": "立即结束本群的做梦状态并停止后台推送。",
+                "detail_des": "立即结束本群的做梦状态并停止后台推送；发送「……梦醒了。」。",
             },
             {
                 "func": "梦话采集",
@@ -148,10 +149,7 @@ async def _(event: GroupMessageEvent):
         return
     await config.stop_dream()
     await stop_dream_worker(event.self_id, event.group_id)
-    try:
-        await dream_wake.send("……梦醒了。")
-    except ActionFailed:
-        pass
+    await send_dream_wake_text(event.self_id, event.group_id)
 
 
 async def is_dream_capture(event: GroupMessageEvent) -> bool:
