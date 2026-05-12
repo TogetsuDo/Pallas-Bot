@@ -37,6 +37,21 @@ def register_pallas_protocol_routes(
     base = resolve_protocol_webui_base_path(plugin_config)
     page_cookie_name = "pallas_protocol_page_token"
 
+    def _pallas_console_http_base() -> str:
+        try:
+            from nonebot import get_plugin_config
+
+            from src.plugins.pallas_webui.config import Config as PallasWebuiConfig
+
+            raw = (get_plugin_config(PallasWebuiConfig).pallas_webui_http_base or "").strip()
+        except Exception:
+            raw = ""
+        if not raw:
+            raw = "/pallas"
+        if not raw.startswith("/"):
+            raw = "/" + raw
+        return raw.rstrip("/") or "/pallas"
+
     from src.common.pallas_console_login import install_pallas_http_request_context_middleware
 
     install_pallas_http_request_context_middleware(app)
@@ -227,7 +242,9 @@ def register_pallas_protocol_routes(
         )
         if redirect is not None:
             return redirect
-        return HTMLResponse(render_dashboard(resolve_protocol_webui_base_path(plugin_config)))
+        return HTMLResponse(
+            render_dashboard(resolve_protocol_webui_base_path(plugin_config), _pallas_console_http_base()),
+        )
 
     @app.get(f"{base}/settings", response_class=HTMLResponse)
     async def napcat_settings_page(
@@ -245,7 +262,9 @@ def register_pallas_protocol_routes(
         )
         if redirect is not None:
             return redirect
-        return HTMLResponse(render_settings_page(resolve_protocol_webui_base_path(plugin_config)))
+        return HTMLResponse(
+            render_settings_page(resolve_protocol_webui_base_path(plugin_config), _pallas_console_http_base()),
+        )
 
     @app.get(f"{base}/new", response_class=HTMLResponse)
     async def napcat_new_account(
@@ -263,7 +282,9 @@ def register_pallas_protocol_routes(
         )
         if redirect is not None:
             return redirect
-        return HTMLResponse(render_new_account_page(resolve_protocol_webui_base_path(plugin_config)))
+        return HTMLResponse(
+            render_new_account_page(resolve_protocol_webui_base_path(plugin_config), _pallas_console_http_base()),
+        )
 
     @app.get(f"{base}/import", response_class=HTMLResponse)
     async def napcat_import_page(
@@ -281,7 +302,9 @@ def register_pallas_protocol_routes(
         )
         if redirect is not None:
             return redirect
-        return HTMLResponse(render_import_page(resolve_protocol_webui_base_path(plugin_config)))
+        return HTMLResponse(
+            render_import_page(resolve_protocol_webui_base_path(plugin_config), _pallas_console_http_base()),
+        )
 
     @app.post(f"{base}/api/accounts/import")
     async def import_accounts(
@@ -349,7 +372,9 @@ def register_pallas_protocol_routes(
         )
         if redirect is not None:
             return redirect
-        return HTMLResponse(render_protocol_assets_page(resolve_protocol_webui_base_path(plugin_config)))
+        return HTMLResponse(
+            render_protocol_assets_page(resolve_protocol_webui_base_path(plugin_config), _pallas_console_http_base()),
+        )
 
     @app.get(f"{base}/runtime")
     async def legacy_runtime_page_redirect(request: Request):
@@ -399,7 +424,13 @@ def register_pallas_protocol_routes(
             return redirect
         if not manager.has_account(account_id):
             raise HTTPException(status_code=404, detail="账号不存在")
-        return HTMLResponse(render_account_workspace(resolve_protocol_webui_base_path(plugin_config), account_id))
+        return HTMLResponse(
+            render_account_workspace(
+                resolve_protocol_webui_base_path(plugin_config),
+                account_id,
+                _pallas_console_http_base(),
+            ),
+        )
 
     @app.get(f"{base}/api/runtime")
     async def runtime_status(

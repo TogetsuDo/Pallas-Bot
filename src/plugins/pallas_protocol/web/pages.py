@@ -40,6 +40,24 @@ def shell_font_stylesheet_link(public_base_path: str) -> str:
     )
 
 
+def _normalize_pallas_console_http_base(raw: str | None) -> str:
+    s = (raw or "").strip() or "/pallas"
+    if not s.startswith("/"):
+        s = "/" + s
+    s = s.rstrip("/")
+    return s or "/pallas"
+
+
+def shell_pallas_web_console_topbar_chunk(pallas_console_http_base: str) -> str:
+    root_js = json.dumps(_normalize_pallas_console_http_base(pallas_console_http_base))
+    return (
+        '<a class="btn secondary" id="linkPallasWebConsole" href="#" target="_blank" rel="noopener noreferrer">'
+        "前往前端控制台</a>"
+        f"<script>(function(){{var e=document.getElementById('linkPallasWebConsole');"
+        f"if(e)e.href=location.origin+{root_js}+'/';}})();</script>"
+    )
+
+
 NAPCAT_SHELL_CSS = """
 :root {
   --font-sans: "Pallas UI", "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
@@ -1411,7 +1429,7 @@ def _render_hidden_token_sync_js(back_button_id: str = "backDash") -> str:
 """
 
 
-def render_settings_page(base_path: str) -> str:
+def render_settings_page(base_path: str, pallas_console_http_base: str = "/pallas") -> str:
     """协议端偏好设置：与 WebUI 共用 localStorage（外观 + 仪表盘轮询间隔）。"""
     path = base_path.rstrip("/") or resolve_public_mount_path(path_override="", implementation_slug="")
     p = json.dumps(path)
@@ -1458,6 +1476,7 @@ def render_settings_page(base_path: str) -> str:
     <header class="topbar">
       <div class="brand">Pallas-Bot <span>偏好设置</span></div>
       <div class="row" style="margin-left:auto;align-items:center;gap:8px">
+        {shell_pallas_web_console_topbar_chunk(pallas_console_http_base)}
         <a class="btn secondary" href="{back_href}">← 返回仪表盘</a>
         <button class="btn secondary" type="button" data-action="logout">退出登录</button>
       </div>
@@ -1678,7 +1697,7 @@ def render_settings_page(base_path: str) -> str:
 """
 
 
-def render_dashboard(base_path: str) -> str:
+def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") -> str:
     path = base_path.rstrip("/") or resolve_public_mount_path(path_override="", implementation_slug="")
     p = json.dumps(path)
     common_api_js = _render_common_api_js()
@@ -1695,6 +1714,7 @@ def render_dashboard(base_path: str) -> str:
     <header class="topbar">
       <div class="brand">Pallas-Bot <span>协议端仪表盘</span></div>
       <div class="row" style="margin-left:auto;align-items:center;flex-wrap:wrap;gap:8px">
+        {shell_pallas_web_console_topbar_chunk(pallas_console_http_base)}
         <a href="{html_escape(path + "/settings", quote=True)}" class="btn secondary">偏好设置</a>
         <a href="#" class="btn secondary" id="linkRuntime">协议资产</a>
         <a href="#" class="btn secondary" id="linkImport">导入账号</a>
@@ -2222,7 +2242,7 @@ def render_dashboard(base_path: str) -> str:
 """
 
 
-def render_import_page(base_path: str) -> str:
+def render_import_page(base_path: str, pallas_console_http_base: str = "/pallas") -> str:
     path = base_path.rstrip("/") or resolve_public_mount_path(path_override="", implementation_slug="")
     p = json.dumps(path)
     common_api_js = _render_common_api_js()
@@ -2246,6 +2266,7 @@ def render_import_page(base_path: str) -> str:
     <header class="topbar">
       <div class="brand">Pallas-Bot <span>导入账号</span></div>
       <div class="row" style="margin-left:auto;align-items:center;gap:8px">
+        {shell_pallas_web_console_topbar_chunk(pallas_console_http_base)}
         <button class="btn secondary" type="button" data-action="logout">退出登录</button>
         <a class="btn secondary" id="backDash" href="{html_escape(path, quote=True)}" style="display:inline-flex;align-items:center">← 返回仪表盘</a>
       </div>
@@ -2366,7 +2387,7 @@ def render_import_page(base_path: str) -> str:
 """
 
 
-def render_new_account_page(base_path: str) -> str:
+def render_new_account_page(base_path: str, pallas_console_http_base: str = "/pallas") -> str:
     path = base_path.rstrip("/") or resolve_public_mount_path(path_override="", implementation_slug="")
     p = json.dumps(path)
     common_api_js = _render_common_api_js()
@@ -2385,6 +2406,7 @@ def render_new_account_page(base_path: str) -> str:
     <header class="topbar">
       <div class="brand">新建 <span>账号</span></div>
       <div class="row" style="margin-left:auto;align-items:center;gap:8px">
+        {shell_pallas_web_console_topbar_chunk(pallas_console_http_base)}
         <button class="btn secondary" type="button" data-action="logout">退出登录</button>
         <a class="btn secondary" id="backDash" href="{html_escape(path, quote=True)}" style="display:inline-flex;align-items:center">← 返回仪表盘</a>
       </div>
@@ -2472,7 +2494,7 @@ def render_new_account_page(base_path: str) -> str:
 """
 
 
-def render_protocol_assets_page(base_path: str) -> str:
+def render_protocol_assets_page(base_path: str, pallas_console_http_base: str = "/pallas") -> str:
     path = base_path.rstrip("/") or resolve_public_mount_path(path_override="", implementation_slug="")
     p = json.dumps(path)
     common_api_js = _render_common_api_js()
@@ -2491,6 +2513,7 @@ def render_protocol_assets_page(base_path: str) -> str:
     <header class="topbar">
       <div class="brand">Pallas-Bot <span>协议资产</span></div>
       <div class="row" style="margin-left:auto;align-items:center;gap:8px">
+        {shell_pallas_web_console_topbar_chunk(pallas_console_http_base)}
         <button class="btn secondary" type="button" data-action="logout">退出登录</button>
         <a class="btn secondary" id="backDash" href="{html_escape(path, quote=True)}" style="display:inline-flex;align-items:center">← 返回仪表盘</a>
       </div>
@@ -3520,7 +3543,7 @@ def render_protocol_assets_page(base_path: str) -> str:
 """
 
 
-def render_account_workspace(base_path: str, account_id: str) -> str:
+def render_account_workspace(base_path: str, account_id: str, pallas_console_http_base: str = "/pallas") -> str:
     path = base_path.rstrip("/") or resolve_public_mount_path(path_override="", implementation_slug="")
     p = json.dumps(path)
     aid = json.dumps(account_id)
@@ -3542,6 +3565,7 @@ def render_account_workspace(base_path: str, account_id: str) -> str:
     <header class="topbar">
       <div class="brand">账号 <span>{aid_h}</span></div>
       <div class="row" style="margin-left:auto;align-items:center;gap:8px">
+        {shell_pallas_web_console_topbar_chunk(pallas_console_http_base)}
         <button class="btn secondary" type="button" data-action="logout">退出登录</button>
         <a class="btn secondary" href="{acc_settings_href}" style="display:inline-flex;align-items:center">偏好设置</a>
         <a class="btn secondary" id="backDash" href="{html_escape(path, quote=True)}" style="display:inline-flex;align-items:center">← 返回仪表盘</a>
