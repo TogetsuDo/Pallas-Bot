@@ -22,6 +22,7 @@ from src.common.utils.github_release import (
     github_release_api_url,
     github_release_asset_url,
     github_release_asset_url_candidates,
+    github_request_ssl_env,
 )
 from src.common.utils.stream_download import (
     StreamDownloadProgress,
@@ -45,50 +46,51 @@ async def resolve_github_release_asset_urls(
     release_apis = [github_release_api_url(repo, tag)]
     if (tag or "").strip():
         release_apis.append(github_release_api_url(repo, ""))
-    async with httpx.AsyncClient(
-        follow_redirects=True,
-        timeout=httpx.Timeout(30.0, connect=10.0),
-        headers={"User-Agent": "Pallas-Bot-PallasWebUI/1.0"},
-    ) as client:
-        auth_headers = github_auth_headers(token)
-        for api in release_apis:
-            try:
-                resp = await client.get(api, headers=auth_headers)
-            except Exception as e:
-                # API 失败仍会追加 releases/download 直链候选，默认不打 WARNING 以免刷屏
-                logger.debug(
-                    "Pallas-Bot 控制台: GitHub Release API 请求异常（将尝试直链）api={} err={}",
-                    api,
-                    format_exception_for_log(e),
-                )
-                continue
-            if resp.status_code != 200:
-                logger.debug(
-                    "Pallas-Bot 控制台: GitHub Release API 非 200（将尝试直链）status={} api={}",
-                    resp.status_code,
-                    api,
-                )
-                continue
-            data = resp.json()
-            assets = data.get("assets")
-            if not isinstance(assets, list):
-                continue
-            urls: dict[str, str] = {}
-            for item in assets:
-                if not isinstance(item, dict):
+    with github_request_ssl_env():
+        async with httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=httpx.Timeout(30.0, connect=10.0),
+            headers={"User-Agent": "Pallas-Bot-PallasWebUI/1.0"},
+        ) as client:
+            auth_headers = github_auth_headers(token)
+            for api in release_apis:
+                try:
+                    resp = await client.get(api, headers=auth_headers)
+                except Exception as e:
+                    # API 失败仍会追加 releases/download 直链候选，默认不打 WARNING 以免刷屏
+                    logger.debug(
+                        "Pallas-Bot 控制台: GitHub Release API 请求异常（将尝试直链）api={} err={}",
+                        api,
+                        format_exception_for_log(e),
+                    )
                     continue
-                name = str(item.get("name", "")).strip()
-                url = str(item.get("browser_download_url", "")).strip()
-                if not name or not url:
+                if resp.status_code != 200:
+                    logger.debug(
+                        "Pallas-Bot 控制台: GitHub Release API 非 200（将尝试直链）status={} api={}",
+                        resp.status_code,
+                        api,
+                    )
                     continue
-                urls[name] = url
-            if preferred in urls:
-                candidates.append(urls[preferred])
-            elif urls:
-                for name, url in urls.items():
-                    if name.lower().endswith(".zip"):
-                        candidates.append(url)
-                        break
+                data = resp.json()
+                assets = data.get("assets")
+                if not isinstance(assets, list):
+                    continue
+                urls: dict[str, str] = {}
+                for item in assets:
+                    if not isinstance(item, dict):
+                        continue
+                    name = str(item.get("name", "")).strip()
+                    url = str(item.get("browser_download_url", "")).strip()
+                    if not name or not url:
+                        continue
+                    urls[name] = url
+                if preferred in urls:
+                    candidates.append(urls[preferred])
+                elif urls:
+                    for name, url in urls.items():
+                        if name.lower().endswith(".zip"):
+                            candidates.append(url)
+                            break
     # 追加直链候选
     candidates.extend(github_release_asset_url_candidates(repo, preferred, tag))
     dedup: list[str] = []
