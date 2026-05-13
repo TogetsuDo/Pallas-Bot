@@ -4,7 +4,10 @@ from pydantic import BaseModel, Field
 
 
 class Config(BaseModel):
-    pallas_webui_enabled: bool = True
+    pallas_webui_enabled: bool = Field(
+        default=True,
+        description="是否挂载 Pallas 控制台（静态前端与扩展 JSON API）。",
+    )
     pallas_webui_http_base: str = Field(
         default="/pallas",
         description="浏览器访问路径前缀，需与 Vite 的 base 一致（如 /pallas/）",

@@ -1,16 +1,17 @@
 from nonebot import get_driver, get_plugin_config
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Config(BaseModel):
-    # 邮件推送配置
-    bot_status_smtp_user: str = ""
-    bot_status_smtp_password: str = ""
-    bot_status_smtp_server: str = ""
-    bot_status_smtp_port: int = 465
-    bot_status_notice_email: str = ""
-    # 离线等待时长
-    bot_status_offline_grace_time: int = 30
+    bot_status_smtp_user: str = Field(default="", description="SMTP 发信账号（通常与发件邮箱一致）。")
+    bot_status_smtp_password: str = Field(default="", description="SMTP 密码或应用专用授权码。")
+    bot_status_smtp_server: str = Field(default="", description="SMTP 服务器主机名，如 smtp.example.com。")
+    bot_status_smtp_port: int = Field(default=465, description="SMTP 端口；465 多为 SSL，587 多为 STARTTLS。")
+    bot_status_notice_email: str = Field(default="", description="接收 Bot 状态告警（如掉线）的收件人邮箱。")
+    bot_status_offline_grace_time: int = Field(
+        default=30,
+        description="判定为离线并发送邮件通知前，允许无心跳的宽限时间（分钟）。",
+    )
 
 
 class MailConfig:
