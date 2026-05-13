@@ -42,6 +42,10 @@ _INIT_LOG_SINK = False
 _READ_CACHE: dict[str, dict[str, Any]] = {}
 _MSG_STATS: dict[str, dict[str, Any]] = {}  # self_id -> sent/received + 按本地日切片的 day_*
 _MSG_TRACKING_INIT = False
+# self_id -> { day_key, by_plugin: { plugin: { runs, errors, day_runs, day_errors } } }
+_PLUGIN_RUN_STATS: dict[str, dict[str, Any]] = {}
+_PLUGIN_RUN_TRACKING_INIT = False
+_EXCLUDED_PLUGIN_RUN_NAMES = frozenset({"pallas_webui"})
 
 
 def set_console_meta(d: dict[str, Any] | None) -> None:
@@ -773,17 +777,46 @@ def _msg_stats_get_mut(sid: str) -> dict[str, Any]:
     today = time.strftime("%Y-%m-%d", time.localtime())
     rec = _MSG_STATS.setdefault(
         sid,
-        {"sent": 0, "received": 0, "day_sent": 0, "day_received": 0, "day_key": today},
+        {
+            "sent": 0,
+            "received": 0,
+            "day_sent": 0,
+            "day_received": 0,
+            "day_key": today,
+            "day_api_total": 0,
+            "day_api_counts": {},
+        },
     )
     if str(rec.get("day_key", "")) != today:
         rec["day_key"] = today
         rec["day_sent"] = 0
         rec["day_received"] = 0
+        rec["day_api_total"] = 0
+        rec["day_api_counts"] = {}
     rec.setdefault("sent", 0)
     rec.setdefault("received", 0)
     rec.setdefault("day_sent", 0)
     rec.setdefault("day_received", 0)
+    rec.setdefault("day_api_total", 0)
+    if not isinstance(rec.get("day_api_counts"), dict):
+        rec["day_api_counts"] = {}
     return rec
+
+
+def _top_api_call_today(counts: object) -> tuple[str, int]:
+    if not isinstance(counts, dict) or not counts:
+        return "", 0
+    top_n = 0
+    top_name = ""
+    for name, c in counts.items():
+        try:
+            n = int(c)
+        except (TypeError, ValueError):
+            continue
+        if n > top_n:
+            top_n = n
+            top_name = str(name)
+    return top_name, top_n
 
 
 def _init_message_tracking() -> None:
@@ -800,6 +833,17 @@ def _init_message_tracking() -> None:
     from nonebot.message import event_preprocessor
 
     _send_apis = frozenset({"send_msg", "send_group_msg", "send_private_msg", "send_message"})
+    _api_count_exclude = _send_apis | frozenset(
+        {
+            "get_status",
+            "get_login_info",
+            "get_version",
+            "can_send_image",
+            "can_send_record",
+            "get_cookies",
+            "get_csrf_token",
+        },
+    )
 
     @BaseBot.on_called_api
     async def _count_sent(
@@ -815,6 +859,29 @@ def _init_message_tracking() -> None:
                 row = _msg_stats_get_mut(sid)
                 row["sent"] = int(row["sent"]) + 1
                 row["day_sent"] = int(row["day_sent"]) + 1
+
+    @BaseBot.on_called_api
+    async def _count_protocol_api_calls(
+        bot: BaseBot,
+        exception: Exception | None,
+        api: str,
+        data: dict[str, Any],
+        result: Any,
+    ) -> None:
+        if exception is not None:
+            return
+        if not api or api in _api_count_exclude or str(api).startswith("_"):
+            return
+        sid = str(getattr(bot, "self_id", "") or "").strip()
+        if not sid:
+            return
+        row = _msg_stats_get_mut(sid)
+        counts = row.get("day_api_counts")
+        if not isinstance(counts, dict):
+            counts = {}
+            row["day_api_counts"] = counts
+        row["day_api_total"] = int(row.get("day_api_total", 0)) + 1
+        counts[str(api)] = int(counts.get(str(api), 0)) + 1
 
     @event_preprocessor
     async def _count_received(bot: BaseBot, event: Event) -> None:
@@ -864,6 +931,8 @@ async def _message_stats_overview(*, self_id: str | None) -> dict[str, Any]:
         total_received += received
         total_today_sent += today_sent
         total_today_received += today_received
+        counts = mem.get("day_api_counts")
+        top_name, top_cnt = _top_api_call_today(counts)
         rows.append({
             "self_id": sid,
             "connection_key": str(key),
@@ -871,6 +940,9 @@ async def _message_stats_overview(*, self_id: str | None) -> dict[str, Any]:
             "received": received,
             "today_sent": today_sent,
             "today_received": today_received,
+            "today_api_calls": int(mem.get("day_api_total", 0)),
+            "today_top_api": top_name,
+            "today_top_api_count": top_cnt,
         })
     return {
         "total_sent": total_sent,
@@ -878,6 +950,133 @@ async def _message_stats_overview(*, self_id: str | None) -> dict[str, Any]:
         "today_sent": total_today_sent,
         "today_received": total_today_received,
         "bots": rows,
+    }
+
+
+def _plugin_short_name_from_matcher(matcher: object) -> str:
+    module_name = getattr(matcher, "plugin_name", None)
+    if module_name:
+        parts = str(module_name).split(".")
+        for part in reversed(parts):
+            if part != "__init__":
+                return part
+    return str(module_name or "") or "unknown"
+
+
+def _plugin_run_bot_bucket(sid: str) -> dict[str, Any]:
+    today = time.strftime("%Y-%m-%d", time.localtime())
+    rec = _PLUGIN_RUN_STATS.setdefault(sid, {"day_key": today, "by_plugin": {}})
+    by_plugin = rec.setdefault("by_plugin", {})
+    if str(rec.get("day_key", "")) != today:
+        rec["day_key"] = today
+        for prow in by_plugin.values():
+            if isinstance(prow, dict):
+                prow["day_runs"] = 0
+                prow["day_errors"] = 0
+    return rec
+
+
+def _plugin_run_plugin_row(sid: str, plugin: str) -> dict[str, Any]:
+    rec = _plugin_run_bot_bucket(sid)
+    by_plugin = rec["by_plugin"]
+    row = by_plugin.setdefault(plugin, {"runs": 0, "errors": 0, "day_runs": 0, "day_errors": 0})
+    row.setdefault("runs", 0)
+    row.setdefault("errors", 0)
+    row.setdefault("day_runs", 0)
+    row.setdefault("day_errors", 0)
+    return row
+
+
+def _init_plugin_run_tracking() -> None:
+    """run_postprocessor：Matcher.run 结束后计数（不含被 run_preprocessor 拦截的调度）。"""
+    global _PLUGIN_RUN_TRACKING_INIT
+    if _PLUGIN_RUN_TRACKING_INIT:
+        return
+    _PLUGIN_RUN_TRACKING_INIT = True
+
+    from nonebot.message import run_postprocessor
+
+    @run_postprocessor
+    async def _count_plugin_matcher_run(
+        matcher: object,
+        exception: Exception | None,
+        bot: BaseBot,
+        _event: Event,
+    ) -> None:
+        plugin = _plugin_short_name_from_matcher(matcher).strip()
+        if not plugin or plugin.lower() in _EXCLUDED_PLUGIN_RUN_NAMES:
+            return
+        sid = str(getattr(bot, "self_id", "") or "").strip()
+        if not sid:
+            return
+        try:
+            row = _plugin_run_plugin_row(sid, plugin)
+            row["runs"] = int(row["runs"]) + 1
+            row["day_runs"] = int(row["day_runs"]) + 1
+            if exception is not None:
+                row["errors"] = int(row["errors"]) + 1
+                row["day_errors"] = int(row["day_errors"]) + 1
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _plugin_run_stats_overview(*, self_id: str | None) -> dict[str, Any]:
+    rows_out: list[dict[str, Any]] = []
+    total_runs = 0
+    total_errors = 0
+    total_runs_today = 0
+    total_errors_today = 0
+    for key, bot in get_bots().items():
+        sid = str(getattr(bot, "self_id", "") or "").strip()
+        if not sid:
+            continue
+        if self_id and sid != str(self_id).strip():
+            continue
+        if not _is_onebot_v11_bot(bot):
+            continue
+        _plugin_run_bot_bucket(sid)
+        bucket = _PLUGIN_RUN_STATS.get(sid, {})
+        by_plugin = bucket.get("by_plugin", {}) if isinstance(bucket, dict) else {}
+        plugins_list: list[dict[str, Any]] = []
+        br = be = brt = bet = 0
+        for pname, prow in by_plugin.items():
+            if not isinstance(prow, dict):
+                continue
+            r = int(prow.get("runs", 0))
+            e = int(prow.get("errors", 0))
+            rt = int(prow.get("day_runs", 0))
+            et = int(prow.get("day_errors", 0))
+            plugins_list.append({
+                "name": str(pname),
+                "runs": r,
+                "runs_today": rt,
+                "errors": e,
+                "errors_today": et,
+            })
+            br += r
+            be += e
+            brt += rt
+            bet += et
+        plugins_list.sort(key=lambda x: (-int(x["runs_today"]), -int(x["runs"]), str(x["name"])))
+        rows_out.append({
+            "self_id": sid,
+            "connection_key": str(key),
+            "runs": br,
+            "errors": be,
+            "runs_today": brt,
+            "errors_today": bet,
+            "plugins": plugins_list,
+        })
+        total_runs += br
+        total_errors += be
+        total_runs_today += brt
+        total_errors_today += bet
+    return {
+        "total_runs": total_runs,
+        "total_errors": total_errors,
+        "total_runs_today": total_runs_today,
+        "total_errors_today": total_errors_today,
+        "bots": rows_out,
     }
 
 
@@ -1430,6 +1629,7 @@ def register_extended_api(
     plugin_config: Config,
 ) -> None:
     _init_message_tracking()
+    _init_plugin_run_tracking()
     x = (api_base or "/pallas/api").strip()
     if not x.startswith("/"):
         x = "/" + x
@@ -1490,6 +1690,17 @@ def register_extended_api(
             return await _message_stats_overview(self_id=str(self_id) if self_id is not None else None)
 
         key = f"message-stats:{self_id or 'all'}"
+        data = await _cached_read(key=key, loader=_load, ttl_sec=2.0, stale_sec=10.0)
+        return JSONResponse({"ok": True, "data": data})
+
+    @router.get(f"{x}/plugin-run-stats", include_in_schema=True)
+    async def _plugin_run_stats(
+        self_id: int | None = Query(default=None, ge=1),
+    ) -> JSONResponse:
+        async def _load() -> dict[str, Any]:
+            return _plugin_run_stats_overview(self_id=str(self_id) if self_id is not None else None)
+
+        key = f"plugin-run-stats:{self_id or 'all'}"
         data = await _cached_read(key=key, loader=_load, ttl_sec=2.0, stale_sec=10.0)
         return JSONResponse({"ok": True, "data": data})
 
