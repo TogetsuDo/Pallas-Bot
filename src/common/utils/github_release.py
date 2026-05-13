@@ -75,6 +75,19 @@ def github_release_asset_url_candidates(repo: str, asset_name: str, tag: str = "
     return dedup
 
 
+def normalize_release_tag(tag: str) -> str:
+    """用于比对：去空白、小写，并去掉常见 semver 前导 ``v``（如 ``v1.2.0`` 与 ``1.2.0`` 视为一致）。"""
+    t = (tag or "").strip().lower()
+    if len(t) > 1 and t.startswith("v") and t[1].isdigit():
+        return t[1:]
+    return t
+
+
+def release_tags_equivalent(a: str, b: str) -> bool:
+    """两枚发行标签是否视为同一版本（忽略大小写及前导 v）。"""
+    return normalize_release_tag(a) == normalize_release_tag(b)
+
+
 def release_tag_from_github_final_url(url: str) -> str:
     """从跳转后的 GitHub releases 页 URL 解析 tag（``…/releases/tag/{tag}``）。"""
     segments = [s for s in urlparse(url).path.split("/") if s]

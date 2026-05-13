@@ -259,6 +259,23 @@ async def user_is_bot_admin(bot_id: int, user_id: int) -> bool:
     return user_id in await get_bot_admins(bot_id)
 
 
+async def user_is_admin_of_any_bot(user_id: int) -> bool:
+    """
+    判断 user_id 是否在任意已持久化的 BotConfig.admins 中（多实例下跨 Bot 管理员）。
+    """
+    from src.common.db.pallas_console_data import list_all_bot_configs_public
+
+    try:
+        configs = await list_all_bot_configs_public()
+    except Exception:
+        return False
+    for cfg in configs:
+        admins = cfg.get("admins") or []
+        if user_id in admins:
+            return True
+    return False
+
+
 class GroupConfig(Config):
     def __init__(self, group_id: int, cooldown: int = 5) -> None:
         super().__init__(repo=make_group_config_repository(), key_id=group_id)

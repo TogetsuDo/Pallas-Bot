@@ -13,7 +13,7 @@ from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent, No
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 
-from src.common.config import user_is_bot_admin
+from src.common.config import user_is_admin_of_any_bot, user_is_bot_admin
 
 from .bot_monitor import (
     get_bot_status_info,
@@ -65,9 +65,13 @@ __plugin_meta__ = PluginMetadata(
 )
 
 
-async def _is_bot_admin(bot: Bot, event: MessageEvent) -> bool:
+async def _is_bot_status_admin(bot: Bot, event: MessageEvent) -> bool:
+    """当前 Bot 的管理员，或任意一只已配置牛的管理员均可使用「牛牛在吗」。"""
     try:
-        return await user_is_bot_admin(int(event.self_id), int(event.get_user_id()))
+        uid = int(event.get_user_id())
+        if await user_is_bot_admin(int(event.self_id), uid):
+            return True
+        return await user_is_admin_of_any_bot(uid)
     except Exception:
         return False
 
@@ -75,7 +79,7 @@ async def _is_bot_admin(bot: Bot, event: MessageEvent) -> bool:
 STATUS_COOLDOWN_KEY: str = "bot_status"
 COUNT_COOLDOWN_KEY: str = "bot_count"
 offline_notice = on_notice(priority=5, block=False)
-bot_status_cmd = on_command("牛牛在吗", permission=_is_bot_admin, priority=5, block=True)
+bot_status_cmd = on_command("牛牛在吗", permission=_is_bot_status_admin, priority=5, block=True)
 bot_count_cmd = on_command("牛牛报数", aliases={"牛牛出列"}, priority=5, block=True)
 test_mail_cmd = on_command("测试邮件", permission=SUPERUSER, priority=5, block=True)
 

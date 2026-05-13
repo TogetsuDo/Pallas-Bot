@@ -2365,6 +2365,7 @@ def register_extended_api(
     @router.get(f"{x}/update/check", include_in_schema=True)
     async def _update_check() -> JSONResponse:
         from src.common.utils.format_exception import format_exception_for_log
+        from src.common.utils.github_release import release_tags_equivalent
 
         from .manager import fetch_latest_webui_release, get_installed_webui_version
 
@@ -2393,7 +2394,7 @@ def register_extended_api(
                     "checked_at": time.time(),
                 },
             })
-        has_update = bool(latest_tag and current_tag != latest_tag)
+        has_update = bool(latest_tag and not release_tags_equivalent(current_tag, latest_tag))
         return JSONResponse({
             "ok": True,
             "data": {
@@ -2410,6 +2411,7 @@ def register_extended_api(
     @router.get(f"{x}/update/bot/check", include_in_schema=True)
     async def _bot_update_check() -> JSONResponse:
         from src.common.utils.format_exception import format_exception_for_log
+        from src.common.utils.github_release import release_tags_equivalent
 
         from .manager import fetch_latest_bot_release, get_bot_current_version
 
@@ -2436,7 +2438,9 @@ def register_extended_api(
                     "checked_at": time.time(),
                 },
             })
-        has_update = bool(latest_tag and current_tag and current_tag != latest_tag)
+        has_update = bool(
+            latest_tag and (not str(current_tag or "").strip() or not release_tags_equivalent(current_tag, latest_tag)),
+        )
         return JSONResponse({
             "ok": True,
             "data": {
