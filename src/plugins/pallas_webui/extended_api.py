@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from nonebot import get_bots, get_driver, get_loaded_plugins, get_plugin_config, logger
 from nonebot.adapters import Bot as BaseBot  # noqa: TC002
 from nonebot.adapters import Event  # noqa: TC002
+from nonebot.matcher import Matcher  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_core import PydanticUndefined
 
@@ -998,10 +999,10 @@ def _init_plugin_run_tracking() -> None:
 
     @run_postprocessor
     async def _count_plugin_matcher_run(
-        matcher: object,
+        matcher: Matcher,
         exception: Exception | None,
         bot: BaseBot,
-        _event: Event,
+        event: Event,
     ) -> None:
         plugin = _plugin_short_name_from_matcher(matcher).strip()
         if not plugin or plugin.lower() in _EXCLUDED_PLUGIN_RUN_NAMES:
