@@ -369,6 +369,9 @@ class UserConfig(Config):
         banned = await self._find("banned")
         return True if banned else False
 
+    async def unban(self) -> None:
+        await self._update("banned", False)
+
 
 class TaskManager:
     _tasks: dict[str, dict] = {}
