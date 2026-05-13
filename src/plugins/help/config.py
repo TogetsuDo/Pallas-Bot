@@ -52,7 +52,6 @@ class Config(BaseModel, extra="ignore"):
             "uniseg",
             "callback",
             "block",
-            "greeting",
         ],
         description="生成帮助菜单时忽略的插件模块名列表。",
     )
