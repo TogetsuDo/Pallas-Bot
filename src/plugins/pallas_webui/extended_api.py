@@ -870,6 +870,7 @@ def _msg_stats_get_mut(sid: str) -> dict[str, Any]:
             "day_api_total": 0,
             "day_api_counts": {},
             "api_call_buckets": [],
+            "msg_traffic_buckets": [],
         },
     )
     if str(rec.get("day_key", "")) != today:
@@ -887,6 +888,8 @@ def _msg_stats_get_mut(sid: str) -> dict[str, Any]:
         rec["day_api_counts"] = {}
     if not isinstance(rec.get("api_call_buckets"), list):
         rec["api_call_buckets"] = []
+    if not isinstance(rec.get("msg_traffic_buckets"), list):
+        rec["msg_traffic_buckets"] = []
     return rec
 
 
@@ -932,6 +935,81 @@ def _api_call_history_bump(row: dict[str, Any], api: str) -> None:
             apis[api_key] = int(apis.get(api_key, 0)) + 1
             return
     hist.append({"at": bucket, "apis": {api_key: 1}})
+
+
+def _msg_traffic_history_bump(row: dict[str, Any], *, recv_delta: int = 0, sent_delta: int = 0) -> None:
+    """按与协议 API 相同的时间桶记录消息收/发条数（进程内，重启丢失）。"""
+    try:
+        rd = int(recv_delta)
+        sd = int(sent_delta)
+    except (TypeError, ValueError):
+        return
+    if rd <= 0 and sd <= 0:
+        return
+    now = int(time.time())
+    bucket = now - (now % _API_HIST_BUCKET_SEC)
+    cutoff = bucket - (_API_HIST_MAX_BUCKETS - 1) * _API_HIST_BUCKET_SEC
+    hist = row.setdefault("msg_traffic_buckets", [])
+    if not isinstance(hist, list):
+        row["msg_traffic_buckets"] = []
+        hist = row["msg_traffic_buckets"]
+    i = 0
+    while i < len(hist):
+        h = hist[i]
+        if not isinstance(h, dict):
+            hist.pop(i)
+            continue
+        try:
+            at = int(h.get("at") or 0)
+        except (TypeError, ValueError):
+            hist.pop(i)
+            continue
+        if at < cutoff:
+            hist.pop(i)
+        else:
+            i += 1
+    if hist and isinstance(hist[-1], dict):
+        try:
+            last_at = int(hist[-1].get("at") or 0)
+        except (TypeError, ValueError):
+            last_at = 0
+        if last_at == bucket:
+            if rd > 0:
+                hist[-1]["received"] = int(hist[-1].get("received", 0)) + rd
+            if sd > 0:
+                hist[-1]["sent"] = int(hist[-1].get("sent", 0)) + sd
+            return
+    entry: dict[str, Any] = {"at": bucket}
+    if rd > 0:
+        entry["received"] = rd
+    if sd > 0:
+        entry["sent"] = sd
+    hist.append(entry)
+
+
+def _msg_traffic_history_public(row: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = row.get("msg_traffic_buckets")
+    if not isinstance(raw, list) or not raw:
+        return []
+    out: list[dict[str, Any]] = []
+    for it in raw:
+        if not isinstance(it, dict) or "at" not in it:
+            continue
+        try:
+            at = int(it["at"])
+        except (TypeError, ValueError):
+            continue
+        try:
+            nr = int(it.get("received", 0))
+        except (TypeError, ValueError):
+            nr = 0
+        try:
+            ns = int(it.get("sent", 0))
+        except (TypeError, ValueError):
+            ns = 0
+        out.append({"at": at, "received": nr, "sent": ns})
+    out.sort(key=lambda x: int(x["at"]))
+    return out
 
 
 def _legacy_api_hist_aggregate(row: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1049,7 +1127,7 @@ def _top_api_call_today(counts: object) -> tuple[str, int]:
 
 
 def _init_message_tracking() -> None:
-    """注册 NoneBot2 钩子：消息收/发；协议 API 今日计数（排除发消息与 get_status/get_msg 等）及 5 分钟桶历史。"""
+    """注册 NoneBot2 钩子：消息收/发；协议 API 今日计数与 5 分钟桶；消息收/发时间桶。"""
     global _MSG_TRACKING_INIT
     if _MSG_TRACKING_INIT:
         return
@@ -1086,6 +1164,7 @@ def _init_message_tracking() -> None:
                 row = _msg_stats_get_mut(sid)
                 row["sent"] = int(row["sent"]) + 1
                 row["day_sent"] = int(row["day_sent"]) + 1
+                _msg_traffic_history_bump(row, sent_delta=1)
 
     @BaseBot.on_called_api
     async def _count_protocol_api_calls(
@@ -1120,6 +1199,7 @@ def _init_message_tracking() -> None:
                     row = _msg_stats_get_mut(sid)
                     row["received"] = int(row["received"]) + 1
                     row["day_received"] = int(row["day_received"]) + 1
+                    _msg_traffic_history_bump(row, recv_delta=1)
         except Exception:  # noqa: BLE001
             pass
 
@@ -1173,6 +1253,7 @@ async def _message_stats_overview(*, self_id: str | None) -> dict[str, Any]:
             "today_top_api_count": top_cnt,
             "api_calls_history": _api_call_history_public(mem),
             "api_calls_history_by_api": _api_call_history_by_api_series(mem),
+            "message_traffic_history": _msg_traffic_history_public(mem),
         })
     return {
         "total_sent": total_sent,
@@ -1181,6 +1262,8 @@ async def _message_stats_overview(*, self_id: str | None) -> dict[str, Any]:
         "today_received": total_today_received,
         "api_calls_history_bucket_sec": _API_HIST_BUCKET_SEC,
         "api_calls_history_max_buckets": _API_HIST_MAX_BUCKETS,
+        "message_traffic_history_bucket_sec": _API_HIST_BUCKET_SEC,
+        "message_traffic_history_max_buckets": _API_HIST_MAX_BUCKETS,
         "bots": rows,
     }
 
