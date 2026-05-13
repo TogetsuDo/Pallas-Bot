@@ -9,7 +9,7 @@ from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State
 
-from src.common.config import BotConfig
+from src.common.config import BotConfig, user_is_bot_admin
 from src.common.db import make_bot_config_repository
 from src.plugins.pallas_protocol import manager as protocol_manager
 
@@ -54,7 +54,7 @@ _CANCEL_WORDS = {"取消", "cancel", "退出", "quit"}
 
 async def _is_bot_admin(bot: Bot, event: MessageEvent) -> bool:
     try:
-        return await BotConfig(int(bot.self_id)).is_admin_of_bot(int(event.get_user_id()))
+        return await user_is_bot_admin(int(event.self_id), int(event.get_user_id()))
     except Exception:
         return False
 
@@ -109,7 +109,7 @@ async def _relogin_got_qq(bot: Bot, event: MessageEvent, state: T_State, qq_inpu
         await relogin_cmd.reject("QQ号格式不正确，请重新输入：")
 
     # 检查用户是否是目标 bot 的管理员（或超管）
-    is_target_admin = await BotConfig(int(qq)).is_admin_of_bot(int(event.get_user_id()))
+    is_target_admin = await user_is_bot_admin(int(qq), int(event.get_user_id()))
     if not (is_target_admin or await SUPERUSER(bot, event)):
         await relogin_cmd.finish(f"你不是 {qq} 的管理员，无法执行重新上号。")
 

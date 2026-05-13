@@ -21,7 +21,7 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot_plugin_apscheduler import scheduler
 
-from src.common.config import BotConfig, GroupConfig, UserConfig
+from src.common.config import BotConfig, GroupConfig, UserConfig, get_bot_admins, user_is_bot_admin
 from src.common.paths import plugin_data_dir
 from src.plugins.help.plugin_manager import is_plugin_disabled
 from src.plugins.request_handler.config import Config
@@ -621,8 +621,7 @@ disable_auto_group_cmd = on_command("关闭自动同意入群", priority=5, bloc
 
 
 async def is_bot_admin(bot: Bot, event: MessageEvent) -> bool:
-    admins = await BotConfig(int(bot.self_id))._find("admins")
-    return event.user_id in admins
+    return await user_is_bot_admin(int(event.self_id), int(event.user_id))
 
 
 BOT_ADMIN = Permission(is_bot_admin)
@@ -635,7 +634,7 @@ def plugin_config() -> Config:
 
 async def notify_admins(bot: Bot, msg: str, *, kind: str, target_id: str) -> bool:
     bot_key = str(bot.self_id)
-    admins = await BotConfig(int(bot.self_id))._find("admins") or []
+    admins = await get_bot_admins(int(bot.self_id))
     plugin_cfg = plugin_config()
     if not plugin_cfg.request_handler_notify_superusers:
         superusers = {int(uid) for uid in get_driver().config.superusers}
@@ -707,12 +706,7 @@ async def poll_doubt_friends_job() -> None:
             if uid in notified_set:
                 continue
             nickname = await get_nickname(bot, int(uid))
-            msg = (
-                f"[好友申请·被过滤]\n申请人：{nickname}（{uid}）\n"
-                f"{RH_APPROVE_HINT}\n"
-                f"拒绝：拒绝好友 {uid}\n"
-                f"{RH_HELP_HINT}"
-            )
+            msg = f"[好友申请]\n申请人：{nickname}（{uid}）\n{RH_APPROVE_HINT}\n拒绝：拒绝好友 {uid}\n{RH_HELP_HINT}"
             if await notify_admins(bot, msg, kind="friend", target_id=uid):
                 set_last_notified(bot_key, "friend", uid)
                 notified_set.add(uid)
@@ -824,7 +818,7 @@ async def handle_list_friends(bot: Bot, event: MessageEvent):
         lines.append(f"  {nickname}（{uid}）")
     for uid in doubt_only.keys():
         nickname = await get_nickname(bot, int(uid))
-        lines.append(f"  {nickname}（{uid}）[被过滤]")
+        lines.append(f"  {nickname}（{uid}）")
     lines.append(RH_LIST_TAIL_FRIEND)
     await list_friends_cmd.finish("\n".join(lines))
 
@@ -920,7 +914,7 @@ async def handle_group_request(bot: Bot, event: GroupRequestEvent):
         save_json(GROUP_REQ_FILE, pending_group)
 
         bot_config = BotConfig(bot_id)
-        if await bot_config.auto_accept_group() or await bot_config.is_admin_of_bot(event.user_id):
+        if await bot_config.auto_accept_group() or await user_is_bot_admin(bot_id, event.user_id):
             await event.approve(bot)
             pending_group.get(bot_key, {}).pop(group_key, None)
             save_json(GROUP_REQ_FILE, pending_group)

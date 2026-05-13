@@ -8,6 +8,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 
 async def is_bot_admin(bot_id: int, group_id: int, no_cache: bool = False) -> bool:
+    """查询该牛牛在群内是否为 QQ 群管理员或群主"""
     info = await get_bot(str(bot_id)).call_api(
         "get_group_member_info",
         **{

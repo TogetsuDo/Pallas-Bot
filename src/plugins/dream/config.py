@@ -36,13 +36,13 @@ class Config(BaseModel, extra="ignore"):
         description="从历史梦话抽样时的最大重试次数。",
     )
     dream_worker_sleep_min_sec: float = Field(
-        default=45.0,
+        default=15.0,
         ge=5.0,
         le=1200.0,
         description="本群未醉酒时，每轮梦话发送后的最短休眠秒数（与最大值之间随机）。",
     )
     dream_worker_sleep_max_sec: float = Field(
-        default=165.0,
+        default=135.0,
         ge=5.0,
         le=1200.0,
         description="每轮梦话后的最长休眠秒数，须不小于最小休眠。",

@@ -55,7 +55,11 @@ async def bot_disconnect(bot: Bot) -> None:
 
 
 async def is_other_bot(event: GroupMessageEvent) -> bool:
-    return event.user_id in plugin_config.bots
+    if event.user_id not in plugin_config.bots:
+        return False
+    if await BotConfig(event.self_id, event.group_id).is_dreaming():
+        return False
+    return True
 
 
 async def is_sleep(event: GroupMessageEvent | GroupIncreaseNoticeEvent | PokeNotifyEvent) -> bool:

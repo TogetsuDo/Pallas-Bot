@@ -21,7 +21,7 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule, to_me
 from nonebot.typing import T_State
 
-from src.common.config import BotConfig, GroupConfig, UserConfig
+from src.common.config import BotConfig, GroupConfig, UserConfig, user_is_bot_admin
 from src.common.paths import plugin_data_dir
 from src.common.utils import HTTPXClient, is_bot_admin
 from src.plugins.help.plugin_manager import is_plugin_disabled
@@ -172,7 +172,7 @@ set_friend_welcome = on_command(
 
 @set_friend_welcome.handle()
 async def handle_set_friend_welcome(bot: Bot, event: PrivateMessageEvent, state: T_State):
-    if not await BotConfig(event.self_id).is_admin_of_bot(event.user_id):
+    if not await user_is_bot_admin(event.self_id, event.user_id):
         await set_friend_welcome.finish("你没有权限执行此操作")
     await set_friend_welcome.send("请发送你想要设置的好友欢迎消息（可以是文本、图片或图文混合）：")
     state["bot_id"] = event.self_id
@@ -224,7 +224,7 @@ clear_friend_welcome = on_command(
 
 @clear_friend_welcome.handle()
 async def handle_clear_friend_welcome(bot: Bot, event: PrivateMessageEvent):
-    if not await BotConfig(event.self_id).is_admin_of_bot(event.user_id):
+    if not await user_is_bot_admin(event.self_id, event.user_id):
         await clear_friend_welcome.finish("你没有权限执行此操作")
 
     d = GREETING_DIR / str(event.self_id)

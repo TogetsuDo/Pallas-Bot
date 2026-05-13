@@ -109,15 +109,133 @@ async def launch_dream_worker(bot_id: int, group_id: int, duration_sec: int) -> 
     await cfg.start_dream(duration_sec)
     async with _dream_lock:
         _dream_active.add(key)
-    _dream_tasks[key] = asyncio.create_task(_dream_worker_loop(bot_id, group_id))
-
-
-async def _dream_worker_loop(bot_id: int, group_id: int) -> None:
-    key = (bot_id, group_id)
-    cfg = BotConfig(bot_id, group_id)
-    sent_images = 0
+    q = get_drift_queue(key)
     sent_text_keys: set[str] = set()
     sent_image_keys: set[str] = set()
+    sent_images = 0
+    image_cap = _DEFAULT_IMAGE_CAP
+    try:
+        bot0 = get_bot(str(bot_id))
+        if await cfg.is_dreaming():
+            sent_images = await _dream_worker_content_tick_once(
+                bot0,
+                bot_id=bot_id,
+                group_id=group_id,
+                q=q,
+                sent_text_keys=sent_text_keys,
+                sent_image_keys=sent_image_keys,
+                sent_images=sent_images,
+                image_cap=image_cap,
+            )
+    except ActionFailed as e:
+        logger.debug("dream send failed (immediate tick): {}", e)
+    except Exception as e:
+        logger.warning("dream worker immediate tick error: {}", e)
+    _dream_tasks[key] = asyncio.create_task(
+        _dream_worker_loop(
+            bot_id,
+            group_id,
+            sent_text_keys=sent_text_keys,
+            sent_image_keys=sent_image_keys,
+            sent_images=sent_images,
+        )
+    )
+
+
+async def _dream_worker_content_tick_once(
+    bot: Bot,
+    *,
+    bot_id: int,
+    group_id: int,
+    q: asyncio.Queue[DriftPayload],
+    sent_text_keys: set[str],
+    sent_image_keys: set[str],
+    sent_images: int,
+    image_cap: int,
+) -> int:
+    """发一轮梦话（队列漂流 / 已学句 / 历史梦 / 归档图），与循环体内逻辑一致。返回更新后的 sent_images。"""
+    item: DriftPayload | None = None
+    if random.random() < dream_plugin_config.dream_drift_queue_tick_probability:
+        try:
+            item = q.get_nowait()
+        except asyncio.QueueEmpty:
+            item = None
+    sent_queue_text = False
+    sent_queue_image = False
+    if item and item.image_bytes and sent_images < image_cap:
+        ik = dream_image_dedupe_key(item.image_bytes)
+        if ik not in sent_image_keys:
+            await _send_group_drift_image(bot, group_id, item.nickname, item.image_bytes)
+            sent_image_keys.add(ik)
+            sent_images += 1
+            sent_queue_image = True
+    elif item and item.text:
+        tk = dream_text_dedupe_key(item.text)
+        if tk not in sent_text_keys:
+            await _send_group_drift_text(bot, group_id, item.nickname, item.text)
+            sent_text_keys.add(tk)
+            sent_queue_text = True
+
+    if sent_queue_text or sent_queue_image:
+        return sent_images
+
+    prefer_echo = random.random() < dream_plugin_config.dream_prefer_learned_echo_probability
+    if prefer_echo:
+        if await _dream_tick_try_learned_echo(bot, group_id=group_id, sent_text_keys=sent_text_keys):
+            return sent_images
+        sent_h, inc = await _dream_tick_try_historical(
+            bot,
+            bot_id=bot_id,
+            group_id=group_id,
+            sent_text_keys=sent_text_keys,
+            sent_image_keys=sent_image_keys,
+            sent_images=sent_images,
+            image_cap=image_cap,
+        )
+        sent_images += inc
+        if sent_h:
+            return sent_images
+    else:
+        sent_h, inc = await _dream_tick_try_historical(
+            bot,
+            bot_id=bot_id,
+            group_id=group_id,
+            sent_text_keys=sent_text_keys,
+            sent_image_keys=sent_image_keys,
+            sent_images=sent_images,
+            image_cap=image_cap,
+        )
+        sent_images += inc
+        if sent_h:
+            return sent_images
+        if await _dream_tick_try_learned_echo(bot, group_id=group_id, sent_text_keys=sent_text_keys):
+            return sent_images
+
+    if sent_images < image_cap and random.random() < dream_plugin_config.dream_archive_image_probability:
+        for _ in range(_ARCHIVE_RESAMPLE_ATTEMPTS):
+            data = await random_archived_png_bytes()
+            if not data:
+                break
+            ik = dream_image_dedupe_key(data)
+            if ik not in sent_image_keys:
+                await _send_group_archived_draw_image(bot, group_id, data)
+                sent_image_keys.add(ik)
+                sent_images += 1
+                break
+
+    return sent_images
+
+
+async def _dream_worker_loop(
+    bot_id: int,
+    group_id: int,
+    *,
+    sent_text_keys: set[str],
+    sent_image_keys: set[str],
+    sent_images: int,
+) -> None:
+    key = (bot_id, group_id)
+    cfg = BotConfig(bot_id, group_id)
     q = get_drift_queue(key)
     image_cap = _DEFAULT_IMAGE_CAP
     drunk_synergy_used = False
@@ -157,81 +275,17 @@ async def _dream_worker_loop(bot_id: int, group_id: int) -> None:
                 except Exception as e:
                     logger.warning("dream drunk synergy error: {}", e)
                 continue
-            item: DriftPayload | None = None
-            if random.random() < dream_plugin_config.dream_drift_queue_tick_probability:
-                try:
-                    item = q.get_nowait()
-                except asyncio.QueueEmpty:
-                    item = None
             try:
-                sent_queue_text = False
-                sent_queue_image = False
-                # 联机漂流：按配置概率消费队列，降低他群实时句占比
-                if item and item.image_bytes and sent_images < image_cap:
-                    ik = dream_image_dedupe_key(item.image_bytes)
-                    if ik not in sent_image_keys:
-                        await _send_group_drift_image(bot, group_id, item.nickname, item.image_bytes)
-                        sent_image_keys.add(ik)
-                        sent_images += 1
-                        sent_queue_image = True
-                elif item and item.text:
-                    tk = dream_text_dedupe_key(item.text)
-                    if tk not in sent_text_keys:
-                        await _send_group_drift_text(bot, group_id, item.nickname, item.text)
-                        sent_text_keys.add(tk)
-                        sent_queue_text = True
-
-                if sent_queue_text or sent_queue_image:
-                    continue
-
-                prefer_echo = random.random() < dream_plugin_config.dream_prefer_learned_echo_probability
-                if prefer_echo:
-                    if await _dream_tick_try_learned_echo(bot, group_id=group_id, sent_text_keys=sent_text_keys):
-                        continue
-                    sent_h, inc = await _dream_tick_try_historical(
-                        bot,
-                        bot_id=bot_id,
-                        group_id=group_id,
-                        sent_text_keys=sent_text_keys,
-                        sent_image_keys=sent_image_keys,
-                        sent_images=sent_images,
-                        image_cap=image_cap,
-                    )
-                    sent_images += inc
-                    if sent_h:
-                        continue
-                else:
-                    sent_h, inc = await _dream_tick_try_historical(
-                        bot,
-                        bot_id=bot_id,
-                        group_id=group_id,
-                        sent_text_keys=sent_text_keys,
-                        sent_image_keys=sent_image_keys,
-                        sent_images=sent_images,
-                        image_cap=image_cap,
-                    )
-                    sent_images += inc
-                    if sent_h:
-                        continue
-                    if await _dream_tick_try_learned_echo(bot, group_id=group_id, sent_text_keys=sent_text_keys):
-                        continue
-
-                sent_archive = False
-                if sent_images < image_cap and random.random() < dream_plugin_config.dream_archive_image_probability:
-                    for _ in range(_ARCHIVE_RESAMPLE_ATTEMPTS):
-                        data = await random_archived_png_bytes()
-                        if not data:
-                            break
-                        ik = dream_image_dedupe_key(data)
-                        if ik not in sent_image_keys:
-                            await _send_group_archived_draw_image(bot, group_id, data)
-                            sent_image_keys.add(ik)
-                            sent_images += 1
-                            sent_archive = True
-                            break
-
-                if sent_archive:
-                    continue
+                sent_images = await _dream_worker_content_tick_once(
+                    bot,
+                    bot_id=bot_id,
+                    group_id=group_id,
+                    q=q,
+                    sent_text_keys=sent_text_keys,
+                    sent_image_keys=sent_image_keys,
+                    sent_images=sent_images,
+                    image_cap=image_cap,
+                )
             except ActionFailed as e:
                 logger.debug("dream send failed: {}", e)
             except Exception as e:
