@@ -40,6 +40,7 @@ __plugin_meta__ = PluginMetadata(
 /pallas/api/logs
 /pallas/api/db/overview
 /pallas/api/message-stats
+/pallas/api/plugin-run-stats
 """.strip(),
     type="application",
     homepage="https://github.com/PallasBot/Pallas-Bot",
