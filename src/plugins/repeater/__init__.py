@@ -228,7 +228,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     if await is_message_scrub_blocked_async(plain_text=event.get_plaintext(), raw_message=norm_raw):
         logger.info(
-            "message_scrub 已拦截 bot={} group={} user={} msg_id={} plain_preview={}",
+            "message_scrub blocked event=group_message self_id={} group_id={} user_id={} message_id={} preview={}",
             event.self_id,
             event.group_id,
             event.user_id,
