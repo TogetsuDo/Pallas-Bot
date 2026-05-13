@@ -121,7 +121,10 @@ def _plugin_env_section_from_module(
     """从 `*.config` 模块加载 `Config`（BaseModel），运行时通过 `get_plugin_config` 读当前值。"""
     try:
         mod = importlib.import_module(config_module)
-    except Exception:
+    except ModuleNotFoundError:
+        from nonebot import logger
+
+        logger.warning("WebUI 通用配置段跳过：未找到配置模块 {}", config_module)
         return None
     cfg_cls = getattr(mod, "Config", None)
     if cfg_cls is None or not isinstance(cfg_cls, type) or not issubclass(cfg_cls, BaseModel):
