@@ -12,6 +12,7 @@ from nonebot.adapters.onebot.v11 import (
     GroupIncreaseNoticeEvent,
     GroupMessageEvent,
     Message,
+    MessageEvent,
     MessageSegment,
     PokeNotifyEvent,
     PrivateMessageEvent,
@@ -30,11 +31,13 @@ from .config import Config
 from .voice import get_random_voice, get_voice_filepath
 
 __plugin_meta__ = PluginMetadata(
-    name="牛牛群欢迎",
+    name="牛牛欢迎",
     description="处理群变动信息以及支持自定义好友欢迎消息",
     usage="""
-设置好友欢迎 - 设置自定义好友欢迎消息（文本/图片/图文混合）
-清除好友欢迎 - 清除已设置的好友欢迎消息
+设置好友欢迎 - 设置自定义好友欢迎消息（文本/图片/图文混合，仅牛牛管理员私聊）
+清除好友欢迎 - 清除已设置的好友欢迎消息（仅牛牛管理员私聊）
+设置群欢迎 - 在当前群设置自定义入群欢迎（文本/图片/图文混合，需群管理员或群主）
+清除群欢迎 - 清除当前群的自定义入群欢迎（需群管理员或群主）
     """.strip(),
     type="application",
     homepage="https://github.com/PallasBot/Pallas-Bot",
@@ -47,7 +50,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_method": "on_notice",
                 "trigger_condition": "群成员增加通知",
                 "brief_des": "新成员入群时发送欢迎消息",
-                "detail_des": "牛牛作为群管理员时，新成员入群自动发送欢迎语；牛牛自己入群时也会自我介绍",
+                "detail_des": "新成员入群时发送欢迎",
             },
             {
                 "func": "好友欢迎",
@@ -69,6 +72,20 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_condition": "清除好友欢迎",
                 "brief_des": "清除已设置的好友欢迎消息",
                 "detail_des": "由牛牛管理员在私聊中执行",
+            },
+            {
+                "func": "设置群欢迎",
+                "trigger_method": "on_cmd",
+                "trigger_condition": "设置群欢迎",
+                "brief_des": "设置本群自定义入群欢迎",
+                "detail_des": "由群管理员或群主在群内执行，支持文本、图片或图文混合；新人入群时优先发送该内容",
+            },
+            {
+                "func": "清除群欢迎",
+                "trigger_method": "on_cmd",
+                "trigger_condition": "清除群欢迎",
+                "brief_des": "清除本群自定义入群欢迎",
+                "detail_des": "由群管理员或群主在群内执行",
             },
             {
                 "func": "被踢自动拉黑",
@@ -132,11 +149,57 @@ async def _download_image(url: str) -> tuple[bytes, str]:
 
 
 def _clear_welcome_files(bot_dir: Path) -> None:
-    """删除该 bot 目录下所有欢迎消息文件。"""
+    """删除该 bot 目录下所有好友欢迎消息文件。"""
     for name in ("friend_welcome.txt", "friend_welcome.jpg", "friend_welcome.png"):
         f = bot_dir / name
         if f.exists():
             f.unlink()
+
+
+async def user_is_group_admin_or_owner(bot_id: int, group_id: int, user_id: int) -> bool:
+    info = await get_bot(str(bot_id)).call_api(
+        "get_group_member_info",
+        user_id=user_id,
+        group_id=group_id,
+        no_cache=False,
+    )
+    return info.get("role") in ("admin", "owner")
+
+
+def _group_welcome_dir(bot_id: int, group_id: int) -> Path:
+    d = GREETING_DIR / str(bot_id) / str(group_id)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _clear_group_welcome_files(group_dir: Path) -> None:
+    for name in ("group_welcome.txt", "group_welcome.jpg", "group_welcome.png"):
+        f = group_dir / name
+        if f.exists():
+            f.unlink()
+
+
+async def get_custom_group_welcome_message(bot_id: int, group_id: int) -> Message | None:
+    """读取本群自定义入群欢迎，无内容时返回 None。"""
+    group_dir = GREETING_DIR / str(bot_id) / str(group_id)
+    if not group_dir.exists():
+        return None
+
+    msg = Message()
+
+    text_file = group_dir / "group_welcome.txt"
+    if text_file.exists():
+        content = text_file.read_text(encoding="utf-8").strip()
+        if content:
+            msg.append(MessageSegment.text(content))
+
+    for ext in (".jpg", ".png"):
+        img_file = group_dir / f"group_welcome{ext}"
+        if img_file.exists():
+            msg.append(MessageSegment.image(img_file.read_bytes()))
+            break
+
+    return msg or None
 
 
 async def get_custom_friend_welcome_message(bot_id: int) -> Message | None:
@@ -241,6 +304,94 @@ async def handle_clear_friend_welcome(bot: Bot, event: PrivateMessageEvent):
         await clear_friend_welcome.finish("未设置自定义好友欢迎消息")
 
 
+set_group_welcome = on_command(
+    "设置群欢迎",
+    permission=permission.GROUP,
+    priority=10,
+    block=True,
+)
+
+
+@set_group_welcome.handle()
+async def handle_set_group_welcome(bot: Bot, event: GroupMessageEvent, state: T_State):
+    if not await user_is_group_admin_or_owner(event.self_id, event.group_id, event.user_id):
+        await set_group_welcome.finish("只有群主或群管理员可以设置本群欢迎")
+    await set_group_welcome.send("请发送你想要设置的本群入群欢迎（可以是文本、图片或图文混合）：")
+    state["bot_id"] = event.self_id
+    state["group_id"] = event.group_id
+
+
+@set_group_welcome.got("message")
+async def handle_group_welcome_message(bot: Bot, event: MessageEvent, state: T_State):
+    if not isinstance(event, GroupMessageEvent):
+        await set_group_welcome.reject("请在群内发送欢迎消息内容：")
+    group_id: int = state["group_id"]
+    if event.group_id != group_id:
+        await set_group_welcome.reject("请在发起设置的同一个群内发送欢迎消息内容：")
+    if not await user_is_group_admin_or_owner(event.self_id, event.group_id, event.user_id):
+        await set_group_welcome.finish("只有群主或群管理员可以设置本群欢迎")
+
+    bot_id: int = state["bot_id"]
+    message = event.get_message()
+    images = [seg for seg in message if seg.type == "image"]
+    text_parts = [seg.data.get("text", "").strip() for seg in message if seg.type == "text"]
+    text_content = "\n".join(p for p in text_parts if p)
+
+    if not images and not text_content:
+        await set_group_welcome.reject("欢迎消息不能为空，请重新发送（可以是文本或图片）：")
+
+    d = _group_welcome_dir(bot_id, group_id)
+    _clear_group_welcome_files(d)
+
+    if text_content:
+        (d / "group_welcome.txt").write_text(text_content, encoding="utf-8")
+
+    if images:
+        image_url = images[0].data.get("url") or images[0].data.get("file", "")
+        if not image_url:
+            await set_group_welcome.reject("无法获取图片链接，请重新发送：")
+        try:
+            data, ext = await _download_image(image_url)
+            (d / f"group_welcome{ext}").write_bytes(data)
+        except Exception as e:
+            await set_group_welcome.reject(f"图片下载失败：{e}\n请重新发送：")
+
+    parts = []
+    if text_content:
+        parts.append("文本")
+    if images:
+        parts.append("图片")
+    label = "＋".join(parts)
+    await set_group_welcome.finish(f"本群入群欢迎（{label}）已设置成功！")
+
+
+clear_group_welcome = on_command(
+    "清除群欢迎",
+    permission=permission.GROUP,
+    priority=10,
+    block=True,
+)
+
+
+@clear_group_welcome.handle()
+async def handle_clear_group_welcome(bot: Bot, event: GroupMessageEvent):
+    if not await user_is_group_admin_or_owner(event.self_id, event.group_id, event.user_id):
+        await clear_group_welcome.finish("只有群主或群管理员可以清除本群欢迎")
+
+    d = GREETING_DIR / str(event.self_id) / str(event.group_id)
+    if not d.exists():
+        await clear_group_welcome.finish("未设置自定义本群入群欢迎")
+
+    before = list(d.glob("group_welcome*"))
+    _clear_group_welcome_files(d)
+    after = list(d.glob("group_welcome*"))
+
+    if len(before) > len(after):
+        await clear_group_welcome.finish("本群入群欢迎已清除！")
+    else:
+        await clear_group_welcome.finish("未设置自定义本群入群欢迎")
+
+
 async def message_equal(event: GroupMessageEvent) -> bool:
     raw_msg = event.raw_message
     if raw_msg not in target_msgs:
@@ -327,12 +478,16 @@ async def handle_notice(event: _NoticeEvent):
                 "我是来自米诺斯的祭司帕拉斯，会在罗德岛休息一段时间......"
                 "虽然这么说，我渴望以美酒和戏剧被招待，更渴望走向战场。"
             )
-        elif await is_bot_admin(event.self_id, event.group_id):
-            msg = MessageSegment.at(event.user_id) + MessageSegment.text(
-                "博士，欢迎加入这盛大的庆典！我是来自米诺斯的祭司帕拉斯......要来一杯美酒么？"
-            )
         else:
-            return
+            custom = await get_custom_group_welcome_message(event.self_id, event.group_id)
+            if custom:
+                msg = MessageSegment.at(event.user_id) + custom
+            elif await is_bot_admin(event.self_id, event.group_id):
+                msg = MessageSegment.at(event.user_id) + MessageSegment.text(
+                    "博士，欢迎加入这盛大的庆典！我是来自米诺斯的祭司帕拉斯......要来一杯美酒么？"
+                )
+            else:
+                return
         await all_notice.finish(msg)
 
     elif event.notice_type == "group_admin" and event.sub_type == "set" and event.user_id == event.self_id:
