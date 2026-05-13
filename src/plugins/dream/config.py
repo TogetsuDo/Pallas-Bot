@@ -28,8 +28,8 @@ class Config(BaseModel, extra="ignore"):
 
     # --- 发梦话节奏（仅「本群未醉酒」时）：每发完一轮后随机睡多久再发下一轮 ---
     # 单位：秒。会在 [最小, 最大] 之间均匀随机；上限必须 ≥ 下限（见下方校验）。
-    dream_worker_sleep_min_sec: float = Field(default=45.0, ge=5.0, le=1200.0)
-    dream_worker_sleep_max_sec: float = Field(default=165.0, ge=5.0, le=1200.0)
+    dream_worker_sleep_min_sec: float = Field(default=15.0, ge=5.0, le=1200.0)
+    dream_worker_sleep_max_sec: float = Field(default=135.0, ge=5.0, le=1200.0)
 
     # --- 历史梦能抽到多旧：只从最近 N 天内的 is_dream 里抽样；与手动删库脚本的「保留天数」同一口径 ---
     # 至少 7。调大 = 语料池更深；库表会变大，已不再默认按天自动删库。
