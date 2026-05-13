@@ -2,7 +2,7 @@ from datetime import datetime
 
 from nonebot import logger
 
-from src.common.config import BotConfig
+from src.common.config import get_bot_admins
 
 from .config import MailConfig, plugin_config
 from .utils import send_mail
@@ -15,10 +15,7 @@ async def get_bot_admin_emails(bot_id: int) -> list[str]:
     emails: list[str] = []
 
     try:
-        bot_config = BotConfig(bot_id=bot_id)
-        admins = await bot_config._find("admins")
-
-        # 为每个admin生成QQ邮箱
+        admins = await get_bot_admins(bot_id)
         if admins:
             emails.extend(f"{admin_id}@qq.com" for admin_id in admins)
     except Exception as e:

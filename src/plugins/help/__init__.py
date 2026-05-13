@@ -4,7 +4,7 @@ from nonebot.permission import SUPERUSER, Permission
 from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State
 
-from src.common.config import BotConfig, GroupConfig
+from src.common.config import BotConfig, GroupConfig, user_is_bot_admin
 
 from .config import Config
 from .event_preprocessor import IGNORED_PLUGINS
@@ -73,7 +73,7 @@ HELP_COOLDOWN_KEY = "help"
 
 
 async def is_config_admin(event: GroupMessageEvent) -> bool:
-    return await BotConfig(event.self_id).is_admin_of_bot(event.user_id)
+    return await user_is_bot_admin(event.self_id, event.user_id)
 
 
 IsAdmin = permission.GROUP_OWNER | permission.GROUP_ADMIN | Permission(is_config_admin)

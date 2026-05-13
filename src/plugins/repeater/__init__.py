@@ -14,7 +14,7 @@ from nonebot.rule import Rule, keyword, to_me
 from nonebot.typing import T_State
 from nonebot_plugin_apscheduler import scheduler
 
-from src.common.config import BotConfig
+from src.common.config import BotConfig, user_is_bot_admin
 from src.common.message_scrub import is_message_scrub_blocked_async
 from src.common.message_scrub.log_preview import scrub_intercept_log_preview
 from src.common.utils.array2cqcode import try_convert_to_cqcode
@@ -277,7 +277,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
 
 async def is_config_admin(event: GroupMessageEvent) -> bool:
-    return await BotConfig(event.self_id).is_admin_of_bot(event.user_id)
+    return await user_is_bot_admin(event.self_id, event.user_id)
 
 
 IsAdmin = permission.GROUP_OWNER | permission.GROUP_ADMIN | SUPERUSER | Permission(is_config_admin)

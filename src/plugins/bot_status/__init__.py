@@ -13,7 +13,7 @@ from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent, No
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 
-from src.common.config import BotConfig
+from src.common.config import user_is_bot_admin
 
 from .bot_monitor import (
     get_bot_status_info,
@@ -67,7 +67,7 @@ __plugin_meta__ = PluginMetadata(
 
 async def _is_bot_admin(bot: Bot, event: MessageEvent) -> bool:
     try:
-        return await BotConfig(int(bot.self_id)).is_admin_of_bot(int(event.get_user_id()))
+        return await user_is_bot_admin(int(event.self_id), int(event.get_user_id()))
     except Exception:
         return False
 

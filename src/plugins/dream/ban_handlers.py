@@ -10,7 +10,7 @@ from nonebot.permission import SUPERUSER, Permission
 from nonebot.rule import Rule, keyword, to_me
 from nonebot.typing import T_State  # noqa: TC002
 
-from src.common.config import BotConfig
+from src.common.config import user_is_bot_admin
 from src.common.utils.array2cqcode import try_convert_to_cqcode
 
 from .ban_ack_state import DREAM_BAN_ACK_SENT_STATE_KEY
@@ -20,7 +20,7 @@ _BAN_ACK_TEXT = "这对角可能会不小心撞倒些家具，我会尽量小心
 
 
 async def is_config_admin_dream(event: GroupMessageEvent) -> bool:
-    return await BotConfig(event.self_id).is_admin_of_bot(event.user_id)
+    return await user_is_bot_admin(event.self_id, event.user_id)
 
 
 IsAdminDream = permission.GROUP_OWNER | permission.GROUP_ADMIN | SUPERUSER | Permission(is_config_admin_dream)

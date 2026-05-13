@@ -103,8 +103,7 @@ class BotConfig(Config):
         """
         是否是管理员
         """
-        admins = await self._find("admins")
-        return user_id in admins if admins else False
+        return await user_is_bot_admin(self.bot_id, user_id)
 
     async def is_cooldown(self, action_type: str) -> bool:
         """
@@ -241,6 +240,23 @@ class BotConfig(Config):
             user_ids = {}
         user_ids[self.group_id] = user_id
         await self._update("taken_name", user_ids)
+
+
+async def get_bot_admins(bot_id: int) -> list[int]:
+    """
+    返回 BotConfig 持久化字段 admins 中的管理员 QQ 列表；无配置或为空时返回 []。
+    """
+    raw = await BotConfig(bot_id)._find("admins")
+    if not raw:
+        return []
+    return list(raw)
+
+
+async def user_is_bot_admin(bot_id: int, user_id: int) -> bool:
+    """
+    根据 BotConfig 持久化字段 admins 判断 user_id 是否为该 bot 账号的管理员。
+    """
+    return user_id in await get_bot_admins(bot_id)
 
 
 class GroupConfig(Config):
