@@ -2,7 +2,7 @@
 
 > 导航：[`README`](../README.md) · [`标准部署`](Deployment.md) · [`3.0 迁移`](Migration-v3.md) · [`FAQ`](FAQ.md)
 
-如果你不想自己配置环境，可以使用 `Docker Compose` 一键部署已构建好的镜像。拉取镜像请优先使用与你的版本对应的 **Release** 标签。在 **`.env`** 里选择 **`DB_BACKEND=mongo`** 或 **`DB_BACKEND=postgres`** 并填写对应连接信息即可。你需要安装 `Docker` 与 `Docker Compose`（较新版本的 `Docker` 已集成 `Compose` 插件），镜像支持 `amd64` 与 `arm64`。
+如果你不想自己配置环境，可以使用 `Docker Compose` 一键部署已构建好的镜像。拉取镜像请优先使用与你的版本对应的 **Release** 标签。在 **`.env`** 里选择 **`DB_BACKEND=mongodb`** 或 **`DB_BACKEND=postgresql`** 并填写对应连接信息即可。你需要安装 `Docker` 与 `Docker Compose`（较新版本的 `Docker` 已集成 `Compose` 插件），镜像支持 `amd64` 与 `arm64`。
 
 ## 准备工作
 
@@ -46,17 +46,17 @@
 
     说明：
 
-    - **`./pallas-bot/.env` 必须是宿主机上的一个「文件」**（从仓库根目录复制 [`.env`](../.env) 后按注释填写）。若该路径不存在就执行 `compose up`，在 Windows 上有时会被自动建成**同名文件夹**，再启动就会报 **`mounting ... .env ... not a directory` / `directory onto file`**：请删除错误的 `.env` 目录，改放真正的 `.env` 文件后再启动。
+    - **`./pallas-bot/.env` 必须是宿主机上的一个「文件」**（从仓库根目录复制 [`.env`](../.env) 后至少填写监听与数据库连接；更多项可在控制台「插件」「通用配置」中编辑）。若该路径不存在就执行 `compose up`，在 Windows 上有时会被自动建成**同名文件夹**，再启动就会报 **`mounting ... .env ... not a directory` / `directory onto file`**：请删除错误的 `.env` 目录，改放真正的 `.env` 文件后再启动。
     - **`resource/voices`** 单独挂载：持久化语音文件。**不要**把宿主机空目录挂到 **`/app/resource` 根目录**，否则会盖住镜像内的 **`resource/styles/default`**（`help` 插件），出现「样式路径不存在」告警。
     - **`pallas-bot/data`** 映射到容器内 **`/app/data`**，用于持久化 **协议端管理**（`pallas_protocol`）的实例与 `runtime_profile.json` 等；不映射则容器删除后配置会丢。
     - **`postgres` 服务**默认带 **`profiles: ["postgres"]`**，只有加 `--profile postgres` 才会启动；默认栈里 **只有 MongoDB** 作为数据库容器。
 
-2. 复制 [`.env`](../.env) 到映射路径（如 `./pallas-bot/.env`），按注释填写。控制台与协议端管理页使用浏览器登录（口令哈希持久化在 `data/pallas_console/`）。
+2. 复制 [`.env`](../.env) 到映射路径（如 `./pallas-bot/.env`），填写监听与数据库连接等必要项。控制台与协议端管理页使用浏览器登录（口令哈希持久化在 `data/pallas_console/`）；其余配置可在控制台内调整。
 
 3. **数据后端二选一**
 
-    - **MongoDB（默认）**：直接 `docker compose up -d`。`.env` 中 `DB_BACKEND=mongo`（或默认）。compose 已为 `pallasbot` 注入 **`MONGO_HOST=mongodb`**、**`MONGO_PORT=27017`**。若你自建 Mongo 或改服务名，请同步改 compose 或 `.env`。
-    - **PostgreSQL**：在 **`pallas-bot/.env`** 中设置 `DB_BACKEND=postgres`，并填写 **`PG_USER`** / **`PG_PASSWORD`** / **`PG_DB`**。compose 已为 `pallasbot` 注入 **`PG_HOST=postgres`**、**`PG_PORT=5432`**，无需在 `.env` 里再写 `127.0.0.1`。启动内置数据库时请执行 **`docker compose --env-file ./pallas-bot/.env --profile postgres up -d`**，以便 compose 把 **`PG_USER`/`PG_PASSWORD`/`PG_DB`** 插值写入 `postgres` 容器的 **`POSTGRES_*`**。若使用自建 Postgres，可不加 `--profile postgres`，删掉 compose 里 **`PG_HOST`/`PG_PORT`** 覆盖并在 `.env` 写明真实地址，并从 `depends_on` 中视情况移除对内置 `postgres` 的等待（见仓库 `docker-compose.yml` 注释）。
+    - **MongoDB（默认）**：直接 `docker compose up -d`。`.env` 中 `DB_BACKEND=mongodb`（或默认）。compose 已为 `pallasbot` 注入 **`MONGO_HOST=mongodb`**、**`MONGO_PORT=27017`**。若你自建 Mongo 或改服务名，请同步改 compose 或 `.env`。
+    - **PostgreSQL**：在 **`pallas-bot/.env`** 中设置 `DB_BACKEND=postgresql`，并填写 **`PG_USER`** / **`PG_PASSWORD`** / **`PG_DB`**。compose 已为 `pallasbot` 注入 **`PG_HOST=postgres`**、**`PG_PORT=5432`**，无需在 `.env` 里再写 `127.0.0.1`。启动内置数据库时请执行 **`docker compose --env-file ./pallas-bot/.env --profile postgres up -d`**，以便 compose 把 **`PG_USER`/`PG_PASSWORD`/`PG_DB`** 插值写入 `postgres` 容器的 **`POSTGRES_*`**。若使用自建 Postgres，可不加 `--profile postgres`，删掉 compose 里 **`PG_HOST`/`PG_PORT`** 覆盖并在 `.env` 写明真实地址，并从 `depends_on` 中视情况移除对内置 `postgres` 的等待（见仓库 `docker-compose.yml` 注释）。
 
     从历史数据迁移请参考 [`3.0 迁移指南`](Migration-v3.md)。
 

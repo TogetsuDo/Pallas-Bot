@@ -203,7 +203,7 @@ uv run nb run
 <a id="配置要点"></a>
 ## ⚙️ 配置要点
 
-以下为常用项，**完整键名与默认值以仓库根目录 `.env` 注释为准**。
+以下为启动前最常见的几项；**更多键名与默认值以各插件 Pydantic 配置为准**，推荐在 Web 控制台 **「插件」「通用配置」** 中修改（写入根目录 `.env`），需要离线编辑时可查 [插件文档索引](docs/plugins/README.md)。
 
 
 | 配置项 | 默认/示例 | 说明 | 必填 |
@@ -211,7 +211,7 @@ uv run nb run
 | `HOST` / `PORT` | `0.0.0.0` / `8088` | Bot HTTP 监听；控制台与协议管理页同源 | 是 |
 | `SUPERUSERS` | QQ 号列表 | 超管 QQ | 是 |
 | `DB_BACKEND` | `mongodb` / `postgresql` | 数据后端 | 是 |
-| `MONGO_*` / `PG_*` | 见 `.env` 注释 | 数据库地址与账号（与 `DB_BACKEND` 对应） | 是 |
+| `MONGO_*` / `PG_*` | 见根目录 `.env` 模板 | 数据库地址与账号（与 `DB_BACKEND` 对应） | 是 |
 | `ACCESS_TOKEN` | 空 | 驱动层 HTTP 鉴权；公网暴露时建议填写 | 否 |
 | `PALLAS_PROTOCOL_ENABLED` / `PALLAS_PROTOCOL_WEBUI_ENABLED` | 默认开启 | 协议端插件与管理页 | 否 |
 
