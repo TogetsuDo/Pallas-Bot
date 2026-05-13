@@ -46,6 +46,34 @@ _MSG_TRACKING_INIT = False
 # 与 _count_protocol_api_calls 口径一致的成功调用时间序列（进程内，重启丢失）
 _API_HIST_BUCKET_SEC = 300
 _API_HIST_MAX_BUCKETS = 288  # 5min * 288 ≈ 24h
+
+
+def _hist_bucket_start_local(ts: int, bucket_sec: int) -> int:
+    """将 Unix 时刻向下取整到 *bucket_sec* 对齐的「本地 wall-clock」桶起点。
+
+    使用进程所在主机的本地时区、以当地自然日 00:00 起算的秒偏移对齐（非 Unix 纪元对齐）。
+    """
+    if bucket_sec <= 0:
+        return int(ts)
+    lt = time.localtime(ts)
+    day0 = int(
+        time.mktime((
+            lt.tm_year,
+            lt.tm_mon,
+            lt.tm_mday,
+            0,
+            0,
+            0,
+            lt.tm_wday,
+            lt.tm_yday,
+            lt.tm_isdst,
+        ))
+    )
+    offset = int(ts) - day0
+    floored = offset - (offset % bucket_sec)
+    return day0 + floored
+
+
 # self_id -> { day_key, by_plugin: { plugin: { runs, errors, day_runs, day_errors } } }
 _PLUGIN_RUN_STATS: dict[str, dict[str, Any]] = {}
 _PLUGIN_RUN_TRACKING_INIT = False
@@ -898,10 +926,10 @@ _HIST_PLUGIN_SERIES_MAX = 20
 
 
 def _api_call_history_bump(row: dict[str, Any], api: str) -> None:
-    """按时间桶记录各接口成功调用次数（与 day_api_total 口径一致）。"""
+    """按时间桶记录各接口成功调用次数（与 day_api_total 口径一致；桶按主机本地 wall-clock 对齐）。"""
     api_key = str(api).strip() or "_"
     now = int(time.time())
-    bucket = now - (now % _API_HIST_BUCKET_SEC)
+    bucket = _hist_bucket_start_local(now, _API_HIST_BUCKET_SEC)
     cutoff = bucket - (_API_HIST_MAX_BUCKETS - 1) * _API_HIST_BUCKET_SEC
     hist = row.setdefault("api_call_buckets", [])
     if not isinstance(hist, list):
@@ -938,7 +966,7 @@ def _api_call_history_bump(row: dict[str, Any], api: str) -> None:
 
 
 def _msg_traffic_history_bump(row: dict[str, Any], *, recv_delta: int = 0, sent_delta: int = 0) -> None:
-    """按与协议 API 相同的时间桶记录消息收/发条数（进程内，重启丢失）。"""
+    """按与协议 API 相同的时间桶记录消息收/发条数（进程内，重启丢失；桶按主机本地 wall-clock 对齐）。"""
     try:
         rd = int(recv_delta)
         sd = int(sent_delta)
@@ -947,7 +975,7 @@ def _msg_traffic_history_bump(row: dict[str, Any], *, recv_delta: int = 0, sent_
     if rd <= 0 and sd <= 0:
         return
     now = int(time.time())
-    bucket = now - (now % _API_HIST_BUCKET_SEC)
+    bucket = _hist_bucket_start_local(now, _API_HIST_BUCKET_SEC)
     cutoff = bucket - (_API_HIST_MAX_BUCKETS - 1) * _API_HIST_BUCKET_SEC
     hist = row.setdefault("msg_traffic_buckets", [])
     if not isinstance(hist, list):
@@ -1313,7 +1341,7 @@ def _matcher_hist_bump(sid: str, plugin: str, had_error: bool) -> None:
         rec["matcher_hist"] = []
         hist = rec["matcher_hist"]
     now = int(time.time())
-    bucket = now - (now % _API_HIST_BUCKET_SEC)
+    bucket = _hist_bucket_start_local(now, _API_HIST_BUCKET_SEC)
     cutoff = bucket - (_API_HIST_MAX_BUCKETS - 1) * _API_HIST_BUCKET_SEC
     i = 0
     while i < len(hist):
