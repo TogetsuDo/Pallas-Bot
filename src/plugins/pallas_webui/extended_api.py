@@ -1278,8 +1278,8 @@ def _matcher_hist_series_public(rec: dict[str, Any], *, limit: int = _HIST_PLUGI
     if isinstance(by_plugin, dict) and by_plugin:
         ranked = sorted(
             by_plugin.keys(),
-            key=lambda k: -int(
-                (by_plugin.get(k) or {}).get("day_runs", 0) if isinstance(by_plugin.get(k), dict) else 0
+            key=lambda k: (
+                -int((by_plugin.get(k) or {}).get("day_runs", 0) if isinstance(by_plugin.get(k), dict) else 0)
             ),
         )
         ranked = [str(k) for k in ranked if str(k).strip()][:limit]
