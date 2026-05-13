@@ -25,6 +25,7 @@ from nonebot.typing import T_State
 from src.common.config import BotConfig, GroupConfig, UserConfig, user_is_bot_admin
 from src.common.paths import plugin_data_dir
 from src.common.utils import HTTPXClient, is_bot_admin
+from src.plugins.blacklist import invalidate_user_ban_gate_cache
 from src.plugins.help.plugin_manager import is_plugin_disabled
 
 from .config import Config
@@ -511,3 +512,4 @@ async def handle_notice(event: _NoticeEvent):
         if plugin_config.enable_kick_ban:
             await GroupConfig(event.group_id).ban()
             await UserConfig(event.operator_id).ban()
+            await invalidate_user_ban_gate_cache(event.operator_id)
