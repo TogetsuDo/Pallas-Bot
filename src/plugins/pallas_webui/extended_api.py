@@ -641,8 +641,88 @@ async def _call_get_doubt_friends(bot: object) -> list[dict[str, Any]]:
         flag_str = str(flag).strip()
         if not flag_str:
             continue
-        out.append({"user_id": uid, "flag": flag_str})
+        row: dict[str, Any] = {"user_id": uid, "flag": flag_str}
+        nick_raw = x.get("nickname") or x.get("nick") or x.get("name")
+        if isinstance(nick_raw, str) and nick_raw.strip():
+            row["nickname"] = nick_raw.strip()
+        out.append(row)
     return out
+
+
+async def _call_get_stranger_info_raw(bot: object, user_id: int) -> dict[str, Any] | None:
+    try:
+        raw = await bot.call_api("get_stranger_info", user_id=user_id)  # type: ignore[union-attr]
+    except Exception:  # noqa: BLE001
+        return None
+    return raw if isinstance(raw, dict) else None
+
+
+def _nickname_from_stranger_info(raw: dict[str, Any]) -> str:
+    nick = raw.get("nickname")
+    if isinstance(nick, str) and nick.strip():
+        return nick.strip()
+    data = raw.get("data")
+    if isinstance(data, dict):
+        nick2 = data.get("nickname")
+        if isinstance(nick2, str) and nick2.strip():
+            return nick2.strip()
+    return ""
+
+
+async def _enrich_friend_request_rows_nicknames(
+    bot: object,
+    pending: list[dict[str, Any]],
+    doubt: list[dict[str, Any]],
+) -> None:
+    if not _is_onebot_v11_bot(bot):
+        return
+    need: set[int] = set()
+    for p in pending:
+        if str(p.get("nickname", "")).strip():
+            continue
+        uid = p.get("user_id")
+        if uid is None:
+            continue
+        try:
+            need.add(int(uid))
+        except (TypeError, ValueError):
+            pass
+    for d in doubt:
+        if str(d.get("nickname", "")).strip():
+            continue
+        uid = d.get("user_id")
+        if uid is None:
+            continue
+        try:
+            need.add(int(uid))
+        except (TypeError, ValueError):
+            pass
+    nick_map: dict[int, str] = {}
+    for uid in sorted(need):
+        raw = await _call_get_stranger_info_raw(bot, uid)
+        if raw is None:
+            continue
+        nick = _nickname_from_stranger_info(raw)
+        if nick:
+            nick_map[uid] = nick
+    for p in pending:
+        try:
+            uid = int(p["user_id"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if str(p.get("nickname", "")).strip():
+            continue
+        if uid in nick_map:
+            p["nickname"] = nick_map[uid]
+    for d in doubt:
+        try:
+            uid = int(d["user_id"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if str(d.get("nickname", "")).strip():
+            continue
+        if uid in nick_map:
+            d["nickname"] = nick_map[uid]
 
 
 def _normalize_message_item(item: object) -> dict[str, Any] | None:
@@ -789,7 +869,7 @@ def _msg_stats_get_mut(sid: str) -> dict[str, Any]:
             "day_key": today,
             "day_api_total": 0,
             "day_api_counts": {},
-            "api_hist": [],
+            "api_call_buckets": [],
         },
     )
     if str(rec.get("day_key", "")) != today:
@@ -805,20 +885,25 @@ def _msg_stats_get_mut(sid: str) -> dict[str, Any]:
     rec.setdefault("day_api_total", 0)
     if not isinstance(rec.get("day_api_counts"), dict):
         rec["day_api_counts"] = {}
-    if not isinstance(rec.get("api_hist"), list):
-        rec["api_hist"] = []
+    if not isinstance(rec.get("api_call_buckets"), list):
+        rec["api_call_buckets"] = []
     return rec
 
 
-def _api_call_history_bump(row: dict[str, Any]) -> None:
-    """按固定秒宽时间桶累加，供 WebUI 绘制近期调用曲线。"""
+_HIST_API_SERIES_MAX = 24
+_HIST_PLUGIN_SERIES_MAX = 20
+
+
+def _api_call_history_bump(row: dict[str, Any], api: str) -> None:
+    """按时间桶记录各接口成功调用次数（与 day_api_total 口径一致）。"""
+    api_key = str(api).strip() or "_"
     now = int(time.time())
     bucket = now - (now % _API_HIST_BUCKET_SEC)
     cutoff = bucket - (_API_HIST_MAX_BUCKETS - 1) * _API_HIST_BUCKET_SEC
-    hist = row.setdefault("api_hist", [])
+    hist = row.setdefault("api_call_buckets", [])
     if not isinstance(hist, list):
-        row["api_hist"] = []
-        hist = row["api_hist"]
+        row["api_call_buckets"] = []
+        hist = row["api_call_buckets"]
     i = 0
     while i < len(hist):
         h = hist[i]
@@ -840,12 +925,16 @@ def _api_call_history_bump(row: dict[str, Any]) -> None:
         except (TypeError, ValueError):
             last_at = 0
         if last_at == bucket:
-            hist[-1]["total"] = int(hist[-1].get("total", 0)) + 1
+            apis = hist[-1].setdefault("apis", {})
+            if not isinstance(apis, dict):
+                hist[-1]["apis"] = {}
+                apis = hist[-1]["apis"]
+            apis[api_key] = int(apis.get(api_key, 0)) + 1
             return
-    hist.append({"at": bucket, "total": 1})
+    hist.append({"at": bucket, "apis": {api_key: 1}})
 
 
-def _api_call_history_public(row: dict[str, Any]) -> list[dict[str, Any]]:
+def _legacy_api_hist_aggregate(row: dict[str, Any]) -> list[dict[str, Any]]:
     raw = row.get("api_hist")
     if not isinstance(raw, list):
         return []
@@ -859,6 +948,88 @@ def _api_call_history_public(row: dict[str, Any]) -> list[dict[str, Any]]:
             continue
     out.sort(key=lambda x: int(x["at"]))
     return out
+
+
+def _api_call_history_aggregate(row: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = row.get("api_call_buckets")
+    if not isinstance(raw, list) or not raw:
+        return _legacy_api_hist_aggregate(row)
+    out: list[dict[str, Any]] = []
+    for it in raw:
+        if not isinstance(it, dict) or "at" not in it:
+            continue
+        apis = it.get("apis")
+        tot = 0
+        if isinstance(apis, dict):
+            for v in apis.values():
+                try:
+                    tot += int(v)
+                except (TypeError, ValueError):
+                    pass
+        try:
+            out.append({"at": int(it["at"]), "total": tot})
+        except (TypeError, ValueError):
+            continue
+    out.sort(key=lambda x: int(x["at"]))
+    return out
+
+
+def _ranked_api_names_for_series(row: dict[str, Any], *, limit: int) -> list[str]:
+    counts = row.get("day_api_counts")
+    ranked: list[str] = []
+    if isinstance(counts, dict) and counts:
+        ranked = sorted(counts.keys(), key=lambda k: -int(counts.get(k, 0) or 0))
+        ranked = [str(k) for k in ranked if str(k).strip()][:limit]
+        return ranked
+    acc: dict[str, int] = {}
+    raw = row.get("api_call_buckets")
+    if isinstance(raw, list):
+        for it in raw:
+            apis = it.get("apis") if isinstance(it, dict) else None
+            if not isinstance(apis, dict):
+                continue
+            for k, v in apis.items():
+                try:
+                    acc[str(k)] = acc.get(str(k), 0) + int(v)
+                except (TypeError, ValueError):
+                    continue
+    ranked = sorted(acc.keys(), key=lambda k: -acc[k])[:limit]
+    return ranked
+
+
+def _api_call_history_by_api_series(row: dict[str, Any], *, limit: int = _HIST_API_SERIES_MAX) -> list[dict[str, Any]]:
+    raw = row.get("api_call_buckets")
+    if not isinstance(raw, list) or not raw:
+        return []
+    names = _ranked_api_names_for_series(row, limit=limit)
+    if not names:
+        return []
+    buckets = sorted(
+        [x for x in raw if isinstance(x, dict) and "at" in x],
+        key=lambda x: int(x.get("at") or 0),
+    )
+    out: list[dict[str, Any]] = []
+    for an in names:
+        points: list[dict[str, Any]] = []
+        for it in buckets:
+            apis = it.get("apis")
+            n = 0
+            if isinstance(apis, dict):
+                try:
+                    n = int(apis.get(an, 0))
+                except (TypeError, ValueError):
+                    n = 0
+            try:
+                points.append({"at": int(it["at"]), "total": n})
+            except (TypeError, ValueError):
+                continue
+        out.append({"api": str(an), "points": points})
+    return out
+
+
+def _api_call_history_public(row: dict[str, Any]) -> list[dict[str, Any]]:
+    """兼容旧字段名：聚合曲线。"""
+    return _api_call_history_aggregate(row)
 
 
 def _top_api_call_today(counts: object) -> tuple[str, int]:
@@ -938,7 +1109,7 @@ def _init_message_tracking() -> None:
             row["day_api_counts"] = counts
         row["day_api_total"] = int(row.get("day_api_total", 0)) + 1
         counts[str(api)] = int(counts.get(str(api), 0)) + 1
-        _api_call_history_bump(row)
+        _api_call_history_bump(row, str(api))
 
     @event_preprocessor
     async def _count_received(bot: BaseBot, event: Event) -> None:
@@ -1001,6 +1172,7 @@ async def _message_stats_overview(*, self_id: str | None) -> dict[str, Any]:
             "today_top_api": top_name,
             "today_top_api_count": top_cnt,
             "api_calls_history": _api_call_history_public(mem),
+            "api_calls_history_by_api": _api_call_history_by_api_series(mem),
         })
     return {
         "total_sent": total_sent,
@@ -1025,7 +1197,7 @@ def _plugin_short_name_from_matcher(matcher: object) -> str:
 
 def _plugin_run_bot_bucket(sid: str) -> dict[str, Any]:
     today = time.strftime("%Y-%m-%d", time.localtime())
-    rec = _PLUGIN_RUN_STATS.setdefault(sid, {"day_key": today, "by_plugin": {}})
+    rec = _PLUGIN_RUN_STATS.setdefault(sid, {"day_key": today, "by_plugin": {}, "matcher_hist": []})
     by_plugin = rec.setdefault("by_plugin", {})
     if str(rec.get("day_key", "")) != today:
         rec["day_key"] = today
@@ -1033,6 +1205,8 @@ def _plugin_run_bot_bucket(sid: str) -> dict[str, Any]:
             if isinstance(prow, dict):
                 prow["day_runs"] = 0
                 prow["day_errors"] = 0
+    if not isinstance(rec.get("matcher_hist"), list):
+        rec["matcher_hist"] = []
     return rec
 
 
@@ -1045,6 +1219,114 @@ def _plugin_run_plugin_row(sid: str, plugin: str) -> dict[str, Any]:
     row.setdefault("day_runs", 0)
     row.setdefault("day_errors", 0)
     return row
+
+
+def _matcher_hist_bump(sid: str, plugin: str, had_error: bool) -> None:
+    """Matcher 执行按时间桶、按插件名记录（与 plugin-run-stats 插件维度一致）。"""
+    pname = str(plugin).strip() or "_"
+    rec = _plugin_run_bot_bucket(sid)
+    hist = rec.setdefault("matcher_hist", [])
+    if not isinstance(hist, list):
+        rec["matcher_hist"] = []
+        hist = rec["matcher_hist"]
+    now = int(time.time())
+    bucket = now - (now % _API_HIST_BUCKET_SEC)
+    cutoff = bucket - (_API_HIST_MAX_BUCKETS - 1) * _API_HIST_BUCKET_SEC
+    i = 0
+    while i < len(hist):
+        h = hist[i]
+        if not isinstance(h, dict):
+            hist.pop(i)
+            continue
+        try:
+            at = int(h.get("at") or 0)
+        except (TypeError, ValueError):
+            hist.pop(i)
+            continue
+        if at < cutoff:
+            hist.pop(i)
+        else:
+            i += 1
+    if hist and isinstance(hist[-1], dict):
+        try:
+            last_at = int(hist[-1].get("at") or 0)
+        except (TypeError, ValueError):
+            last_at = 0
+        if last_at == bucket:
+            plugs = hist[-1].setdefault("plugins", {})
+            if not isinstance(plugs, dict):
+                hist[-1]["plugins"] = {}
+                plugs = hist[-1]["plugins"]
+            plugs[pname] = int(plugs.get(pname, 0)) + 1
+            if had_error:
+                errs = hist[-1].setdefault("plugin_errors", {})
+                if not isinstance(errs, dict):
+                    hist[-1]["plugin_errors"] = {}
+                    errs = hist[-1]["plugin_errors"]
+                errs[pname] = int(errs.get(pname, 0)) + 1
+            return
+    entry: dict[str, Any] = {"at": bucket, "plugins": {pname: 1}}
+    if had_error:
+        entry["plugin_errors"] = {pname: 1}
+    hist.append(entry)
+
+
+def _matcher_hist_series_public(rec: dict[str, Any], *, limit: int = _HIST_PLUGIN_SERIES_MAX) -> dict[str, Any]:
+    raw = rec.get("matcher_hist")
+    by_plugin = rec.get("by_plugin")
+    ranked: list[str] = []
+    if isinstance(by_plugin, dict) and by_plugin:
+        ranked = sorted(
+            by_plugin.keys(),
+            key=lambda k: -int(
+                (by_plugin.get(k) or {}).get("day_runs", 0) if isinstance(by_plugin.get(k), dict) else 0
+            ),
+        )
+        ranked = [str(k) for k in ranked if str(k).strip()][:limit]
+    if not ranked and isinstance(raw, list):
+        acc: set[str] = set()
+        for it in raw:
+            plugs = it.get("plugins") if isinstance(it, dict) else None
+            if isinstance(plugs, dict):
+                acc.update(str(k) for k in plugs if str(k).strip())
+        ranked = sorted(acc)[:limit]
+    if not isinstance(raw, list) or not raw or not ranked:
+        return {"matcher_runs_by_plugin": [], "matcher_errors_by_plugin": []}
+    buckets = sorted(
+        [x for x in raw if isinstance(x, dict) and "at" in x],
+        key=lambda x: int(x.get("at") or 0),
+    )
+    runs_out: list[dict[str, Any]] = []
+    err_out: list[dict[str, Any]] = []
+    for pname in ranked:
+        r_pts: list[dict[str, Any]] = []
+        e_pts: list[dict[str, Any]] = []
+        for it in buckets:
+            try:
+                at = int(it["at"])
+            except (TypeError, ValueError, KeyError):
+                continue
+            plugs = it.get("plugins")
+            r = 0
+            if isinstance(plugs, dict):
+                try:
+                    r = int(plugs.get(pname, 0))
+                except (TypeError, ValueError):
+                    r = 0
+            errs = it.get("plugin_errors")
+            e = 0
+            if isinstance(errs, dict):
+                try:
+                    e = int(errs.get(pname, 0))
+                except (TypeError, ValueError):
+                    e = 0
+            r_pts.append({"at": at, "total": r})
+            e_pts.append({"at": at, "total": e})
+        if sum(int(x.get("total", 0) or 0) for x in r_pts):
+            runs_out.append({"plugin": pname, "points": r_pts})
+        if sum(int(x.get("total", 0) or 0) for x in e_pts):
+            err_out.append({"plugin": pname, "points": e_pts})
+    return {"matcher_runs_by_plugin": runs_out, "matcher_errors_by_plugin": err_out}
 
 
 def _init_plugin_run_tracking() -> None:
@@ -1061,7 +1343,7 @@ def _init_plugin_run_tracking() -> None:
         matcher: Matcher,
         exception: Exception | None,
         bot: BaseBot,
-        event: Event,
+        _event: Event,
     ) -> None:
         plugin = _plugin_short_name_from_matcher(matcher).strip()
         if not plugin or plugin.lower() in _EXCLUDED_PLUGIN_RUN_NAMES:
@@ -1076,6 +1358,7 @@ def _init_plugin_run_tracking() -> None:
             if exception is not None:
                 row["errors"] = int(row["errors"]) + 1
                 row["day_errors"] = int(row["day_errors"]) + 1
+            _matcher_hist_bump(sid, plugin, exception is not None)
         except Exception:  # noqa: BLE001
             pass
 
@@ -1118,6 +1401,7 @@ def _plugin_run_stats_overview(*, self_id: str | None) -> dict[str, Any]:
             brt += rt
             bet += et
         plugins_list.sort(key=lambda x: (-int(x["runs_today"]), -int(x["runs"]), str(x["name"])))
+        hist_pack = _matcher_hist_series_public(bucket if isinstance(bucket, dict) else {})
         rows_out.append({
             "self_id": sid,
             "connection_key": str(key),
@@ -1126,6 +1410,8 @@ def _plugin_run_stats_overview(*, self_id: str | None) -> dict[str, Any]:
             "runs_today": brt,
             "errors_today": bet,
             "plugins": plugins_list,
+            "matcher_runs_by_plugin": hist_pack["matcher_runs_by_plugin"],
+            "matcher_errors_by_plugin": hist_pack["matcher_errors_by_plugin"],
         })
         total_runs += br
         total_errors += be
@@ -1136,6 +1422,8 @@ def _plugin_run_stats_overview(*, self_id: str | None) -> dict[str, Any]:
         "total_errors": total_errors,
         "total_runs_today": total_runs_today,
         "total_errors_today": total_errors_today,
+        "matcher_calls_history_bucket_sec": _API_HIST_BUCKET_SEC,
+        "matcher_calls_history_max_buckets": _API_HIST_MAX_BUCKETS,
         "bots": rows_out,
     }
 
@@ -1259,6 +1547,8 @@ async def _friend_requests_overview(
             adapter = _bot_adapter_label(bot)
             if include_doubt and _is_onebot_v11_bot(bot):
                 doubt = await _call_get_doubt_friends(bot)
+            if _is_onebot_v11_bot(bot):
+                await _enrich_friend_request_rows_nicknames(bot, pending, doubt)
         rows.append({
             "self_id": sid,
             "connection_key": conn,
