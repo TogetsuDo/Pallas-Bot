@@ -30,7 +30,7 @@ __plugin_meta__ = PluginMetadata(
     usage="""
 指令：
 - 牛牛做梦 — 进入做梦（持续约 5～15 分钟；未醉酒时推送梦话间隔约 15～135）
-- 牛牛醒梦 / 牛牛别做梦 — 结束本群做梦
+- 牛牛醒梦 / 牛牛别做梦 / 牛牛醒一醒（醒酒指令）— 结束本群做梦
 
 做梦中采集群消息入梦库，并向同 Bot 其它正在做梦的群漂流（图/文有上限）。
 
@@ -57,7 +57,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "牛牛醒梦",
                 "trigger_method": "on_message",
-                "trigger_condition": "牛牛醒梦/牛牛别做梦",
+                "trigger_condition": "牛牛醒梦/牛牛别做梦/牛牛醒一醒/牛牛别喝了",
                 "brief_des": "结束做梦",
                 "detail_des": "立即结束本群的做梦状态并停止后台推送；发送「……梦醒了。」。",
             },
@@ -97,7 +97,7 @@ __plugin_meta__ = PluginMetadata(
 )
 
 
-_PLAIN_TRIGGERS = frozenset({"牛牛做梦", "牛牛醒梦", "牛牛别做梦"})
+_PLAIN_TRIGGERS = frozenset({"牛牛做梦", "牛牛醒梦", "牛牛别做梦", "牛牛醒一醒", "牛牛别喝了"})
 DREAM_GROUP_COOLDOWN_KEY = "dream"
 DREAM_GROUP_COOLDOWN_SEC = 10
 
