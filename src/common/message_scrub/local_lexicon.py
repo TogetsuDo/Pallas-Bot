@@ -45,7 +45,7 @@ def _read_lexicon_file_lines(path: str) -> list[str]:
                 lines.append(s.lower())
             return lines
     except OSError as exc:
-        logger.warning("message_scrub: 读取词表文件失败 path={} err={}", path, exc)
+        logger.warning("message_scrub lexicon read failed path={} err={}", path, exc)
         return []
 
 

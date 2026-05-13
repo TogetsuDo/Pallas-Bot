@@ -74,7 +74,7 @@ async def change_name():
 
         bot = get_bot(str(bot_id))
         if not bot:
-            logger.error("no bot: " + str(bot_id))
+            logger.error(f"bot [{bot_id}] take_name get_bot returned None")
             continue
 
         try:
@@ -92,7 +92,7 @@ async def change_name():
             continue
 
         card = info["card"] or info["nickname"]
-        logger.info(f"bot [{bot_id}] ready to change name to[{card}] in group [{group_id}]")
+        logger.info(f"bot [{bot_id}] ready to change name to [{card}] in group [{group_id}]")
         try:
             # 改牛牛自己的群名片
             await bot.call_api(

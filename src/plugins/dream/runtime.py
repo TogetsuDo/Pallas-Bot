@@ -91,7 +91,7 @@ async def send_dream_wake_text(bot_id: int, group_id: int) -> None:
     try:
         bot = get_bot(str(bot_id))
     except Exception as e:
-        logger.debug("dream wake send get_bot failed: {}", e)
+        logger.debug(f"bot [{bot_id}] dream wake send get_bot failed in group [{group_id}]: {e}")
         return
     try:
         await bot.send_group_msg(
@@ -99,7 +99,7 @@ async def send_dream_wake_text(bot_id: int, group_id: int) -> None:
             message=Message(MessageSegment.text(DREAM_WAKE_TEXT)),
         )
     except ActionFailed as e:
-        logger.debug("dream wake send failed: {}", e)
+        logger.debug(f"bot [{bot_id}] dream wake send failed in group [{group_id}]: {e}")
 
 
 async def launch_dream_worker(bot_id: int, group_id: int, duration_sec: int) -> None:
@@ -128,9 +128,9 @@ async def launch_dream_worker(bot_id: int, group_id: int, duration_sec: int) -> 
                 image_cap=image_cap,
             )
     except ActionFailed as e:
-        logger.debug("dream send failed (immediate tick): {}", e)
+        logger.debug(f"bot [{bot_id}] dream send failed (immediate tick) in group [{group_id}]: {e}")
     except Exception as e:
-        logger.warning("dream worker immediate tick error: {}", e)
+        logger.warning(f"bot [{bot_id}] dream worker immediate tick error in group [{group_id}]: {e}")
     _dream_tasks[key] = asyncio.create_task(
         _dream_worker_loop(
             bot_id,
@@ -254,7 +254,7 @@ async def _dream_worker_loop(
             try:
                 bot = get_bot(str(bot_id))
             except Exception as e:
-                logger.debug("dream worker get_bot failed: {}", e)
+                logger.debug(f"bot [{bot_id}] dream worker get_bot failed in group [{group_id}]: {e}")
                 continue
             if do_drunk_synergy:
                 drunk_synergy_used = True
@@ -271,9 +271,9 @@ async def _dream_worker_loop(
                             display_name=victim_display,
                         )
                 except ActionFailed as e:
-                    logger.debug("dream drunk synergy send failed: {}", e)
+                    logger.debug(f"bot [{bot_id}] dream drunk synergy send failed in group [{group_id}]: {e}")
                 except Exception as e:
-                    logger.warning("dream drunk synergy error: {}", e)
+                    logger.warning(f"bot [{bot_id}] dream drunk synergy error in group [{group_id}]: {e}")
                 continue
             try:
                 sent_images = await _dream_worker_content_tick_once(
@@ -287,9 +287,9 @@ async def _dream_worker_loop(
                     image_cap=image_cap,
                 )
             except ActionFailed as e:
-                logger.debug("dream send failed: {}", e)
+                logger.debug(f"bot [{bot_id}] dream send failed in group [{group_id}]: {e}")
             except Exception as e:
-                logger.warning("dream worker tick error: {}", e)
+                logger.warning(f"bot [{bot_id}] dream worker tick error in group [{group_id}]: {e}")
         await cfg.stop_dream()
         await send_dream_wake_text(bot_id, group_id)
     except asyncio.CancelledError:
@@ -400,4 +400,4 @@ async def log_dream_chat_to_db(event: GroupMessageEvent) -> None:
     try:
         await message_repo.bulk_insert([m])
     except Exception as e:
-        logger.debug("dream message db insert failed: {}", e)
+        logger.debug(f"bot [{event.self_id}] dream message db insert failed in group [{event.group_id}]: {e}")

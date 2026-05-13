@@ -164,7 +164,7 @@ async def participate_in_roulette(event: GroupMessageEvent) -> bool:
 
 async def roulette(messagae_handle, event: GroupMessageEvent):
     rand = random.randint(1, 6)
-    logger.info(f"Roulette rand: {rand}")
+    logger.info(f"bot [{event.self_id}] roulette started roll={rand} in group [{event.group_id}]")
     roulette_status[event.group_id] = rand
     roulette_count[event.group_id] = 0
     roulette_time[event.group_id] = int(time.time())
@@ -316,7 +316,10 @@ async def shot(self_id: int, user_id: int, group_id: int) -> Callable[[], Awaita
                 },
             )
             ban_players.append(user_id, group_id)
-            logger.info(f"用户 {user_id} 被禁言")
+            dur = SHOT_CFG.ban_duration()
+            logger.info(
+                f"bot [{self_id}] roulette ban applied user [{user_id}] in group [{group_id}] duration_sec={dur}"
+            )
 
         return group_ban
 
@@ -524,7 +527,10 @@ async def rescue_or_judgment_handler(bot: Bot, event: GroupMessageEvent):
                 processed_users.append(target_user_id)
                 ban_players.find_and_refresh(target_user_id, current_group_id)
             except Exception as e:
-                logger.error(e)
+                logger.error(
+                    f"bot [{event.self_id}] roulette judgment set_group_ban failed in group [{current_group_id}] "
+                    f"target [{target_user_id}]: {e}"
+                )
 
         if processed_users:
             reply_segments = [MessageSegment.text(cfg.target_prefix)]
@@ -552,7 +558,10 @@ async def rescue_or_judgment_handler(bot: Bot, event: GroupMessageEvent):
             affected_users.append(user_id)
             ban_players.find_and_refresh(user_id, current_group_id)
         except Exception as e:
-            logger.error(e)
+            logger.error(
+                f"bot [{event.self_id}] roulette judgment set_group_ban failed in group [{current_group_id}] "
+                f"user [{user_id}]: {e}"
+            )
 
     if is_rescue:
         ban_players.clear(current_group_id)

@@ -116,7 +116,7 @@ async def handle_logout(event: MessageEvent):
     except httpx.ConnectError:
         await ncm_logout_cmd.finish("无法连接到服务器，请检查网络或服务器状态。")
     except Exception as e:
-        logger.error(f"网易云登出时发生未预期错误: {e}", exc_info=True)
+        logger.error(f"ncm logout unexpected error: {e}", exc_info=True)
         await ncm_logout_cmd.finish(f"登出过程中出现错误: {str(e)}，请稍后重试。")
 
 

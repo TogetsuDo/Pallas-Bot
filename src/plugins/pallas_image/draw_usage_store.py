@@ -72,7 +72,7 @@ def _load() -> None:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except Exception as e:
-        logger.warning("pallas_draw 用量文件无法解析，将忽略: {}", e)
+        logger.warning(f"pallas_image draw_usage file invalid, ignored: {e}")
         return
     if not isinstance(raw, dict):
         return
@@ -133,7 +133,7 @@ def bump_pallas_draw_usage(usage_key: tuple[int, int], count_usage: bool) -> Non
         try:
             _persist()
         except OSError as e:
-            logger.error("写入 pallas_draw 用量失败: {}", e)
+            logger.error(f"pallas_image draw_usage persist failed: {e}")
 
 
 _load()

@@ -482,7 +482,7 @@ async def fetch_doubt_friends(bot: Bot) -> dict[str, str]:
             out[uid_str] = flag_str
         return out
     except Exception as e:
-        logger.debug("get_doubt_friends_add_request 调用异常: {}", e)
+        logger.debug(f"bot [{int(bot.self_id)}] get_doubt_friends_add_request failed: {e}")
     return {}
 
 
@@ -682,7 +682,7 @@ async def poll_doubt_friends_job() -> None:
         try:
             doubts = await fetch_doubt_friends(bot)
         except Exception as e:
-            logger.debug(f"poll doubt friends call_api failed bot={bot_key}: {e}")
+            logger.debug(f"bot [{bot_key}] poll doubt friends failed: {e}")
             continue
         cached_doubt_friend[bot_key] = doubts
         current_uids = set(doubts.keys())
@@ -712,7 +712,7 @@ async def poll_doubt_friends_job() -> None:
                 notified_set.add(uid)
                 state_updated = True
             else:
-                logger.warning(f"未能推送被过滤好友提醒 bot={bot_key} uid={uid}")
+                logger.warning(f"bot [{bot_key}] doubt friends notify_admins failed uid={uid}")
 
         notified_map[bot_key] = notified_set
 

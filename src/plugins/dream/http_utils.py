@@ -19,5 +19,5 @@ async def download_image_url(url: str) -> bytes | None:
                 return None
             return r.content
     except Exception as e:
-        logger.debug("dream image download failed: {}", e)
+        logger.debug(f"dream image download failed: {e}")
         return None

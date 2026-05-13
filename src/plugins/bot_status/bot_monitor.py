@@ -28,14 +28,14 @@ async def get_bot_nickname(bot_id: int, current_bots: dict = None) -> str:
                 if nickname != "Unknown Nickname":
                     return nickname
             except Exception as e:
-                logger.debug(f"Failed to get bot {bot_id} info using itself: {e}")
+                logger.debug(f"bot [{bot_id}] get_stranger_info via self failed: {e}")
 
         available_bots = [bot_instance for bot_id_key, bot_instance in bots.items() if int(bot_id_key) != bot_id]
 
         max_retries = 3
         for attempt in range(max_retries):
             if attempt > 0:
-                logger.debug(f"Retrying ({attempt + 1}/{max_retries}) to get nickname for bot {bot_id}")
+                logger.debug(f"bot [{bot_id}] nickname lookup retry {attempt + 1}/{max_retries}")
 
             for bot_instance in available_bots:
                 try:
@@ -45,7 +45,8 @@ async def get_bot_nickname(bot_id: int, current_bots: dict = None) -> str:
                         return nickname
                 except Exception as e:
                     logger.debug(
-                        f"Attempt {attempt + 1}: Failed to get bot {bot_id} info using bot {bot_instance.self_id}: {e}"
+                        f"bot [{bot_id}] get_stranger_info via bot [{bot_instance.self_id}] "
+                        f"attempt {attempt + 1} failed: {e}"
                     )
                     continue
 
@@ -53,7 +54,7 @@ async def get_bot_nickname(bot_id: int, current_bots: dict = None) -> str:
                 await asyncio.sleep(0.1)
 
     except Exception as e:
-        logger.debug(f"Failed to get nickname for bot {bot_id}: {e}")
+        logger.debug(f"bot [{bot_id}] get_nickname failed: {e}")
 
     return nickname
 
@@ -104,7 +105,7 @@ async def check_bot_still_offline(bot_id: int, nickname: str) -> None:
     """检查牛牛是否真的离线"""
     bots = get_bots()
     if str(bot_id) not in bots:
-        logger.warning(f"Bot {bot_id} offline, sending notification")
+        logger.warning(f"bot [{bot_id}] still offline after grace, sending notification")
         # 更新离线时间
         if bot_id in offline_bots:
             offline_bots[bot_id]["offline_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -121,7 +122,7 @@ async def check_bot_still_offline(bot_id: int, nickname: str) -> None:
 
             await notify_bot_offline(bot_id, nickname)
         except Exception as e:
-            logger.error(f"Failed to send offline notification for bot {bot_id}: {e}")
+            logger.error(f"bot [{bot_id}] offline notify_bot_offline failed: {e}")
     else:
         # 牛牛实际上在线，从离线列表中删除
         if (
@@ -166,7 +167,7 @@ async def get_bot_status_info() -> tuple[dict[int, str], dict[int, str]]:
 
     for result in bot_info_results:
         if isinstance(result, Exception):
-            logger.warning(f"Error occurred while getting bot info: {result}")
+            logger.warning(f"bot_status get_bot_status_info task failed: {result}")
             continue
 
         bot_id, nickname, is_online = result

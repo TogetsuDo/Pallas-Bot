@@ -227,13 +227,10 @@ async def _(bot: Bot, event: GroupMessageEvent):
         return
 
     if await is_message_scrub_blocked_async(plain_text=event.get_plaintext(), raw_message=norm_raw):
+        pv = scrub_intercept_log_preview(event.get_plaintext(), norm_raw)
         logger.info(
-            "message_scrub 已拦截 bot={} group={} user={} msg_id={} plain_preview={}",
-            event.self_id,
-            event.group_id,
-            event.user_id,
-            event.message_id,
-            scrub_intercept_log_preview(event.get_plaintext(), norm_raw),
+            f"bot [{event.self_id}] repeater capture skipped (message_scrub) in group [{event.group_id}] "
+            f"user [{event.user_id}] msg_id [{event.message_id}] preview [{pv}]"
         )
         return
 

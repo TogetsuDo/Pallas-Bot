@@ -58,12 +58,14 @@ async def _(_bot: Bot, event: GroupMessageEvent, state: T_State):
         reply_plain=reply_plain,
     )
     if n:
-        logger.info("bot [{}] removed {} dream record(s) via 不可以 (dream plugin)", event.self_id, n)
+        logger.info(
+            f"bot [{event.self_id}] removed {n} dream record(s) via admin ban reply in group [{event.group_id}]"
+        )
         state[DREAM_BAN_ACK_SENT_STATE_KEY] = True
         try:
             await dream_ban_cleanup_msg.send(_BAN_ACK_TEXT)
         except ActionFailed as e:
-            logger.debug("dream ban_cleanup_msg send ack failed: {}", e)
+            logger.debug(f"bot [{event.self_id}] dream ban cleanup send ack failed in group [{event.group_id}]: {e}")
 
 
 async def is_admin_recall_dream_cleanup(bot: Bot, event: GroupRecallNoticeEvent) -> bool:
@@ -91,7 +93,10 @@ async def _(bot: Bot, event: GroupRecallNoticeEvent, state: T_State):
     try:
         msg = await bot.get_msg(message_id=event.message_id)
     except ActionFailed:
-        logger.warning("bot [{}] dream ban recall: get_msg failed [{}]", event.self_id, event.message_id)
+        logger.warning(
+            f"bot [{event.self_id}] dream recall get_msg failed in group [{event.group_id}] "
+            f"for msg_id [{event.message_id}]"
+        )
         return
 
     raw_message = ""
@@ -110,9 +115,11 @@ async def _(bot: Bot, event: GroupRecallNoticeEvent, state: T_State):
         reply_plain=reply_plain,
     )
     if n:
-        logger.info("bot [{}] removed {} dream record(s) via recall (dream plugin)", event.self_id, n)
+        logger.info(f"bot [{event.self_id}] removed {n} dream record(s) via admin recall in group [{event.group_id}]")
         state[DREAM_BAN_ACK_SENT_STATE_KEY] = True
         try:
             await bot.send_group_msg(group_id=event.group_id, message=_BAN_ACK_TEXT)
         except ActionFailed as e:
-            logger.debug("dream ban_cleanup_recall send ack failed: {}", e)
+            logger.debug(
+                f"bot [{event.self_id}] dream ban cleanup recall send ack failed in group [{event.group_id}]: {e}"
+            )

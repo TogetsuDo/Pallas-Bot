@@ -50,13 +50,13 @@ def _load_user_defined_styles(custom_styles, styles_dict):
             style_path = raw_path if raw_path.is_absolute() else project_path(style_config.path)
             style_path = style_path.resolve()
             if not style_path.exists():
-                logger.warning(f"样式路径不存在 '{style_path}'")
+                logger.warning(f"help style path not found: {style_path}")
                 continue
 
             custom_style = pillowmd.LoadMarkdownStyles(style_path)
             styles_dict[style_config.name] = custom_style
         except Exception as e:
-            logger.warning(f"无法加载样式 '{style_config.name}' 从路径 '{style_config.path}': {e}")
+            logger.warning(f"help style load failed name={style_config.name!r} path={style_config.path!r}: {e}")
 
 
 def get_default_style(config) -> str:
