@@ -84,7 +84,7 @@ driver = get_driver()
 
 @driver.on_startup
 async def startup() -> None:
-    logger.info("Bot_status is running")
+    logger.info("Bot_status plugin startup")
 
 
 @driver.on_bot_connect
@@ -108,13 +108,13 @@ async def handle_bot_offline_events(event: NoticeEvent):
         bot_id = event.user_id
         offline_message = getattr(event, "message", "")
         source = "napcat_event"
-        logger.warning(f"NapCat Bot {bot_id} offline: {offline_message}")
+        logger.warning(f"bot [{bot_id}] offline (napcat) message={offline_message!r}")
 
     elif hasattr(event, "sub_type") and event.sub_type == "BotOfflineEvent":  # Lagrange
         bot_id = getattr(event, "self_id", getattr(event, "user_id", 0))
         offline_message = "Bot Offline"
         source = "lagrange_event"
-        logger.warning(f"Lagrange Bot {bot_id} offline")
+        logger.warning(f"bot [{bot_id}] offline (lagrange)")
 
     if bot_id and source:
         from .bot_monitor import get_bot_nickname
@@ -229,7 +229,7 @@ async def handle_bot_count(bot: Bot, event: MessageEvent) -> None:
             await bot_instance.send_group_msg(group_id=event.group_id, message=str(f"牛牛{index}号报到！"))
             await asyncio.sleep(0.3)
         except Exception as e:
-            logger.warning(f"Bot {bot_id} failed to count in group {event.group_id}: {e}")
+            logger.warning(f"bot [{bot_id}] bot_count send_group_msg failed in group [{event.group_id}]: {e}")
             failed_bots.append(bot_id)
 
     if failed_bots:

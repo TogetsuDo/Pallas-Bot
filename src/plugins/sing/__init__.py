@@ -145,7 +145,7 @@ async def is_to_sing(event: GroupMessageEvent, state: T_State) -> bool:
 
     if text in SING_CONTINUE_CMDS:
         progress = await GroupConfig(group_id=event.group_id).sing_progress()
-        logger.info(f"now progress: {progress}")
+        logger.info(f"bot [{event.self_id}] sing continue read progress in group [{event.group_id}]: {progress}")
         if not progress:
             return False
 
@@ -372,7 +372,7 @@ song_title_cmd = on_message(
 async def _(event: GroupMessageEvent):
     config = GroupConfig(event.group_id, cooldown=10)
     progress = await config.sing_progress()
-    logger.info(f"now progress: {progress}")
+    logger.info(f"bot [{event.self_id}] sing song title query in group [{event.group_id}]: {progress}")
 
     if not progress:
         return

@@ -41,17 +41,17 @@ def clear_help_cache(group_id: int | None = None):
         if group_cache_dir.exists():
             try:
                 shutil.rmtree(group_cache_dir)
-                logger.debug(f"清理群组 {group_id} 的缓存: {group_cache_dir}")
+                logger.debug(f"help cache cleared for group [{group_id}] path={group_cache_dir}")
             except Exception as e:
-                logger.warning(f"删除群缓存失败 {group_cache_dir}: {e}")
+                logger.warning(f"help cache rmtree failed group={group_id} path={group_cache_dir}: {e}")
     else:
         try:
             for item in cache_base_dir.iterdir():
                 if item.is_dir():
                     shutil.rmtree(item)
-            logger.debug("清理所有帮助缓存")
+            logger.debug("help cache cleared (all groups)")
         except Exception as e:
-            logger.warning(f"清理帮助缓存失败: {e}")
+            logger.warning(f"help cache clear all failed: {e}")
 
 
 async def is_plugin_disabled(
@@ -65,7 +65,7 @@ async def is_plugin_disabled(
             bot_config = await bot_config_repo.get(bot_id, ignore_cache=ignore_cache)
             if bot_config:
                 if plugin_name in bot_config.disabled_plugins:
-                    logger.debug(f"插件 {plugin_name} 在全局级别被禁用")
+                    logger.debug(f"help plugin [{plugin_name}] disabled at bot scope bot_id={bot_id}")
                     return True
             else:
                 # 自愈：首次访问时自动建空配置
@@ -74,12 +74,12 @@ async def is_plugin_disabled(
         if group_id:
             group_config = await group_config_repo.get(group_id, ignore_cache=ignore_cache)
             if group_config and plugin_name in group_config.disabled_plugins:
-                logger.debug(f"插件 {plugin_name} 在群 {group_id} 级别被禁用")
+                logger.debug(f"help plugin [{plugin_name}] disabled at group scope group_id={group_id}")
                 return True
 
         return False
     except Exception as e:
-        logger.error(f"检查插件 {plugin_name} 状态时出错: {str(e)}")
+        logger.error(f"help is_plugin_disabled failed plugin={plugin_name}: {e}")
         return False
 
 
@@ -120,7 +120,7 @@ async def get_bot_config(bot_id: int) -> tuple[BotConfigModule, bool]:
     """
     bot_config, created = await bot_config_repo.get_or_create(bot_id, disabled_plugins=[])
     if created:
-        logger.debug(f"为Bot {bot_id} 创建新的配置")
+        logger.debug(f"help bot_config created bot_id={bot_id}")
     return bot_config, created
 
 
@@ -130,7 +130,7 @@ async def get_group_config(group_id: int) -> tuple[GroupConfigModule, bool]:
     """
     group_config, created = await group_config_repo.get_or_create(group_id, disabled_plugins=[])
     if created:
-        logger.debug(f"为群 {group_id} 创建新的配置")
+        logger.debug(f"help group_config created group_id={group_id}")
     return group_config, created
 
 
@@ -224,11 +224,9 @@ async def update_config_and_cache(
 
     # 验证操作结果
     if expected_state != should_disable:
-        action_name = "禁用" if should_disable else "启用"
-        scope_info = "全局" if config_type == "bot" else f"群 {id_value}"
+        scope_info = f"bot[{id_value}]" if config_type == "bot" else f"group[{id_value}]"
         logger.error(
-            f"{action_name}失败：插件 {plugin_name} 未能正确更新到"
-            f"{scope_info}{'禁用' if should_disable else '启用'}状态"
+            f"help toggle verify failed: plugin={plugin_name} scope={scope_info} expected_disabled={should_disable}",
         )
         return False, config
 
@@ -260,7 +258,7 @@ async def toggle_plugin(
 
     plugin_name = target_plugin.name
     user_visible_name = plugin_display_name(target_plugin)
-    logger.debug(f"操作插件: {plugin_name}, 操作类型: {action}, 群ID: {group_id}, BotID: {bot_id}")
+    logger.debug(f"help toggle_plugin plugin={plugin_name} action={action} group_id={group_id} bot_id={bot_id}")
 
     if bot_id and not group_id:
         return await _handle_global_plugin_operation(plugin_name, user_visible_name, bot_id, action)
@@ -428,7 +426,7 @@ async def fill_plugin_status(
         ]
 
     sorted_plugins = sorted(filtered_plugins, key=lambda p: plugin_display_name(p))
-    logger.debug(f"已排序的插件列表 (共{len(sorted_plugins)}个)")
+    logger.debug(f"help fill_plugin_status sorted_plugins count={len(sorted_plugins)}")
 
     result_content = markdown_content
     placeholders_count = result_content.count("{status}")

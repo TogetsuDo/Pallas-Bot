@@ -32,7 +32,7 @@ def _load_index_sync() -> list[dict]:
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
     except Exception as e:
-        logger.warning("draw_archive 索引无法解析，将重建: {}", e)
+        logger.warning(f"pallas_image draw_archive index invalid, rebuilding: {e}")
         return []
     if not isinstance(data, list):
         return []
@@ -69,7 +69,7 @@ def _cleanup_index_sync(entries: list[dict]) -> list[dict]:
             try:
                 fp.unlink(missing_ok=True)
             except OSError as ex:
-                logger.debug("draw_archive 删除过期文件失败: {} {}", fp, ex)
+                logger.debug(f"pallas_image draw_archive unlink expired failed path={fp} err={ex}")
             continue
         alive.append(e)
 
@@ -81,7 +81,7 @@ def _cleanup_index_sync(entries: list[dict]) -> list[dict]:
         try:
             fp.unlink(missing_ok=True)
         except OSError as ex:
-            logger.debug("draw_archive 删文件失败: {} {}", fp, ex)
+            logger.debug(f"pallas_image draw_archive unlink failed path={fp} err={ex}")
         total -= int(first.get("size", 0))
     return alive
 
@@ -107,7 +107,7 @@ async def persist_generated_draw(data: bytes, group_id: int, user_id: int) -> No
             try:
                 _persist_sync(data, group_id, user_id)
             except Exception as e:
-                logger.warning("draw_archive 写入失败: {}", e)
+                logger.warning(f"pallas_image draw_archive persist failed: {e}")
 
         await asyncio.to_thread(_run)
 
@@ -124,7 +124,7 @@ async def random_archived_png_bytes() -> bytes | None:
             try:
                 return Path(choice["path"]).read_bytes()
             except OSError as e:
-                logger.debug("draw_archive 读取失败: {}", e)
+                logger.debug(f"pallas_image draw_archive read failed: {e}")
                 return None
 
         return await asyncio.to_thread(_pick)

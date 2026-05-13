@@ -164,11 +164,11 @@ async def post_generations_with_transport(
         try:
             return await curl_cffi_post_generations(url, headers, payload)
         except (CffiRequestsError, OSError, ValueError) as e:
-            logger.warning("image generations curl_cffi 失败，回退 httpx: {}", e)
+            logger.warning(f"pallas_image generations curl_cffi failed, fallback httpx: {e}")
     try:
         return await httpx_post_generations(url, headers, payload)
     except httpx.ConnectError as e:
-        logger.warning("image generations httpx 连接失败，回退系统 curl: {}", e)
+        logger.warning(f"pallas_image generations httpx connect failed, fallback curl: {e}")
         return await curl_post_generations(url, headers, payload)
 
 
@@ -296,11 +296,11 @@ async def post_edits_with_transport(image_blobs: list[bytes], prompt: str) -> tu
         try:
             return await curl_cffi_post_edits(image_blobs, prompt)
         except (CffiRequestsError, OSError, ValueError) as e:
-            logger.warning("image edits curl_cffi 失败，回退 httpx: {}", e)
+            logger.warning(f"pallas_image edits curl_cffi failed, fallback httpx: {e}")
     try:
         return await httpx_post_edits(image_blobs, prompt)
     except httpx.ConnectError as e:
-        logger.warning("image edits httpx 连接失败，回退系统 curl: {}", e)
+        logger.warning(f"pallas_image edits httpx connect failed, fallback curl: {e}")
         return await curl_post_edits(image_blobs, prompt)
 
 
@@ -359,7 +359,7 @@ async def bytes_from_image_reference(client: httpx.AsyncClient, url: str) -> byt
         )
         return None
     except Exception as exc:
-        logger.debug("download ref image error: url={}, exc={!r}", u[:160], exc)
+        logger.debug(f"pallas_image download ref image error url={u[:160]!r} exc={exc!r}")
         return None
 
 
@@ -416,7 +416,7 @@ async def reply_from_image_api_json(
     try:
         data = json.loads(body_text)
     except Exception:
-        logger.error("image api invalid json: {}", body_text[:500])
+        logger.error(f"pallas_image api invalid json body_prefix={body_text[:500]!r}")
         await matcher.finish(optional_message_at_user(at_user_id, PALLAS_VAGUE_REPLY))
 
     if not isinstance(data, dict):
@@ -434,7 +434,7 @@ async def reply_from_image_api_json(
 
                 await persist_generated_draw(raw, persist_draw[0], persist_draw[1])
             except Exception as e:
-                logger.warning("persist draw archive failed: {}", e)
+                logger.warning(f"pallas_image persist archive failed group={persist_draw[0]}: {e}")
         return
     if remote_url:
         try:
@@ -448,12 +448,12 @@ async def reply_from_image_api_json(
 
                         await persist_generated_draw(content, persist_draw[0], persist_draw[1])
                     except Exception as e:
-                        logger.warning("persist draw archive failed: {}", e)
+                        logger.warning(f"pallas_image persist archive failed group={persist_draw[0]}: {e}")
                 return
         except httpx.HTTPError:
             pass
-        logger.error("download generated image failed: url={}", remote_url)
+        logger.error(f"pallas_image download generated image failed url={remote_url}")
         await matcher.send(PALLAS_VAGUE_REPLY)
         return
-    logger.warning("image api no url/b64 in response: {}", str(data)[:800])
+    logger.warning(f"pallas_image response missing image url/b64 data_prefix={str(data)[:800]!r}")
     await matcher.finish(PALLAS_VAGUE_REPLY)

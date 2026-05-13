@@ -57,7 +57,7 @@ async def block_disabled_plugins(bot: Bot, event: GroupMessageEvent):
 
         if plugin_name in disabled_names:
             _blocked_events[event_id].add(plugin_name)
-            logger.debug(f"插件 {plugin_name} 在群 {group_id} 对Bot {bot_id} 处于禁用状态")
+            logger.debug(f"bot [{bot_id}] help plugin [{plugin_name}] disabled in group [{group_id}] (precollect)")
 
     if len(_blocked_events) > 10000:
         keys = list(_blocked_events.keys())
@@ -84,13 +84,13 @@ async def check_plugin_enabled(matcher: Matcher, bot: Bot, event: GroupMessageEv
     group_id = event.group_id
 
     if event_id in _blocked_events and plugin_name in _blocked_events[event_id]:
-        logger.debug(f"{plugin_name} 已禁用")
+        logger.debug(f"bot [{bot_id}] help plugin [{plugin_name}] blocked at matcher (precollected)")
         raise IgnoredException(f"Plugin {plugin_name} is disabled")
 
     if event_id not in _blocked_events:
         disabled_names = await collect_disabled_plugin_names(bot_id, group_id)
         if plugin_name in disabled_names:
-            logger.debug(f"{plugin_name} 已禁用")
+            logger.debug(f"bot [{bot_id}] help plugin [{plugin_name}] blocked at matcher (fallback)")
             raise IgnoredException(f"Plugin {plugin_name} is disabled")
 
 
@@ -99,4 +99,4 @@ driver = get_driver()
 
 @driver.on_startup
 async def register_plugin_manager():
-    logger.info("Plugin manager registered")
+    logger.info("help plugin_manager event_preprocessors registered")

@@ -111,7 +111,7 @@ class MessageStore:
         except RuntimeError:
             return
         except Exception as e:
-            logger.error(f"Failed to insert messages in _sync: {e}")
+            logger.error(f"repeater message_store bulk_insert failed in _sync: {e}")
             return
 
         async with MessageStore._message_lock:

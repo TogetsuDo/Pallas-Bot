@@ -155,11 +155,12 @@ async def pallas_draw_handle(bot: Bot, event: GroupMessageEvent, args: Message =
                 )
             )
 
-        await pallas_draw_execute(pallas_draw, usage_key, count_usage, user_id, text, ref_urls)
+        await pallas_draw_execute(pallas_draw, int(event.self_id), usage_key, count_usage, user_id, text, ref_urls)
 
 
 async def pallas_draw_execute(
     matcher,
+    bot_id: int,
     usage_key: tuple[int, int],
     count_usage: bool,
     user_id: int,
@@ -167,6 +168,7 @@ async def pallas_draw_execute(
     ref_urls: list[str],
 ) -> None:
     cfg = image_gen_config
+    group_id = usage_key[0]
     default_prompt = (cfg.default_edit_prompt or "生成图像").strip()
     if cfg.merge_reference_urls_into_prompt:
         gen_prompt = " ".join([p for p in [text, *ref_urls] if p])
@@ -198,29 +200,24 @@ async def pallas_draw_execute(
                         edit_prompt = text.strip() or default_prompt
                         if len(ref_urls) > len(blobs):
                             logger.warning(
-                                "部分参考图下载失败：请求 {} 张，实际 {} 张",
-                                len(ref_urls),
-                                len(blobs),
+                                f"bot [{bot_id}] pallas_image ref download partial in group [{group_id}]: "
+                                f"requested {len(ref_urls)} refs, got {len(blobs)} blobs",
                             )
                         logger.info(
-                            "sending image edits request to: {} ({} images)",
-                            edits_ep,
-                            len(blobs),
+                            f"bot [{bot_id}] pallas_image edits request in group [{group_id}] url={edits_ep} "
+                            f"images={len(blobs)}",
                         )
                         req_started = time.perf_counter()
                         status, body_text = await post_edits_with_transport(blobs, edit_prompt)
                         logger.info(
-                            "image edits response: status={}, elapsed_ms={:.0f}, body_len={}, url={}",
-                            status,
-                            (time.perf_counter() - req_started) * 1000,
-                            len(body_text),
-                            edits_ep,
+                            f"bot [{bot_id}] pallas_image edits response in group [{group_id}]: "
+                            f"status={status} elapsed_ms={(time.perf_counter() - req_started) * 1000:.0f} "
+                            f"body_len={len(body_text)} url={edits_ep}",
                         )
                         if status != 200:
                             logger.error(
-                                "image edits failed: status={}, body={}",
-                                status,
-                                body_text[:2000],
+                                f"bot [{bot_id}] pallas_image edits failed in group [{group_id}]: "
+                                f"status={status} body={body_text[:2000]}",
                             )
                             await matcher.finish(message_at_user(user_id, user_failure_reply(body_text)))
                         await reply_from_image_api_json(
@@ -234,7 +231,7 @@ async def pallas_draw_execute(
                         return
 
                 payload = generations_payload(gen_prompt, ref_urls)
-                logger.info("sending image generation request to: {}", gen_ep)
+                logger.info(f"bot [{bot_id}] pallas_image generations request in group [{group_id}] url={gen_ep}")
                 request_started = time.perf_counter()
                 status, body_text = await post_generations_with_transport(
                     gen_ep,
@@ -242,17 +239,14 @@ async def pallas_draw_execute(
                     payload,
                 )
                 logger.info(
-                    "image generations response: status={}, elapsed_ms={:.0f}, body_len={}, url={}",
-                    status,
-                    (time.perf_counter() - request_started) * 1000,
-                    len(body_text),
-                    gen_ep,
+                    f"bot [{bot_id}] pallas_image generations response in group [{group_id}]: "
+                    f"status={status} elapsed_ms={(time.perf_counter() - request_started) * 1000:.0f} "
+                    f"body_len={len(body_text)} url={gen_ep}",
                 )
                 if status != 200:
                     logger.error(
-                        "image generations failed: status={}, body={}",
-                        status,
-                        body_text[:2000],
+                        f"bot [{bot_id}] pallas_image generations failed in group [{group_id}]: "
+                        f"status={status} body={body_text[:2000]}",
                     )
                     await matcher.finish(message_at_user(user_id, user_failure_reply(body_text)))
                 await reply_from_image_api_json(
@@ -266,20 +260,20 @@ async def pallas_draw_execute(
         except FinishedException:
             raise
         except httpx.TimeoutException:
-            logger.error("image api timeout: {}s", cfg.request_timeout)
+            logger.error(f"bot [{bot_id}] pallas_image api timeout in group [{group_id}] after {cfg.request_timeout}s")
             await matcher.finish(PALLAS_VAGUE_REPLY)
         except httpx.ConnectError as e:
-            logger.error("image api connection failed: {}", e)
+            logger.error(f"bot [{bot_id}] pallas_image api connect error in group [{group_id}]: {e}")
             await matcher.finish(PALLAS_VAGUE_REPLY)
         except CffiRequestsError as e:
-            logger.error("image api curl_cffi failed: {}", e)
+            logger.error(f"bot [{bot_id}] pallas_image curl_cffi error in group [{group_id}]: {e}")
             await matcher.finish(PALLAS_VAGUE_REPLY)
         except RuntimeError as e:
-            logger.error("image api curl/runtime error: {}", e)
+            logger.error(f"bot [{bot_id}] pallas_image transport runtime error in group [{group_id}]: {e}")
             await matcher.finish(PALLAS_VAGUE_REPLY)
         except httpx.HTTPError as e:
-            logger.error("image httpx error: {}", e)
+            logger.error(f"bot [{bot_id}] pallas_image httpx error in group [{group_id}]: {e}")
             await matcher.finish(PALLAS_VAGUE_REPLY)
         except Exception as e:
-            logger.exception("image api exception: {}", e)
+            logger.exception(f"bot [{bot_id}] pallas_image api exception in group [{group_id}]: {e}")
             await matcher.finish(PALLAS_VAGUE_REPLY)
