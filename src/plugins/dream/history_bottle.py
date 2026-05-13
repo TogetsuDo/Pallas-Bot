@@ -227,7 +227,7 @@ async def _mongo_pick(bot_ids: list[int], exclude_gid: int | None, exclude_send:
     try:
         docs = [d async for d in coll.aggregate(pipeline)]
     except Exception as e:
-        logger.debug("history_bottle mongo aggregate failed: {}", e)
+        logger.debug(f"bot [{bot_ids[0]}] dream history sample mongo aggregate failed: {e}")
         return None
     cands: list[_HistPick] = []
     for doc in docs:
@@ -247,7 +247,7 @@ async def _mongo_pick(bot_ids: list[int], exclude_gid: int | None, exclude_send:
     try:
         return await _pick_payload_from_cands(cands, exclude_send, cutoff=cutoff, now=now, power=power)
     except Exception as e:
-        logger.debug("history_bottle mongo pick failed: {}", e)
+        logger.debug(f"bot [{bot_ids[0]}] dream history sample mongo pick failed: {e}")
         return None
 
 
@@ -272,7 +272,7 @@ async def _pg_pick(bot_ids: list[int], exclude_gid: int | None, exclude_send: se
             r = await session.execute(stmt.order_by(func.random()).limit(_HIST_SAMPLE_SIZE))
             rows = list(r.all())
     except Exception as e:
-        logger.debug("history_bottle pg query failed: {}", e)
+        logger.debug(f"bot [{bot_ids[0]}] dream history sample pg query failed: {e}")
         return None
     cands: list[_HistPick] = []
     for tv, plain, keywords, raw in rows:
@@ -282,5 +282,5 @@ async def _pg_pick(bot_ids: list[int], exclude_gid: int | None, exclude_send: se
     try:
         return await _pick_payload_from_cands(cands, exclude_send, cutoff=cutoff, now=now, power=power)
     except Exception as e:
-        logger.debug("history_bottle pg pick failed: {}", e)
+        logger.debug(f"bot [{bot_ids[0]}] dream history sample pg pick failed: {e}")
         return None

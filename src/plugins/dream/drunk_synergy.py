@@ -52,7 +52,7 @@ async def _mongo_pick_random_user(bot_id: int, group_id: int) -> int | None:
     try:
         docs = [d async for d in coll.aggregate(pipeline)]
     except Exception as e:
-        logger.debug("drunk_synergy mongo pick user failed: {}", e)
+        logger.debug(f"bot [{bot_id}] drunk synergy mongo pick user failed in group [{group_id}]: {e}")
         return None
     if not docs:
         return None
@@ -82,7 +82,7 @@ async def _pg_pick_random_user(bot_id: int, group_id: int) -> int | None:
             r = await session.execute(stmt)
             rows = [row[0] for row in r.all()]
     except Exception as e:
-        logger.debug("drunk_synergy pg pick user failed: {}", e)
+        logger.debug(f"bot [{bot_id}] drunk synergy pg pick user failed in group [{group_id}]: {e}")
         return None
     if not rows:
         return None
@@ -114,7 +114,7 @@ async def _mongo_pick_plain_line(bot_id: int, group_id: int, user_id: int) -> st
     try:
         docs = [d async for d in coll.aggregate(pipeline)]
     except Exception as e:
-        logger.debug("drunk_synergy mongo pick line failed: {}", e)
+        logger.debug(f"bot [{bot_id}] drunk synergy mongo pick line failed in group [{group_id}]: {e}")
         return None
     random.shuffle(docs)
     for doc in docs:
@@ -149,7 +149,7 @@ async def _pg_pick_plain_line(bot_id: int, group_id: int, user_id: int) -> str |
             r = await session.execute(stmt)
             rows = list(r.all())
     except Exception as e:
-        logger.debug("drunk_synergy pg pick line failed: {}", e)
+        logger.debug(f"bot [{bot_id}] drunk synergy pg pick line failed in group [{group_id}]: {e}")
         return None
     random.shuffle(rows)
     for plain, keywords in rows:
@@ -188,7 +188,7 @@ async def try_drunk_dream_take_name(*, bot: Bot, bot_id: int, group_id: int, cfg
         )
         await cfg.update_taken_name(uid)
     except ActionFailed as e:
-        logger.debug("try_drunk_dream_take_name ActionFailed: {}", e)
+        logger.debug(f"bot [{bot_id}] dream drunk take_name ActionFailed in group [{group_id}]: {e}")
         return None
     return (uid, victim_label)
 

@@ -130,7 +130,7 @@ async def _(event: GroupMessageEvent):
     except ActionFailed:
         pass
     await launch_dream_worker(event.self_id, event.group_id, duration)
-    logger.info("bot [{}] dream started in group [{}] for {}s", event.self_id, event.group_id, duration)
+    logger.info(f"bot [{event.self_id}] dream started in group [{event.group_id}] for {duration} sec")
 
 
 async def is_dream_wake(event: GroupMessageEvent) -> bool:
@@ -179,13 +179,10 @@ async def _(event: GroupMessageEvent):
         return
     norm_raw = re.sub(r"\[CQ:image,[^\]]*\]", "[CQ:image]", event.raw_message)
     if await is_message_scrub_blocked_async(plain_text=plain, raw_message=norm_raw):
+        pv = scrub_intercept_log_preview(plain, norm_raw)
         logger.info(
-            "message_scrub blocked event=group_message self_id={} group_id={} user_id={} message_id={} preview={}",
-            event.self_id,
-            event.group_id,
-            event.user_id,
-            event.message_id,
-            scrub_intercept_log_preview(plain, norm_raw),
+            f"bot [{event.self_id}] dream capture skipped (message_scrub) in group [{event.group_id}] "
+            f"user [{event.user_id}] msg_id [{event.message_id}] preview [{pv}]"
         )
         return
 
@@ -213,6 +210,6 @@ async def _(event: GroupMessageEvent):
             if plain and len(plain) <= 800:
                 await broadcast_drift(event.self_id, event.group_id, DriftPayload(nickname=nick, text=plain))
         except Exception as e:
-            logger.debug("dream capture job failed: {}", e)
+            logger.debug(f"bot [{event.self_id}] dream capture job failed in group [{event.group_id}]: {e}")
 
     asyncio.create_task(job())
