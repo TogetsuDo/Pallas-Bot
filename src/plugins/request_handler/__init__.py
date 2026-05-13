@@ -706,12 +706,7 @@ async def poll_doubt_friends_job() -> None:
             if uid in notified_set:
                 continue
             nickname = await get_nickname(bot, int(uid))
-            msg = (
-                f"[好友申请·被过滤]\n申请人：{nickname}（{uid}）\n"
-                f"{RH_APPROVE_HINT}\n"
-                f"拒绝：拒绝好友 {uid}\n"
-                f"{RH_HELP_HINT}"
-            )
+            msg = f"[好友申请]\n申请人：{nickname}（{uid}）\n{RH_APPROVE_HINT}\n拒绝：拒绝好友 {uid}\n{RH_HELP_HINT}"
             if await notify_admins(bot, msg, kind="friend", target_id=uid):
                 set_last_notified(bot_key, "friend", uid)
                 notified_set.add(uid)
@@ -823,7 +818,7 @@ async def handle_list_friends(bot: Bot, event: MessageEvent):
         lines.append(f"  {nickname}（{uid}）")
     for uid in doubt_only.keys():
         nickname = await get_nickname(bot, int(uid))
-        lines.append(f"  {nickname}（{uid}）[被过滤]")
+        lines.append(f"  {nickname}（{uid}）")
     lines.append(RH_LIST_TAIL_FRIEND)
     await list_friends_cmd.finish("\n".join(lines))
 
