@@ -43,6 +43,9 @@ _INIT_LOG_SINK = False
 _READ_CACHE: dict[str, dict[str, Any]] = {}
 _MSG_STATS: dict[str, dict[str, Any]] = {}  # self_id -> sent/received + 按本地日切片的 day_*
 _MSG_TRACKING_INIT = False
+# 与 _count_protocol_api_calls 口径一致的成功调用时间序列（进程内，重启丢失）
+_API_HIST_BUCKET_SEC = 300
+_API_HIST_MAX_BUCKETS = 288  # 5min * 288 ≈ 24h
 # self_id -> { day_key, by_plugin: { plugin: { runs, errors, day_runs, day_errors } } }
 _PLUGIN_RUN_STATS: dict[str, dict[str, Any]] = {}
 _PLUGIN_RUN_TRACKING_INIT = False
@@ -786,6 +789,7 @@ def _msg_stats_get_mut(sid: str) -> dict[str, Any]:
             "day_key": today,
             "day_api_total": 0,
             "day_api_counts": {},
+            "api_hist": [],
         },
     )
     if str(rec.get("day_key", "")) != today:
@@ -801,7 +805,60 @@ def _msg_stats_get_mut(sid: str) -> dict[str, Any]:
     rec.setdefault("day_api_total", 0)
     if not isinstance(rec.get("day_api_counts"), dict):
         rec["day_api_counts"] = {}
+    if not isinstance(rec.get("api_hist"), list):
+        rec["api_hist"] = []
     return rec
+
+
+def _api_call_history_bump(row: dict[str, Any]) -> None:
+    """按固定秒宽时间桶累加，供 WebUI 绘制近期调用曲线。"""
+    now = int(time.time())
+    bucket = now - (now % _API_HIST_BUCKET_SEC)
+    cutoff = bucket - (_API_HIST_MAX_BUCKETS - 1) * _API_HIST_BUCKET_SEC
+    hist = row.setdefault("api_hist", [])
+    if not isinstance(hist, list):
+        row["api_hist"] = []
+        hist = row["api_hist"]
+    i = 0
+    while i < len(hist):
+        h = hist[i]
+        if not isinstance(h, dict):
+            hist.pop(i)
+            continue
+        try:
+            at = int(h.get("at") or 0)
+        except (TypeError, ValueError):
+            hist.pop(i)
+            continue
+        if at < cutoff:
+            hist.pop(i)
+        else:
+            i += 1
+    if hist and isinstance(hist[-1], dict):
+        try:
+            last_at = int(hist[-1].get("at") or 0)
+        except (TypeError, ValueError):
+            last_at = 0
+        if last_at == bucket:
+            hist[-1]["total"] = int(hist[-1].get("total", 0)) + 1
+            return
+    hist.append({"at": bucket, "total": 1})
+
+
+def _api_call_history_public(row: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = row.get("api_hist")
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for it in raw:
+        if not isinstance(it, dict) or "at" not in it:
+            continue
+        try:
+            out.append({"at": int(it["at"]), "total": int(it.get("total", 0))})
+        except (TypeError, ValueError):
+            continue
+    out.sort(key=lambda x: int(x["at"]))
+    return out
 
 
 def _top_api_call_today(counts: object) -> tuple[str, int]:
@@ -821,10 +878,7 @@ def _top_api_call_today(counts: object) -> tuple[str, int]:
 
 
 def _init_message_tracking() -> None:
-    """注册 NoneBot2 钩子，在内存中统计每个 Bot 的收发消息数。
-    - 收消息：event_preprocessor，事件类型为 "message" 时计数
-    - 发消息：Bot.on_called_api，send_msg / send_group_msg / send_private_msg 成功时计数
-    """
+    """注册 NoneBot2 钩子：消息收/发；协议 API 今日计数（排除发消息与 get_status/get_msg 等）及 5 分钟桶历史。"""
     global _MSG_TRACKING_INIT
     if _MSG_TRACKING_INIT:
         return
@@ -843,6 +897,7 @@ def _init_message_tracking() -> None:
             "can_send_record",
             "get_cookies",
             "get_csrf_token",
+            "get_msg",
         },
     )
 
@@ -883,6 +938,7 @@ def _init_message_tracking() -> None:
             row["day_api_counts"] = counts
         row["day_api_total"] = int(row.get("day_api_total", 0)) + 1
         counts[str(api)] = int(counts.get(str(api), 0)) + 1
+        _api_call_history_bump(row)
 
     @event_preprocessor
     async def _count_received(bot: BaseBot, event: Event) -> None:
@@ -944,12 +1000,15 @@ async def _message_stats_overview(*, self_id: str | None) -> dict[str, Any]:
             "today_api_calls": int(mem.get("day_api_total", 0)),
             "today_top_api": top_name,
             "today_top_api_count": top_cnt,
+            "api_calls_history": _api_call_history_public(mem),
         })
     return {
         "total_sent": total_sent,
         "total_received": total_received,
         "today_sent": total_today_sent,
         "today_received": total_today_received,
+        "api_calls_history_bucket_sec": _API_HIST_BUCKET_SEC,
+        "api_calls_history_max_buckets": _API_HIST_MAX_BUCKETS,
         "bots": rows,
     }
 
