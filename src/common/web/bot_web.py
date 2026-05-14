@@ -16,6 +16,15 @@ if TYPE_CHECKING:
 
 LogScope = Literal["all", "webui", "protocol"]
 
+_LOG_ERROR_SINK_CB: Callable[[str, Mapping[str, Any]], None] | None = None
+
+
+def set_log_error_capture(cb: Callable[[str, Mapping[str, Any]], None] | None) -> None:
+    """由 pallas_webui 注册：在 NoneBot 日志 sink 中捕获 ERROR/CRITICAL 行并持久化。"""
+    global _LOG_ERROR_SINK_CB
+    _LOG_ERROR_SINK_CB = cb
+
+
 _MAX = 2000
 _lines: deque[str] = deque(maxlen=_MAX)
 _lines_webui: deque[str] = deque(maxlen=_MAX)
@@ -202,6 +211,14 @@ def _sink_dispatch(message: object) -> None:
                     q.put_nowait(payload)
                 except queue.Full:
                     pass
+    if record is not None and _LOG_ERROR_SINK_CB is not None:
+        try:
+            lvl = record["level"]
+            lev_name = str(lvl.name).upper() if hasattr(lvl, "name") else str(lvl).upper()
+            if lev_name in ("ERROR", "CRITICAL"):
+                _LOG_ERROR_SINK_CB(text, record)
+        except Exception:
+            pass
 
 
 def install_nonebot_log_sink() -> None:

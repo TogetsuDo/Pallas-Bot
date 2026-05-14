@@ -131,6 +131,11 @@ _MATCHER_ERROR_LOG_CAP = 80
 _MATCHER_ERROR_MSG_MAX = 2000
 _MATCHER_ERROR_TB_MAX = 8000
 _MATCHER_ERROR_JSONL_LOCK = threading.Lock()
+_LOG_ERROR_LOG_CAP = _MATCHER_ERROR_LOG_CAP
+_LOG_ERROR_MSG_MAX = _MATCHER_ERROR_MSG_MAX
+_LOG_ERROR_TB_MAX = _MATCHER_ERROR_TB_MAX
+_LOG_ERROR_JSONL_LOCK = threading.Lock()
+_LOG_ERROR_BUFFER: list[dict[str, Any]] = []
 
 
 def set_console_meta(d: dict[str, Any] | None) -> None:
@@ -142,11 +147,12 @@ def set_console_meta(d: dict[str, Any] | None) -> None:
 
 def _ensure_log_sink() -> None:
     global _INIT_LOG_SINK
-    if _INIT_LOG_SINK:
-        return
-    from src.common.web import install_nonebot_log_sink
+    from src.common.web import install_nonebot_log_sink, set_log_error_capture
 
     install_nonebot_log_sink()
+    set_log_error_capture(_append_log_error_from_sink)
+    if _INIT_LOG_SINK:
+        return
     _INIT_LOG_SINK = True
     logger.info("Pallas-Bot 控制台: 已接入 NoneBot 日志环（/pallas/api/logs）")
 
@@ -1467,8 +1473,136 @@ def _matcher_error_log_public(rec: dict[str, Any], *, limit: int = 30, tb_limit:
     return out
 
 
+def _dotted_module_short_name(module_name: str) -> str:
+    parts = str(module_name).split(".")
+    for part in reversed(parts):
+        if part and part != "__init__":
+            return part
+    return str(module_name or "") or "unknown"
+
+
+def _tb_and_exc_type_from_log_record(record: Any) -> tuple[str, str, str]:
+    """从 loguru record 取 (exc_type, message, traceback 文本)。"""
+    try:
+        msg = str(record["message"])
+    except Exception:  # noqa: BLE001
+        msg = ""
+    exc_type = "LogError"
+    tb = ""
+    try:
+        ex = record["exception"]
+    except Exception:  # noqa: BLE001
+        return exc_type, msg, tb
+    if not ex:
+        return exc_type, msg, tb
+    et = val = tb_obj = None
+    try:
+        if hasattr(ex, "type"):
+            et = ex.type
+            val = getattr(ex, "value", None)
+            tb_obj = getattr(ex, "traceback", None)
+        elif isinstance(ex, tuple) and len(ex) >= 3:
+            et, val, tb_obj = ex[0], ex[1], ex[2]
+    except Exception:  # noqa: BLE001
+        return exc_type, msg, tb
+    if val is not None:
+        exc_type = type(val).__name__
+    elif et is not None:
+        exc_type = getattr(et, "__name__", str(et))
+    try:
+        tb = "".join(traceback.format_exception(et, val, tb_obj))
+    except Exception:  # noqa: BLE001
+        tb = str(val) if val is not None else ""
+    return exc_type, msg, tb
+
+
+def _append_console_log_error(entry: dict[str, Any]) -> None:
+    from src.common.paths import plugin_data_dir
+
+    path = plugin_data_dir("pallas_webui") / "log_errors.jsonl"
+    line_obj = {k: v for k, v in entry.items() if k != "raw_line"}
+    line = json.dumps(line_obj, ensure_ascii=False) + "\n"
+    try:
+        with _LOG_ERROR_JSONL_LOCK:
+            buf = entry.copy()
+            buf.pop("raw_line", None)
+            _LOG_ERROR_BUFFER.append(buf)
+            while len(_LOG_ERROR_BUFFER) > _LOG_ERROR_LOG_CAP:
+                _LOG_ERROR_BUFFER.pop(0)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as f:
+                f.write(line)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _append_log_error_from_sink(text: str, record: Any) -> None:
+    exc_type, msg, tb = _tb_and_exc_type_from_log_record(record)
+    try:
+        full_name = str(record["name"] or "")
+    except Exception:  # noqa: BLE001
+        full_name = ""
+    plugin = _dotted_module_short_name(full_name)
+    if len(tb) > _LOG_ERROR_TB_MAX:
+        tb = tb[:_LOG_ERROR_TB_MAX] + "\n…(truncated)"
+    if len(msg) > _LOG_ERROR_MSG_MAX:
+        msg = msg[:_LOG_ERROR_MSG_MAX] + "…"
+    if not msg.strip():
+        msg = (text or "")[:_LOG_ERROR_MSG_MAX]
+        if len(text or "") > _LOG_ERROR_MSG_MAX:
+            msg = msg + "…"
+    entry: dict[str, Any] = {
+        "at": int(time.time()),
+        "plugin": plugin,
+        "exc_type": exc_type,
+        "message": msg,
+        "traceback": tb,
+        "raw_line": text,
+    }
+    _append_console_log_error(entry)
+
+
+def _log_error_log_public(*, limit: int = 30, tb_limit: int = 4000) -> list[dict[str, Any]]:
+    with _LOG_ERROR_JSONL_LOCK:
+        raw = list(_LOG_ERROR_BUFFER)
+    if not raw:
+        return []
+    out: list[dict[str, Any]] = []
+    for it in raw[-limit:]:
+        if not isinstance(it, dict):
+            continue
+        tb = str(it.get("traceback") or "")
+        if len(tb) > tb_limit:
+            tb = tb[:tb_limit] + "\n…(truncated)"
+        try:
+            at = int(it.get("at") or 0)
+        except (TypeError, ValueError):
+            at = 0
+        out.append({
+            "at": at,
+            "plugin": str(it.get("plugin") or ""),
+            "exc_type": str(it.get("exc_type") or ""),
+            "message": str(it.get("message") or "")[:2000],
+            "traceback": tb,
+        })
+    return out
+
+
+def _cleanup_log_error_archives_sync() -> None:
+    from src.common.paths import plugin_data_dir
+
+    path = plugin_data_dir("pallas_webui") / "log_errors.jsonl"
+    with _LOG_ERROR_JSONL_LOCK:
+        try:
+            if path.exists():
+                path.unlink()
+        except OSError as e:
+            logger.warning("Pallas-Bot 控制台: 删除 log_errors.jsonl 失败: {}", str(e))
+        _LOG_ERROR_BUFFER.clear()
+
+
 async def _scheduled_cleanup_matcher_error_logs() -> None:
-    """每日 4:00清理 Matcher 异常 jsonl。"""
+    """每日 4:00 清理 Matcher 异常与日志 ERROR 归档（jsonl + 进程内缓冲）。"""
     from src.common.paths import plugin_data_dir
 
     path = plugin_data_dir("pallas_webui") / "matcher_errors.jsonl"
@@ -1481,8 +1615,12 @@ async def _scheduled_cleanup_matcher_error_logs() -> None:
         for rec in _PLUGIN_RUN_STATS.values():
             if isinstance(rec, dict):
                 rec["matcher_error_log"] = []
+    _cleanup_log_error_archives_sync()
     _drop_read_cache(("plugin-run-stats:",))
-    logger.info("Pallas-Bot 控制台: Matcher 异常日志已按计划清理（每日 4:00，matcher_errors.jsonl + 进程内缓冲）")
+    logger.info(
+        "Pallas-Bot 控制台: 控制台异常记录已按计划清理（每日 4:00，"
+        "matcher_errors.jsonl、log_errors.jsonl 与进程内缓冲）"
+    )
 
 
 def _matcher_hist_bump(sid: str, plugin: str, had_error: bool) -> None:
@@ -1691,6 +1829,7 @@ def _plugin_run_stats_overview(*, self_id: str | None) -> dict[str, Any]:
         "total_errors_today": total_errors_today,
         "matcher_calls_history_bucket_sec": _API_HIST_BUCKET_SEC,
         "matcher_calls_history_max_buckets": _API_HIST_MAX_BUCKETS,
+        "log_error_log": _log_error_log_public(),
         "bots": rows_out,
     }
 
@@ -3673,7 +3812,7 @@ def register_extended_api(
     try:
         from nonebot_plugin_apscheduler import scheduler
     except ImportError:
-        logger.warning("Pallas-Bot 控制台: 未安装 nonebot_plugin_apscheduler，跳过 Matcher 异常日志定时清理")
+        logger.warning("Pallas-Bot 控制台: 未安装 nonebot_plugin_apscheduler，跳过控制台异常记录定时清理")
     else:
         _matcher_cleanup_job_id = "pallas_webui_matcher_error_log_cleanup"
         if scheduler.get_job(_matcher_cleanup_job_id):
