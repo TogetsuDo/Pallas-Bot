@@ -73,21 +73,22 @@ if not await satisfies_command_permission(bot, event, "my_plugin.do_something"):
 
 ## 帮助菜单：`menu_data` 与动态权限文案
 
-帮助二级页「本插件功能一览」、三级页详情表中的「触发条件」会调用：
+帮助二级页「本插件功能一览」、三级页详情中：
 
-`src.common.cmd_perm.menu_display.trigger_condition_with_effective_perm`
+- **触发条件**：`raw_trigger_condition`（metadata 原文，不含权限）。
+- **何人可用**：`effective_permission_avail_text`（如 `号主可用`、`任一：群管或号主 / 仅超管 可用`）；无 `command_permission(s)` 时二级表为「—」，三级表为「—」。
 
 ### 写法约定
 
-1. **`trigger_condition`**：只描述**如何触发**（场景、私聊/群、关键词等），**不要**写死「默认：号主」「仅超管」等静态权限句；权限由下面键关联后自动拼接。
+1. **`trigger_condition`**：只描述**如何触发**（场景、私聊/群、关键词等），**不要**写死权限角色；权限单独由「何人可用」列展示。
 2. **`command_permission`**：字符串，单个命令 ID。
-3. **`command_permissions`**：字符串列表，多条命令对应同一菜单行时列出；若多条当前生效等级一致，文案为「当前需：xxx」；若不一致，为「当前可能需其一：a / b / …」。
+3. **`command_permissions`**：字符串列表；多命令且当前生效等级不一致时，「何人可用」为「任一：…可用」。
 
-未设置 `command_permission(s)` 时，触发条件列即为 `trigger_condition` 原文，行为与旧版一致。
+`trigger_condition_with_effective_perm` 仍导出，行为与 `raw_trigger_condition` 相同（兼容旧代码）。
 
 ### 与 `on_command` 对齐
 
-`menu_data` 里填写的命令 ID 必须与 `permission_for_command(...)` / `satisfies_command_permission(..., "...")` 使用的 ID **一致**，否则帮助上看到的「当前需」与实际鉴权不一致。
+`menu_data` 里填写的命令 ID 必须与 `permission_for_command(...)` / `satisfies_command_permission(..., "...")` 使用的 ID **一致**，否则帮助上的「何人可用」与实际鉴权不一致。
 
 ## 运行中覆盖：`.env` 与 WebUI
 
@@ -103,7 +104,7 @@ if not await satisfies_command_permission(bot, event, "my_plugin.do_something"):
 | `src/common/cmd_perm/config.py` | 从环境读取覆盖、`get_cmd_perm_config`、`clear_cmd_perm_cache` |
 | `src/common/cmd_perm/registry.py` | 合法等级、`DEFAULT_COMMAND_PERMISSIONS`、`resolved_level` |
 | `src/common/cmd_perm/schema.py` | 合并 metadata 默认、WebUI `command_perm_ui` 数据结构 |
-| `src/common/cmd_perm/menu_display.py` | 帮助文案：触发条件 + 当前生效权限 |
+| `src/common/cmd_perm/menu_display.py` | `raw_trigger_condition`、`effective_permission_avail_text`、帮助用权限文案 |
 | `src/common/webui_env_sections.py` | `cmd_perm` 配置段与 payload 附加字段 |
 | `src/plugins/help/markdown_generator.py` | 二/三级帮助 Markdown 生成 |
 
@@ -111,5 +112,5 @@ if not await satisfies_command_permission(bot, event, "my_plugin.do_something"):
 
 - [ ] 所有需独立配置权限的入口是否都使用**同一套**命令 ID？
 - [ ] `extra["command_permissions"]` 是否包含这些 ID 及可读 `label`？
-- [ ] `menu_data` 中带权限的条目是否已配置 `command_permission` 或 `command_permissions`，且 `trigger_condition` 无静态「默认权限」描述？
+- [ ] `menu_data` 中带权限的条目是否已配置 `command_permission` 或 `command_permissions`，且 `trigger_condition` 无静态权限描述（权限由帮助「何人可用」列展示）？
 - [ ] 若命令仍需全局兜底：是否已在 `DEFAULT_COMMAND_PERMISSIONS` 或本插件 metadata 中声明默认等级？

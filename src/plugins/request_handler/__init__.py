@@ -68,6 +68,7 @@ __plugin_meta__ = PluginMetadata(
             {"id": "request.disable_auto_friend", "label": "关闭自动同意好友", "default": "bot_moderator"},
             {"id": "request.enable_auto_group", "label": "开启自动同意入群", "default": "bot_moderator"},
             {"id": "request.disable_auto_group", "label": "关闭自动同意入群", "default": "bot_moderator"},
+            {"id": "request.approval_reply", "label": "引用审批消息快捷同意", "default": "bot_moderator"},
         ],
         "menu_data": [
             {
@@ -85,6 +86,14 @@ __plugin_meta__ = PluginMetadata(
                 "command_permission": "request.approve_latest",
                 "brief_des": "快捷同意一条申请",
                 "detail_des": "私聊「同意」对应牛牛最新一条提醒；引用某条审批提醒则只处理该条",
+            },
+            {
+                "func": "引用审批消息快捷同意",
+                "trigger_method": "on_message",
+                "trigger_condition": "私聊引用牛牛发出的审批提醒，正文为同意/好/留空",
+                "command_permission": "request.approval_reply",
+                "brief_des": "按引用对应单一申请同意",
+                "detail_des": "须引用仍有效的审批消息；好友或入群邀请分别走对应处理逻辑",
             },
             {
                 "func": "好友申请审批",

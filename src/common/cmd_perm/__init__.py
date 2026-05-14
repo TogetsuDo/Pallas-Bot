@@ -7,7 +7,11 @@ from .check import (
     satisfies_command_permission,
 )
 from .config import CmdPermConfig, clear_cmd_perm_cache, get_cmd_perm_config
-from .menu_display import trigger_condition_with_effective_perm
+from .menu_display import (
+    effective_permission_avail_text,
+    raw_trigger_condition,
+    trigger_condition_with_effective_perm,
+)
 from .registry import DEFAULT_COMMAND_PERMISSIONS, VALID_LEVELS, normalize_level, resolved_level
 
 __all__ = [
@@ -22,5 +26,7 @@ __all__ = [
     "private_message_permission_for_command",
     "resolved_level",
     "satisfies_command_permission",
+    "effective_permission_avail_text",
+    "raw_trigger_condition",
     "trigger_condition_with_effective_perm",
 ]
