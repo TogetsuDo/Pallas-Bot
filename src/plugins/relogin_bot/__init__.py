@@ -9,7 +9,7 @@ from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State
 
-from src.common.cmd_perm import permission_for_command
+from src.common.cmd_perm import private_message_permission_for_command
 from src.common.config import BotConfig, user_is_bot_admin
 from src.common.db import make_bot_config_repository
 from src.plugins.pallas_protocol import manager as protocol_manager
@@ -57,10 +57,10 @@ relogin_cmd = on_command(
     "牛牛重新上号",
     priority=5,
     block=True,
-    permission=permission.PRIVATE & permission_for_command("relogin.relogin"),
+    permission=private_message_permission_for_command("relogin.relogin"),
 )
 create_cmd = on_command(
-    "创建牛牛", priority=5, block=True, permission=permission.PRIVATE & permission_for_command("relogin.create")
+    "创建牛牛", priority=5, block=True, permission=private_message_permission_for_command("relogin.create")
 )
 
 _CANCEL_WORDS = {"取消", "cancel", "退出", "quit"}

@@ -30,6 +30,18 @@ from src.common.cmd_perm import permission_for_command
 on_command("示例", permission=permission_for_command("my_plugin.do_something"))
 ```
 
+当前 NoneBot 版本**禁止** `Permission & Permission`（会抛 `RuntimeError`）。若命令必须限定在 **OneBot V11 群消息**或**私聊**上，请使用合并后的 helper，勿写 `permission.GROUP & permission_for_command(...)`：
+
+```python
+from src.common.cmd_perm import (
+    group_message_permission_for_command,
+    private_message_permission_for_command,
+)
+
+on_command("群内示例", permission=group_message_permission_for_command("my_plugin.in_group"))
+on_command("私聊示例", permission=private_message_permission_for_command("my_plugin.in_private"))
+```
+
 ### 在消息处理中手动判断
 
 ```python
@@ -87,7 +99,7 @@ if not await satisfies_command_permission(bot, event, "my_plugin.do_something"):
 
 | 路径 | 职责 |
 |------|------|
-| `src/common/cmd_perm/check.py` | `permission_for_command`、`satisfies_command_permission` |
+| `src/common/cmd_perm/check.py` | `permission_for_command`、`group_message_permission_for_command`、`private_message_permission_for_command`、`satisfies_command_permission` |
 | `src/common/cmd_perm/config.py` | 从环境读取覆盖、`get_cmd_perm_config`、`clear_cmd_perm_cache` |
 | `src/common/cmd_perm/registry.py` | 合法等级、`DEFAULT_COMMAND_PERMISSIONS`、`resolved_level` |
 | `src/common/cmd_perm/schema.py` | 合并 metadata 默认、WebUI `command_perm_ui` 数据结构 |

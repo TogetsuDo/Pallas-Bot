@@ -13,7 +13,7 @@ from nonebot.rule import Rule, keyword, to_me
 from nonebot.typing import T_State
 from nonebot_plugin_apscheduler import scheduler
 
-from src.common.cmd_perm import permission_for_command
+from src.common.cmd_perm import group_message_permission_for_command
 from src.common.config import BotConfig
 from src.common.message_scrub import is_message_scrub_blocked_async
 from src.common.message_scrub.log_preview import scrub_intercept_log_preview
@@ -286,7 +286,7 @@ ban_msg = on_message(
     rule=to_me() & keyword("不可以") & Rule(is_reply),
     priority=5,
     block=True,
-    permission=permission.GROUP & permission_for_command("repeater.ban"),
+    permission=group_message_permission_for_command("repeater.ban"),
 )
 
 
@@ -375,7 +375,7 @@ ban_msg_latest = on_message(
     rule=to_me() & Rule(message_is_ban),
     priority=5,
     block=True,
-    permission=permission.GROUP & permission_for_command("repeater.ban_latest"),
+    permission=group_message_permission_for_command("repeater.ban_latest"),
 )
 
 

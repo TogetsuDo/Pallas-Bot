@@ -16,7 +16,7 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from src.common.cmd_perm import permission_for_command
+from src.common.cmd_perm import group_message_permission_for_command
 from src.common.config import BotConfig, GroupConfig
 
 from .config import JUDGMENT_CFG, RESCUE_CFG, SHOT_CFG
@@ -201,7 +201,7 @@ roulette_type_msg = on_message(
     priority=5,
     block=True,
     rule=Rule(is_roulette_type_msg),
-    permission=permission.GROUP & permission_for_command("roulette.mode_switch"),
+    permission=group_message_permission_for_command("roulette.mode_switch"),
 )
 
 

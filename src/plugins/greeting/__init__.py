@@ -22,7 +22,10 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule, to_me
 from nonebot.typing import T_State
 
-from src.common.cmd_perm import permission_for_command
+from src.common.cmd_perm import (
+    group_message_permission_for_command,
+    private_message_permission_for_command,
+)
 from src.common.config import BotConfig, GroupConfig, UserConfig
 from src.common.paths import plugin_data_dir
 from src.common.utils import HTTPXClient, is_bot_admin
@@ -256,7 +259,7 @@ async def get_custom_friend_welcome_message(bot_id: int) -> Message | None:
 
 set_friend_welcome = on_command(
     "设置好友欢迎",
-    permission=permission.PRIVATE & permission_for_command("greeting.set_friend_welcome"),
+    permission=private_message_permission_for_command("greeting.set_friend_welcome"),
     priority=10,
     block=True,
 )
@@ -306,7 +309,7 @@ async def handle_friend_welcome_message(bot: Bot, event: PrivateMessageEvent, st
 
 clear_friend_welcome = on_command(
     "清除好友欢迎",
-    permission=permission.PRIVATE & permission_for_command("greeting.clear_friend_welcome"),
+    permission=private_message_permission_for_command("greeting.clear_friend_welcome"),
     priority=10,
     block=True,
 )
@@ -330,7 +333,7 @@ async def handle_clear_friend_welcome(bot: Bot, event: PrivateMessageEvent):
 
 set_group_welcome = on_command(
     "设置群欢迎",
-    permission=permission.GROUP & permission_for_command("greeting.set_group_welcome"),
+    permission=group_message_permission_for_command("greeting.set_group_welcome"),
     priority=10,
     block=True,
 )
@@ -391,7 +394,7 @@ async def handle_group_welcome_message(bot: Bot, event: MessageEvent, state: T_S
 
 clear_group_welcome = on_command(
     "清除群欢迎",
-    permission=permission.GROUP & permission_for_command("greeting.clear_group_welcome"),
+    permission=group_message_permission_for_command("greeting.clear_group_welcome"),
     priority=10,
     block=True,
 )

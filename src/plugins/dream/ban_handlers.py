@@ -4,12 +4,12 @@ import re
 
 from nonebot import logger, on_message, on_notice
 from nonebot.adapters import Bot  # noqa: TC002
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, GroupRecallNoticeEvent, Message, permission
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, GroupRecallNoticeEvent, Message
 from nonebot.exception import ActionFailed
 from nonebot.rule import Rule, keyword, to_me
 from nonebot.typing import T_State  # noqa: TC002
 
-from src.common.cmd_perm import permission_for_command
+from src.common.cmd_perm import group_message_permission_for_command
 from src.common.utils.array2cqcode import try_convert_to_cqcode
 
 from .ban_ack_state import DREAM_BAN_ACK_SENT_STATE_KEY
@@ -26,7 +26,7 @@ dream_ban_cleanup_msg = on_message(
     rule=to_me() & keyword("不可以") & Rule(is_reply_for_ban),
     priority=4,
     block=False,
-    permission=permission.GROUP & permission_for_command("dream.ban_cleanup"),
+    permission=group_message_permission_for_command("dream.ban_cleanup"),
 )
 
 
