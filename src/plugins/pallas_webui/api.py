@@ -13,6 +13,27 @@ from fastapi.responses import JSONResponse
 from nonebot import __version__ as _nb_ver
 
 
+def _merge_console_version_from_disk(meta: dict[str, Any], static_root: Path | None) -> None:
+    """从静态目录 console-version.json 覆盖 version/commit/build_time（供 health 每次拉取最新）。"""
+    if not static_root or not static_root.is_dir():
+        return
+    version_file = static_root / "console-version.json"
+    if not version_file.is_file():
+        return
+    try:
+        data = json.loads(version_file.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return
+        for key in ("version", "commit", "build_time"):
+            val = str(data.get(key, "") or "").strip()
+            if val:
+                meta[key] = val
+            elif key in meta:
+                del meta[key]
+    except Exception:
+        pass
+
+
 def register_api(
     app,
     *,
@@ -29,19 +50,7 @@ def register_api(
 
     console_meta = dict(extra_meta or {})
     static_root = Path(str(console_meta.get("static_root", "")).strip()) if console_meta.get("static_root") else None
-    if static_root and static_root.is_dir():
-        version_file = static_root / "console-version.json"
-        if version_file.is_file():
-            try:
-                data = json.loads(version_file.read_text(encoding="utf-8"))
-                if isinstance(data, dict):
-                    # 写入控制台版本元信息
-                    for key in ("version", "commit", "build_time"):
-                        val = str(data.get(key, "")).strip()
-                        if val:
-                            console_meta[key] = val
-            except Exception:
-                pass
+    _merge_console_version_from_disk(console_meta, static_root)
 
     pallas_ver: str
     try:
@@ -57,12 +66,15 @@ def register_api(
 
     @router.get(f"{x}/health", include_in_schema=True)
     async def _health() -> JSONResponse:  # pragma: no cover - 路由注册
+        # 每次请求重读 dist 内 console-version.json，避免 WebUI 在线更新后仍返回启动时快照
+        live_console = dict(console_meta)
+        _merge_console_version_from_disk(live_console, static_root)
         return JSONResponse(
             {
                 "ok": True,
                 "nonebot2": str(_nb_ver),
                 "pallas_bot": pallas_ver,
-                "console": console_meta,
+                "console": live_console,
             },
             status_code=status.HTTP_200_OK,
         )

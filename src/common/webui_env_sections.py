@@ -1,6 +1,7 @@
 """在 WebUI 中暴露的「通用配置段」：对应走根目录 `.env` 的 Pydantic 模型。
 
 - `message_scrub`：显式 `field_to_env`（与历史 `PALLAS_*` 键名一致）。
+- `cmd_perm`：命令权限覆盖（`PALLAS_COMMAND_PERMISSION_OVERRIDES`）。
 - 若干 NoneBot 插件：字段名大写写入 `.env`，与控制台「插件」配置 PUT 规则一致。
 
 新增段：在 `_registered_sections` 中追加构建函数；插件段优先用 `_plugin_env_section_from_module`。
@@ -146,6 +147,20 @@ def _plugin_env_section_from_module(
     )
 
 
+def _cmd_perm_section() -> WebuiEnvSection:
+    from src.common.cmd_perm.config import CmdPermConfig, get_cmd_perm_config
+
+    return WebuiEnvSection(
+        id="cmd_perm",
+        title="命令权限",
+        module_label="src.common.cmd_perm",
+        model_cls=CmdPermConfig,
+        read_current=get_cmd_perm_config,
+        field_to_env={"command_permission_overrides": "PALLAS_COMMAND_PERMISSION_OVERRIDES"},
+        skip_fields=frozenset(),
+    )
+
+
 _sections_cache: tuple[WebuiEnvSection, ...] | None = None
 
 
@@ -156,6 +171,7 @@ def _registered_sections() -> tuple[WebuiEnvSection, ...]:
     parts: list[WebuiEnvSection] = []
     if (Path(__file__).resolve().parent / "message_scrub" / "config.py").is_file():
         parts.append(_message_scrub_section())
+    parts.append(_cmd_perm_section())
     parts.extend(
         s
         for s in (
@@ -217,11 +233,23 @@ def webui_env_section_payload(section_id: str) -> dict[str, Any]:
             "default": _jsonable_value(default_value),
             "current": _jsonable_value(cur),
         })
-    return {
+    base: dict[str, Any] = {
         "plugin": s.id,
         "module": s.module_label,
         "fields": fields,
     }
+    if section_id == "cmd_perm":
+        base.update(_cmd_perm_payload_extras(cfg_obj))
+    return base
+
+
+def _cmd_perm_payload_extras(cfg_obj: Any) -> dict[str, Any]:
+    from src.common.cmd_perm.schema import build_command_perm_ui
+
+    overrides = getattr(cfg_obj, "command_permission_overrides", None) or {}
+    if not isinstance(overrides, dict):
+        overrides = {}
+    return {"command_perm_ui": build_command_perm_ui({str(k): str(v) for k, v in overrides.items()})}
 
 
 def apply_webui_env_section_patch(section_id: str, patch: dict[str, Any]) -> dict[str, Any]:
@@ -240,6 +268,13 @@ def apply_webui_env_section_patch(section_id: str, patch: dict[str, Any]) -> dic
             from src.common.message_scrub import reload_message_scrub_caches
 
             reload_message_scrub_caches()
+        except Exception:
+            pass
+    if section_id == "cmd_perm":
+        try:
+            from src.common.cmd_perm import clear_cmd_perm_cache
+
+            clear_cmd_perm_cache()
         except Exception:
             pass
     return webui_env_section_payload(section_id)

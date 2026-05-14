@@ -35,6 +35,8 @@ from src.common.pallas_console_login import (
 )
 from src.common.web.bot_web import LogScope  # noqa: TC001  # FastAPI/OpenAPI 需在运行时解析注解
 
+from .api import _merge_console_version_from_disk
+
 if typing.TYPE_CHECKING:
     from .config import Config
 
@@ -1579,6 +1581,10 @@ def _system_dict() -> dict[str, Any]:
             port_s = int(port)
         except (TypeError, ValueError):
             port_s = None
+    console = dict(_CONSOLE_EXTRA)
+    sr = str(console.get("static_root", "") or "").strip()
+    static_path = Path(sr) if sr else None
+    _merge_console_version_from_disk(console, static_path)
     return {
         "nonebot2_driver": {
             "host": host_s,
@@ -1588,7 +1594,7 @@ def _system_dict() -> dict[str, Any]:
         "server_time": time.time(),
         "plugin_count": len(_list_plugins_dict()),
         "bot_count": len(get_bots()),
-        "console": dict(_CONSOLE_EXTRA),
+        "console": console,
         "runtime": _runtime_metrics(),
     }
 
