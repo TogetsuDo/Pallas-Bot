@@ -66,8 +66,8 @@ def _cache_value_copy(data: Any) -> Any:
 _MSG_STATS: dict[str, dict[str, Any]] = {}  # self_id -> sent/received + 按本地日切片的 day_*
 _MSG_TRACKING_INIT = False
 # 与 _count_protocol_api_calls 口径一致的成功调用时间序列（进程内，重启丢失）
-_API_HIST_BUCKET_SEC = 300
-_API_HIST_MAX_BUCKETS = 288  # 5min * 288 ≈ 24h
+_API_HIST_BUCKET_SEC = 60
+_API_HIST_MAX_BUCKETS = 1440  # 1min * 1440 ≈ 24h
 
 
 def _hist_bucket_start_local(ts: int, bucket_sec: int) -> int:
@@ -1191,7 +1191,7 @@ def _top_api_call_today(counts: object) -> tuple[str, int]:
 
 
 def _init_message_tracking() -> None:
-    """注册 NoneBot2 钩子：消息收/发；协议 API 今日计数与 5 分钟桶；消息收/发时间桶。"""
+    """注册 NoneBot2 钩子：消息收/发；协议 API 今日计数与按时间桶（见 _API_HIST_BUCKET_SEC）；消息收/发时间桶。"""
     global _MSG_TRACKING_INIT
     if _MSG_TRACKING_INIT:
         return
