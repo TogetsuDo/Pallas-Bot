@@ -11,7 +11,9 @@ import platform
 import shutil
 import socket
 import sys
+import threading
 import time
+import traceback
 import typing
 from collections import defaultdict
 from pathlib import Path
@@ -125,6 +127,10 @@ def _hist_bucket_start_local(ts: int, bucket_sec: int) -> int:
 _PLUGIN_RUN_STATS: dict[str, dict[str, Any]] = {}
 _PLUGIN_RUN_TRACKING_INIT = False
 _EXCLUDED_PLUGIN_RUN_NAMES = frozenset({"pallas_webui"})
+_MATCHER_ERROR_LOG_CAP = 80
+_MATCHER_ERROR_MSG_MAX = 2000
+_MATCHER_ERROR_TB_MAX = 8000
+_MATCHER_ERROR_JSONL_LOCK = threading.Lock()
 
 
 def set_console_meta(d: dict[str, Any] | None) -> None:
@@ -1393,6 +1399,92 @@ def _plugin_run_plugin_row(sid: str, plugin: str) -> dict[str, Any]:
     return row
 
 
+def _append_matcher_error_log(sid: str, plugin: str, exception: BaseException) -> None:
+    """进程内环形缓冲 + jsonl；与定时清理共用锁，避免与每日清空交错。"""
+    from src.common.paths import plugin_data_dir
+
+    tb = "".join(
+        traceback.format_exception(
+            type(exception),
+            exception,
+            exception.__traceback__,
+        )
+    )
+    if len(tb) > _MATCHER_ERROR_TB_MAX:
+        tb = tb[:_MATCHER_ERROR_TB_MAX] + "\n…(truncated)"
+    msg = str(exception)
+    if len(msg) > _MATCHER_ERROR_MSG_MAX:
+        msg = msg[:_MATCHER_ERROR_MSG_MAX] + "…"
+    entry: dict[str, Any] = {
+        "at": int(time.time()),
+        "plugin": plugin,
+        "exc_type": type(exception).__name__,
+        "message": msg,
+        "traceback": tb,
+    }
+    line_obj = {**entry, "self_id": sid}
+    try:
+        path = plugin_data_dir("pallas_webui") / "matcher_errors.jsonl"
+        line = json.dumps(line_obj, ensure_ascii=False) + "\n"
+        with _MATCHER_ERROR_JSONL_LOCK:
+            rec = _plugin_run_bot_bucket(sid)
+            log = rec.setdefault("matcher_error_log", [])
+            if not isinstance(log, list):
+                rec["matcher_error_log"] = []
+                log = rec["matcher_error_log"]
+            log.append(entry)
+            while len(log) > _MATCHER_ERROR_LOG_CAP:
+                log.pop(0)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as f:
+                f.write(line)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _matcher_error_log_public(rec: dict[str, Any], *, limit: int = 30, tb_limit: int = 4000) -> list[dict[str, Any]]:
+    raw = rec.get("matcher_error_log")
+    if not isinstance(raw, list) or not raw:
+        return []
+    out: list[dict[str, Any]] = []
+    for it in raw[-limit:]:
+        if not isinstance(it, dict):
+            continue
+        tb = str(it.get("traceback") or "")
+        if len(tb) > tb_limit:
+            tb = tb[:tb_limit] + "\n…(truncated)"
+        try:
+            at = int(it.get("at") or 0)
+        except (TypeError, ValueError):
+            at = 0
+        out.append({
+            "at": at,
+            "plugin": str(it.get("plugin") or ""),
+            "exc_type": str(it.get("exc_type") or ""),
+            "message": str(it.get("message") or "")[:2000],
+            "traceback": tb,
+        })
+    return out
+
+
+async def _scheduled_cleanup_matcher_error_logs() -> None:
+    """每日 4:00清理 Matcher 异常 jsonl。"""
+    from src.common.paths import plugin_data_dir
+
+    path = plugin_data_dir("pallas_webui") / "matcher_errors.jsonl"
+    with _MATCHER_ERROR_JSONL_LOCK:
+        try:
+            if path.exists():
+                path.unlink()
+        except OSError as e:
+            logger.warning("Pallas-Bot 控制台: 删除 matcher_errors.jsonl 失败: {}", str(e))
+        for rec in _PLUGIN_RUN_STATS.values():
+            if isinstance(rec, dict):
+                rec["matcher_error_log"] = []
+    _drop_read_cache(("plugin-run-stats:",))
+    logger.info("Pallas-Bot 控制台: Matcher 异常日志已按计划清理（每日 4:00，matcher_errors.jsonl + 进程内缓冲）")
+
+
 def _matcher_hist_bump(sid: str, plugin: str, had_error: bool) -> None:
     """Matcher 执行按时间桶、按插件名记录（与 plugin-run-stats 插件维度一致）。"""
     pname = str(plugin).strip() or "_"
@@ -1530,6 +1622,7 @@ def _init_plugin_run_tracking() -> None:
             if exception is not None:
                 row["errors"] = int(row["errors"]) + 1
                 row["day_errors"] = int(row["day_errors"]) + 1
+                _append_matcher_error_log(sid, plugin, exception)
             _matcher_hist_bump(sid, plugin, exception is not None)
         except Exception:  # noqa: BLE001
             pass
@@ -1574,6 +1667,7 @@ def _plugin_run_stats_overview(*, self_id: str | None) -> dict[str, Any]:
             bet += et
         plugins_list.sort(key=lambda x: (-int(x["runs_today"]), -int(x["runs"]), str(x["name"])))
         hist_pack = _matcher_hist_series_public(bucket if isinstance(bucket, dict) else {})
+        err_log = _matcher_error_log_public(bucket if isinstance(bucket, dict) else {})
         rows_out.append({
             "self_id": sid,
             "connection_key": str(key),
@@ -1584,6 +1678,7 @@ def _plugin_run_stats_overview(*, self_id: str | None) -> dict[str, Any]:
             "plugins": plugins_list,
             "matcher_runs_by_plugin": hist_pack["matcher_runs_by_plugin"],
             "matcher_errors_by_plugin": hist_pack["matcher_errors_by_plugin"],
+            "matcher_error_log": err_log,
         })
         total_runs += br
         total_errors += be
@@ -3574,3 +3669,23 @@ def register_extended_api(
 
     app.include_router(router_pub)
     app.include_router(router)
+
+    try:
+        from nonebot_plugin_apscheduler import scheduler
+    except ImportError:
+        logger.warning("Pallas-Bot 控制台: 未安装 nonebot_plugin_apscheduler，跳过 Matcher 异常日志定时清理")
+    else:
+        _matcher_cleanup_job_id = "pallas_webui_matcher_error_log_cleanup"
+        if scheduler.get_job(_matcher_cleanup_job_id):
+            scheduler.remove_job(_matcher_cleanup_job_id)
+        scheduler.add_job(
+            _scheduled_cleanup_matcher_error_logs,
+            trigger="cron",
+            hour=4,
+            minute=0,
+            id=_matcher_cleanup_job_id,
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=3600,
+        )
