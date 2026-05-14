@@ -4,6 +4,8 @@ from enum import StrEnum
 
 from nonebot import get_loaded_plugins
 
+from src.common.cmd_perm import trigger_condition_with_effective_perm
+
 from .config import Config
 from .plugin_manager import find_plugin, plugin_display_name
 from .visibility import load_help_hidden_plugins
@@ -123,9 +125,11 @@ def generate_plugins_markdown(
         "   （插件名可用中文展示名，或与包名一致的英文名。）\n"
     )
     markdown_content += (
-        "2. **开 / 关插件**（群里需要管理员或超管）：「牛牛开启 〈插件名或序号〉」「牛牛关闭 〈插件名或序号〉」。\n"
+        "2. **开 / 关插件**：「牛牛开启 〈插件名或序号〉」「牛牛关闭 〈插件名或序号〉」"
+        "（所需权限见「牛牛帮助 帮助系统」功能详情中的触发条件）。\n"
     )
-    markdown_content += "3. **一次开关全部插件**（需管理员或超管）：「牛牛开启全部功能」「牛牛关闭全部功能」。\n\n"
+    markdown_content += "3. **一次开关全部插件**：「牛牛开启全部功能」「牛牛关闭全部功能」"
+    markdown_content += "（同上，见帮助系统功能详情）。\n\n"
     markdown_content += "**示例**（数字表示上表序号，换成你的目标即可）\n\n"
     markdown_content += "- 打开上表第 1 个插件：「牛牛帮助 1」\n"
     markdown_content += "- 按中文名打开：「牛牛帮助 帮助系统」\n"
@@ -171,13 +175,15 @@ def generate_plugin_functions_markdown(
             menu_data = metadata.extra.get("menu_data", [])
             if menu_data:
                 markdown_content += "## 本插件功能一览\n\n"
-                markdown_content += "| 序号 | 功能 | 简介 |\n"
-                markdown_content += "|------|------|------|\n"
+                markdown_content += "| 序号 | 功能 | 触发条件 | 简介 |\n"
+                markdown_content += "|------|------|----------|------|\n"
                 for i, item in enumerate(menu_data, 1):
                     func_name = _sanitize_pipe(str(item.get("func", f"未命名功能 {i}") or ""))
+                    trig_raw = trigger_condition_with_effective_perm(item)
+                    trig_cell = _markdown_table_cell_truncate(trig_raw, 24)
                     brief_raw = item.get("brief_des", "暂无简介") or "暂无简介"
-                    brief_des = _markdown_table_cell_truncate(str(brief_raw), 26)
-                    markdown_content += f"| {i} | {func_name} | {brief_des} |\n"
+                    brief_des = _markdown_table_cell_truncate(str(brief_raw), 20)
+                    markdown_content += f"| {i} | {func_name} | {trig_cell} | {brief_des} |\n"
                 markdown_content += "\n### 查看功能详情\n\n"
                 markdown_content += f"**示例**（当前插件为「{plugin_name_display}」）\n\n"
                 markdown_content += f"- 「牛牛帮助 {plugin_name_display} 1」→ 打开表中第 1 条功能的详情页\n"
@@ -256,9 +262,9 @@ def generate_function_detail_markdown(plugin_name: str, function_name: str) -> t
     markdown_content += f"| 简介 | {_markdown_table_cell_truncate(str(brief_cell), 28)} |\n"
 
     trigger_method = str(target_function.get("trigger_method", "未知") or "未知")
-    trigger_condition = str(target_function.get("trigger_condition", "未知") or "未知")
+    trigger_condition = trigger_condition_with_effective_perm(target_function)
     markdown_content += f"| 触发方式 | {_markdown_table_cell_truncate(trigger_method, 28)} |\n"
-    markdown_content += f"| 触发条件 | {_markdown_table_cell_truncate(trigger_condition, 28)} |\n"
+    markdown_content += f"| 触发条件 | {_markdown_table_cell_truncate(trigger_condition, 36)} |\n"
 
     markdown_content += "\n"
 
