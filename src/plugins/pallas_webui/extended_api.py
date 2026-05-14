@@ -3362,16 +3362,25 @@ def register_extended_api(
                     "has_update": False,
                     "release_url": "",
                     "asset_url": "",
+                    "release_notes": "",
                     "error": err_msg,
                     "checked_at": time.time(),
                 }
             has_update = bool(latest_tag and not release_tags_equivalent(current_tag, latest_tag))
+            notes_raw = str(latest.get("body", "") or "").strip()
+            notes_max = 40000
+            release_notes = (
+                notes_raw
+                if len(notes_raw) <= notes_max
+                else f"{notes_raw[:notes_max].rstrip()}\n\n…（已截断，完整内容见 Release 页面）"
+            )
             return {
                 "current_tag": current_tag,
                 "latest_tag": latest_tag,
                 "has_update": has_update,
                 "release_url": release_url,
                 "asset_url": asset_url,
+                "release_notes": release_notes,
                 "error": None,
                 "checked_at": time.time(),
             }
@@ -3406,6 +3415,7 @@ def register_extended_api(
                     "latest_tag": None,
                     "has_update": False,
                     "release_url": "",
+                    "release_notes": "",
                     "error": err_msg,
                     "checked_at": time.time(),
                 }
@@ -3413,12 +3423,20 @@ def register_extended_api(
                 latest_tag
                 and (not str(current_tag or "").strip() or not release_tags_equivalent(current_tag, latest_tag)),
             )
+            notes_raw = str(latest.get("body", "") or "").strip()
+            notes_max = 40000
+            release_notes = (
+                notes_raw
+                if len(notes_raw) <= notes_max
+                else f"{notes_raw[:notes_max].rstrip()}\n\n…（已截断，完整内容见 Release 页面）"
+            )
             return {
                 "current_tag": current_tag,
                 "current_commit": current_commit,
                 "latest_tag": latest_tag,
                 "has_update": has_update,
                 "release_url": release_url,
+                "release_notes": release_notes,
                 "error": None,
                 "checked_at": time.time(),
             }

@@ -474,7 +474,7 @@ async def fetch_latest_bot_release(repo: str = "PallasBot/Pallas-Bot", *, token:
             token=token,
             include_asset_url=False,
         )
-        return {"tag": data["tag"], "html_url": data["html_url"]}
+        return {"tag": data["tag"], "html_url": data["html_url"], "body": str(data.get("body", "") or "").strip()}
     except (httpx.HTTPError, json.JSONDecodeError, TypeError, ValueError) as first_err:
         try:
             fb = await fetch_latest_release_tag_via_github_web(
@@ -486,7 +486,7 @@ async def fetch_latest_bot_release(repo: str = "PallasBot/Pallas-Bot", *, token:
                 "Pallas-Bot 控制台: GitHub Release API 不可用，已用 github.com/releases/latest 兜底（Bot）tag={}",
                 fb["tag"],
             )
-            return {"tag": fb["tag"], "html_url": fb["html_url"]}
+            return {"tag": fb["tag"], "html_url": fb["html_url"], "body": ""}
         except Exception:
             raise first_err from None
 
@@ -514,6 +514,6 @@ async def fetch_latest_webui_release(repo: str, *, token: str = "", asset_name: 
                 "Pallas-Bot 控制台: GitHub Release API 不可用，已用 github.com/releases/latest 兜底（WebUI）tag={}",
                 tag_fb,
             )
-            return {"tag": tag_fb, "html_url": fb["html_url"], "asset_url": asset_url_fb}
+            return {"tag": tag_fb, "html_url": fb["html_url"], "asset_url": asset_url_fb, "body": ""}
         except Exception:
             raise first_err from None

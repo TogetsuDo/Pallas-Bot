@@ -216,10 +216,11 @@ async def fetch_latest_release(
 ) -> dict[str, Any]:
     """获取指定仓库最新 release 的摘要信息。
 
-    返回 ``{tag, html_url, asset_url}``。``asset_url``：
+    返回 ``{tag, html_url, asset_url, body}``。
 
-    - ``include_asset_url=False`` 时恒为空（适合仅需对比 tag 的场景）。
-    - 否则优先匹配 ``preferred_asset_name``（忽略大小写），否则取第一个 ``.zip`` 资产。
+    - ``body``：Release 说明（Markdown），来自 API；可能为空串。
+    - ``asset_url``：``include_asset_url=False`` 时恒为空字符串；否则优先匹配
+      ``preferred_asset_name``（忽略大小写），否则取第一个 ``.zip`` 资产。
     """
     api_url = github_release_api_url(repo)
     headers: dict[str, str] = {"User-Agent": user_agent}
@@ -235,6 +236,7 @@ async def fetch_latest_release(
             data = resp.json()
     tag = str(data.get("tag_name") or "").strip()
     html_url = str(data.get("html_url") or "").strip()
+    body = str(data.get("body") or "").strip()
     asset_url = ""
     if include_asset_url:
         assets = data.get("assets") or []
@@ -252,4 +254,4 @@ async def fetch_latest_release(
                 if isinstance(item, dict) and str(item.get("name", "")).lower().endswith(".zip"):
                     asset_url = str(item.get("browser_download_url", "") or "").strip()
                     break
-    return {"tag": tag, "html_url": html_url, "asset_url": asset_url}
+    return {"tag": tag, "html_url": html_url, "asset_url": asset_url, "body": body}
