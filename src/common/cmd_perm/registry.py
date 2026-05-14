@@ -27,6 +27,8 @@ DEFAULT_COMMAND_PERMISSIONS: dict[str, PermissionLevel] = {
     "bot_status.test_mail": "superuser",
     "greeting.set_friend_welcome": "bot_moderator",
     "greeting.clear_friend_welcome": "bot_moderator",
+    "greeting.set_group_welcome": "group_moderator",
+    "greeting.clear_group_welcome": "group_moderator",
     "relogin.relogin": "bot_moderator",
     "relogin.create": "superuser",
     "request.list_friends": "bot_moderator",

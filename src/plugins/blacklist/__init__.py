@@ -1,4 +1,7 @@
+import asyncio
 import re
+import time
+from collections.abc import Iterable
 
 from nonebot import logger, on_command
 from nonebot.adapters import Bot, Event
@@ -18,6 +21,69 @@ from nonebot.plugin import PluginMetadata
 
 from src.common.cmd_perm import permission_for_command, satisfies_command_permission
 from src.common.config import UserConfig
+
+_IS_BANNED_DB_TIMEOUT_SEC = 3.0
+_BAN_GATE_CACHE_TTL_SEC = 45.0
+_BAN_GATE_CACHE_MAX = 50_000
+_ban_gate_cache: dict[int, tuple[float, bool]] = {}
+_ban_gate_lock = asyncio.Lock()
+
+
+async def invalidate_user_ban_gate_cache(uids: int | Iterable[int]) -> None:
+    """使给定 QQ 的门禁缓存失效（拉黑/解禁或其它写入 banned 后应调用）。"""
+    ids = [uids] if isinstance(uids, int) else list(uids)
+    if not ids:
+        return
+    async with _ban_gate_lock:
+        for u in ids:
+            _ban_gate_cache.pop(u, None)
+
+
+async def reset_user_ban_gate_cache() -> None:
+    """清空门禁内存缓存（供测试或热更新后手动调用）。"""
+    async with _ban_gate_lock:
+        _ban_gate_cache.clear()
+
+
+async def query_user_ban_status_for_gate(user_id: int) -> bool:
+    """
+    查询用户是否全局拉黑（带 TTL 缓存）。
+    数据库超时或异常时返回 False（不拦截），避免连接堆积或事件链卡死。
+    """
+    now = time.monotonic()
+    async with _ban_gate_lock:
+        hit = _ban_gate_cache.get(user_id)
+        if hit is not None:
+            exp, val = hit
+            if now < exp:
+                return val
+            del _ban_gate_cache[user_id]
+        if len(_ban_gate_cache) > _BAN_GATE_CACHE_MAX:
+            stale = [k for k, (e, _) in _ban_gate_cache.items() if now >= e]
+            for k in stale:
+                del _ban_gate_cache[k]
+            if len(_ban_gate_cache) > _BAN_GATE_CACHE_MAX:
+                _ban_gate_cache.clear()
+
+    try:
+        banned = await asyncio.wait_for(
+            UserConfig(user_id).is_banned(),
+            timeout=_IS_BANNED_DB_TIMEOUT_SEC,
+        )
+    except TimeoutError:
+        logger.warning("user ban gate: is_banned timeout uid={}", user_id)
+        return False
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("user ban gate: is_banned failed uid={}", user_id)
+        return False
+
+    expire_at = time.monotonic() + _BAN_GATE_CACHE_TTL_SEC
+    async with _ban_gate_lock:
+        _ban_gate_cache[user_id] = (expire_at, banned)
+    return banned
+
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛黑名单",
@@ -105,7 +171,7 @@ async def block_globally_banned_users(bot: Bot, event: Event):
         return
     if uid == int(bot.self_id):
         return
-    if not await UserConfig(uid).is_banned():
+    if not await query_user_ban_status_for_gate(uid):
         return
 
     if isinstance(event, FriendRequestEvent):
@@ -159,6 +225,7 @@ async def handle_blacklist_add(bot: Bot, event: GroupMessageEvent | PrivateMessa
         return
     for uid in targets:
         await UserConfig(uid).ban()
+    await invalidate_user_ban_gate_cache(targets)
     await blacklist_add_cmd.finish(f"米诺斯不再眷顾这 {len(targets)} 个灵魂：{', '.join(map(str, targets))}")
 
 
@@ -172,4 +239,5 @@ async def handle_blacklist_remove(bot: Bot, event: GroupMessageEvent | PrivateMe
         return
     for uid in targets:
         await UserConfig(uid).unban()
+    await invalidate_user_ban_gate_cache(targets)
     await blacklist_remove_cmd.finish(f"这 {len(targets)} 个灵魂又获得了米诺斯的眷顾：{', '.join(map(str, targets))}")

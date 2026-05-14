@@ -17,6 +17,15 @@ from nonebot.exception import IgnoredException
 from src.common.config import UserConfig
 
 
+@pytest.fixture(autouse=True)
+async def reset_blacklist_gate_cache():
+    from src.plugins.blacklist import reset_user_ban_gate_cache
+
+    await reset_user_ban_gate_cache()
+    yield
+    await reset_user_ban_gate_cache()
+
+
 def test_collect_target_qqs_at_plain_and_dedup():
     from src.plugins.blacklist import collect_target_qqs_from_plain_and_message
 
@@ -85,6 +94,52 @@ def test_event_actor_group_message_and_recall():
         group_id=10,
     )
     assert event_actor_user_id(gr) == 503
+
+
+@pytest.mark.asyncio
+async def test_query_user_ban_status_for_gate_uses_cache(beanie_fixture):
+    from src.plugins.blacklist import query_user_ban_status_for_gate
+
+    uid = 880_001
+    await UserConfig(uid).ban()
+    first = await query_user_ban_status_for_gate(uid)
+    with patch.object(UserConfig, "is_banned", new_callable=AsyncMock) as mock_ib:
+        second = await query_user_ban_status_for_gate(uid)
+    assert first is True
+    assert second is True
+    mock_ib.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_query_user_ban_status_for_gate_timeout_fail_open(beanie_fixture):
+    import asyncio
+
+    from src.plugins.blacklist import query_user_ban_status_for_gate
+
+    async def slow_is_banned():
+        await asyncio.sleep(1.0)
+        return True
+
+    uid = 880_002
+    with (
+        patch("src.plugins.blacklist._IS_BANNED_DB_TIMEOUT_SEC", 0.05),
+        patch.object(UserConfig, "is_banned", side_effect=slow_is_banned),
+    ):
+        out = await query_user_ban_status_for_gate(uid)
+    assert out is False
+
+
+@pytest.mark.asyncio
+async def test_invalidate_user_ban_gate_cache_forces_refetch(beanie_fixture):
+    from src.plugins.blacklist import invalidate_user_ban_gate_cache, query_user_ban_status_for_gate
+
+    uid = 880_003
+    await UserConfig(uid).ban()
+    assert await query_user_ban_status_for_gate(uid) is True
+    await UserConfig(uid).unban()
+    assert await query_user_ban_status_for_gate(uid) is True
+    await invalidate_user_ban_gate_cache(uid)
+    assert await query_user_ban_status_for_gate(uid) is False
 
 
 @pytest.mark.asyncio

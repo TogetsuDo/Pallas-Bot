@@ -12,6 +12,7 @@ import socket
 import sys
 import time
 import typing
+from collections import defaultdict
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -48,6 +49,34 @@ _MSG_TRACKING_INIT = False
 # 与 _count_protocol_api_calls 口径一致的成功调用时间序列（进程内，重启丢失）
 _API_HIST_BUCKET_SEC = 300
 _API_HIST_MAX_BUCKETS = 288  # 5min * 288 ≈ 24h
+
+
+def _hist_bucket_start_local(ts: int, bucket_sec: int) -> int:
+    """将 Unix 时刻向下取整到 *bucket_sec* 对齐的「本地 wall-clock」桶起点。
+
+    使用进程所在主机的本地时区、以当地自然日 00:00 起算的秒偏移对齐（非 Unix 纪元对齐）。
+    """
+    if bucket_sec <= 0:
+        return int(ts)
+    lt = time.localtime(ts)
+    day0 = int(
+        time.mktime((
+            lt.tm_year,
+            lt.tm_mon,
+            lt.tm_mday,
+            0,
+            0,
+            0,
+            lt.tm_wday,
+            lt.tm_yday,
+            lt.tm_isdst,
+        ))
+    )
+    offset = int(ts) - day0
+    floored = offset - (offset % bucket_sec)
+    return day0 + floored
+
+
 # self_id -> { day_key, by_plugin: { plugin: { runs, errors, day_runs, day_errors } } }
 _PLUGIN_RUN_STATS: dict[str, dict[str, Any]] = {}
 _PLUGIN_RUN_TRACKING_INIT = False
@@ -872,6 +901,7 @@ def _msg_stats_get_mut(sid: str) -> dict[str, Any]:
             "day_api_total": 0,
             "day_api_counts": {},
             "api_call_buckets": [],
+            "msg_traffic_buckets": [],
         },
     )
     if str(rec.get("day_key", "")) != today:
@@ -889,6 +919,8 @@ def _msg_stats_get_mut(sid: str) -> dict[str, Any]:
         rec["day_api_counts"] = {}
     if not isinstance(rec.get("api_call_buckets"), list):
         rec["api_call_buckets"] = []
+    if not isinstance(rec.get("msg_traffic_buckets"), list):
+        rec["msg_traffic_buckets"] = []
     return rec
 
 
@@ -897,10 +929,10 @@ _HIST_PLUGIN_SERIES_MAX = 20
 
 
 def _api_call_history_bump(row: dict[str, Any], api: str) -> None:
-    """按时间桶记录各接口成功调用次数（与 day_api_total 口径一致）。"""
+    """按时间桶记录各接口成功调用次数（与 day_api_total 口径一致；桶按主机本地 wall-clock 对齐）。"""
     api_key = str(api).strip() or "_"
     now = int(time.time())
-    bucket = now - (now % _API_HIST_BUCKET_SEC)
+    bucket = _hist_bucket_start_local(now, _API_HIST_BUCKET_SEC)
     cutoff = bucket - (_API_HIST_MAX_BUCKETS - 1) * _API_HIST_BUCKET_SEC
     hist = row.setdefault("api_call_buckets", [])
     if not isinstance(hist, list):
@@ -934,6 +966,81 @@ def _api_call_history_bump(row: dict[str, Any], api: str) -> None:
             apis[api_key] = int(apis.get(api_key, 0)) + 1
             return
     hist.append({"at": bucket, "apis": {api_key: 1}})
+
+
+def _msg_traffic_history_bump(row: dict[str, Any], *, recv_delta: int = 0, sent_delta: int = 0) -> None:
+    """按与协议 API 相同的时间桶记录消息收/发条数（进程内，重启丢失；桶按主机本地 wall-clock 对齐）。"""
+    try:
+        rd = int(recv_delta)
+        sd = int(sent_delta)
+    except (TypeError, ValueError):
+        return
+    if rd <= 0 and sd <= 0:
+        return
+    now = int(time.time())
+    bucket = _hist_bucket_start_local(now, _API_HIST_BUCKET_SEC)
+    cutoff = bucket - (_API_HIST_MAX_BUCKETS - 1) * _API_HIST_BUCKET_SEC
+    hist = row.setdefault("msg_traffic_buckets", [])
+    if not isinstance(hist, list):
+        row["msg_traffic_buckets"] = []
+        hist = row["msg_traffic_buckets"]
+    i = 0
+    while i < len(hist):
+        h = hist[i]
+        if not isinstance(h, dict):
+            hist.pop(i)
+            continue
+        try:
+            at = int(h.get("at") or 0)
+        except (TypeError, ValueError):
+            hist.pop(i)
+            continue
+        if at < cutoff:
+            hist.pop(i)
+        else:
+            i += 1
+    if hist and isinstance(hist[-1], dict):
+        try:
+            last_at = int(hist[-1].get("at") or 0)
+        except (TypeError, ValueError):
+            last_at = 0
+        if last_at == bucket:
+            if rd > 0:
+                hist[-1]["received"] = int(hist[-1].get("received", 0)) + rd
+            if sd > 0:
+                hist[-1]["sent"] = int(hist[-1].get("sent", 0)) + sd
+            return
+    entry: dict[str, Any] = {"at": bucket}
+    if rd > 0:
+        entry["received"] = rd
+    if sd > 0:
+        entry["sent"] = sd
+    hist.append(entry)
+
+
+def _msg_traffic_history_public(row: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = row.get("msg_traffic_buckets")
+    if not isinstance(raw, list) or not raw:
+        return []
+    out: list[dict[str, Any]] = []
+    for it in raw:
+        if not isinstance(it, dict) or "at" not in it:
+            continue
+        try:
+            at = int(it["at"])
+        except (TypeError, ValueError):
+            continue
+        try:
+            nr = int(it.get("received", 0))
+        except (TypeError, ValueError):
+            nr = 0
+        try:
+            ns = int(it.get("sent", 0))
+        except (TypeError, ValueError):
+            ns = 0
+        out.append({"at": at, "received": nr, "sent": ns})
+    out.sort(key=lambda x: int(x["at"]))
+    return out
 
 
 def _legacy_api_hist_aggregate(row: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1051,7 +1158,7 @@ def _top_api_call_today(counts: object) -> tuple[str, int]:
 
 
 def _init_message_tracking() -> None:
-    """注册 NoneBot2 钩子：消息收/发；协议 API 今日计数（排除发消息与 get_status/get_msg 等）及 5 分钟桶历史。"""
+    """注册 NoneBot2 钩子：消息收/发；协议 API 今日计数与 5 分钟桶；消息收/发时间桶。"""
     global _MSG_TRACKING_INIT
     if _MSG_TRACKING_INIT:
         return
@@ -1088,6 +1195,7 @@ def _init_message_tracking() -> None:
                 row = _msg_stats_get_mut(sid)
                 row["sent"] = int(row["sent"]) + 1
                 row["day_sent"] = int(row["day_sent"]) + 1
+                _msg_traffic_history_bump(row, sent_delta=1)
 
     @BaseBot.on_called_api
     async def _count_protocol_api_calls(
@@ -1122,6 +1230,7 @@ def _init_message_tracking() -> None:
                     row = _msg_stats_get_mut(sid)
                     row["received"] = int(row["received"]) + 1
                     row["day_received"] = int(row["day_received"]) + 1
+                    _msg_traffic_history_bump(row, recv_delta=1)
         except Exception:  # noqa: BLE001
             pass
 
@@ -1175,6 +1284,7 @@ async def _message_stats_overview(*, self_id: str | None) -> dict[str, Any]:
             "today_top_api_count": top_cnt,
             "api_calls_history": _api_call_history_public(mem),
             "api_calls_history_by_api": _api_call_history_by_api_series(mem),
+            "message_traffic_history": _msg_traffic_history_public(mem),
         })
     return {
         "total_sent": total_sent,
@@ -1183,6 +1293,8 @@ async def _message_stats_overview(*, self_id: str | None) -> dict[str, Any]:
         "today_received": total_today_received,
         "api_calls_history_bucket_sec": _API_HIST_BUCKET_SEC,
         "api_calls_history_max_buckets": _API_HIST_MAX_BUCKETS,
+        "message_traffic_history_bucket_sec": _API_HIST_BUCKET_SEC,
+        "message_traffic_history_max_buckets": _API_HIST_MAX_BUCKETS,
         "bots": rows,
     }
 
@@ -1232,7 +1344,7 @@ def _matcher_hist_bump(sid: str, plugin: str, had_error: bool) -> None:
         rec["matcher_hist"] = []
         hist = rec["matcher_hist"]
     now = int(time.time())
-    bucket = now - (now % _API_HIST_BUCKET_SEC)
+    bucket = _hist_bucket_start_local(now, _API_HIST_BUCKET_SEC)
     cutoff = bucket - (_API_HIST_MAX_BUCKETS - 1) * _API_HIST_BUCKET_SEC
     i = 0
     while i < len(hist):
@@ -1792,6 +1904,30 @@ class _RequestActionBody(BaseModel):
     source: Literal["pending", "doubt"] = "pending"
     user_id: int | None = Field(default=None, ge=1)
     group_id: int | None = Field(default=None, ge=1)
+
+
+class _RequestBatchFriendRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    self_id: int = Field(ge=1)
+    user_id: int = Field(ge=1)
+    source: Literal["pending", "doubt"] = "pending"
+
+
+class _RequestBatchGroupRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    self_id: int = Field(ge=1)
+    user_id: int = Field(ge=1)
+    group_id: int = Field(ge=1)
+
+
+class _RequestActionsBatchBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["approve", "reject"] = "approve"
+    friends: list[_RequestBatchFriendRow] = Field(default_factory=list, max_length=500)
+    groups: list[_RequestBatchGroupRow] = Field(default_factory=list, max_length=500)
 
 
 async def _apply_bot_config_patch(account: int, body: _BotConfigPatch) -> dict[str, Any]:
@@ -2928,6 +3064,158 @@ def register_extended_api(
         _save_pending_group_requests_disk(pending_g)
         _drop_read_cache(("friend_requests",))
         return JSONResponse({"ok": True, "data": {"handled": True}})
+
+    @router.post(f"{x}/request-actions/batch", include_in_schema=True)
+    async def _request_actions_batch(
+        body: _RequestActionsBatchBody,
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        """批量处理好友/入群审批；单次写盘与缓存失效，减少控制台往返。"""
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        if not body.friends and not body.groups:
+            raise HTTPException(status_code=400, detail="friends 与 groups 不能均为空")
+
+        approve = body.action == "approve"
+        friends_ok = 0
+        friends_fail = 0
+        friends_errors: list[dict[str, Any]] = []
+        groups_ok = 0
+        groups_fail = 0
+        groups_errors: list[dict[str, Any]] = []
+
+        pending_friend: dict[str, dict[str, str]] = {}
+        if body.friends:
+            pending_friend = _read_pending_friend_requests_disk()
+
+        friends_by_sid: dict[str, list[_RequestBatchFriendRow]] = defaultdict(list)
+        for it in body.friends:
+            friends_by_sid[str(int(it.self_id))].append(it)
+
+        for sid_str, items in friends_by_sid.items():
+            try:
+                _, bot = _find_online_onebot_v11_bot(sid_str)
+            except HTTPException as e:
+                detail = e.detail
+                msg = detail if isinstance(detail, str) else str(detail)
+                for it in items:
+                    friends_fail += 1
+                    friends_errors.append({
+                        "self_id": int(sid_str),
+                        "user_id": it.user_id,
+                        "source": it.source,
+                        "error": msg,
+                    })
+                continue
+
+            if sid_str not in pending_friend:
+                pending_friend[sid_str] = {}
+            bot_pending = pending_friend[sid_str]
+
+            for it in items:
+                uid = str(int(it.user_id))
+                try:
+                    if it.source == "doubt":
+                        doubt_rows = await _call_get_doubt_friends(bot)
+                        flag = ""
+                        for row in doubt_rows:
+                            if not isinstance(row, dict):
+                                continue
+                            if str(row.get("user_id") or "") != uid:
+                                continue
+                            flag = str(row.get("flag") or "")
+                            break
+                        if not flag:
+                            raise ValueError("未找到可疑好友申请")
+                        await bot.call_api("set_doubt_friends_add_request", flag=flag, approve=approve)  # type: ignore[union-attr]
+                    else:
+                        flag = str(bot_pending.get(uid) or "")
+                        if not flag:
+                            raise ValueError("未找到待处理好友申请")
+                        await bot.set_friend_add_request(flag=flag, approve=approve)  # type: ignore[union-attr]
+                        bot_pending.pop(uid, None)
+                    friends_ok += 1
+                except Exception as e:  # noqa: BLE001
+                    friends_fail += 1
+                    friends_errors.append({
+                        "self_id": int(sid_str),
+                        "user_id": it.user_id,
+                        "source": it.source,
+                        "error": str(e),
+                    })
+
+            pending_friend[sid_str] = bot_pending
+
+        if body.friends:
+            _save_pending_friend_requests_disk(pending_friend)
+
+        pending_group: dict[str, dict[str, dict[str, Any]]] = {}
+        if body.groups:
+            pending_group = _read_pending_group_requests_disk()
+
+        groups_by_sid: dict[str, list[_RequestBatchGroupRow]] = defaultdict(list)
+        for it in body.groups:
+            groups_by_sid[str(int(it.self_id))].append(it)
+
+        for sid_str, items in groups_by_sid.items():
+            try:
+                _, bot = _find_online_onebot_v11_bot(sid_str)
+            except HTTPException as e:
+                detail = e.detail
+                msg = detail if isinstance(detail, str) else str(detail)
+                for it in items:
+                    groups_fail += 1
+                    groups_errors.append({
+                        "self_id": int(sid_str),
+                        "user_id": it.user_id,
+                        "group_id": it.group_id,
+                        "error": msg,
+                    })
+                continue
+
+            if sid_str not in pending_group:
+                pending_group[sid_str] = {}
+            bot_grp = pending_group[sid_str]
+
+            for it in items:
+                gkey = str(int(it.group_id))
+                try:
+                    req = bot_grp.get(gkey)
+                    if not isinstance(req, dict):
+                        raise ValueError("未找到待处理群邀请")
+                    await bot.set_group_add_request(  # type: ignore[union-attr]
+                        flag=str(req.get("flag") or ""),
+                        sub_type=str(req.get("sub_type") or "invite"),
+                        approve=approve,
+                    )
+                    bot_grp.pop(gkey, None)
+                    groups_ok += 1
+                except Exception as e:  # noqa: BLE001
+                    groups_fail += 1
+                    groups_errors.append({
+                        "self_id": int(sid_str),
+                        "user_id": it.user_id,
+                        "group_id": it.group_id,
+                        "error": str(e),
+                    })
+
+            pending_group[sid_str] = bot_grp
+
+        if body.groups:
+            _save_pending_group_requests_disk(pending_group)
+        _drop_read_cache(("friend_requests",))
+
+        return JSONResponse({
+            "ok": True,
+            "data": {
+                "friends_ok": friends_ok,
+                "friends_fail": friends_fail,
+                "friends_errors": friends_errors,
+                "groups_ok": groups_ok,
+                "groups_fail": groups_fail,
+                "groups_errors": groups_errors,
+            },
+        })
 
     @router.get(f"{x}/update/check", include_in_schema=True)
     async def _update_check() -> JSONResponse:
