@@ -18,6 +18,17 @@ PALLAS_WEBUI_HTTP_BASE=/pallas
 - `PALLAS_WEBUI_DEV_MODE=true`：仅本机开发联调时跳过控制台 JSON API 与静态入口鉴权，**生产务必关闭**。
 - 页面默认地址是 `/pallas/`，改了 `HTTP_BASE` 后地址会跟着变
 
+## 控制台时序桶（可选）
+
+总览/消息统计里进程内 API、消息吞吐、Matcher 时间序列的桶宽与条数（默认约 1 分钟 × 1440 ≈ 24 小时，重启清空）：
+
+```env
+# 桶宽（秒），建议能整除 86400
+PALLAS_CONSOLE_HIST_BUCKET_SEC=60
+# 最多保留桶数
+PALLAS_CONSOLE_HIST_MAX_BUCKETS=1440
+```
+
 ## 前端静态资源
 
 默认无需手动配置。启动时如果不存在 `data/pallas_webui/public/index.html`，插件会自动下载并解压 WebUI 产物。

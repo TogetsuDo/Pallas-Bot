@@ -65,9 +65,34 @@ def _cache_value_copy(data: Any) -> Any:
 
 _MSG_STATS: dict[str, dict[str, Any]] = {}  # self_id -> sent/received + 按本地日切片的 day_*
 _MSG_TRACKING_INIT = False
-# 与 _count_protocol_api_calls 口径一致的成功调用时间序列（进程内，重启丢失）
-_API_HIST_BUCKET_SEC = 60
-_API_HIST_MAX_BUCKETS = 1440  # 1min * 1440 ≈ 24h
+
+
+def _parse_console_hist_params() -> tuple[int, int]:
+    """协议 API / 消息吞吐 / Matcher 进程内时序桶（重启清空）。
+
+    默认 1 分钟桶、最多 1440 桶（约 24 小时滑动窗口）。环境变量：
+    - PALLAS_CONSOLE_HIST_BUCKET_SEC：桶宽（秒），建议能整除 86400（如 30、60、120、300）。
+    - PALLAS_CONSOLE_HIST_MAX_BUCKETS：最多保留桶数；覆盖时长 ≈ 二者乘积。
+    """
+    default_bucket, default_max = 60, 1440
+    try:
+        raw_b = os.environ.get("PALLAS_CONSOLE_HIST_BUCKET_SEC", "").strip()
+        bucket_sec = int(raw_b) if raw_b else default_bucket
+    except ValueError:
+        bucket_sec = default_bucket
+    bucket_sec = max(30, min(3600, bucket_sec))
+
+    try:
+        raw_m = os.environ.get("PALLAS_CONSOLE_HIST_MAX_BUCKETS", "").strip()
+        max_buckets = int(raw_m) if raw_m else default_max
+    except ValueError:
+        max_buckets = default_max
+    max_buckets = max(48, min(10080, max_buckets))
+
+    return bucket_sec, max_buckets
+
+
+_API_HIST_BUCKET_SEC, _API_HIST_MAX_BUCKETS = _parse_console_hist_params()
 
 
 def _hist_bucket_start_local(ts: int, bucket_sec: int) -> int:
