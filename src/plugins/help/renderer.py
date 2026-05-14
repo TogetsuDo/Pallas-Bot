@@ -3,7 +3,7 @@ import io
 from pathlib import Path
 
 import pillowmd
-from nonebot import get_plugin_config
+from nonebot import get_plugin_config, logger
 from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.matcher import Matcher
 from PIL import Image
@@ -21,6 +21,7 @@ def _help_image_cache_suffix() -> str:
         f"|fn={cfg.side_paint_filename}"
         f"|sc={cfg.side_paint_scale:.4f}"
         f"|ap={int(cfg.side_paint_auto_page)}"
+        f"|enc=v2"
     )
     if not cfg.side_paint_enabled:
         return base
@@ -43,11 +44,71 @@ def resize_image_if_needed(image, max_width=1200, max_height=2000):
     return image
 
 
-def convert_image_to_bytes(image) -> io.BytesIO:
-    img_bytes = io.BytesIO()
-    image.save(img_bytes, format="PNG", optimize=True, compress_level=6)
-    img_bytes.seek(0)
-    return img_bytes
+# NapCat 等协议端对超大 base64 图片经 WS 发送不稳定；控制原始体积（约 2.5MiB，base64 后约 3.4MiB）
+_HELP_IMAGE_MAX_SEND_BYTES = 2_500_000
+_HELP_IMAGE_MIN_SIDE = 360
+
+
+def encode_help_image_for_send(image: Image.Image) -> bytes:
+    """将帮助图编码为可经 OneBot base64 发送的字节串；过大时缩小或转 JPEG。"""
+    work = image
+    png_bytes = _png_bytes(work)
+    if len(png_bytes) <= _HELP_IMAGE_MAX_SEND_BYTES:
+        return png_bytes
+
+    orig_w, orig_h = work.size
+    scale = 0.82
+    while len(png_bytes) > _HELP_IMAGE_MAX_SEND_BYTES:
+        w, h = work.size
+        if min(w, h) <= _HELP_IMAGE_MIN_SIDE:
+            break
+        nw = max(1, int(w * scale))
+        nh = max(1, int(h * scale))
+        work = work.resize((nw, nh), Image.Resampling.LANCZOS)
+        png_bytes = _png_bytes(work)
+
+    if len(png_bytes) <= _HELP_IMAGE_MAX_SEND_BYTES:
+        logger.warning(
+            "help image shrunk for upload orig={}x{} final={}x{} bytes={}",
+            orig_w,
+            orig_h,
+            work.width,
+            work.height,
+            len(png_bytes),
+        )
+        return png_bytes
+
+    rgba = work.convert("RGBA")
+    rgb = Image.new("RGB", rgba.size, (255, 255, 255))
+    rgb.paste(rgba, mask=rgba.split()[-1])
+
+    for quality in (85, 75, 65, 55):
+        buf = io.BytesIO()
+        rgb.save(buf, format="JPEG", quality=quality, optimize=True)
+        jpeg_bytes = buf.getvalue()
+        if len(jpeg_bytes) <= _HELP_IMAGE_MAX_SEND_BYTES:
+            logger.warning(
+                "help image encoded as JPEG q={} after shrink orig={}x{} final={}x{} bytes={}",
+                quality,
+                orig_w,
+                orig_h,
+                work.width,
+                work.height,
+                len(jpeg_bytes),
+            )
+            return jpeg_bytes
+
+    logger.warning(
+        "help image still large after JPEG fallback bytes={} (may fail on protocol)",
+        len(jpeg_bytes),
+    )
+    return jpeg_bytes
+
+
+def _png_bytes(image: Image.Image) -> bytes:
+    buf = io.BytesIO()
+    image.save(buf, format="PNG", optimize=True, compress_level=9)
+    return buf.getvalue()
 
 
 def get_cache_path(markdown_content: str, style_name: str, group_id: int | None = None) -> Path:
@@ -116,7 +177,8 @@ async def _render_markdown(
 
     image = resize_image_if_needed(image)
 
-    img_bytes = convert_image_to_bytes(image)
+    encoded = encode_help_image_for_send(image)
+    img_bytes = io.BytesIO(encoded)
 
     return img_bytes, image
 
@@ -127,6 +189,11 @@ async def render_markdown_to_image(
     # 首先尝试从本地加载图片
     cached_image = load_cached_image(markdown_content, style_name, group_id)
     if cached_image:
+        if len(cached_image) > _HELP_IMAGE_MAX_SEND_BYTES:
+            with Image.open(io.BytesIO(cached_image)) as im:
+                fixed = encode_help_image_for_send(im.convert("RGBA"))
+            save_image_to_cache(fixed, markdown_content, style_name, group_id)
+            return fixed
         return cached_image
 
     # 如果缓存中没有，则渲染图片
