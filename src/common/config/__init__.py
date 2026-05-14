@@ -42,10 +42,13 @@ class Config:
 
     @classmethod
     async def _update_all(cls, key: str, value: Any) -> None:
-        for cache_key in cls._in_memory_cache:
-            if cache_key.startswith(key):
-                async with cls._lock:
-                    cls._in_memory_cache[cache_key] = value
+        if cls._in_memory_cache is None or cls._lock is None:
+            return
+        async with cls._lock:
+            for document_cache in cls._in_memory_cache.values():
+                for cache_key in document_cache:
+                    if isinstance(cache_key, str) and cache_key.startswith(key):
+                        document_cache[cache_key] = value
 
     def __init__(self, repo: ConfigRepository, key_id: int) -> None:
         self._document_key = key_id
