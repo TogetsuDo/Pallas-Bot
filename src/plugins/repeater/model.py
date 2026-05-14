@@ -26,8 +26,10 @@ try:
 
     print("Using jieba_next for repeater")
 except ImportError:
+    import jieba
     import jieba.analyse as jieba_analyse
 
+    jieba.disable_parallel()
     print("Using jieba for repeater")
 
 

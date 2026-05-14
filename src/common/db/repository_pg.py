@@ -721,6 +721,8 @@ class PgConfigRepository:
                 select(self._row_class).where(getattr(self._row_class, self._pk_field) == key_id)
             )
             row = result.scalar_one_or_none()
+            if row is not None:
+                session.expunge(row)
         await self._cache.put(key_id, row)
         return row
 
@@ -731,6 +733,7 @@ class PgConfigRepository:
             )
             row = result.scalar_one_or_none()
             if row is not None:
+                session.expunge(row)
                 await self._cache.put(key_id, row)
                 return row, False
             try:
@@ -744,8 +747,11 @@ class PgConfigRepository:
                     select(self._row_class).where(getattr(self._row_class, self._pk_field) == key_id)
                 )
                 existing = result.scalar_one_or_none()
+                if existing is not None:
+                    session.expunge(existing)
                 await self._cache.put(key_id, existing)
                 return existing, False
+            session.expunge(new_row)
             await self._cache.put(key_id, new_row)
             return new_row, True
 

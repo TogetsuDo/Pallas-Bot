@@ -191,9 +191,13 @@ async def _(event: GroupMessageEvent):
         )
         return
 
-    async def job():
+    try:
+        await log_dream_chat_to_db(event)
+    except Exception as e:
+        logger.debug(f"bot [{event.self_id}] dream capture db insert failed in group [{event.group_id}]: {e}")
+
+    async def drift_job():
         try:
-            await log_dream_chat_to_db(event)
             nick = (event.sender.card or event.sender.nickname or str(event.user_id)).strip() or str(event.user_id)
             img_n = 0
             for seg in event.message:
@@ -215,6 +219,6 @@ async def _(event: GroupMessageEvent):
             if plain and len(plain) <= 800:
                 await broadcast_drift(event.self_id, event.group_id, DriftPayload(nickname=nick, text=plain))
         except Exception as e:
-            logger.debug(f"bot [{event.self_id}] dream capture job failed in group [{event.group_id}]: {e}")
+            logger.debug(f"bot [{event.self_id}] dream capture drift job failed in group [{event.group_id}]: {e}")
 
-    asyncio.create_task(job())
+    asyncio.create_task(drift_job())
