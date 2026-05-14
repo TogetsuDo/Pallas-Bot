@@ -3,12 +3,13 @@ from datetime import datetime
 from pathlib import Path
 
 from nonebot import on_command
-from nonebot.adapters.onebot.v11 import Bot, Message, MessageEvent, MessageSegment, PrivateMessageEvent
+from nonebot.adapters.onebot.v11 import Bot, Message, MessageEvent, MessageSegment, PrivateMessageEvent, permission
 from nonebot.params import ArgPlainText, CommandArg
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State
 
+from src.common.cmd_perm import private_message_permission_for_command
 from src.common.config import BotConfig, user_is_bot_admin
 from src.common.db import make_bot_config_repository
 from src.plugins.pallas_protocol import manager as protocol_manager
@@ -17,7 +18,7 @@ __all__ = ["relogin_cmd", "create_cmd"]
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛重新上号",
-    description="为指定 QQ 账号重启协议端并推送登录二维码，牛牛管理员可用；超管可创建新牛牛账号。",
+    description="为指定 QQ 账号重启协议端并推送登录二维码，号主可用；超管可创建新牛牛账号。",
     usage="""
 牛牛重新上号
 创建牛牛
@@ -27,18 +28,24 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "version": "3.0.0",
+        "command_permissions": [
+            {"id": "relogin.relogin", "label": "牛牛重新上号", "default": "bot_moderator"},
+            {"id": "relogin.create", "label": "创建牛牛", "default": "superuser"},
+        ],
         "menu_data": [
             {
                 "func": "重新上号",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "牛牛重新上号 [QQ号]",
-                "brief_des": "重启账号并回传二维码（牛牛管理员可用）",
+                "trigger_condition": "牛牛重新上号 [QQ号]（私聊）",
+                "command_permission": "relogin.relogin",
+                "brief_des": "重启账号并回传二维码（号主可用）",
                 "detail_des": "自动重启协议端账号，等待二维码文件生成并在私聊推送。",
             },
             {
                 "func": "创建牛牛",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "创建牛牛 [昵称 牛牛QQ 号主QQ ...]",
+                "trigger_condition": "创建牛牛 …（私聊）",
+                "command_permission": "relogin.create",
                 "brief_des": "创建并启动新牛牛账号（仅超管）",
                 "detail_des": "在协议端创建账号并启动，私聊回传登录二维码",
             },
@@ -46,17 +53,17 @@ __plugin_meta__ = PluginMetadata(
     },
 )
 
-relogin_cmd = on_command("牛牛重新上号", priority=5, block=True)
-create_cmd = on_command("创建牛牛", priority=5, block=True, permission=SUPERUSER)
+relogin_cmd = on_command(
+    "牛牛重新上号",
+    priority=5,
+    block=True,
+    permission=private_message_permission_for_command("relogin.relogin"),
+)
+create_cmd = on_command(
+    "创建牛牛", priority=5, block=True, permission=private_message_permission_for_command("relogin.create")
+)
 
 _CANCEL_WORDS = {"取消", "cancel", "退出", "quit"}
-
-
-async def _is_bot_admin(bot: Bot, event: MessageEvent) -> bool:
-    try:
-        return await user_is_bot_admin(int(event.self_id), int(event.get_user_id()))
-    except Exception:
-        return False
 
 
 async def _bot_id_exists_in_db(bot_id: int) -> bool:
@@ -161,7 +168,7 @@ async def _relogin_got_nickname(
 
     qr_path = await _wait_qrcode(account_data_dir, started_at)
     if qr_path is None:
-        await relogin_cmd.finish("已完成启动，但在 60 秒内未检测到新的二维码文件，请寻找牛牛管理员上报情况")
+        await relogin_cmd.finish("已完成启动，但在 60 秒内未检测到新的二维码文件，请寻找号主上报情况")
 
     try:
         qr_bytes = qr_path.read_bytes()

@@ -243,7 +243,7 @@ async def test_can_manage_superuser():
         group_id=1,
     )
     bot = SimpleNamespace()
-    with patch("src.plugins.blacklist.SUPERUSER", new_callable=AsyncMock, return_value=True):
+    with patch("src.common.cmd_perm.check.SUPERUSER", new_callable=AsyncMock, return_value=True):
         assert await can_manage_blacklist(bot, event) is True
 
 
@@ -267,8 +267,8 @@ async def test_can_manage_group_owner_without_superuser():
     )
     bot = SimpleNamespace()
     with (
-        patch("src.plugins.blacklist.SUPERUSER", new_callable=AsyncMock, return_value=False),
-        patch("src.plugins.blacklist.user_is_bot_admin", new_callable=AsyncMock, return_value=False),
+        patch("src.common.cmd_perm.check.SUPERUSER", new_callable=AsyncMock, return_value=False),
+        patch("src.common.cmd_perm.check.user_is_bot_admin", new_callable=AsyncMock, return_value=False),
     ):
         assert await can_manage_blacklist(bot, event) is True
 
@@ -292,8 +292,8 @@ async def test_can_manage_private_requires_bot_admin():
     )
     bot = SimpleNamespace()
     with (
-        patch("src.plugins.blacklist.SUPERUSER", new_callable=AsyncMock, return_value=False),
-        patch("src.plugins.blacklist.user_is_bot_admin", new_callable=AsyncMock, return_value=False),
+        patch("src.common.cmd_perm.check.SUPERUSER", new_callable=AsyncMock, return_value=False),
+        patch("src.common.cmd_perm.check.user_is_bot_admin", new_callable=AsyncMock, return_value=False),
     ):
         assert await can_manage_blacklist(bot, event) is False
 

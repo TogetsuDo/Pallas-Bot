@@ -11,6 +11,7 @@ import secrets
 import string
 import sys
 import time
+from collections.abc import Callable  # noqa: TC003
 from contextvars import ContextVar
 from pathlib import Path  # noqa: TC003
 from typing import Any
@@ -20,6 +21,9 @@ from nonebot import logger
 from src.common.paths import plugin_data_dir
 
 _http_request_var: ContextVar[Any] = ContextVar("_pallas_http_request", default=None)
+
+# 会话密钥轮换（invalidate_console_sessions）后执行，例如清空控制台扩展 API 进程内读缓存
+_SESSION_INVALIDATION_HOOKS: list[Callable[[], None]] = []
 
 _AUTH_STATE = "auth_state.json"
 _DEFAULT_LOGIN_PASSWORD_FILE = "default_login_password.txt"
@@ -218,9 +222,20 @@ def is_console_auth_configured() -> bool:
     return _load_auth_state() is not None
 
 
+def register_console_session_invalidation_hook(fn: Callable[[], None]) -> None:
+    """注册在 invalidate_console_sessions 之后调用的无参回调（幂等追加）。"""
+    if fn not in _SESSION_INVALIDATION_HOOKS:
+        _SESSION_INVALIDATION_HOOKS.append(fn)
+
+
 def invalidate_console_sessions() -> None:
     """口令变更后轮换会话密钥，使已签发令牌全部失效。"""
     _atomic_write_bytes(session_secret_path(), secrets.token_bytes(32))
+    for hook in tuple(_SESSION_INVALIDATION_HOOKS):
+        try:
+            hook()
+        except Exception:  # noqa: BLE001
+            logger.exception("控制台: 会话轮换附加步骤失败")
 
 
 def mint_session_token() -> str:

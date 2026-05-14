@@ -10,10 +10,9 @@ from nonebot import (
     on_notice,
 )
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent, NoticeEvent
-from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 
-from src.common.config import user_is_admin_of_any_bot, user_is_bot_admin
+from src.common.cmd_perm import permission_for_command
 
 from .bot_monitor import (
     get_bot_status_info,
@@ -37,25 +36,33 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "version": "3.0.0",
+        "command_permissions": [
+            {"id": "bot_status.status", "label": "牛牛在吗", "default": "bot_moderator"},
+            {"id": "bot_status.test_mail", "label": "测试邮件", "default": "superuser"},
+            {"id": "bot_status.count", "label": "牛牛报数 / 牛牛出列", "default": "everyone"},
+        ],
         "menu_data": [
             {
                 "func": "查看牛牛在线状况",
-                "trigger_method": "on_message",
+                "trigger_method": "命令",
                 "trigger_condition": "牛牛在吗",
+                "command_permission": "bot_status.status",
                 "brief_des": "总计牛牛在线情况",
                 "detail_des": "当牛牛离线时发送离线通知邮件给号主与Superuser",
             },
             {
                 "func": "发送测试邮件",
-                "trigger_method": "on_message",
+                "trigger_method": "命令",
                 "trigger_condition": "测试邮件",
+                "command_permission": "bot_status.test_mail",
                 "brief_des": "发送测试邮件",
                 "detail_des": "给配置中的邮箱发送测试邮件",
             },
             {
                 "func": "牛牛依次报数",
-                "trigger_method": "on_message",
-                "trigger_condition": "牛牛报数",
+                "trigger_method": "命令",
+                "trigger_condition": "牛牛报数 / 牛牛出列",
+                "command_permission": "bot_status.count",
                 "brief_des": "在线牛牛依次报数",
                 "detail_des": "仅当前群内在线 Bot 参与，随机顺序在群内轮流报数",
             },
@@ -65,23 +72,16 @@ __plugin_meta__ = PluginMetadata(
 )
 
 
-async def _is_bot_status_admin(bot: Bot, event: MessageEvent) -> bool:
-    """当前 Bot 的管理员，或任意一只已配置牛的管理员均可使用「牛牛在吗」。"""
-    try:
-        uid = int(event.get_user_id())
-        if await user_is_bot_admin(int(event.self_id), uid):
-            return True
-        return await user_is_admin_of_any_bot(uid)
-    except Exception:
-        return False
-
-
 STATUS_COOLDOWN_KEY: str = "bot_status"
 COUNT_COOLDOWN_KEY: str = "bot_count"
 offline_notice = on_notice(priority=5, block=False)
-bot_status_cmd = on_command("牛牛在吗", permission=_is_bot_status_admin, priority=5, block=True)
-bot_count_cmd = on_command("牛牛报数", aliases={"牛牛出列"}, priority=5, block=True)
-test_mail_cmd = on_command("测试邮件", permission=SUPERUSER, priority=5, block=True)
+bot_status_cmd = on_command("牛牛在吗", permission=permission_for_command("bot_status.status"), priority=5, block=True)
+bot_count_cmd = on_command(
+    "牛牛报数", aliases={"牛牛出列"}, priority=5, block=True, permission=permission_for_command("bot_status.count")
+)
+test_mail_cmd = on_command(
+    "测试邮件", permission=permission_for_command("bot_status.test_mail"), priority=5, block=True
+)
 
 driver = get_driver()
 

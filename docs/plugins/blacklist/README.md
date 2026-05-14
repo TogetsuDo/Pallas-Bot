@@ -13,11 +13,13 @@
 
 ### 权限
 
+默认等级与 WebUI「通用配置 → 命令权限」中的 `blacklist.add` / `blacklist.remove` 一致，可按部署需要覆盖。
+
 | 场景 | 谁可用 |
 |------|--------|
 | 任意 | NoneBot **超管** |
-| 私聊 | 当前 Bot 的 **管理员**（`user_is_bot_admin`） |
-| 群聊 | 群主 / 群管 **或** 当前 Bot 的管理员 |
+| 私聊 | **号主**（`user_is_bot_admin`，对应 `admins`） |
+| 群聊 | 群主 / 群管 **或** **号主** |
 
 ## 事件门禁（`event_preprocessor`）
 

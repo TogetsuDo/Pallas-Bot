@@ -17,10 +17,10 @@ from nonebot.adapters.onebot.v11 import (
 )
 from nonebot.exception import IgnoredException
 from nonebot.message import event_preprocessor
-from nonebot.permission import SUPERUSER, Permission
 from nonebot.plugin import PluginMetadata
 
-from src.common.config import UserConfig, user_is_bot_admin
+from src.common.cmd_perm import permission_for_command, satisfies_command_permission
+from src.common.config import UserConfig
 
 _IS_BANNED_DB_TIMEOUT_SEC = 3.0
 _BAN_GATE_CACHE_TTL_SEC = 45.0
@@ -91,14 +91,16 @@ __plugin_meta__ = PluginMetadata(
     usage="""
 牛牛拉黑 / 牛牛屏蔽 + qq（可多个，可 @）— 写入全局拉黑
 牛牛解禁（别名：牛牛取消屏蔽、牛牛取消拉黑）— 解除拉黑
-
-权限：群内为群主或群管；超管与牛牛的管理员可私聊使用
 """.strip(),
     type="application",
     homepage="https://github.com/PallasBot/Pallas-Bot",
     supported_adapters={"~onebot.v11"},
     extra={
         "version": "3.0.0",
+        "command_permissions": [
+            {"id": "blacklist.add", "label": "牛牛拉黑 / 牛牛屏蔽", "default": "staff"},
+            {"id": "blacklist.remove", "label": "牛牛解禁", "default": "staff"},
+        ],
         "menu_data": [
             {
                 "func": "事件门禁",
@@ -111,6 +113,7 @@ __plugin_meta__ = PluginMetadata(
                 "func": "拉黑与解禁",
                 "trigger_method": "命令",
                 "trigger_condition": "牛牛拉黑 / 牛牛屏蔽 / 牛牛解禁",
+                "command_permissions": ["blacklist.add", "blacklist.remove"],
                 "brief_des": "按 QQ 写入或清除全局拉黑",
                 "detail_des": "支持正文中的多个 QQ 号或 @；不会拉黑 bot 自身。",
             },
@@ -192,24 +195,15 @@ async def block_globally_banned_users(bot: Bot, event: Event):
 async def can_manage_blacklist(bot: Bot, event: Event) -> bool:
     if not isinstance(event, (GroupMessageEvent, PrivateMessageEvent)):
         return False
-    if await SUPERUSER(bot, event):
-        return True
-    if isinstance(event, PrivateMessageEvent):
-        return await user_is_bot_admin(event.self_id, event.user_id)
-    sender = event.sender
-    if sender is not None and sender.role in ("admin", "owner"):
-        return True
-    return await user_is_bot_admin(event.self_id, event.user_id)
+    return await satisfies_command_permission(bot, event, "blacklist.add")
 
-
-BlacklistPerm = Permission(can_manage_blacklist)
 
 blacklist_add_cmd = on_command(
     "牛牛拉黑",
     aliases={"牛牛屏蔽"},
     priority=5,
     block=True,
-    permission=BlacklistPerm,
+    permission=permission_for_command("blacklist.add"),
 )
 
 blacklist_remove_cmd = on_command(
@@ -217,7 +211,7 @@ blacklist_remove_cmd = on_command(
     aliases={"牛牛取消屏蔽", "牛牛取消拉黑"},
     priority=5,
     block=True,
-    permission=BlacklistPerm,
+    permission=permission_for_command("blacklist.remove"),
 )
 
 

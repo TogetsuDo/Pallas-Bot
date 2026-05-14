@@ -1,10 +1,10 @@
 from nonebot import get_plugin_config, on_command
-from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, PrivateMessageEvent, permission
-from nonebot.permission import SUPERUSER, Permission
+from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, PrivateMessageEvent
 from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State
 
-from src.common.config import BotConfig, GroupConfig, user_is_bot_admin
+from src.common.cmd_perm import permission_for_command
+from src.common.config import BotConfig, GroupConfig
 
 from .config import Config
 from .event_preprocessor import IGNORED_PLUGINS
@@ -26,18 +26,26 @@ __plugin_meta__ = PluginMetadata(
 
 插件开关（名称可用中文展示名、包名或总列表里的序号）：
 牛牛开启 〈插件名或序号〉 / 牛牛关闭 〈插件名或序号〉
-牛牛开启全部功能 / 牛牛关闭全部功能（仅群管理员或超级用户）
+牛牛开启全部功能 / 牛牛关闭全部功能（具体权限以「牛牛帮助」内说明为准）
     """.strip(),
     type="application",
     homepage="https://github.com/PallasBot/Pallas-Bot",
     supported_adapters={"~onebot.v11"},
     extra={
         "version": "3.0.0",
+        "command_permissions": [
+            {"id": "help.help", "label": "牛牛帮助", "default": "everyone"},
+            {"id": "help.plugin_enable", "label": "牛牛开启（单插件）", "default": "staff"},
+            {"id": "help.plugin_disable", "label": "牛牛关闭（单插件）", "default": "staff"},
+            {"id": "help.plugin_enable_all", "label": "牛牛开启全部功能", "default": "staff"},
+            {"id": "help.plugin_disable_all", "label": "牛牛关闭全部功能", "default": "staff"},
+        ],
         "menu_data": [
             {
                 "func": "总列表",
                 "trigger_method": "命令",
                 "trigger_condition": "牛牛帮助",
+                "command_permission": "help.help",
                 "brief_des": "全部插件、状态与简介",
                 "detail_des": "一张图里看完当前加载了哪些插件、在本群是否启用；并说明如何用序号或名称打开下级菜单",
             },
@@ -45,6 +53,7 @@ __plugin_meta__ = PluginMetadata(
                 "func": "插件详情",
                 "trigger_method": "命令",
                 "trigger_condition": "牛牛帮助 〈插件名或序号〉",
+                "command_permission": "help.help",
                 "brief_des": "单个插件的说明与功能表",
                 "detail_des": "含插件描述、用法原文、功能列表；插件名可用总列表序号、中文名或与包名一致的英文名",
             },
@@ -52,8 +61,17 @@ __plugin_meta__ = PluginMetadata(
                 "func": "插件开关",
                 "trigger_method": "命令",
                 "trigger_condition": "牛牛开启/关闭 〈插件名或序号〉",
+                "command_permissions": ["help.plugin_enable", "help.plugin_disable"],
                 "brief_des": "启用或停用某个插件",
-                "detail_des": "例：牛牛开启 牛牛复读、牛牛关闭 1；名称规则与打开详情时相同；群内需管理员或超管",
+                "detail_des": "例：牛牛开启 牛牛复读、牛牛关闭 1；名称规则与打开详情时相同。",
+            },
+            {
+                "func": "批量开关插件",
+                "trigger_method": "命令",
+                "trigger_condition": "牛牛开启全部功能 / 牛牛关闭全部功能",
+                "command_permissions": ["help.plugin_enable_all", "help.plugin_disable_all"],
+                "brief_des": "一键启用或停用全部插件",
+                "detail_des": "遍历已加载插件并切换开关；仍受单群/单 Bot 作用域影响。",
             },
         ],
         "menu_template": "default",
@@ -67,24 +85,25 @@ AVAILABLE_STYLES = load_custom_styles(plugin_config)
 DEFAULT_STYLE_NAME = get_default_style(plugin_config)
 
 
-help_cmd = on_command("牛牛帮助", priority=5, block=True)
+help_cmd = on_command("牛牛帮助", priority=5, block=True, permission=permission_for_command("help.help"))
 
 HELP_COOLDOWN_KEY = "help"
 
+plugin_enable_cmd = on_command(
+    "牛牛开启", priority=5, block=True, permission=permission_for_command("help.plugin_enable")
+)
 
-async def is_config_admin(event: GroupMessageEvent) -> bool:
-    return await user_is_bot_admin(event.self_id, event.user_id)
+plugin_disable_cmd = on_command(
+    "牛牛关闭", priority=5, block=True, permission=permission_for_command("help.plugin_disable")
+)
 
+plugin_enable_all_cmd = on_command(
+    "牛牛开启全部功能", priority=5, block=True, permission=permission_for_command("help.plugin_enable_all")
+)
 
-IsAdmin = permission.GROUP_OWNER | permission.GROUP_ADMIN | Permission(is_config_admin)
-
-plugin_enable_cmd = on_command("牛牛开启", priority=5, block=True, permission=IsAdmin | SUPERUSER)
-
-plugin_disable_cmd = on_command("牛牛关闭", priority=5, block=True, permission=IsAdmin | SUPERUSER)
-
-plugin_enable_all_cmd = on_command("牛牛开启全部功能", priority=5, block=True, permission=IsAdmin | SUPERUSER)
-
-plugin_disable_all_cmd = on_command("牛牛关闭全部功能", priority=5, block=True, permission=IsAdmin | SUPERUSER)
+plugin_disable_all_cmd = on_command(
+    "牛牛关闭全部功能", priority=5, block=True, permission=permission_for_command("help.plugin_disable_all")
+)
 
 
 @help_cmd.handle()

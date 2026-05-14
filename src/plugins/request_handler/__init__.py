@@ -16,11 +16,11 @@ from nonebot.adapters.onebot.v11 import (
 )
 from nonebot.exception import ActionFailed
 from nonebot.params import CommandArg
-from nonebot.permission import SUPERUSER, Permission
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot_plugin_apscheduler import scheduler
 
+from src.common.cmd_perm import satisfies_command_permission
 from src.common.config import BotConfig, GroupConfig, UserConfig, get_bot_admins, user_is_bot_admin
 from src.common.paths import plugin_data_dir
 from src.plugins.help.plugin_manager import is_plugin_disabled
@@ -52,60 +52,104 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "version": "3.0.0",
+        "command_permissions": [
+            {"id": "request.list_friends", "label": "查看好友申请", "default": "bot_moderator"},
+            {"id": "request.list_groups", "label": "查看入群邀请", "default": "bot_moderator"},
+            {"id": "request.approve_latest", "label": "同意（快捷）", "default": "bot_moderator"},
+            {"id": "request.approve_friend", "label": "同意好友", "default": "bot_moderator"},
+            {"id": "request.reject_friend", "label": "拒绝好友", "default": "bot_moderator"},
+            {"id": "request.approve_all_friends", "label": "同意所有好友", "default": "bot_moderator"},
+            {"id": "request.reject_all_friends", "label": "拒绝所有好友", "default": "bot_moderator"},
+            {"id": "request.approve_all_groups", "label": "同意所有入群", "default": "bot_moderator"},
+            {"id": "request.approve_group", "label": "同意入群", "default": "bot_moderator"},
+            {"id": "request.reject_group", "label": "拒绝入群", "default": "bot_moderator"},
+            {"id": "request.auto_accept_status", "label": "查看自动同意", "default": "bot_moderator"},
+            {"id": "request.enable_auto_friend", "label": "开启自动同意好友", "default": "bot_moderator"},
+            {"id": "request.disable_auto_friend", "label": "关闭自动同意好友", "default": "bot_moderator"},
+            {"id": "request.enable_auto_group", "label": "开启自动同意入群", "default": "bot_moderator"},
+            {"id": "request.disable_auto_group", "label": "关闭自动同意入群", "default": "bot_moderator"},
+            {"id": "request.approval_reply", "label": "引用审批消息快捷同意", "default": "bot_moderator"},
+        ],
         "menu_data": [
             {
                 "func": "查看待处理申请",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "查看好友申请 / 查看入群邀请",
+                "trigger_condition": "查看好友申请 / 查看入群邀请（私聊）",
+                "command_permissions": ["request.list_friends", "request.list_groups"],
                 "brief_des": "列出待处理好友与入群邀请",
                 "detail_des": "好友列表含被拦截、需单独处理的可疑申请",
             },
             {
                 "func": "快捷同意最近申请",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "同意",
+                "trigger_condition": "同意（私聊）",
+                "command_permission": "request.approve_latest",
                 "brief_des": "快捷同意一条申请",
                 "detail_des": "私聊「同意」对应牛牛最新一条提醒；引用某条审批提醒则只处理该条",
             },
             {
+                "func": "引用审批消息快捷同意",
+                "trigger_method": "on_message",
+                "trigger_condition": "私聊引用牛牛发出的审批提醒，正文为同意/好/留空",
+                "command_permission": "request.approval_reply",
+                "brief_des": "按引用对应单一申请同意",
+                "detail_des": "须引用仍有效的审批消息；好友或入群邀请分别走对应处理逻辑",
+            },
+            {
                 "func": "好友申请审批",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "同意好友 <QQ号>",
+                "trigger_condition": "同意好友 <QQ号>（私聊）",
+                "command_permission": "request.approve_friend",
                 "brief_des": "按 QQ 同意好友",
                 "detail_des": "同意指定 QQ 的好友申请（含普通与可疑申请）",
             },
             {
                 "func": "好友申请拒绝",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "拒绝好友 <QQ号>",
+                "trigger_condition": "拒绝好友 <QQ号>（私聊）",
+                "command_permission": "request.reject_friend",
                 "brief_des": "按 QQ 拒绝好友",
                 "detail_des": "拒绝指定 QQ 的好友申请（含普通与可疑申请）",
             },
             {
                 "func": "批量审批",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "同意所有好友 / 拒绝所有好友 / 同意所有入群",
+                "trigger_condition": "同意所有好友 / 拒绝所有好友 / 同意所有入群（私聊）",
+                "command_permissions": [
+                    "request.approve_all_friends",
+                    "request.reject_all_friends",
+                    "request.approve_all_groups",
+                ],
                 "brief_des": "好友或入群批量同意/拒绝",
                 "detail_des": "一次性同意或拒绝当前全部待处理好友申请，或同意全部入群邀请",
             },
             {
                 "func": "入群邀请审批",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "同意入群/拒绝入群 <群号>",
+                "trigger_condition": "同意入群/拒绝入群 <群号>（私聊）",
+                "command_permissions": ["request.approve_group", "request.reject_group"],
                 "brief_des": "按群号同意或拒绝",
                 "detail_des": "同意或拒绝指定群的入群邀请",
             },
             {
                 "func": "通知开关",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "牛牛开启/关闭 request_handler",
+                "trigger_condition": "牛牛开启/关闭 request_handler（与帮助里「牛牛开启/关闭」一致）",
+                "command_permissions": ["help.plugin_enable", "help.plugin_disable"],
                 "brief_des": "是否推送申请提醒",
                 "detail_des": "在帮助系统里开关本插件的好友/入群提醒推送",
             },
             {
                 "func": "自动同意开关",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "查看自动同意 / 开启/关闭自动同意好友 / 开启/关闭自动同意入群",
+                "trigger_condition": ("查看自动同意 / 开关自动同意好友 / 开关自动同意入群（私聊）"),
+                "command_permissions": [
+                    "request.auto_accept_status",
+                    "request.enable_auto_friend",
+                    "request.disable_auto_friend",
+                    "request.enable_auto_group",
+                    "request.disable_auto_group",
+                ],
                 "brief_des": "自动同意策略",
                 "detail_des": "查看或切换好友申请、入群邀请的自动同意开关",
             },
@@ -620,14 +664,6 @@ enable_auto_group_cmd = on_command("开启自动同意入群", priority=5, block
 disable_auto_group_cmd = on_command("关闭自动同意入群", priority=5, block=True)
 
 
-async def is_bot_admin(bot: Bot, event: MessageEvent) -> bool:
-    return await user_is_bot_admin(int(event.self_id), int(event.user_id))
-
-
-BOT_ADMIN = Permission(is_bot_admin)
-PERM = SUPERUSER | BOT_ADMIN
-
-
 def plugin_config() -> Config:
     return Config.model_validate(get_driver().config.model_dump())
 
@@ -723,7 +759,7 @@ async def poll_doubt_friends_job() -> None:
 async def approval_reply_rule(bot: Bot, event: Event) -> bool:
     if not isinstance(event, PrivateMessageEvent):
         return False
-    if not await PERM(bot, event):
+    if not await satisfies_command_permission(bot, event, "request.approval_reply"):
         return False
     if not event.reply:
         return False
@@ -797,7 +833,7 @@ async def handle_friend_request(bot: Bot, event: FriendRequestEvent):
 
 @list_friends_cmd.handle()
 async def handle_list_friends(bot: Bot, event: MessageEvent):
-    if not await PERM(bot, event):
+    if not await satisfies_command_permission(bot, event, "request.list_friends"):
         return
     bot_key = str(bot.self_id)
     bot_pending = pending_friend.get(bot_key, {})
@@ -825,7 +861,7 @@ async def handle_list_friends(bot: Bot, event: MessageEvent):
 
 @approve_latest_cmd.handle()
 async def handle_approve_latest(bot: Bot, event: MessageEvent, args: Message = CommandArg()):  # noqa: B008
-    if not await PERM(bot, event):
+    if not await satisfies_command_permission(bot, event, "request.approve_latest"):
         return
     arg = args.extract_plain_text().strip()
     if arg:
@@ -849,7 +885,7 @@ async def handle_approve_latest(bot: Bot, event: MessageEvent, args: Message = C
 
 @approve_friend_cmd.handle()
 async def handle_approve_friend(bot: Bot, event: MessageEvent, args: Message = CommandArg()):  # noqa: B008
-    if not await PERM(bot, event):
+    if not await satisfies_command_permission(bot, event, "request.approve_friend"):
         return
     arg = args.extract_plain_text().strip()
     if not arg.isdigit():
@@ -864,7 +900,7 @@ async def handle_approve_friend(bot: Bot, event: MessageEvent, args: Message = C
 
 @reject_friend_cmd.handle()
 async def handle_reject_friend(bot: Bot, event: MessageEvent, args: Message = CommandArg()):  # noqa: B008
-    if not await PERM(bot, event):
+    if not await satisfies_command_permission(bot, event, "request.reject_friend"):
         return
     arg = args.extract_plain_text().strip()
     if not arg.isdigit():
@@ -879,7 +915,7 @@ async def handle_reject_friend(bot: Bot, event: MessageEvent, args: Message = Co
 
 @list_groups_cmd.handle()
 async def handle_list_groups(bot: Bot, event: MessageEvent):
-    if not await PERM(bot, event):
+    if not await satisfies_command_permission(bot, event, "request.list_groups"):
         return
     bot_key = str(bot.self_id)
     bot_pending = pending_group.get(bot_key, {})
@@ -937,7 +973,7 @@ async def handle_group_request(bot: Bot, event: GroupRequestEvent):
 
 @approve_all_friends_cmd.handle()
 async def handle_approve_all_friends(bot: Bot, event: MessageEvent):
-    if not await PERM(bot, event):
+    if not await satisfies_command_permission(bot, event, "request.approve_all_friends"):
         return
     bot_key = str(bot.self_id)
     bot_pending = pending_friend.get(bot_key, {})
@@ -976,7 +1012,7 @@ async def handle_approve_all_friends(bot: Bot, event: MessageEvent):
 
 @reject_all_friends_cmd.handle()
 async def handle_reject_all_friends(bot: Bot, event: MessageEvent):
-    if not await PERM(bot, event):
+    if not await satisfies_command_permission(bot, event, "request.reject_all_friends"):
         return
     bot_key = str(bot.self_id)
     bot_pending = pending_friend.get(bot_key, {})
@@ -1015,7 +1051,7 @@ async def handle_reject_all_friends(bot: Bot, event: MessageEvent):
 
 @approve_all_groups_cmd.handle()
 async def handle_approve_all_groups(bot: Bot, event: MessageEvent):
-    if not await PERM(bot, event):
+    if not await satisfies_command_permission(bot, event, "request.approve_all_groups"):
         return
     bot_key = str(bot.self_id)
     bot_pending = pending_group.get(bot_key, {})
@@ -1039,7 +1075,7 @@ async def handle_approve_all_groups(bot: Bot, event: MessageEvent):
 
 @approve_group_cmd.handle()
 async def handle_approve_group(bot: Bot, event: MessageEvent, args: Message = CommandArg()):  # noqa: B008
-    if not await PERM(bot, event):
+    if not await satisfies_command_permission(bot, event, "request.approve_group"):
         return
     arg = args.extract_plain_text().strip()
     if not arg.isdigit():
@@ -1055,7 +1091,7 @@ async def handle_approve_group(bot: Bot, event: MessageEvent, args: Message = Co
 
 @auto_accept_status_cmd.handle()
 async def handle_auto_accept_status(bot: Bot, event: MessageEvent):
-    if not await PERM(bot, event):
+    if not await satisfies_command_permission(bot, event, "request.auto_accept_status"):
         return
     bot_config = BotConfig(int(bot.self_id))
     friend_on = await bot_config.auto_accept_friend()
@@ -1069,7 +1105,7 @@ async def handle_auto_accept_status(bot: Bot, event: MessageEvent):
 
 @enable_auto_friend_cmd.handle()
 async def handle_enable_auto_friend(bot: Bot, event: MessageEvent):
-    if not await PERM(bot, event):
+    if not await satisfies_command_permission(bot, event, "request.enable_auto_friend"):
         return
     await BotConfig(int(bot.self_id)).set_auto_accept_friend(True)
     await enable_auto_friend_cmd.finish("已开启好友自动同意")
@@ -1077,7 +1113,7 @@ async def handle_enable_auto_friend(bot: Bot, event: MessageEvent):
 
 @disable_auto_friend_cmd.handle()
 async def handle_disable_auto_friend(bot: Bot, event: MessageEvent):
-    if not await PERM(bot, event):
+    if not await satisfies_command_permission(bot, event, "request.disable_auto_friend"):
         return
     await BotConfig(int(bot.self_id)).set_auto_accept_friend(False)
     await disable_auto_friend_cmd.finish("已关闭好友自动同意")
@@ -1085,7 +1121,7 @@ async def handle_disable_auto_friend(bot: Bot, event: MessageEvent):
 
 @enable_auto_group_cmd.handle()
 async def handle_enable_auto_group(bot: Bot, event: MessageEvent):
-    if not await PERM(bot, event):
+    if not await satisfies_command_permission(bot, event, "request.enable_auto_group"):
         return
     await BotConfig(int(bot.self_id)).set_auto_accept_group(True)
     await enable_auto_group_cmd.finish("已开启入群自动同意")
@@ -1093,7 +1129,7 @@ async def handle_enable_auto_group(bot: Bot, event: MessageEvent):
 
 @disable_auto_group_cmd.handle()
 async def handle_disable_auto_group(bot: Bot, event: MessageEvent):
-    if not await PERM(bot, event):
+    if not await satisfies_command_permission(bot, event, "request.disable_auto_group"):
         return
     await BotConfig(int(bot.self_id)).set_auto_accept_group(False)
     await disable_auto_group_cmd.finish("已关闭入群自动同意")
@@ -1101,7 +1137,7 @@ async def handle_disable_auto_group(bot: Bot, event: MessageEvent):
 
 @reject_group_cmd.handle()
 async def handle_reject_group(bot: Bot, event: MessageEvent, args: Message = CommandArg()):  # noqa: B008
-    if not await PERM(bot, event):
+    if not await satisfies_command_permission(bot, event, "request.reject_group"):
         return
     arg = args.extract_plain_text().strip()
     if not arg.isdigit():

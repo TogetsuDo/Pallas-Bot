@@ -22,7 +22,11 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule, to_me
 from nonebot.typing import T_State
 
-from src.common.config import BotConfig, GroupConfig, UserConfig, user_is_bot_admin
+from src.common.cmd_perm import (
+    group_message_permission_for_command,
+    private_message_permission_for_command,
+)
+from src.common.config import BotConfig, GroupConfig, UserConfig
 from src.common.paths import plugin_data_dir
 from src.common.utils import HTTPXClient, is_bot_admin
 from src.plugins.blacklist import invalidate_user_ban_gate_cache
@@ -35,16 +39,39 @@ __plugin_meta__ = PluginMetadata(
     name="牛牛欢迎",
     description="处理群变动信息以及支持自定义好友欢迎消息",
     usage="""
-设置好友欢迎 - 设置自定义好友欢迎消息（文本/图片/图文混合，仅牛牛管理员私聊）
-清除好友欢迎 - 清除已设置的好友欢迎消息（仅牛牛管理员私聊）
-设置群欢迎 - 在当前群设置自定义入群欢迎（文本/图片/图文混合，需群管理员或群主）
-清除群欢迎 - 清除当前群的自定义入群欢迎（需群管理员或群主）
+设置好友欢迎 - 设置自定义好友欢迎消息（文本/图片/图文混合，私聊）
+清除好友欢迎 - 清除已设置的好友欢迎消息（私聊）
+设置群欢迎 - 在当前群设置自定义入群欢迎（文本/图片/图文混合，群内）
+清除群欢迎 - 清除当前群的自定义入群欢迎（群内）
+所需权限以「牛牛帮助」本插件功能详情中的触发条件为准（可由 WebUI「命令权限」覆盖）。
     """.strip(),
     type="application",
     homepage="https://github.com/PallasBot/Pallas-Bot",
     supported_adapters={"~onebot.v11"},
     extra={
         "version": "3.0.0",
+        "command_permissions": [
+            {
+                "id": "greeting.set_friend_welcome",
+                "label": "设置好友欢迎",
+                "default": "bot_moderator",
+            },
+            {
+                "id": "greeting.clear_friend_welcome",
+                "label": "清除好友欢迎",
+                "default": "bot_moderator",
+            },
+            {
+                "id": "greeting.set_group_welcome",
+                "label": "设置群欢迎",
+                "default": "group_moderator",
+            },
+            {
+                "id": "greeting.clear_group_welcome",
+                "label": "清除群欢迎",
+                "default": "group_moderator",
+            },
+        ],
         "menu_data": [
             {
                 "func": "入群欢迎",
@@ -63,30 +90,34 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "设置好友欢迎",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "设置好友欢迎",
+                "trigger_condition": "设置好友欢迎（私聊）",
+                "command_permission": "greeting.set_friend_welcome",
                 "brief_des": "设置自定义好友欢迎消息",
-                "detail_des": "由牛牛管理员在私聊中执行，支持文本、图片或图文混合",
+                "detail_des": "私聊中按提示发送内容，支持文本、图片或图文混合",
             },
             {
                 "func": "清除好友欢迎",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "清除好友欢迎",
+                "trigger_condition": "清除好友欢迎（私聊）",
+                "command_permission": "greeting.clear_friend_welcome",
                 "brief_des": "清除已设置的好友欢迎消息",
-                "detail_des": "由牛牛管理员在私聊中执行",
+                "detail_des": "私聊中执行，清除已保存的好友欢迎素材",
             },
             {
                 "func": "设置群欢迎",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "设置群欢迎",
+                "trigger_condition": "设置群欢迎（群内）",
+                "command_permission": "greeting.set_group_welcome",
                 "brief_des": "设置本群自定义入群欢迎",
-                "detail_des": "由群管理员或群主在群内执行，支持文本、图片或图文混合；新人入群时优先发送该内容",
+                "detail_des": "群内发起后按提示发送内容，支持文本、图片或图文混合；新人入群时若已配置则优先发送该欢迎",
             },
             {
                 "func": "清除群欢迎",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "清除群欢迎",
+                "trigger_condition": "清除群欢迎（群内）",
+                "command_permission": "greeting.clear_group_welcome",
                 "brief_des": "清除本群自定义入群欢迎",
-                "detail_des": "由群管理员或群主在群内执行",
+                "detail_des": "群内使用该命令，清除已保存的本群欢迎素材",
             },
             {
                 "func": "被踢自动拉黑",
@@ -228,7 +259,7 @@ async def get_custom_friend_welcome_message(bot_id: int) -> Message | None:
 
 set_friend_welcome = on_command(
     "设置好友欢迎",
-    permission=permission.PRIVATE,
+    permission=private_message_permission_for_command("greeting.set_friend_welcome"),
     priority=10,
     block=True,
 )
@@ -236,8 +267,6 @@ set_friend_welcome = on_command(
 
 @set_friend_welcome.handle()
 async def handle_set_friend_welcome(bot: Bot, event: PrivateMessageEvent, state: T_State):
-    if not await user_is_bot_admin(event.self_id, event.user_id):
-        await set_friend_welcome.finish("你没有权限执行此操作")
     await set_friend_welcome.send("请发送你想要设置的好友欢迎消息（可以是文本、图片或图文混合）：")
     state["bot_id"] = event.self_id
 
@@ -280,7 +309,7 @@ async def handle_friend_welcome_message(bot: Bot, event: PrivateMessageEvent, st
 
 clear_friend_welcome = on_command(
     "清除好友欢迎",
-    permission=permission.PRIVATE,
+    permission=private_message_permission_for_command("greeting.clear_friend_welcome"),
     priority=10,
     block=True,
 )
@@ -288,9 +317,6 @@ clear_friend_welcome = on_command(
 
 @clear_friend_welcome.handle()
 async def handle_clear_friend_welcome(bot: Bot, event: PrivateMessageEvent):
-    if not await user_is_bot_admin(event.self_id, event.user_id):
-        await clear_friend_welcome.finish("你没有权限执行此操作")
-
     d = GREETING_DIR / str(event.self_id)
     if not d.exists():
         await clear_friend_welcome.finish("未设置自定义好友欢迎消息")
@@ -307,7 +333,7 @@ async def handle_clear_friend_welcome(bot: Bot, event: PrivateMessageEvent):
 
 set_group_welcome = on_command(
     "设置群欢迎",
-    permission=permission.GROUP,
+    permission=group_message_permission_for_command("greeting.set_group_welcome"),
     priority=10,
     block=True,
 )
@@ -368,7 +394,7 @@ async def handle_group_welcome_message(bot: Bot, event: MessageEvent, state: T_S
 
 clear_group_welcome = on_command(
     "清除群欢迎",
-    permission=permission.GROUP,
+    permission=group_message_permission_for_command("greeting.clear_group_welcome"),
     priority=10,
     block=True,
 )

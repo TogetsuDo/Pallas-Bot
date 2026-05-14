@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import importlib
 import json
 import os
@@ -31,10 +32,13 @@ from src.common.pallas_console_login import (
     extract_session_from_request,
     is_console_auth_configured,
     mint_session_token,
+    register_console_session_invalidation_hook,
     set_shared_console_login_token,
     verify_console_password,
 )
 from src.common.web.bot_web import LogScope  # noqa: TC001  # FastAPI/OpenAPI 需在运行时解析注解
+
+from .api import _merge_console_version_from_disk
 
 if typing.TYPE_CHECKING:
     from .config import Config
@@ -42,6 +46,23 @@ if typing.TYPE_CHECKING:
 _CONSOLE_EXTRA: dict[str, Any] = {}
 _INIT_LOG_SINK = False
 _READ_CACHE: dict[str, dict[str, Any]] = {}
+
+
+def clear_extended_read_cache() -> None:
+    """清空控制台扩展 JSON 的进程内读缓存（口令轮换或新登录后调用）。"""
+    _READ_CACHE.clear()
+
+
+def _cache_value_copy(data: Any) -> Any:
+    """避免调用方就地修改 dict/list 污染缓存条目。"""
+    if isinstance(data, (dict, list)):
+        try:
+            return copy.deepcopy(data)
+        except Exception:  # noqa: BLE001
+            return data
+    return data
+
+
 _MSG_STATS: dict[str, dict[str, Any]] = {}  # self_id -> sent/received + 按本地日切片的 day_*
 _MSG_TRACKING_INIT = False
 # 与 _count_protocol_api_calls 口径一致的成功调用时间序列（进程内，重启丢失）
@@ -106,24 +127,28 @@ async def _cached_read(
     ttl_sec: float = 1.0,
     stale_sec: float = 20.0,
 ) -> Any:
-    """读取接口防抖：短 TTL 复用；失败时回退最近成功快照，降低前端空白概率。"""
+    """读取接口防抖：短 TTL 复用；失败时回退最近成功快照，降低前端空白概率。
+
+    返回值对 dict/list 做拷贝，避免调用方修改污染缓存；口令轮换或新登录会清空整表。
+    """
     now = time.monotonic()
     hit = _READ_CACHE.get(key)
     if hit and now < float(hit["exp"]):
-        return hit["data"]
+        return _cache_value_copy(hit["data"])
     try:
         data = await loader()
     except Exception:
         if hit and now < float(hit["stale_exp"]):
             logger.warning("Pallas-Bot 控制台: 使用缓存兜底 key={}", key)
-            return hit["data"]
+            return _cache_value_copy(hit["data"])
         raise
+    stored = _cache_value_copy(data)
     _READ_CACHE[key] = {
-        "data": data,
+        "data": stored,
         "exp": now + max(0.05, ttl_sec),
         "stale_exp": now + max(ttl_sec, stale_sec),
     }
-    return data
+    return _cache_value_copy(stored)
 
 
 def _drop_read_cache(prefixes: tuple[str, ...]) -> None:
@@ -131,6 +156,16 @@ def _drop_read_cache(prefixes: tuple[str, ...]) -> None:
         return
     for k in [k for k in _READ_CACHE if any(k.startswith(p) for p in prefixes)]:
         _READ_CACHE.pop(k, None)
+
+
+# 审批写操作后：好友/群 OneBot 列表与按 Bot 群配置合并视图一并失效
+_CONSOLE_APPROVAL_RELATED_CACHE_PREFIXES: tuple[str, ...] = (
+    "friend_requests",
+    "request_overview",
+    "friend_list:",
+    "group_list:",
+    "group_configs_bot:",
+)
 
 
 def _metadata_to_dict(meta: object | None) -> dict[str, Any] | None:
@@ -1691,6 +1726,10 @@ def _system_dict() -> dict[str, Any]:
             port_s = int(port)
         except (TypeError, ValueError):
             port_s = None
+    console = dict(_CONSOLE_EXTRA)
+    sr = str(console.get("static_root", "") or "").strip()
+    static_path = Path(sr) if sr else None
+    _merge_console_version_from_disk(console, static_path)
     return {
         "nonebot2_driver": {
             "host": host_s,
@@ -1700,7 +1739,7 @@ def _system_dict() -> dict[str, Any]:
         "server_time": time.time(),
         "plugin_count": len(_list_plugins_dict()),
         "bot_count": len(get_bots()),
-        "console": dict(_CONSOLE_EXTRA),
+        "console": console,
         "runtime": _runtime_metrics(),
     }
 
@@ -2156,6 +2195,7 @@ def register_extended_api(
             secure=request.url.scheme == "https",
             path="/",
         )
+        clear_extended_read_cache()
         return resp
 
     router = APIRouter(tags=["Pallas-Bot 控制台"], dependencies=[Depends(_pallas_token_dep)])
@@ -2552,56 +2592,77 @@ def register_extended_api(
     ) -> JSONResponse:
         from src.common.db.pallas_console_data import list_group_configs_by_ids_public, list_group_configs_public
 
-        # 按账号过滤：拉取 Bot 的群列表，再从 DB 取对应群配置并合并
+        # 按账号过滤：拉取 Bot 的群列表，再从 DB 取对应群配置并合并（走 OneBot，结果短时缓存）
         if self_id is not None:
-            target = str(int(self_id))
-            bot = None
-            for b in get_bots().values():
-                if str(getattr(b, "self_id", "") or "") == target:
-                    bot = b
-                    break
-            if bot is None:
-                raise HTTPException(status_code=404, detail="指定账号当前未连接")
-            if not _is_onebot_v11_bot(bot):
-                raise HTTPException(status_code=400, detail="当前连接不是 OneBot V11，无法拉取群列表")
+            cache_key_bot = f"group_configs_bot:{int(self_id)}:{int(limit)}"
 
-            groups, err, truncated = await _call_get_group_list(bot, limit=int(limit))
-            group_ids = [int(g["group_id"]) for g in groups]
+            async def _load_bot_merge() -> dict[str, Any]:
+                target_inner = str(int(self_id))
+                bot_inner = None
+                for b in get_bots().values():
+                    if str(getattr(b, "self_id", "") or "") == target_inner:
+                        bot_inner = b
+                        break
+                if bot_inner is None:
+                    raise HTTPException(status_code=404, detail="指定账号当前未连接")
+                if not _is_onebot_v11_bot(bot_inner):
+                    raise HTTPException(status_code=400, detail="当前连接不是 OneBot V11，无法拉取群列表")
+
+                groups_inner, err, truncated = await _call_get_group_list(bot_inner, limit=int(limit))
+                group_ids = [int(g["group_id"]) for g in groups_inner]
+
+                try:
+                    db_configs = await list_group_configs_by_ids_public(group_ids)
+                except Exception as e:  # noqa: BLE001
+                    raise HTTPException(status_code=500, detail=str(e)) from e
+
+                rows_inner: list[dict[str, Any]] = []
+                for g in groups_inner:
+                    gid = int(g["group_id"])
+                    cfg = db_configs.get(
+                        gid,
+                        {
+                            "group_id": gid,
+                            "roulette_mode": 1,
+                            "banned": False,
+                            "sing_progress": None,
+                            "disabled_plugins": [],
+                        },
+                    )
+                    rows_inner.append({
+                        **cfg,
+                        "group_name": g.get("group_name", ""),
+                        "member_count": g.get("member_count", 0),
+                    })
+
+                return {
+                    "rows": rows_inner,
+                    "meta": {
+                        "limit": limit,
+                        "self_id": target_inner,
+                        "from_bot": True,
+                        "error": err,
+                        "truncated": truncated,
+                    },
+                }
 
             try:
-                db_configs = await list_group_configs_by_ids_public(group_ids)
-            except Exception as e:  # noqa: BLE001
-                raise HTTPException(status_code=500, detail=str(e)) from e
-
-            rows: list[dict[str, Any]] = []
-            for g in groups:
-                gid = int(g["group_id"])
-                cfg = db_configs.get(
-                    gid,
-                    {
-                        "group_id": gid,
-                        "roulette_mode": 1,
-                        "banned": False,
-                        "sing_progress": None,
-                        "disabled_plugins": [],
-                    },
+                packed = await _cached_read(
+                    key=cache_key_bot,
+                    loader=_load_bot_merge,
+                    ttl_sec=2.0,
+                    stale_sec=22.0,
                 )
-                rows.append({
-                    **cfg,
-                    "group_name": g.get("group_name", ""),
-                    "member_count": g.get("member_count", 0),
-                })
+            except HTTPException:
+                raise
+            except Exception as e:  # noqa: BLE001
+                logger.exception("Pallas-Bot 控制台: 群配置（按 Bot）加载失败")
+                raise HTTPException(status_code=500, detail=str(e)) from e
 
             return JSONResponse({
                 "ok": True,
-                "data": rows,
-                "meta": {
-                    "limit": limit,
-                    "self_id": target,
-                    "from_bot": True,
-                    "error": err,
-                    "truncated": truncated,
-                },
+                "data": packed["rows"],
+                "meta": packed["meta"],
             })
 
         # 原有行为：返回 DB 中所有群配置
@@ -2646,7 +2707,7 @@ def register_extended_api(
         except Exception as e:  # noqa: BLE001
             logger.exception("Pallas-Bot 控制台: 更新群配置失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
-        _drop_read_cache(("group_configs_list", "db_overview"))
+        _drop_read_cache(("group_configs_list", "db_overview", "group_configs_bot:"))
         return JSONResponse({"ok": True, "data": data})
 
     @router.get(f"{x}/user-configs/{{user_id}}", include_in_schema=True)
@@ -2843,7 +2904,10 @@ def register_extended_api(
 
     @router.get(f"{x}/ai-extension/ncm/status", include_in_schema=True)
     async def _ai_extension_ncm_status() -> JSONResponse:
-        d = await _ai_extension_http_json(method="GET", path="/ncm/login/status")
+        async def _load() -> dict[str, Any]:
+            return await _ai_extension_http_json(method="GET", path="/ncm/login/status")
+
+        d = await _cached_read(key="ai_extension_ncm_status", loader=_load, ttl_sec=3.0, stale_sec=30.0)
         return JSONResponse({"ok": True, "data": d})
 
     @router.post(f"{x}/ai-extension/ncm/send-sms", include_in_schema=True)
@@ -2858,6 +2922,7 @@ def register_extended_api(
             path="/ncm/login/cellphone/send-sms",
             body=body.model_dump(),
         )
+        _drop_read_cache(("ai_extension_ncm_status",))
         return JSONResponse({"ok": True, "data": d})
 
     @router.post(f"{x}/ai-extension/ncm/verify-sms", include_in_schema=True)
@@ -2872,6 +2937,7 @@ def register_extended_api(
             path="/ncm/login/cellphone/verify-sms",
             body=body.model_dump(),
         )
+        _drop_read_cache(("ai_extension_ncm_status",))
         return JSONResponse({"ok": True, "data": d})
 
     @router.post(f"{x}/ai-extension/ncm/logout", include_in_schema=True)
@@ -2881,6 +2947,7 @@ def register_extended_api(
     ) -> JSONResponse:
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
         d = await _ai_extension_http_json(method="POST", path="/ncm/login/logout", body={})
+        _drop_read_cache(("ai_extension_ncm_status",))
         return JSONResponse({"ok": True, "data": d})
 
     @router.get(f"{x}/friend-requests", include_in_schema=True)
@@ -2912,29 +2979,40 @@ def register_extended_api(
         limit: int = Query(default=800, ge=1, le=8000),
     ) -> JSONResponse:
         """只读：对在线 Bot 调用 OneBot `get_friend_list`（大列表时按 limit 截断并标记 truncated）。"""
-        target = str(int(self_id))
-        bot = None
-        conn_key = ""
-        for key, b in get_bots().items():
-            if str(getattr(b, "self_id", "") or "") == target:
-                bot = b
-                conn_key = str(key)
-                break
-        if bot is None:
-            raise HTTPException(status_code=404, detail="指定账号当前未连接")
-        if not _is_onebot_v11_bot(bot):
-            raise HTTPException(status_code=400, detail="当前连接不是 OneBot V11，无法拉取好友列表")
+        cache_key = f"friend_list:{int(self_id)}:{int(limit)}"
 
-        friends, err, truncated = await _call_get_friend_list(bot, limit=int(limit))
-        payload: dict[str, Any] = {
-            "self_id": target,
-            "connection_key": conn_key,
-            "adapter": _bot_adapter_label(bot),
-            "friends": friends,
-            "truncated": truncated,
-            "limit": int(limit),
-            "error": err,
-        }
+        async def _load() -> dict[str, Any]:
+            target = str(int(self_id))
+            bot = None
+            conn_key = ""
+            for key, b in get_bots().items():
+                if str(getattr(b, "self_id", "") or "") == target:
+                    bot = b
+                    conn_key = str(key)
+                    break
+            if bot is None:
+                raise HTTPException(status_code=404, detail="指定账号当前未连接")
+            if not _is_onebot_v11_bot(bot):
+                raise HTTPException(status_code=400, detail="当前连接不是 OneBot V11，无法拉取好友列表")
+
+            friends, err, truncated = await _call_get_friend_list(bot, limit=int(limit))
+            return {
+                "self_id": target,
+                "connection_key": conn_key,
+                "adapter": _bot_adapter_label(bot),
+                "friends": friends,
+                "truncated": truncated,
+                "limit": int(limit),
+                "error": err,
+            }
+
+        try:
+            payload = await _cached_read(key=cache_key, loader=_load, ttl_sec=2.5, stale_sec=25.0)
+        except HTTPException:
+            raise
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Pallas-Bot 控制台: 拉取好友列表失败")
+            raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": payload})
 
     @router.get(f"{x}/group-list", include_in_schema=True)
@@ -2943,70 +3021,89 @@ def register_extended_api(
         limit: int = Query(default=1000, ge=1, le=10000),
     ) -> JSONResponse:
         """只读：对在线 Bot 调用 OneBot `get_group_list`（大列表时按 limit 截断并标记 truncated）。"""
-        target = str(int(self_id))
-        bot = None
-        conn_key = ""
-        for key, b in get_bots().items():
-            if str(getattr(b, "self_id", "") or "") == target:
-                bot = b
-                conn_key = str(key)
-                break
-        if bot is None:
-            raise HTTPException(status_code=404, detail="指定账号当前未连接")
-        if not _is_onebot_v11_bot(bot):
-            raise HTTPException(status_code=400, detail="当前连接不是 OneBot V11，无法拉取群列表")
+        cache_key = f"group_list:{int(self_id)}:{int(limit)}"
 
-        groups, err, truncated = await _call_get_group_list(bot, limit=int(limit))
-        payload: dict[str, Any] = {
-            "self_id": target,
-            "connection_key": conn_key,
-            "adapter": _bot_adapter_label(bot),
-            "groups": groups,
-            "truncated": truncated,
-            "limit": int(limit),
-            "error": err,
-        }
+        async def _load() -> dict[str, Any]:
+            target = str(int(self_id))
+            bot = None
+            conn_key = ""
+            for key, b in get_bots().items():
+                if str(getattr(b, "self_id", "") or "") == target:
+                    bot = b
+                    conn_key = str(key)
+                    break
+            if bot is None:
+                raise HTTPException(status_code=404, detail="指定账号当前未连接")
+            if not _is_onebot_v11_bot(bot):
+                raise HTTPException(status_code=400, detail="当前连接不是 OneBot V11，无法拉取群列表")
+
+            groups, err, truncated = await _call_get_group_list(bot, limit=int(limit))
+            return {
+                "self_id": target,
+                "connection_key": conn_key,
+                "adapter": _bot_adapter_label(bot),
+                "groups": groups,
+                "truncated": truncated,
+                "limit": int(limit),
+                "error": err,
+            }
+
+        try:
+            payload = await _cached_read(key=cache_key, loader=_load, ttl_sec=2.5, stale_sec=25.0)
+        except HTTPException:
+            raise
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Pallas-Bot 控制台: 拉取群列表失败")
+            raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": payload})
 
     @router.get(f"{x}/request-overview", include_in_schema=True)
     async def _request_overview() -> JSONResponse:
-        friend = await _friend_requests_overview(self_id=None, include_doubt=True)
-        group = _read_pending_group_requests_disk()
-        by_self: dict[str, dict[str, Any]] = {}
-        for row in friend.get("bots", []):
-            sid = str(row.get("self_id") or "")
-            if not sid:
-                continue
-            by_self[sid] = {
-                "self_id": sid,
-                "online": bool(row.get("online")),
-                "adapter": str(row.get("adapter") or ""),
-                "connection_key": row.get("connection_key"),
-                "pending_friend_requests": row.get("pending_friend_requests") or [],
-                "doubt_friend_requests": row.get("doubt_friend_requests") or [],
-                "pending_group_requests": [],
-            }
-        for sid, mp in group.items():
-            row = by_self.setdefault(
-                str(sid),
-                {
-                    "self_id": str(sid),
-                    "online": False,
-                    "adapter": "",
-                    "connection_key": None,
-                    "pending_friend_requests": [],
-                    "doubt_friend_requests": [],
+        async def _load() -> dict[str, Any]:
+            friend = await _friend_requests_overview(self_id=None, include_doubt=True)
+            group = _read_pending_group_requests_disk()
+            by_self: dict[str, dict[str, Any]] = {}
+            for row in friend.get("bots", []):
+                sid = str(row.get("self_id") or "")
+                if not sid:
+                    continue
+                by_self[sid] = {
+                    "self_id": sid,
+                    "online": bool(row.get("online")),
+                    "adapter": str(row.get("adapter") or ""),
+                    "connection_key": row.get("connection_key"),
+                    "pending_friend_requests": row.get("pending_friend_requests") or [],
+                    "doubt_friend_requests": row.get("doubt_friend_requests") or [],
                     "pending_group_requests": [],
-                },
+                }
+            for sid, mp in group.items():
+                row = by_self.setdefault(
+                    str(sid),
+                    {
+                        "self_id": str(sid),
+                        "online": False,
+                        "adapter": "",
+                        "connection_key": None,
+                        "pending_friend_requests": [],
+                        "doubt_friend_requests": [],
+                        "pending_group_requests": [],
+                    },
+                )
+                vals = [v for v in mp.values() if isinstance(v, dict)]
+                vals.sort(key=lambda v: int(v.get("group_id") or 0))
+                row["pending_group_requests"] = vals
+            rows = sorted(
+                by_self.values(),
+                key=lambda r: int(str(r["self_id"])) if str(r["self_id"]).isdigit() else 10**18,
             )
-            vals = [v for v in mp.values() if isinstance(v, dict)]
-            vals.sort(key=lambda v: int(v.get("group_id") or 0))
-            row["pending_group_requests"] = vals
-        rows = sorted(
-            by_self.values(),
-            key=lambda r: int(str(r["self_id"])) if str(r["self_id"]).isdigit() else 10**18,
-        )
-        return JSONResponse({"ok": True, "data": {"bots": rows}})
+            return {"bots": rows}
+
+        try:
+            data = await _cached_read(key="request_overview", loader=_load, ttl_sec=1.2, stale_sec=15.0)
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Pallas-Bot 控制台: 读取审批总览失败")
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": data})
 
     @router.post(f"{x}/request-actions", include_in_schema=True)
     async def _request_actions(
@@ -3027,7 +3124,7 @@ def register_extended_api(
                 if not flag:
                     raise HTTPException(status_code=404, detail="未找到可疑好友申请")
                 await bot.call_api("set_doubt_friends_add_request", flag=flag, approve=approve)  # type: ignore[union-attr]
-                _drop_read_cache(("friend_requests",))
+                _drop_read_cache(_CONSOLE_APPROVAL_RELATED_CACHE_PREFIXES)
                 return JSONResponse({"ok": True, "data": {"handled": True}})
             pending = _read_pending_friend_requests_disk()
             by_bot = pending.get(str(body.self_id), {})
@@ -3038,7 +3135,7 @@ def register_extended_api(
             by_bot.pop(uid, None)
             pending[str(body.self_id)] = by_bot
             _save_pending_friend_requests_disk(pending)
-            _drop_read_cache(("friend_requests",))
+            _drop_read_cache(_CONSOLE_APPROVAL_RELATED_CACHE_PREFIXES)
             return JSONResponse({"ok": True, "data": {"handled": True}})
 
         if body.group_id is None:
@@ -3056,7 +3153,7 @@ def register_extended_api(
         by_bot_g.pop(str(int(body.group_id)), None)
         pending_g[str(body.self_id)] = by_bot_g
         _save_pending_group_requests_disk(pending_g)
-        _drop_read_cache(("friend_requests",))
+        _drop_read_cache(_CONSOLE_APPROVAL_RELATED_CACHE_PREFIXES)
         return JSONResponse({"ok": True, "data": {"handled": True}})
 
     @router.post(f"{x}/request-actions/batch", include_in_schema=True)
@@ -3197,7 +3294,7 @@ def register_extended_api(
 
         if body.groups:
             _save_pending_group_requests_disk(pending_group)
-        _drop_read_cache(("friend_requests",))
+        _drop_read_cache(_CONSOLE_APPROVAL_RELATED_CACHE_PREFIXES)
 
         return JSONResponse({
             "ok": True,
@@ -3221,19 +3318,20 @@ def register_extended_api(
         repo = str(getattr(plugin_config, "pallas_webui_dist_zip_repo", "") or "PallasBot/Pallas-Bot-WebUI")
         asset = str(getattr(plugin_config, "pallas_webui_dist_zip_asset", "") or "dist.zip")
         github_token = str(getattr(plugin_config, "pallas_protocol_github_token", "") or "").strip()
-        installed = get_installed_webui_version()
-        current_tag = str(installed.get("tag", "") or "").strip()
-        try:
-            latest = await fetch_latest_webui_release(repo, token=github_token, asset_name=asset)
-            latest_tag = str(latest.get("tag", "") or "").strip()
-            release_url = str(latest.get("html_url", "") or "").strip()
-            asset_url = str(latest.get("asset_url", "") or "").strip()
-        except Exception as e:  # noqa: BLE001
-            err_msg = format_exception_for_log(e)
-            logger.warning("Pallas-Bot 控制台: WebUI 更新检查失败（GitHub），repo={} err={}", repo, err_msg)
-            return JSONResponse({
-                "ok": True,
-                "data": {
+        cache_key = f"update_check_webui:{repo}:{asset}:{bool(github_token)}"
+
+        async def _load() -> dict[str, Any]:
+            installed = get_installed_webui_version()
+            current_tag = str(installed.get("tag", "") or "").strip()
+            try:
+                latest = await fetch_latest_webui_release(repo, token=github_token, asset_name=asset)
+                latest_tag = str(latest.get("tag", "") or "").strip()
+                release_url = str(latest.get("html_url", "") or "").strip()
+                asset_url = str(latest.get("asset_url", "") or "").strip()
+            except Exception as e:  # noqa: BLE001
+                err_msg = format_exception_for_log(e)
+                logger.warning("Pallas-Bot 控制台: WebUI 更新检查失败（GitHub），repo={} err={}", repo, err_msg)
+                return {
                     "current_tag": current_tag,
                     "latest_tag": None,
                     "has_update": False,
@@ -3241,12 +3339,9 @@ def register_extended_api(
                     "asset_url": "",
                     "error": err_msg,
                     "checked_at": time.time(),
-                },
-            })
-        has_update = bool(latest_tag and not release_tags_equivalent(current_tag, latest_tag))
-        return JSONResponse({
-            "ok": True,
-            "data": {
+                }
+            has_update = bool(latest_tag and not release_tags_equivalent(current_tag, latest_tag))
+            return {
                 "current_tag": current_tag,
                 "latest_tag": latest_tag,
                 "has_update": has_update,
@@ -3254,8 +3349,10 @@ def register_extended_api(
                 "asset_url": asset_url,
                 "error": None,
                 "checked_at": time.time(),
-            },
-        })
+            }
+
+        data = await _cached_read(key=cache_key, loader=_load, ttl_sec=120.0, stale_sec=900.0)
+        return JSONResponse({"ok": True, "data": data})
 
     @router.get(f"{x}/update/bot/check", include_in_schema=True)
     async def _bot_update_check() -> JSONResponse:
@@ -3265,19 +3362,20 @@ def register_extended_api(
         from .manager import fetch_latest_bot_release, get_bot_current_version
 
         github_token = str(getattr(plugin_config, "pallas_protocol_github_token", "") or "").strip()
-        current = get_bot_current_version()
-        current_tag = current.get("tag", "")
-        current_commit = current.get("commit", "")
-        try:
-            latest = await fetch_latest_bot_release("PallasBot/Pallas-Bot", token=github_token)
-            latest_tag = str(latest.get("tag", "") or "").strip()
-            release_url = str(latest.get("html_url", "") or "").strip()
-        except Exception as e:  # noqa: BLE001
-            err_msg = format_exception_for_log(e)
-            logger.warning("Pallas-Bot 控制台: Bot 版本更新检查失败（GitHub） err={}", err_msg)
-            return JSONResponse({
-                "ok": True,
-                "data": {
+        cache_key = f"update_check_bot:{bool(github_token)}"
+
+        async def _load() -> dict[str, Any]:
+            current = get_bot_current_version()
+            current_tag = current.get("tag", "")
+            current_commit = current.get("commit", "")
+            try:
+                latest = await fetch_latest_bot_release("PallasBot/Pallas-Bot", token=github_token)
+                latest_tag = str(latest.get("tag", "") or "").strip()
+                release_url = str(latest.get("html_url", "") or "").strip()
+            except Exception as e:  # noqa: BLE001
+                err_msg = format_exception_for_log(e)
+                logger.warning("Pallas-Bot 控制台: Bot 版本更新检查失败（GitHub） err={}", err_msg)
+                return {
                     "current_tag": current_tag,
                     "current_commit": current_commit,
                     "latest_tag": None,
@@ -3285,14 +3383,12 @@ def register_extended_api(
                     "release_url": "",
                     "error": err_msg,
                     "checked_at": time.time(),
-                },
-            })
-        has_update = bool(
-            latest_tag and (not str(current_tag or "").strip() or not release_tags_equivalent(current_tag, latest_tag)),
-        )
-        return JSONResponse({
-            "ok": True,
-            "data": {
+                }
+            has_update = bool(
+                latest_tag
+                and (not str(current_tag or "").strip() or not release_tags_equivalent(current_tag, latest_tag)),
+            )
+            return {
                 "current_tag": current_tag,
                 "current_commit": current_commit,
                 "latest_tag": latest_tag,
@@ -3300,8 +3396,10 @@ def register_extended_api(
                 "release_url": release_url,
                 "error": None,
                 "checked_at": time.time(),
-            },
-        })
+            }
+
+        data = await _cached_read(key=cache_key, loader=_load, ttl_sec=120.0, stale_sec=900.0)
+        return JSONResponse({"ok": True, "data": data})
 
     @router.post(f"{x}/update/bot/apply", include_in_schema=True)
     async def _bot_update_apply(
@@ -3320,6 +3418,7 @@ def register_extended_api(
                 github_token=github_token,
                 repo="PallasBot/Pallas-Bot",
             )
+            _drop_read_cache(("update_check_bot:",))
             return JSONResponse({"ok": True, "data": data})
         except BotGitUpdateError as e:
             raise HTTPException(status_code=e.status_code, detail=e.detail) from e
@@ -3398,6 +3497,7 @@ def register_extended_api(
             effective_version = (dist_ver or "").strip() or new_tag or "unknown"
             set_console_meta({**_CONSOLE_EXTRA, "version": effective_version})
             logger.info("Pallas-Bot 控制台: WebUI 已更新至 {}（发布 tag: {}）", effective_version, new_tag)
+            _drop_read_cache(("update_check_webui:",))
             return JSONResponse({
                 "ok": True,
                 "data": {
@@ -3424,6 +3524,10 @@ def register_extended_api(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": {"message": "已保存"}})
+
+    if not getattr(app.state, "_pallas_ext_read_cache_inv_hook", False):
+        register_console_session_invalidation_hook(clear_extended_read_cache)
+        app.state._pallas_ext_read_cache_inv_hook = True
 
     app.include_router(router_pub)
     app.include_router(router)
