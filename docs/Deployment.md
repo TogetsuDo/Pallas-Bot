@@ -129,6 +129,33 @@ uv run nb run        # 运行
 **同样请不要关闭 `NapCat` 的命令行窗口！**
 Linux 用户推荐使用 [Termux](https://termux.dev/) 或 [GNU Screen](https://zhuanlan.zhihu.com/p/405968623) 来保持 `Pallas-Bot` 和 QQ 客户端在后台运行，或者考虑使用 [Docker 部署](DockerDeployment.md)。
 
+## 进程守护脚本
+
+（可选）仓库提供 **`tools/scripts/bot_watchdog.py`**：按间隔请求 Web 控制台的 **`/pallas/api/health`**（需启用 **`pallas_webui`**），在进程连续无响应达到阈值后，**结束当前子进程并重新执行启动命令**，或（可选）在宿主机对指定容器执行 **`docker restart`**。适合「希望有一条常驻监护进程」而不只依赖手动重开终端的场景。
+
+**HOST / PORT 从哪来**：与 Bot 一致——当前 shell 的**环境变量优先**；未 `export` 时，脚本会从 **`--workdir` 目录下的 `.env`** 只读取 **`HOST`、`PORT`、`ONEBOT_PORT`** 三项（文件中每个键以首次出现为准），**不会**把整份 `.env` 注入进程环境。默认 `--workdir` 为仓库根，故在仓库根执行时一般可直接读到与 `uv run nb run` 相同的配置。
+
+**与「谁启动 Bot」配合**：
+
+- **由守护脚本负责拉起 Bot**：在仓库根执行，**不要**加 `--no-spawn`（默认子进程为 `uv run nb run`，可用 `--start` 自定义整条命令）。
+- **Bot 已由 systemd、screen、另一终端或 Docker Compose 启动**：必须加 **`--no-spawn`**，否则脚本会再拉起一条 Bot，**端口冲突**。
+- **Bot 跑在 Docker 容器内、在宿主机上监护**：使用 **`--docker-container <容器名> --no-spawn`**（宿主机需已安装 `docker` CLI，且容器名与 `docker compose` 中一致）。
+
+**常用命令**（均在项目根，且已 `uv sync`）：
+
+```bash
+# 由守护进程启动 Bot（HOST/PORT 来自环境或 ./.env）
+uv run python tools/scripts/bot_watchdog.py
+
+# Bot 已在跑：只探活、不重复启动
+uv run python tools/scripts/bot_watchdog.py --no-spawn
+
+# 失败时在宿主机重启 compose 中的 Bot 容器（示例名 pallasbot，按实际修改）
+uv run python tools/scripts/bot_watchdog.py --docker-container pallasbot --no-spawn
+```
+
+生产环境可将上述命令写入 **systemd** `User=` 服务、`supervisor` 或 **`screen`/`tmux`** 会话，与 Bot 是否同机同用户按需调整。脚本首轮探活成功会打一条 **INFO**，之后仅在失败、恢复时继续输出日志；更多参数与边界说明见脚本顶部文档字符串或执行 **`uv run python tools/scripts/bot_watchdog.py --help`**。
+
 ## 访问 3.0 控制台与协议端管理
 
 启动后可在浏览器访问（端口以 `.env` 中 `PORT` 为准，默认 `8088`）：

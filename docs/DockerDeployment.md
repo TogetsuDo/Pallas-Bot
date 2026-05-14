@@ -87,6 +87,10 @@ docker compose --env-file ./pallas-bot/.env --profile postgres up -d
 docker compose logs -f pallasbot
 ```
 
+### （可选）宿主机进程守护
+
+Bot 在容器内运行时，若希望在**宿主机**上定时探活、失败时执行 `docker restart`，可使用仓库脚本 **`tools/scripts/bot_watchdog.py`**（需宿主机已安装 `docker` CLI，且 `--docker-container` 与 compose 服务名一致）。说明与示例见 [标准部署：进程守护脚本](Deployment.md#进程守护脚本)。
+
 ### 访问 Web 控制台与协议端管理
 
 （默认映射宿主机 `8088`，若已修改 `ports` 请替换。）
