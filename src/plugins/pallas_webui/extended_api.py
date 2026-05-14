@@ -2005,17 +2005,48 @@ def _system_dict() -> dict[str, Any]:
 
 def _runtime_metrics() -> dict[str, Any]:
     cpu_percent: float | None = None
+    cpu_per_core: list[float] = []
+    cpu_load_avg: list[float] | None = None
     mem: dict[str, Any] = {"total": None, "used": None, "percent": None}
     try:
         import psutil  # type: ignore
 
-        cpu_percent = float(psutil.cpu_percent(interval=0.0))
+        percpu = psutil.cpu_percent(interval=0.0, percpu=True)
+        if isinstance(percpu, (list, tuple)) and len(percpu) > 0:
+            cpu_per_core = [round(float(min(100.0, max(0.0, float(x)))), 2) for x in percpu]
+            cpu_percent = round(sum(cpu_per_core) / len(cpu_per_core), 2)
+        else:
+            cpu_percent = float(psutil.cpu_percent(interval=0.0))
         vm = psutil.virtual_memory()
         mem = {
             "total": int(getattr(vm, "total", 0) or 0),
             "used": int(getattr(vm, "used", 0) or 0),
-            "percent": float(getattr(vm, "percent", 0.0) or 0.0),
+            "percent": round(float(getattr(vm, "percent", 0.0) or 0.0), 2),
         }
+        av = getattr(vm, "available", None)
+        if isinstance(av, (int, float)):
+            mem["available"] = int(av)
+        fr = getattr(vm, "free", None)
+        if isinstance(fr, (int, float)):
+            mem["free"] = int(fr)
+        for _k in ("buffers", "cached", "shared", "wired"):
+            _v = getattr(vm, _k, None)
+            if isinstance(_v, (int, float)) and int(_v) > 0:
+                mem[_k] = int(_v)
+    except Exception:  # noqa: BLE001
+        pass
+
+    try:
+        import os as _os_load
+
+        if hasattr(_os_load, "getloadavg"):
+            tup = _os_load.getloadavg()
+            if isinstance(tup, (list, tuple)) and len(tup) >= 3:
+                cpu_load_avg = [
+                    round(float(tup[0]), 2),
+                    round(float(tup[1]), 2),
+                    round(float(tup[2]), 2),
+                ]
     except Exception:  # noqa: BLE001
         pass
 
@@ -2065,6 +2096,8 @@ def _runtime_metrics() -> dict[str, Any]:
         "hostname": hostname_s or None,
         "boot_time": boot_time,
         "cpu_percent": cpu_percent,
+        "cpu_per_core": cpu_per_core,
+        "cpu_load_avg": cpu_load_avg,
         "memory": mem,
         "disk": disk,
         "gpu": _gpu_metrics(),
