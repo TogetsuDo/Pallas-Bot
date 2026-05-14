@@ -407,14 +407,40 @@ class PallasProtocolService:
     async def pull_docker_image(self, image: str | None = None) -> dict[str, object]:
         profile = self.runtime_profile()
         img = str(image or profile.get("docker_image", "")).strip() or "mlikiowa/napcat-docker:latest"
-        proc = await asyncio.create_subprocess_exec(
-            "docker",
-            "pull",
-            img,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-        )
-        out, _ = await proc.communicate()
+        if not shutil.which("docker"):
+            return {
+                "ok": False,
+                "image": img,
+                "code": -1,
+                "output": (
+                    "未找到 docker 命令。默认 Bot 容器镜像不含 Docker CLI，且 compose 未挂载 docker.sock；"
+                    "可在宿主机执行 docker pull 拉取 NapCat/SnowLuma 镜像，或按 docker-compose.yml 注释挂载 socket "
+                    "并在镜像内安装 docker CLI。"
+                ),
+            }
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "docker",
+                "pull",
+                img,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            out, _ = await proc.communicate()
+        except FileNotFoundError:
+            return {
+                "ok": False,
+                "image": img,
+                "code": -1,
+                "output": "无法启动 docker 进程（未找到可执行文件）。",
+            }
+        except OSError as e:
+            return {
+                "ok": False,
+                "image": img,
+                "code": -1,
+                "output": f"执行 docker pull 失败：{e}",
+            }
         text = out.decode("utf-8", errors="replace") if out else ""
         return {
             "ok": proc.returncode == 0,
