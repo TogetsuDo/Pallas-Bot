@@ -13,11 +13,11 @@ from nonebot.adapters.onebot.v11 import (
     MessageSegment,
     permission,
 )
-from nonebot.permission import Permission
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from src.common.config import BotConfig, GroupConfig, user_is_bot_admin
+from src.common.cmd_perm import permission_for_command
+from src.common.config import BotConfig, GroupConfig
 
 from .config import JUDGMENT_CFG, RESCUE_CFG, SHOT_CFG
 from .player import PlayerList
@@ -49,11 +49,14 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "version": "3.0.0",
+        "command_permissions": [
+            {"id": "roulette.mode_switch", "label": "牛牛轮盘切换模式", "default": "staff"},
+        ],
         "menu_data": [
             {
                 "func": "牛牛轮盘",
                 "trigger_method": "on_message",
-                "trigger_condition": "牛牛轮盘/牛牛轮盘踢人/牛牛轮盘禁言",
+                "trigger_condition": "牛牛轮盘（开局）；牛牛轮盘踢人/禁言等切换模式",
                 "brief_des": "启动轮盘",
                 "detail_des": "管理员可选择踢人模式或禁言模式，任何人都可以发送牛牛轮盘开启游戏。游戏开始后，六个弹槽中只有一颗子弹，触发者可能会被踢出群聊或禁言。",  # noqa: E501
             },
@@ -194,17 +197,11 @@ async def is_roulette_type_msg(bot: Bot, event: GroupMessageEvent) -> bool:
     return False
 
 
-async def is_config_admin(event: GroupMessageEvent) -> bool:
-    return await user_is_bot_admin(event.self_id, event.user_id)
-
-
-IsAdmin = permission.GROUP_OWNER | permission.GROUP_ADMIN | Permission(is_config_admin)
-
 roulette_type_msg = on_message(
     priority=5,
     block=True,
     rule=Rule(is_roulette_type_msg),
-    permission=IsAdmin,
+    permission=permission.GROUP & permission_for_command("roulette.mode_switch"),
 )
 
 

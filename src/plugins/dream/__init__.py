@@ -35,13 +35,17 @@ __plugin_meta__ = PluginMetadata(
 做梦中采集群消息入梦库，并向同 Bot 其它正在做梦的群漂流（图/文有上限）。
 
 本群醉酒期间做梦推送间隔全程约 5～20s；首场醉酒另有一次夺舍名片 + 受害者历史句（每场梦最多一次）。
-管理员（与复读相同权限）：回复牛牛消息后发送「不可以」，或撤回牛牛消息 — 从梦库删除与所针对内容匹配的记录。
+管理员（与复读「不可以」相同，见帮助内触发条件）：
+回复牛牛消息后发送「不可以」，或撤回牛牛消息 — 从梦库删除与所针对内容匹配的记录。
     """.strip(),
     type="application",
     homepage="https://github.com/PallasBot",
     supported_adapters={"~onebot.v11"},
     extra={
         "version": "3.0.0",
+        "command_permissions": [
+            {"id": "dream.ban_cleanup", "label": "梦库清理（不可以）", "default": "staff"},
+        ],
         "menu_data": [
             {
                 "func": "牛牛做梦",
@@ -88,6 +92,7 @@ __plugin_meta__ = PluginMetadata(
                 "func": "梦库清理（不可以）",
                 "trigger_method": "on_message",
                 "trigger_condition": "回复消息后 @牛牛 发送不可以",
+                "command_permission": "dream.ban_cleanup",
                 "brief_des": "按所回复内容删除梦库记录",
                 "detail_des": ("与复读「不可以」操作方式相同"),
             },

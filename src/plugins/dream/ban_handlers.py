@@ -6,24 +6,16 @@ from nonebot import logger, on_message, on_notice
 from nonebot.adapters import Bot  # noqa: TC002
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, GroupRecallNoticeEvent, Message, permission
 from nonebot.exception import ActionFailed
-from nonebot.permission import SUPERUSER, Permission
 from nonebot.rule import Rule, keyword, to_me
 from nonebot.typing import T_State  # noqa: TC002
 
-from src.common.config import user_is_bot_admin
+from src.common.cmd_perm import permission_for_command
 from src.common.utils.array2cqcode import try_convert_to_cqcode
 
 from .ban_ack_state import DREAM_BAN_ACK_SENT_STATE_KEY
 from .ban_cleanup import delete_dream_messages_from_ban_reply
 
 _BAN_ACK_TEXT = "这对角可能会不小心撞倒些家具，我会尽量小心。"
-
-
-async def is_config_admin_dream(event: GroupMessageEvent) -> bool:
-    return await user_is_bot_admin(event.self_id, event.user_id)
-
-
-IsAdminDream = permission.GROUP_OWNER | permission.GROUP_ADMIN | SUPERUSER | Permission(is_config_admin_dream)
 
 
 async def is_reply_for_ban(event: GroupMessageEvent) -> bool:
@@ -34,7 +26,7 @@ dream_ban_cleanup_msg = on_message(
     rule=to_me() & keyword("不可以") & Rule(is_reply_for_ban),
     priority=4,
     block=False,
-    permission=IsAdminDream,
+    permission=permission.GROUP & permission_for_command("dream.ban_cleanup"),
 )
 
 

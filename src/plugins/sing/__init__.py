@@ -40,6 +40,10 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "version": "3.0.0",
+        "command_permissions": [
+            {"id": "sing.ncm_login", "label": "网易云登录", "default": "superuser"},
+            {"id": "sing.ncm_logout", "label": "网易云登出", "default": "superuser"},
+        ],
         "menu_data": [
             {
                 "func": "牛牛唱歌",
@@ -70,11 +74,12 @@ __plugin_meta__ = PluginMetadata(
                 "detail_des": "查询牛牛当前正在演唱的歌曲名称。",
             },
             {
-                "func": "播放歌曲",
-                "trigger_method": "on_message",
-                "trigger_condition": "[角色名]唱歌",
-                "brief_des": "开始随机播放唱过的歌。",
-                "detail_des": "发送[角色名]唱歌，随机播放一首唱过的歌",
+                "func": "网易云登录/登出",
+                "trigger_method": "命令",
+                "trigger_condition": "网易云登录 / 网易云登出（私聊）",
+                "command_permissions": ["sing.ncm_login", "sing.ncm_logout"],
+                "brief_des": "绑定或解绑网易云账号",
+                "detail_des": "私聊向 AI 服务发起登录流程；需 AI 侧接口可用。",
             },
         ],
         "menu_template": "default",

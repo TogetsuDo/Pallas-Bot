@@ -8,13 +8,13 @@ from nonebot import get_bot, get_driver, logger, on_message, on_notice
 from nonebot.adapters import Bot
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, GroupRecallNoticeEvent, Message, MessageSegment, permission
 from nonebot.exception import ActionFailed
-from nonebot.permission import SUPERUSER, Permission
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule, keyword, to_me
 from nonebot.typing import T_State
 from nonebot_plugin_apscheduler import scheduler
 
-from src.common.config import BotConfig, user_is_bot_admin
+from src.common.cmd_perm import permission_for_command
+from src.common.config import BotConfig
 from src.common.message_scrub import is_message_scrub_blocked_async
 from src.common.message_scrub.log_preview import scrub_intercept_log_preview
 from src.common.utils.array2cqcode import try_convert_to_cqcode
@@ -48,6 +48,10 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "version": "3.0.0",
+        "command_permissions": [
+            {"id": "repeater.ban", "label": "复读「不可以」", "default": "staff"},
+            {"id": "repeater.ban_latest", "label": "复读「不可以发这个」", "default": "staff"},
+        ],
         "menu_data": [
             {
                 "func": "牛牛复读",
@@ -73,7 +77,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "不可以",
                 "trigger_method": "on_message",
-                "trigger_condition": "管理员指令",
+                "trigger_condition": ("@牛牛 回复并说「不可以」或说「不可以发这个」"),
+                "command_permissions": ["repeater.ban", "repeater.ban_latest"],
                 "brief_des": "管理员可以管理牛牛的回复内容",
                 "detail_des": "管理员可以通过回复并发送'不可以'、'不可以发这个'或撤回牛牛的消息来禁止牛牛回复某些内容。",  # noqa: E501
             },
@@ -273,13 +278,6 @@ async def _(bot: Bot, event: GroupMessageEvent):
         delay = random.randint(1, 3)
 
 
-async def is_config_admin(event: GroupMessageEvent) -> bool:
-    return await user_is_bot_admin(event.self_id, event.user_id)
-
-
-IsAdmin = permission.GROUP_OWNER | permission.GROUP_ADMIN | SUPERUSER | Permission(is_config_admin)
-
-
 async def is_reply(event: GroupMessageEvent) -> bool:
     return bool(event.reply)
 
@@ -288,7 +286,7 @@ ban_msg = on_message(
     rule=to_me() & keyword("不可以") & Rule(is_reply),
     priority=5,
     block=True,
-    permission=IsAdmin,
+    permission=permission.GROUP & permission_for_command("repeater.ban"),
 )
 
 
@@ -377,7 +375,7 @@ ban_msg_latest = on_message(
     rule=to_me() & Rule(message_is_ban),
     priority=5,
     block=True,
-    permission=IsAdmin,
+    permission=permission.GROUP & permission_for_command("repeater.ban_latest"),
 )
 
 

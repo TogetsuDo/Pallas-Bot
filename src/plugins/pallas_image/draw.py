@@ -13,6 +13,7 @@ from nonebot.exception import FinishedException
 from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
 
+from src.common.cmd_perm import permission_for_command
 from src.common.config import GroupConfig
 from src.common.utils.http_msg import PALLAS_VAGUE_REPLY, user_failure_reply
 
@@ -104,7 +105,7 @@ pallas_draw = on_command(
     "牛牛画画",
     priority=image_gen_config.min_priority,
     block=True,
-    permission=permission.GROUP,
+    permission=permission.GROUP & permission_for_command("pallas_image.draw"),
 )
 
 

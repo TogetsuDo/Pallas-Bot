@@ -6,11 +6,12 @@ from nonebot.adapters.onebot.v11 import MessageEvent, PrivateMessageEvent
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.params import ArgStr
-from nonebot.permission import SUPERUSER
+from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State
 from pydantic import BaseModel
 from pyncm_async import apis as ncm
 
+from src.common.cmd_perm import permission_for_command
 from src.common.utils import HTTPXClient
 
 
@@ -27,8 +28,8 @@ plugin_config = get_plugin_config(NCMLoginConfig)
 
 SERVER_URL = f"http://{plugin_config.ai_server_host}:{plugin_config.ai_server_port}"
 
-ncm_login_cmd = on_command("网易云登录", priority=10, block=True, permission=SUPERUSER)
-ncm_logout_cmd = on_command("网易云登出", priority=10, block=True, permission=SUPERUSER)
+ncm_login_cmd = on_command("网易云登录", priority=10, block=True, permission=permission_for_command("sing.ncm_login"))
+ncm_logout_cmd = on_command("网易云登出", priority=10, block=True, permission=permission_for_command("sing.ncm_logout"))
 
 
 @ncm_login_cmd.handle()

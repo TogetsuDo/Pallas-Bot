@@ -21,7 +21,8 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule, to_me
 from nonebot.typing import T_State
 
-from src.common.config import BotConfig, GroupConfig, UserConfig, user_is_bot_admin
+from src.common.cmd_perm import permission_for_command
+from src.common.config import BotConfig, GroupConfig, UserConfig
 from src.common.paths import plugin_data_dir
 from src.common.utils import HTTPXClient, is_bot_admin
 from src.plugins.help.plugin_manager import is_plugin_disabled
@@ -41,6 +42,18 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "version": "3.0.0",
+        "command_permissions": [
+            {
+                "id": "greeting.set_friend_welcome",
+                "label": "设置好友欢迎",
+                "default": "bot_moderator",
+            },
+            {
+                "id": "greeting.clear_friend_welcome",
+                "label": "清除好友欢迎",
+                "default": "bot_moderator",
+            },
+        ],
         "menu_data": [
             {
                 "func": "入群欢迎",
@@ -59,16 +72,18 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "设置好友欢迎",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "设置好友欢迎",
+                "trigger_condition": "设置好友欢迎（私聊）",
+                "command_permission": "greeting.set_friend_welcome",
                 "brief_des": "设置自定义好友欢迎消息",
-                "detail_des": "由牛牛管理员在私聊中执行，支持文本、图片或图文混合",
+                "detail_des": "由号主在私聊中执行，支持文本、图片或图文混合",
             },
             {
                 "func": "清除好友欢迎",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "清除好友欢迎",
+                "trigger_condition": "清除好友欢迎（私聊）",
+                "command_permission": "greeting.clear_friend_welcome",
                 "brief_des": "清除已设置的好友欢迎消息",
-                "detail_des": "由牛牛管理员在私聊中执行",
+                "detail_des": "由号主在私聊中执行",
             },
             {
                 "func": "被踢自动拉黑",
@@ -164,7 +179,7 @@ async def get_custom_friend_welcome_message(bot_id: int) -> Message | None:
 
 set_friend_welcome = on_command(
     "设置好友欢迎",
-    permission=permission.PRIVATE,
+    permission=permission.PRIVATE & permission_for_command("greeting.set_friend_welcome"),
     priority=10,
     block=True,
 )
@@ -172,8 +187,6 @@ set_friend_welcome = on_command(
 
 @set_friend_welcome.handle()
 async def handle_set_friend_welcome(bot: Bot, event: PrivateMessageEvent, state: T_State):
-    if not await user_is_bot_admin(event.self_id, event.user_id):
-        await set_friend_welcome.finish("你没有权限执行此操作")
     await set_friend_welcome.send("请发送你想要设置的好友欢迎消息（可以是文本、图片或图文混合）：")
     state["bot_id"] = event.self_id
 
@@ -216,7 +229,7 @@ async def handle_friend_welcome_message(bot: Bot, event: PrivateMessageEvent, st
 
 clear_friend_welcome = on_command(
     "清除好友欢迎",
-    permission=permission.PRIVATE,
+    permission=permission.PRIVATE & permission_for_command("greeting.clear_friend_welcome"),
     priority=10,
     block=True,
 )
@@ -224,9 +237,6 @@ clear_friend_welcome = on_command(
 
 @clear_friend_welcome.handle()
 async def handle_clear_friend_welcome(bot: Bot, event: PrivateMessageEvent):
-    if not await user_is_bot_admin(event.self_id, event.user_id):
-        await clear_friend_welcome.finish("你没有权限执行此操作")
-
     d = GREETING_DIR / str(event.self_id)
     if not d.exists():
         await clear_friend_welcome.finish("未设置自定义好友欢迎消息")
