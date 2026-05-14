@@ -12,6 +12,7 @@ import socket
 import sys
 import time
 import typing
+from collections import defaultdict
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -1899,6 +1900,30 @@ class _RequestActionBody(BaseModel):
     group_id: int | None = Field(default=None, ge=1)
 
 
+class _RequestBatchFriendRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    self_id: int = Field(ge=1)
+    user_id: int = Field(ge=1)
+    source: Literal["pending", "doubt"] = "pending"
+
+
+class _RequestBatchGroupRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    self_id: int = Field(ge=1)
+    user_id: int = Field(ge=1)
+    group_id: int = Field(ge=1)
+
+
+class _RequestActionsBatchBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["approve", "reject"] = "approve"
+    friends: list[_RequestBatchFriendRow] = Field(default_factory=list, max_length=500)
+    groups: list[_RequestBatchGroupRow] = Field(default_factory=list, max_length=500)
+
+
 async def _apply_bot_config_patch(account: int, body: _BotConfigPatch) -> dict[str, Any]:
     from src.common.db import make_bot_config_repository
     from src.common.db.pallas_console_data import bot_config_to_public
@@ -3033,6 +3058,158 @@ def register_extended_api(
         _save_pending_group_requests_disk(pending_g)
         _drop_read_cache(("friend_requests",))
         return JSONResponse({"ok": True, "data": {"handled": True}})
+
+    @router.post(f"{x}/request-actions/batch", include_in_schema=True)
+    async def _request_actions_batch(
+        body: _RequestActionsBatchBody,
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        """批量处理好友/入群审批；单次写盘与缓存失效，减少控制台往返。"""
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        if not body.friends and not body.groups:
+            raise HTTPException(status_code=400, detail="friends 与 groups 不能均为空")
+
+        approve = body.action == "approve"
+        friends_ok = 0
+        friends_fail = 0
+        friends_errors: list[dict[str, Any]] = []
+        groups_ok = 0
+        groups_fail = 0
+        groups_errors: list[dict[str, Any]] = []
+
+        pending_friend: dict[str, dict[str, str]] = {}
+        if body.friends:
+            pending_friend = _read_pending_friend_requests_disk()
+
+        friends_by_sid: dict[str, list[_RequestBatchFriendRow]] = defaultdict(list)
+        for it in body.friends:
+            friends_by_sid[str(int(it.self_id))].append(it)
+
+        for sid_str, items in friends_by_sid.items():
+            try:
+                _, bot = _find_online_onebot_v11_bot(sid_str)
+            except HTTPException as e:
+                detail = e.detail
+                msg = detail if isinstance(detail, str) else str(detail)
+                for it in items:
+                    friends_fail += 1
+                    friends_errors.append({
+                        "self_id": int(sid_str),
+                        "user_id": it.user_id,
+                        "source": it.source,
+                        "error": msg,
+                    })
+                continue
+
+            if sid_str not in pending_friend:
+                pending_friend[sid_str] = {}
+            bot_pending = pending_friend[sid_str]
+
+            for it in items:
+                uid = str(int(it.user_id))
+                try:
+                    if it.source == "doubt":
+                        doubt_rows = await _call_get_doubt_friends(bot)
+                        flag = ""
+                        for row in doubt_rows:
+                            if not isinstance(row, dict):
+                                continue
+                            if str(row.get("user_id") or "") != uid:
+                                continue
+                            flag = str(row.get("flag") or "")
+                            break
+                        if not flag:
+                            raise ValueError("未找到可疑好友申请")
+                        await bot.call_api("set_doubt_friends_add_request", flag=flag, approve=approve)  # type: ignore[union-attr]
+                    else:
+                        flag = str(bot_pending.get(uid) or "")
+                        if not flag:
+                            raise ValueError("未找到待处理好友申请")
+                        await bot.set_friend_add_request(flag=flag, approve=approve)  # type: ignore[union-attr]
+                        bot_pending.pop(uid, None)
+                    friends_ok += 1
+                except Exception as e:  # noqa: BLE001
+                    friends_fail += 1
+                    friends_errors.append({
+                        "self_id": int(sid_str),
+                        "user_id": it.user_id,
+                        "source": it.source,
+                        "error": str(e),
+                    })
+
+            pending_friend[sid_str] = bot_pending
+
+        if body.friends:
+            _save_pending_friend_requests_disk(pending_friend)
+
+        pending_group: dict[str, dict[str, dict[str, Any]]] = {}
+        if body.groups:
+            pending_group = _read_pending_group_requests_disk()
+
+        groups_by_sid: dict[str, list[_RequestBatchGroupRow]] = defaultdict(list)
+        for it in body.groups:
+            groups_by_sid[str(int(it.self_id))].append(it)
+
+        for sid_str, items in groups_by_sid.items():
+            try:
+                _, bot = _find_online_onebot_v11_bot(sid_str)
+            except HTTPException as e:
+                detail = e.detail
+                msg = detail if isinstance(detail, str) else str(detail)
+                for it in items:
+                    groups_fail += 1
+                    groups_errors.append({
+                        "self_id": int(sid_str),
+                        "user_id": it.user_id,
+                        "group_id": it.group_id,
+                        "error": msg,
+                    })
+                continue
+
+            if sid_str not in pending_group:
+                pending_group[sid_str] = {}
+            bot_grp = pending_group[sid_str]
+
+            for it in items:
+                gkey = str(int(it.group_id))
+                try:
+                    req = bot_grp.get(gkey)
+                    if not isinstance(req, dict):
+                        raise ValueError("未找到待处理群邀请")
+                    await bot.set_group_add_request(  # type: ignore[union-attr]
+                        flag=str(req.get("flag") or ""),
+                        sub_type=str(req.get("sub_type") or "invite"),
+                        approve=approve,
+                    )
+                    bot_grp.pop(gkey, None)
+                    groups_ok += 1
+                except Exception as e:  # noqa: BLE001
+                    groups_fail += 1
+                    groups_errors.append({
+                        "self_id": int(sid_str),
+                        "user_id": it.user_id,
+                        "group_id": it.group_id,
+                        "error": str(e),
+                    })
+
+            pending_group[sid_str] = bot_grp
+
+        if body.groups:
+            _save_pending_group_requests_disk(pending_group)
+        _drop_read_cache(("friend_requests",))
+
+        return JSONResponse({
+            "ok": True,
+            "data": {
+                "friends_ok": friends_ok,
+                "friends_fail": friends_fail,
+                "friends_errors": friends_errors,
+                "groups_ok": groups_ok,
+                "groups_fail": groups_fail,
+                "groups_errors": groups_errors,
+            },
+        })
 
     @router.get(f"{x}/update/check", include_in_schema=True)
     async def _update_check() -> JSONResponse:
