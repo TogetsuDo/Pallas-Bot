@@ -16,6 +16,7 @@ import time
 import traceback
 import typing
 from collections import defaultdict
+from operator import itemgetter
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -67,6 +68,8 @@ def _cache_value_copy(data: Any) -> Any:
 
 _MSG_STATS: dict[str, dict[str, Any]] = {}  # self_id -> sent/received + 按本地日切片的 day_*
 _MSG_TRACKING_INIT = False
+# self_id -> 与 day_received / day_runs 等对齐的本地自然日（YYYY-MM-DD）；日切时落盘并清零当日字段
+_CONSOLE_CAL_DAY: dict[str, str] = {}
 
 
 def _parse_console_hist_params() -> tuple[int, int]:
@@ -957,9 +960,78 @@ def _extract_message_stats(raw: object) -> dict[str, int]:
     return {"sent": sent, "received": recv}
 
 
-def _msg_stats_get_mut(sid: str) -> dict[str, Any]:
-    """返回可写的内存统计行；跨本地自然日时清零当日计数。"""
+def _sum_matcher_day_runs(sid: str) -> int:
+    pblock = _PLUGIN_RUN_STATS.get(sid)
+    if not isinstance(pblock, dict):
+        return 0
+    bp = pblock.get("by_plugin")
+    if not isinstance(bp, dict):
+        return 0
+    n = 0
+    for prow in bp.values():
+        if isinstance(prow, dict):
+            n += int(prow.get("day_runs", 0))
+    return n
+
+
+def _rollover_console_day_if_needed(sid: str, today: str) -> None:
+    """跨自然日时把上一日的消息收/发与 Matcher 当日计数写入磁盘并清零当日字段。"""
+    from src.plugins.pallas_webui import daily_stats_store
+
+    sid = str(sid).strip()
+    if not sid:
+        return
+    cur = _CONSOLE_CAL_DAY.get(sid)
+    if cur is None:
+        _CONSOLE_CAL_DAY[sid] = today
+        return
+    if cur == today:
+        return
+    mem = _MSG_STATS.get(sid)
+    dr = int(mem.get("day_received", 0)) if isinstance(mem, dict) else 0
+    ds = int(mem.get("day_sent", 0)) if isinstance(mem, dict) else 0
+    mr = _sum_matcher_day_runs(sid)
+    daily_stats_store.write_day_totals(cur, sid, dr, ds, mr)
+    if isinstance(mem, dict):
+        mem["day_key"] = today
+        mem["day_sent"] = 0
+        mem["day_received"] = 0
+        mem["day_api_total"] = 0
+        mem["day_api_counts"] = {}
+    pblock = _PLUGIN_RUN_STATS.get(sid)
+    if isinstance(pblock, dict):
+        pblock["day_key"] = today
+        bp = pblock.get("by_plugin")
+        if isinstance(bp, dict):
+            for prow in bp.values():
+                if isinstance(prow, dict):
+                    prow["day_runs"] = 0
+                    prow["day_errors"] = 0
+    _CONSOLE_CAL_DAY[sid] = today
+
+
+def _flush_today_console_daily_stats_disk() -> None:
+    """定时刷盘：当前自然日内累计值写入磁盘（不按桶）。"""
+    from src.plugins.pallas_webui import daily_stats_store
+
     today = time.strftime("%Y-%m-%d", time.localtime())
+    sids = set(_MSG_STATS.keys()) | set(_PLUGIN_RUN_STATS.keys()) | set(_CONSOLE_CAL_DAY.keys())
+    for sid in sids:
+        sid = str(sid).strip()
+        if not sid:
+            continue
+        _rollover_console_day_if_needed(sid, today)
+        mem = _MSG_STATS.get(sid)
+        dr = int(mem.get("day_received", 0)) if isinstance(mem, dict) else 0
+        ds = int(mem.get("day_sent", 0)) if isinstance(mem, dict) else 0
+        mr = _sum_matcher_day_runs(sid)
+        daily_stats_store.write_day_totals(today, sid, dr, ds, mr)
+
+
+def _msg_stats_get_mut(sid: str) -> dict[str, Any]:
+    """返回可写的内存统计行；跨本地自然日时清零当日计数（与 Matcher 日计数统一落盘）。"""
+    today = time.strftime("%Y-%m-%d", time.localtime())
+    _rollover_console_day_if_needed(sid, today)
     rec = _MSG_STATS.setdefault(
         sid,
         {
@@ -974,12 +1046,7 @@ def _msg_stats_get_mut(sid: str) -> dict[str, Any]:
             "msg_traffic_buckets": [],
         },
     )
-    if str(rec.get("day_key", "")) != today:
-        rec["day_key"] = today
-        rec["day_sent"] = 0
-        rec["day_received"] = 0
-        rec["day_api_total"] = 0
-        rec["day_api_counts"] = {}
+    rec["day_key"] = today
     rec.setdefault("sent", 0)
     rec.setdefault("received", 0)
     rec.setdefault("day_sent", 0)
@@ -1381,14 +1448,10 @@ def _plugin_short_name_from_matcher(matcher: object) -> str:
 
 def _plugin_run_bot_bucket(sid: str) -> dict[str, Any]:
     today = time.strftime("%Y-%m-%d", time.localtime())
+    _rollover_console_day_if_needed(sid, today)
     rec = _PLUGIN_RUN_STATS.setdefault(sid, {"day_key": today, "by_plugin": {}, "matcher_hist": []})
-    by_plugin = rec.setdefault("by_plugin", {})
-    if str(rec.get("day_key", "")) != today:
-        rec["day_key"] = today
-        for prow in by_plugin.values():
-            if isinstance(prow, dict):
-                prow["day_runs"] = 0
-                prow["day_errors"] = 0
+    rec.setdefault("by_plugin", {})
+    rec["day_key"] = today
     if not isinstance(rec.get("matcher_hist"), list):
         rec["matcher_hist"] = []
     return rec
@@ -1831,6 +1894,81 @@ def _plugin_run_stats_overview(*, self_id: str | None) -> dict[str, Any]:
         "matcher_calls_history_max_buckets": _API_HIST_MAX_BUCKETS,
         "log_error_log": _log_error_log_public(),
         "bots": rows_out,
+    }
+
+
+def _console_daily_stats_payload(
+    *,
+    self_id: str | None,
+    start: str | None,
+    end: str | None,
+) -> dict[str, Any]:
+    """按自然日汇总：消息收/发与 Matcher 次数（磁盘 + 当前日内存）。"""
+    from datetime import date, timedelta
+
+    from src.plugins.pallas_webui import daily_stats_store
+
+    clock_today = time.strftime("%Y-%m-%d", time.localtime())
+    today_d = date.fromisoformat(clock_today)
+    end_d = today_d
+    if end:
+        try:
+            end_d = date.fromisoformat(str(end).strip()[:10])
+        except ValueError:
+            end_d = today_d
+    start_d = end_d - timedelta(days=89)
+    if start:
+        try:
+            start_d = date.fromisoformat(str(start).strip()[:10])
+        except ValueError:
+            pass
+    if start_d > end_d:
+        start_d, end_d = end_d, start_d
+    sid_f = str(self_id).strip() if self_id else None
+    if sid_f == "":
+        sid_f = None
+    rows, s1, s2 = daily_stats_store.load_range(
+        self_id=sid_f,
+        start_day=start_d.isoformat(),
+        end_day=end_d.isoformat(),
+    )
+    by_key: dict[tuple[str, str], dict[str, Any]] = {(r["date"], r["self_id"]): dict(r) for r in rows}
+    live_out: dict[str, dict[str, int]] = {}
+    for sid in set(_MSG_STATS.keys()) | set(_PLUGIN_RUN_STATS.keys()):
+        sid = str(sid).strip()
+        if not sid:
+            continue
+        if sid_f is not None and sid != sid_f:
+            continue
+        _rollover_console_day_if_needed(sid, clock_today)
+        mem = _MSG_STATS.get(sid)
+        dr = int(mem.get("day_received", 0)) if isinstance(mem, dict) else 0
+        ds = int(mem.get("day_sent", 0)) if isinstance(mem, dict) else 0
+        mr = _sum_matcher_day_runs(sid)
+        live_out[sid] = {"received": dr, "sent": ds, "matcher_runs": mr}
+        if start_d <= today_d <= end_d:
+            k = (clock_today, sid)
+            if k in by_key:
+                by_key[k]["received"] = dr
+                by_key[k]["sent"] = ds
+                by_key[k]["matcher_runs"] = mr
+            else:
+                by_key[k] = {
+                    "date": clock_today,
+                    "self_id": sid,
+                    "received": dr,
+                    "sent": ds,
+                    "matcher_runs": mr,
+                }
+    merged = sorted(by_key.values(), key=itemgetter("date", "self_id"))
+    return {
+        "start": s1,
+        "end": s2,
+        "query_start": start_d.isoformat(),
+        "query_end": end_d.isoformat(),
+        "rows": merged,
+        "live_today": live_out,
+        "server_date": clock_today,
     }
 
 
@@ -2520,6 +2658,23 @@ def register_extended_api(
 
         key = f"plugin-run-stats:{self_id or 'all'}"
         data = await _cached_read(key=key, loader=_load, ttl_sec=2.0, stale_sec=10.0)
+        return JSONResponse({"ok": True, "data": data})
+
+    @router.get(f"{x}/console-daily-stats", include_in_schema=True)
+    async def _console_daily_stats(
+        self_id: int | None = Query(default=None, ge=1),
+        start: str | None = Query(default=None, description="YYYY-MM-DD，含当日"),
+        end: str | None = Query(default=None, description="YYYY-MM-DD，含当日"),
+    ) -> JSONResponse:
+        async def _load() -> dict[str, Any]:
+            return _console_daily_stats_payload(
+                self_id=str(self_id) if self_id is not None else None,
+                start=start,
+                end=end,
+            )
+
+        key = f"console-daily-stats:{self_id or 'all'}:{start or ''}:{end or ''}"
+        data = await _cached_read(key=key, loader=_load, ttl_sec=3.0, stale_sec=15.0)
         return JSONResponse({"ok": True, "data": data})
 
     @router.get(f"{x}/plugins", include_in_schema=True)
@@ -3860,4 +4015,16 @@ def register_extended_api(
             coalesce=True,
             max_instances=1,
             misfire_grace_time=3600,
+        )
+        _daily_flush_id = "pallas_webui_console_daily_stats_flush"
+        if scheduler.get_job(_daily_flush_id):
+            scheduler.remove_job(_daily_flush_id)
+        scheduler.add_job(
+            _flush_today_console_daily_stats_disk,
+            trigger="interval",
+            minutes=2,
+            id=_daily_flush_id,
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
         )
