@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import importlib.metadata
 import json
-import tomllib
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, status
 from fastapi.responses import JSONResponse
 from nonebot import __version__ as _nb_ver
+
+from .manager import get_pallas_bot_version_for_health
 
 
 def _merge_console_version_from_disk(meta: dict[str, Any], static_root: Path | None) -> None:
@@ -52,17 +52,7 @@ def register_api(
     static_root = Path(str(console_meta.get("static_root", "")).strip()) if console_meta.get("static_root") else None
     _merge_console_version_from_disk(console_meta, static_root)
 
-    pallas_ver: str
-    try:
-        root = Path(__file__).resolve().parents[3]
-        pyproject = root / "pyproject.toml"
-        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-        pallas_ver = str(data.get("project", {}).get("version", "")).strip() or "unknown"
-    except Exception:
-        try:
-            pallas_ver = importlib.metadata.version("pallas-bot")
-        except importlib.metadata.PackageNotFoundError:
-            pallas_ver = "unknown"
+    pallas_ver = get_pallas_bot_version_for_health()
 
     @router.get(f"{x}/health", include_in_schema=True)
     async def _health() -> JSONResponse:  # pragma: no cover - 路由注册

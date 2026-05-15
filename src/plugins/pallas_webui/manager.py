@@ -315,6 +315,42 @@ def get_bot_current_version() -> dict:
     return {"tag": tag, "commit": commit}
 
 
+def get_pallas_bot_version_for_health() -> str:
+    """供 ``/health`` 的 ``pallas_bot``：优先环境变量（镜像注入）、git describe，其次已安装发行版号，最后 pyproject。"""
+    import importlib.metadata
+    import subprocess
+    import tomllib
+
+    env = (os.environ.get("PALLAS_BOT_VERSION") or os.environ.get("PALLAS_VERSION") or "").strip()
+    if env:
+        return env
+    root = _BOT_ROOT
+    try:
+        desc = subprocess.check_output(
+            ["git", "describe", "--tags", "--always", "--dirty"],
+            cwd=root,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=3.0,
+        ).strip()
+        if desc:
+            return desc
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        v = importlib.metadata.version("pallas-bot")
+        if v.strip():
+            return v.strip()
+    except importlib.metadata.PackageNotFoundError:
+        pass
+    try:
+        pyproject = root / "pyproject.toml"
+        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        return str(data.get("project", {}).get("version", "")).strip() or "unknown"
+    except Exception:  # noqa: BLE001
+        return "unknown"
+
+
 class BotGitUpdateError(Exception):
     """控制台 Bot git 更新失败，携带 HTTP 状态码供 API 层映射。"""
 
