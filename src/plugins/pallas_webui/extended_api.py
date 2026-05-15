@@ -362,6 +362,46 @@ def _plugin_config_payload(
     }
 
 
+_BOT_SESSION_CONNECTED_UNIX: dict[str, int] = {}
+_BOT_SESSION_HOOKS_REGISTERED = False
+
+
+def _ensure_bot_session_hooks() -> None:
+    """进程内记录 Bot 接入时刻（连接时长展示）；WebUI 插件加载时注册一次。"""
+    global _BOT_SESSION_HOOKS_REGISTERED
+    if _BOT_SESSION_HOOKS_REGISTERED:
+        return
+    _BOT_SESSION_HOOKS_REGISTERED = True
+
+    drv = get_driver()
+
+    @drv.on_startup
+    async def _prime_bot_session_times() -> None:
+        try:
+            for key in get_bots():
+                _BOT_SESSION_CONNECTED_UNIX.setdefault(str(key), int(time.time()))
+        except Exception:  # noqa: BLE001
+            pass
+
+    @drv.on_bot_connect
+    async def _mark_bot_session(bot: BaseBot) -> None:
+        try:
+            for key, b in get_bots().items():
+                if b is bot:
+                    _BOT_SESSION_CONNECTED_UNIX[str(key)] = int(time.time())
+                    return
+            sid = getattr(bot, "self_id", None)
+            if sid is None:
+                return
+            sids = str(sid)
+            for key, b in get_bots().items():
+                if str(getattr(b, "self_id", "")) == sids:
+                    _BOT_SESSION_CONNECTED_UNIX[str(key)] = int(time.time())
+                    return
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def _list_bots_dict() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for key, bot in get_bots().items():
@@ -381,6 +421,7 @@ def _list_bots_dict() -> list[dict[str, Any]]:
             "connection_key": str(key),
             "self_id": self_id,
             "adapter": adapter,
+            "connected_at_unix": _BOT_SESSION_CONNECTED_UNIX.get(str(key)),
         })
     return rows
 
@@ -2608,6 +2649,7 @@ def register_extended_api(
     api_base: str,
     plugin_config: Config,
 ) -> None:
+    _ensure_bot_session_hooks()
     _init_message_tracking()
     _init_plugin_run_tracking()
     x = (api_base or "/pallas/api").strip()
