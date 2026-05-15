@@ -15,23 +15,23 @@ from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
 from src.common.utils.http_msg import PALLAS_VAGUE_REPLY, user_failure_reply
 
-from .config import image_gen_config
+from .config import ImageApiBackend, image_gen_config
 
 
-def image_api_base() -> str:
-    base = (image_gen_config.base_url or "").strip()
+def image_api_base(backend: ImageApiBackend) -> str:
+    base = (backend.base_url or "").strip()
     if not base:
         return ""
     return base if base.endswith("/") else base + "/"
 
 
-def image_gen_endpoint() -> str:
-    b = image_api_base()
+def image_gen_endpoint(backend: ImageApiBackend) -> str:
+    b = image_api_base(backend)
     return urljoin(b, "v1/images/generations") if b else ""
 
 
-def image_edits_endpoint() -> str:
-    b = image_api_base()
+def image_edits_endpoint(backend: ImageApiBackend) -> str:
+    b = image_api_base(backend)
     return urljoin(b, "v1/images/edits") if b else ""
 
 
@@ -50,18 +50,17 @@ def effective_http_transport() -> str:
     return "auto"
 
 
-def image_gen_auth_headers_json() -> dict[str, str]:
-    cfg = image_gen_config
+def image_gen_auth_headers_json(backend: ImageApiBackend) -> dict[str, str]:
     h = {
-        "Authorization": f"Bearer {cfg.api_key}",
+        "Authorization": f"Bearer {backend.api_key}",
         "Content-Type": "application/json",
     }
     h.update(image_gen_optional_headers())
     return h
 
 
-def image_gen_auth_headers_multipart() -> dict[str, str]:
-    h = {"Authorization": f"Bearer {image_gen_config.api_key}"}
+def image_gen_auth_headers_multipart(backend: ImageApiBackend) -> dict[str, str]:
+    h = {"Authorization": f"Bearer {backend.api_key}"}
     h.update(image_gen_optional_headers())
     return h
 
@@ -172,15 +171,19 @@ async def post_generations_with_transport(
         return await curl_post_generations(url, headers, payload)
 
 
-async def httpx_post_edits(image_blobs: list[bytes], prompt: str) -> tuple[int, str]:
+async def httpx_post_edits(
+    image_blobs: list[bytes],
+    prompt: str,
+    backend: ImageApiBackend,
+) -> tuple[int, str]:
     cfg = image_gen_config
-    endpoint = image_edits_endpoint()
-    headers = image_gen_auth_headers_multipart()
+    endpoint = image_edits_endpoint(backend)
+    headers = image_gen_auth_headers_multipart(backend)
     timeout = httpx.Timeout(cfg.request_timeout)
     files: list[tuple[str, tuple[str, bytes, str]]] = []
     for i, blob in enumerate(image_blobs):
         files.append(("image", (f"ref_{i}.png", blob, "image/png")))
-    data: dict[str, str] = {"prompt": prompt, "model": cfg.model}
+    data: dict[str, str] = {"prompt": prompt, "model": backend.model}
     sz = (cfg.size or "").strip()
     if sz:
         data["size"] = sz
@@ -195,17 +198,21 @@ async def httpx_post_edits(image_blobs: list[bytes], prompt: str) -> tuple[int, 
         return r.status_code, r.text
 
 
-async def curl_cffi_post_edits(image_blobs: list[bytes], prompt: str) -> tuple[int, str]:
+async def curl_cffi_post_edits(
+    image_blobs: list[bytes],
+    prompt: str,
+    backend: ImageApiBackend,
+) -> tuple[int, str]:
     cfg = image_gen_config
     impersonate = (cfg.tls_impersonate or "").strip()
     if not impersonate:
         raise ValueError("tls_impersonate 为空")
-    endpoint = image_edits_endpoint()
-    headers = image_gen_auth_headers_multipart()
+    endpoint = image_edits_endpoint(backend)
+    headers = image_gen_auth_headers_multipart(backend)
     mp = CurlMime()
     for i, blob in enumerate(image_blobs):
         mp.addpart("image", data=blob, filename=f"ref_{i}.png", content_type="image/png")
-    data: dict[str, str] = {"prompt": prompt, "model": cfg.model}
+    data: dict[str, str] = {"prompt": prompt, "model": backend.model}
     sz = (cfg.size or "").strip()
     if sz:
         data["size"] = sz
@@ -227,12 +234,16 @@ async def curl_cffi_post_edits(image_blobs: list[bytes], prompt: str) -> tuple[i
         return r.status_code, r.text
 
 
-async def curl_post_edits(image_blobs: list[bytes], prompt: str) -> tuple[int, str]:
+async def curl_post_edits(
+    image_blobs: list[bytes],
+    prompt: str,
+    backend: ImageApiBackend,
+) -> tuple[int, str]:
     if not shutil.which("curl"):
         raise RuntimeError("未找到 curl 可执行文件")
     cfg = image_gen_config
-    endpoint = image_edits_endpoint()
-    headers = image_gen_auth_headers_multipart()
+    endpoint = image_edits_endpoint(backend)
+    headers = image_gen_auth_headers_multipart(backend)
     timeout_s = int(max(10, min(cfg.request_timeout, 600)))
     with tempfile.TemporaryDirectory() as td:
         args: list[str] = [
@@ -254,7 +265,7 @@ async def curl_post_edits(image_blobs: list[bytes], prompt: str) -> tuple[int, s
             p = Path(td) / f"ref_{i}.png"
             await asyncio.to_thread(p.write_bytes, blob)
             args.extend(["-F", f"image=@{p};type=image/png"])
-        args.extend(["--form-string", f"prompt={prompt}", "--form-string", f"model={cfg.model}"])
+        args.extend(["--form-string", f"prompt={prompt}", "--form-string", f"model={backend.model}"])
         sz = (cfg.size or "").strip()
         if sz:
             args.extend(["--form-string", f"size={sz}"])
@@ -283,25 +294,29 @@ async def curl_post_edits(image_blobs: list[bytes], prompt: str) -> tuple[int, s
             return 0, raw
 
 
-async def post_edits_with_transport(image_blobs: list[bytes], prompt: str) -> tuple[int, str]:
+async def post_edits_with_transport(
+    image_blobs: list[bytes],
+    prompt: str,
+    backend: ImageApiBackend,
+) -> tuple[int, str]:
     mode = effective_http_transport()
     cfg = image_gen_config
     if mode == "curl":
-        return await curl_post_edits(image_blobs, prompt)
+        return await curl_post_edits(image_blobs, prompt, backend)
     if mode == "httpx":
-        return await httpx_post_edits(image_blobs, prompt)
+        return await httpx_post_edits(image_blobs, prompt, backend)
     if mode == "cffi":
-        return await curl_cffi_post_edits(image_blobs, prompt)
+        return await curl_cffi_post_edits(image_blobs, prompt, backend)
     if (cfg.tls_impersonate or "").strip():
         try:
-            return await curl_cffi_post_edits(image_blobs, prompt)
+            return await curl_cffi_post_edits(image_blobs, prompt, backend)
         except (CffiRequestsError, OSError, ValueError) as e:
             logger.warning(f"pallas_image edits curl_cffi failed, fallback httpx: {e}")
     try:
-        return await httpx_post_edits(image_blobs, prompt)
+        return await httpx_post_edits(image_blobs, prompt, backend)
     except httpx.ConnectError as e:
         logger.warning(f"pallas_image edits httpx connect failed, fallback curl: {e}")
-        return await curl_post_edits(image_blobs, prompt)
+        return await curl_post_edits(image_blobs, prompt, backend)
 
 
 def strip_data_url_base64(value: str) -> str:
@@ -363,10 +378,10 @@ async def bytes_from_image_reference(client: httpx.AsyncClient, url: str) -> byt
         return None
 
 
-def generations_payload(prompt: str, ref_urls: list[str]) -> dict[str, object]:
+def generations_payload(prompt: str, ref_urls: list[str], *, model: str) -> dict[str, object]:
     cfg = image_gen_config
     body: dict[str, object] = {
-        "model": cfg.model,
+        "model": model,
         "prompt": prompt,
     }
     sz = (cfg.size or "").strip()

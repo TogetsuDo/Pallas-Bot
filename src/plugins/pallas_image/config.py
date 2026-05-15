@@ -1,5 +1,26 @@
+from __future__ import annotations
+
+import json
+import os
+from dataclasses import dataclass
+from threading import Lock
+from typing import Any, Self
+
 from nonebot import get_plugin_config
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from src.common.env_dotenv import merged_repo_dotenv_upper, repo_layered_dotenv_files_exist
+
+
+class ImageBackendEntry(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="ignore")
+
+    base_url: str = Field(default="", description="备选 API 根 URL。")
+    api_key: str = Field(default="", description="备选 API 密钥。")
+    model: str = Field(
+        default="",
+        description="可选模型名；留空则使用主配置 pallas_image_model。",
+    )
 
 
 class Config(BaseModel, extra="ignore"):
@@ -12,6 +33,15 @@ class Config(BaseModel, extra="ignore"):
         description="图像生成 API 的根 URL（如 OpenAI 兼容网关），须含协议且不以 / 结尾以外的路径按厂商要求填写。",
     )
     pallas_image_api_key: str = Field(default="", description="调用图像 API 的密钥或 Token。")
+    pallas_image_api_backends: list[ImageBackendEntry] = Field(
+        default_factory=list,
+        description=(
+            "备选 API 列表（JSON 数组）；主配置失败后按顺序尝试。"
+            "每项含 base_url、api_key，model 可选（省略则用 pallas_image_model）。"
+            '示例：[{"base_url":"https://api2.example.com/v1","api_key":"sk-xxx","model":"gpt-image-2"},'
+            '{"base_url":"https://api3.example.com/v1","api_key":"sk-yyy"}]'
+        ),
+    )
     pallas_image_model: str = Field(default="gpt-image-2", description="默认使用的图像模型名。")
     pallas_image_aspect_ratio: str = Field(
         default="",
@@ -87,8 +117,69 @@ class Config(BaseModel, extra="ignore"):
         description="同一用户两次画画指令之间的最短间隔（秒）。",
     )
 
+    @classmethod
+    def from_env(cls) -> Self:
+        merged = merged_repo_dotenv_upper()
+        data: dict[str, Any] = {}
+        for name, field in cls.model_fields.items():
+            key = name.upper()
+            raw: str | None = None
+            if key in os.environ:
+                raw = os.environ.get(key)
+            elif key in merged:
+                raw = merged[key]
+            if raw is None:
+                continue
+            data[name] = parse_pallas_image_env_value(name, str(raw), field.annotation)
+        return cls.model_validate(data)
 
-_raw = get_plugin_config(Config)
+
+def parse_pallas_image_env_value(name: str, raw: str, ann: Any) -> Any:
+    text = raw.strip()
+    ann_text = str(ann).lower()
+    if "bool" in ann_text:
+        return text.lower() in ("1", "true", "yes", "on")
+    if "list" in ann_text or "dict" in ann_text:
+        if not text:
+            return [] if "list" in ann_text else {}
+        parsed = json.loads(text)
+        if name == "pallas_image_api_backends" and isinstance(parsed, list):
+            return [ImageBackendEntry.model_validate(x) for x in parsed if isinstance(x, dict)]
+        return parsed
+    if "float" in ann_text and "list" not in ann_text:
+        return float(text)
+    if "int" in ann_text and "list" not in ann_text:
+        return int(text)
+    return text
+
+
+@dataclass(frozen=True)
+class ImageApiBackend:
+    base_url: str
+    api_key: str
+    model: str
+    label: str
+
+
+_config_lock = Lock()
+_cached_pallas_image_config: Config | None = None
+
+
+def clear_pallas_image_config_cache() -> None:
+    global _cached_pallas_image_config
+    with _config_lock:
+        _cached_pallas_image_config = None
+
+
+def get_pallas_image_config() -> Config:
+    global _cached_pallas_image_config
+    with _config_lock:
+        if _cached_pallas_image_config is None:
+            if repo_layered_dotenv_files_exist():
+                _cached_pallas_image_config = Config.from_env()
+            else:
+                _cached_pallas_image_config = get_plugin_config(Config)
+        return _cached_pallas_image_config
 
 
 class ImageGenSettings:
@@ -106,6 +197,49 @@ class ImageGenSettings:
             "_draw_unlimited_users",
             frozenset(c.pallas_image_draw_unlimited_user_ids),
         )
+
+    def reload(self, c: Config) -> None:
+        object.__setattr__(self, "_c", c)
+        object.__setattr__(
+            self,
+            "_draw_unlimited_groups",
+            frozenset(c.pallas_image_draw_unlimited_group_ids),
+        )
+        object.__setattr__(
+            self,
+            "_draw_unlimited_users",
+            frozenset(c.pallas_image_draw_unlimited_user_ids),
+        )
+
+    def api_backends(self) -> list[ImageApiBackend]:
+        default_model = (self._c.pallas_image_model or "").strip()
+        out: list[ImageApiBackend] = []
+        primary_url = (self._c.pallas_image_base_url or "").strip()
+        primary_key = (self._c.pallas_image_api_key or "").strip()
+        if primary_url and primary_key:
+            out.append(
+                ImageApiBackend(
+                    base_url=primary_url,
+                    api_key=primary_key,
+                    model=default_model,
+                    label="primary",
+                )
+            )
+        for i, entry in enumerate(self._c.pallas_image_api_backends):
+            url = (entry.base_url or "").strip()
+            key = (entry.api_key or "").strip()
+            if not url or not key:
+                continue
+            model = (entry.model or "").strip() or default_model
+            out.append(
+                ImageApiBackend(
+                    base_url=url,
+                    api_key=key,
+                    model=model,
+                    label=f"fallback-{i}",
+                )
+            )
+        return out
 
     @property
     def min_priority(self) -> int:
@@ -200,4 +334,14 @@ class ImageGenSettings:
         return self._c.pallas_image_draw_command_cooldown
 
 
-image_gen_config = ImageGenSettings(_raw)
+image_gen_config = ImageGenSettings(get_pallas_image_config())
+
+
+def reload_image_gen_config() -> None:
+    """WebUI 写入 .env 后调用，使牛牛画画配置与并发限制立即生效。"""
+    clear_pallas_image_config_cache()
+    cfg = get_pallas_image_config()
+    image_gen_config.reload(cfg)
+    from .runtime_state import sync_image_gen_semaphore
+
+    sync_image_gen_semaphore(cfg.pallas_image_max_concurrency)

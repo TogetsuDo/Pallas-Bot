@@ -333,7 +333,12 @@ def _plugin_config_payload(
 ) -> dict[str, Any]:
     """GET 用默认 ``current``；PUT 落盘后应传 ``validated``，避免 ``get_plugin_config`` 仍为旧内存。"""
     p, module_name, cfg_cls = _plugin_config_model_by_name(plugin_name)
-    cfg_obj = get_plugin_config(cfg_cls)
+    if module_name.endswith(".pallas_image"):
+        from src.plugins.pallas_image.config import get_pallas_image_config
+
+        cfg_obj = get_pallas_image_config()
+    else:
+        cfg_obj = get_plugin_config(cfg_cls)
     fields: list[dict[str, Any]] = []
     for key, f in cfg_cls.model_fields.items():
         if current_values is not None:
@@ -2754,8 +2759,13 @@ def register_extended_api(
     ) -> JSONResponse:
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
         try:
-            _, _, cfg_cls = _plugin_config_model_by_name(plugin_name)
-            current = get_plugin_config(cfg_cls).model_dump(mode="python")
+            _, module_name, cfg_cls = _plugin_config_model_by_name(plugin_name)
+            if module_name.endswith(".pallas_image"):
+                from src.plugins.pallas_image.config import get_pallas_image_config
+
+                current = get_pallas_image_config().model_dump(mode="python")
+            else:
+                current = get_plugin_config(cfg_cls).model_dump(mode="python")
             patch = dict(body.values or {})
             allowed = set(cfg_cls.model_fields.keys())
             for k in patch:
@@ -2765,6 +2775,13 @@ def register_extended_api(
             validated = cfg_cls(**merged).model_dump(mode="python")
             env_items = {str(k).upper(): env_value_to_str(validated[k]) for k in patch}
             upsert_env_dotenv_items(env_items)
+            if module_name.endswith(".pallas_image"):
+                try:
+                    from src.plugins.pallas_image.config import reload_image_gen_config
+
+                    reload_image_gen_config()
+                except Exception:
+                    pass
             data = _plugin_config_payload(plugin_name, current_values=validated)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
