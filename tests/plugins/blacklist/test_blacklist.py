@@ -39,13 +39,11 @@ def test_collect_target_qqs_at_plain_and_dedup():
 def test_collect_target_qqs_skips_special_at():
     from src.plugins.blacklist import collect_target_qqs_from_plain_and_message
 
-    msg = Message(
-        [
-            MessageSegment.at("all"),
-            MessageSegment.at(0),
-            MessageSegment.at("0"),
-        ]
-    )
+    msg = Message([
+        MessageSegment.at("all"),
+        MessageSegment.at(0),
+        MessageSegment.at("0"),
+    ])
     assert collect_target_qqs_from_plain_and_message("", msg) == []
 
 
@@ -110,6 +108,28 @@ async def test_query_user_ban_status_for_gate_uses_cache(beanie_fixture):
     assert first is True
     assert second is True
     mock_ib.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_query_user_ban_status_for_gate_coalesces_concurrent_same_uid(beanie_fixture):
+    import asyncio
+
+    from src.plugins.blacklist import query_user_ban_status_for_gate, reset_user_ban_gate_cache
+
+    uid = 880_010
+    calls = 0
+
+    async def counting_ban(*_args: object, **_kwargs: object) -> bool:
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(0.05)
+        return False
+
+    await reset_user_ban_gate_cache()
+    with patch.object(UserConfig, "is_banned", side_effect=counting_ban):
+        results = await asyncio.gather(*[query_user_ban_status_for_gate(uid) for _ in range(25)])
+    assert all(r is False for r in results)
+    assert calls == 1
 
 
 @pytest.mark.asyncio
@@ -326,7 +346,7 @@ async def test_handle_blacklist_add_bans_targets(beanie_fixture):
     assert target in await GroupConfig(1).blocked_user_ids()
     mock_finish.assert_awaited_once()
     assert str(target) in mock_finish.await_args.args[0]
-    assert "本群" in mock_finish.await_args.args[0]
+    assert "在这里" in mock_finish.await_args.args[0]
 
 
 @pytest.mark.asyncio

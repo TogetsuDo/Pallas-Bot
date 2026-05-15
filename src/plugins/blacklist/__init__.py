@@ -27,10 +27,17 @@ _BAN_GATE_CACHE_TTL_SEC = 45.0
 _BAN_GATE_CACHE_MAX = 50_000
 _ban_gate_cache: dict[int, tuple[float, bool]] = {}
 _ban_gate_lock = asyncio.Lock()
+# invalidate 时递增；门禁写回缓存前比对，避免与进行中的查询交叉污染
+_user_gate_generation: dict[int, int] = {}
+_user_fetch_tasks: dict[int, asyncio.Task[bool]] = {}
+_user_fetch_tasks_lock = asyncio.Lock()
 
 _GROUP_BAN_GATE_CACHE_TTL_SEC = 45.0
 _group_ban_gate_cache: dict[int, tuple[float, frozenset[int]]] = {}
 _group_ban_gate_lock = asyncio.Lock()
+_group_gate_generation: dict[int, int] = {}
+_group_fetch_tasks: dict[int, asyncio.Task[frozenset[int]]] = {}
+_group_fetch_tasks_lock = asyncio.Lock()
 
 
 async def invalidate_user_ban_gate_cache(uids: int | Iterable[int]) -> None:
@@ -41,23 +48,39 @@ async def invalidate_user_ban_gate_cache(uids: int | Iterable[int]) -> None:
     async with _ban_gate_lock:
         for u in ids:
             _ban_gate_cache.pop(u, None)
+            _user_gate_generation[u] = _user_gate_generation.get(u, 0) + 1
 
 
 async def reset_user_ban_gate_cache() -> None:
     """清空全局门禁内存缓存（供测试或热更新后手动调用）。"""
+    async with _user_fetch_tasks_lock:
+        for t in list(_user_fetch_tasks.values()):
+            if not t.done():
+                t.cancel()
+        _user_fetch_tasks.clear()
     async with _ban_gate_lock:
         _ban_gate_cache.clear()
+        _user_gate_generation.clear()
 
 
 async def invalidate_group_ban_gate_cache(group_ids: int | Iterable[int] | None = None) -> None:
     """使给定群的「本群拉黑」门禁缓存失效；不传参则清空全部。"""
-    async with _group_ban_gate_lock:
-        if group_ids is None:
+    if group_ids is None:
+        async with _group_fetch_tasks_lock:
+            for t in list(_group_fetch_tasks.values()):
+                if not t.done():
+                    t.cancel()
+            _group_fetch_tasks.clear()
+        async with _group_ban_gate_lock:
             _group_ban_gate_cache.clear()
-            return
+            _group_gate_generation.clear()
+        return
+    async with _group_ban_gate_lock:
         ids = [group_ids] if isinstance(group_ids, int) else list(group_ids)
         for g in ids:
-            _group_ban_gate_cache.pop(int(g), None)
+            gid = int(g)
+            _group_ban_gate_cache.pop(gid, None)
+            _group_gate_generation[gid] = _group_gate_generation.get(gid, 0) + 1
 
 
 async def reset_group_ban_gate_cache() -> None:
@@ -65,28 +88,9 @@ async def reset_group_ban_gate_cache() -> None:
     await invalidate_group_ban_gate_cache(None)
 
 
-async def query_user_ban_status_for_gate(user_id: int) -> bool:
-    """
-    查询用户是否全局拉黑（带 TTL 缓存）。
-    数据库超时或异常时返回 False（不拦截），避免连接堆积或事件链卡死。
-    """
-    now = time.monotonic()
-    async with _ban_gate_lock:
-        hit = _ban_gate_cache.get(user_id)
-        if hit is not None:
-            exp, val = hit
-            if now < exp:
-                return val
-            del _ban_gate_cache[user_id]
-        if len(_ban_gate_cache) > _BAN_GATE_CACHE_MAX:
-            stale = [k for k, (e, _) in _ban_gate_cache.items() if now >= e]
-            for k in stale:
-                del _ban_gate_cache[k]
-            if len(_ban_gate_cache) > _BAN_GATE_CACHE_MAX:
-                _ban_gate_cache.clear()
-
+async def _fetch_user_banned_db(user_id: int) -> bool:
     try:
-        banned = await asyncio.wait_for(
+        return await asyncio.wait_for(
             UserConfig(user_id).is_banned(),
             timeout=_IS_BANNED_DB_TIMEOUT_SEC,
         )
@@ -99,49 +103,126 @@ async def query_user_ban_status_for_gate(user_id: int) -> bool:
         logger.exception("user ban gate: is_banned failed uid={}", user_id)
         return False
 
-    expire_at = time.monotonic() + _BAN_GATE_CACHE_TTL_SEC
-    async with _ban_gate_lock:
-        _ban_gate_cache[user_id] = (expire_at, banned)
-    return banned
+
+async def _await_user_ban_deduped(user_id: int) -> bool:
+    """同一 uid 并发只打一次库，减轻大群刷屏时连接池与 DB 压力。"""
+    async with _user_fetch_tasks_lock:
+        t = _user_fetch_tasks.get(user_id)
+        if t is not None and not t.done():
+            task = t
+        else:
+
+            async def _runner() -> bool:
+                try:
+                    return await _fetch_user_banned_db(user_id)
+                finally:
+                    async with _user_fetch_tasks_lock:
+                        cur = asyncio.current_task()
+                        if _user_fetch_tasks.get(user_id) is cur:
+                            _user_fetch_tasks.pop(user_id, None)
+
+            task = asyncio.create_task(_runner())
+            _user_fetch_tasks[user_id] = task
+    return await task
 
 
-async def query_group_blocked_for_gate(group_id: int, user_id: int) -> bool:
-    """本群拉黑名单（按群缓存 blocked_user_ids 集合）；超时/异常 fail-open。"""
-    now = time.monotonic()
-    async with _group_ban_gate_lock:
-        hit = _group_ban_gate_cache.get(group_id)
-        if hit is not None:
-            exp, uids = hit
-            if now < exp:
-                return user_id in uids
-            del _group_ban_gate_cache[group_id]
-        if len(_group_ban_gate_cache) > _BAN_GATE_CACHE_MAX:
-            stale = [k for k, (e, _) in _group_ban_gate_cache.items() if now >= e]
-            for k in stale:
-                del _group_ban_gate_cache[k]
-            if len(_group_ban_gate_cache) > _BAN_GATE_CACHE_MAX:
-                _group_ban_gate_cache.clear()
+async def query_user_ban_status_for_gate(user_id: int) -> bool:
+    """
+    查询用户是否全局拉黑（带 TTL 缓存）。
+    数据库超时或异常时返回 False（不拦截），避免连接堆积或事件链卡死。
+    """
+    while True:
+        now = time.monotonic()
+        async with _ban_gate_lock:
+            hit = _ban_gate_cache.get(user_id)
+            if hit is not None:
+                exp, val = hit
+                if now < exp:
+                    return val
+                del _ban_gate_cache[user_id]
+            if len(_ban_gate_cache) > _BAN_GATE_CACHE_MAX:
+                stale = [k for k, (e, _) in _ban_gate_cache.items() if now >= e]
+                for k in stale:
+                    del _ban_gate_cache[k]
+                if len(_ban_gate_cache) > _BAN_GATE_CACHE_MAX:
+                    _ban_gate_cache.clear()
+            gen_snapshot = _user_gate_generation.get(user_id, 0)
 
+        banned = await _await_user_ban_deduped(user_id)
+
+        expire_at = time.monotonic() + _BAN_GATE_CACHE_TTL_SEC
+        async with _ban_gate_lock:
+            if _user_gate_generation.get(user_id, 0) != gen_snapshot:
+                continue
+            _ban_gate_cache[user_id] = (expire_at, banned)
+        return banned
+
+
+async def _fetch_group_blocked_ids_db(group_id: int) -> frozenset[int]:
     try:
         ids_list = await asyncio.wait_for(
             GroupConfig(group_id).blocked_user_ids(),
             timeout=_IS_BANNED_DB_TIMEOUT_SEC,
         )
+        return frozenset(ids_list)
     except TimeoutError:
-        logger.warning("group ban gate: blocked_user_ids timeout gid={} uid={}", group_id, user_id)
-        return False
+        logger.warning("group ban gate: blocked_user_ids timeout gid={}", group_id)
+        return frozenset()
     except asyncio.CancelledError:
         raise
     except Exception:
-        logger.exception("group ban gate: blocked_user_ids failed gid={} uid={}", group_id, user_id)
-        return False
+        logger.exception("group ban gate: blocked_user_ids failed gid={}", group_id)
+        return frozenset()
 
-    fs = frozenset(ids_list)
-    blocked = user_id in fs
-    expire_at = time.monotonic() + _GROUP_BAN_GATE_CACHE_TTL_SEC
-    async with _group_ban_gate_lock:
-        _group_ban_gate_cache[group_id] = (expire_at, fs)
-    return blocked
+
+async def _await_group_blocked_deduped(group_id: int) -> frozenset[int]:
+    async with _group_fetch_tasks_lock:
+        t = _group_fetch_tasks.get(group_id)
+        if t is not None and not t.done():
+            task = t
+        else:
+
+            async def _runner() -> frozenset[int]:
+                try:
+                    return await _fetch_group_blocked_ids_db(group_id)
+                finally:
+                    async with _group_fetch_tasks_lock:
+                        cur = asyncio.current_task()
+                        if _group_fetch_tasks.get(group_id) is cur:
+                            _group_fetch_tasks.pop(group_id, None)
+
+            task = asyncio.create_task(_runner())
+            _group_fetch_tasks[group_id] = task
+    return await task
+
+
+async def query_group_blocked_for_gate(group_id: int, user_id: int) -> bool:
+    """本群拉黑名单（按群缓存 blocked_user_ids 集合）；超时/异常 fail-open。"""
+    while True:
+        now = time.monotonic()
+        async with _group_ban_gate_lock:
+            hit = _group_ban_gate_cache.get(group_id)
+            if hit is not None:
+                exp, uids = hit
+                if now < exp:
+                    return user_id in uids
+                del _group_ban_gate_cache[group_id]
+            if len(_group_ban_gate_cache) > _BAN_GATE_CACHE_MAX:
+                stale = [k for k, (e, _) in _group_ban_gate_cache.items() if now >= e]
+                for k in stale:
+                    del _group_ban_gate_cache[k]
+                if len(_group_ban_gate_cache) > _BAN_GATE_CACHE_MAX:
+                    _group_ban_gate_cache.clear()
+            gen_snapshot = _group_gate_generation.get(group_id, 0)
+
+        fs = await _await_group_blocked_deduped(group_id)
+        blocked = user_id in fs
+        expire_at = time.monotonic() + _GROUP_BAN_GATE_CACHE_TTL_SEC
+        async with _group_ban_gate_lock:
+            if _group_gate_generation.get(group_id, 0) != gen_snapshot:
+                continue
+            _group_ban_gate_cache[group_id] = (expire_at, fs)
+        return blocked
 
 
 __plugin_meta__ = PluginMetadata(

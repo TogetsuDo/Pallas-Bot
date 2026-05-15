@@ -49,8 +49,8 @@
 
 | 机制 | 说明 |
 |------|------|
-| 全局 | `query_user_ban_status_for_gate`：单用户 TTL 缓存，超时 / 异常 **放行**。 |
-| 本群 | `query_group_blocked_for_gate`：按 **群** 缓存该群整份 `blocked_user_ids` 集合，超时 / 异常 **放行**。 |
+| 全局 | `query_user_ban_status_for_gate`：单用户 TTL 缓存，超时 / 异常 **放行**；同一 uid 在缓存失效后若并发到达，**合并为单次** `is_banned` 读，减轻大群刷屏对连接池的冲击。 |
+| 本群 | `query_group_blocked_for_gate`：按 **群** 缓存该群整份 `blocked_user_ids` 集合，超时 / 异常 **放行**；同一 `group_id` 并发合并为单次读。 |
 
 测试或排障：`reset_user_ban_gate_cache()`、`reset_group_ban_gate_cache()`（或 `invalidate_group_ban_gate_cache(None)` 清空本群门禁缓存）。
 
@@ -60,6 +60,7 @@
 |------|------|
 | 本群已解禁仍被拦 | 等 TTL 或调 `invalidate_group_ban_gate_cache(群号)` / `reset_group_ban_gate_cache()`。 |
 | 全局已解禁仍被拦 | `invalidate_user_ban_gate_cache` / `reset_user_ban_gate_cache()`。 |
+| `is_banned timeout` 刷屏、进程卡死或反复重启 | 多为 **门禁缓存未命中 + 高并发** 对 DB/连接池压力过大；可调大 PostgreSQL 的 `PG_POOL_SIZE` / `PG_MAX_OVERFLOW`，并排查库负载与网络延迟。 |
 
 ## 关联
 
