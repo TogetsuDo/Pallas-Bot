@@ -62,7 +62,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Test Docker build
         run: |
-          docker build -t test-build .
+          LABEL="$(git describe --tags --always --dirty 2>/dev/null || true)"
+          if [ -z "${LABEL}" ]; then LABEL="sha-${GITHUB_SHA:0:7}"; fi
+          docker build --build-arg "PALLAS_BOT_VERSION=${LABEL}" -t test-build .

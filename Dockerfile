@@ -6,6 +6,10 @@ FROM ${BASE_IMAGE}
 
 WORKDIR /app
 
+# CI 传入发版 tag 或 git describe，运行时 /health 的 pallas_bot 优先读此环境变量
+ARG PALLAS_BOT_VERSION=
+ENV PALLAS_BOT_VERSION=${PALLAS_BOT_VERSION}
+
 # 合并安装依赖，清理缓存，减少镜像层数
 RUN apt-get update && \
     apt-get install -y --no-install-recommends build-essential && \

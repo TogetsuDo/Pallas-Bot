@@ -213,6 +213,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -242,6 +244,8 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            PALLAS_BOT_VERSION=${{ steps.get_version.outputs.version }}
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/pallas-bot:${{ steps.get_version.outputs.version }}
             ${{ secrets.DOCKERHUB_USERNAME }}/pallas-bot:latest

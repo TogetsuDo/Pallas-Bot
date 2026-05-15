@@ -12,11 +12,14 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Build and test Docker image
         run: |
-          # 构建镜像
-          docker build -t pallas-bot-test .
+          LABEL="$(git describe --tags --always --dirty 2>/dev/null || true)"
+          if [ -z "${LABEL}" ]; then LABEL="sha-${GITHUB_SHA:0:7}"; fi
+          docker build --build-arg "PALLAS_BOT_VERSION=${LABEL}" -t pallas-bot-test .
 
           # 运行容器进行健康检查
           docker run --name test-container -d pallas-bot-test
