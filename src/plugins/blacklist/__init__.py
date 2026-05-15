@@ -306,7 +306,7 @@ async def handle_blacklist_add(bot: Bot, event: GroupMessageEvent | PrivateMessa
         return
     await GroupConfig(event.group_id).add_blocked_users(targets)
     await invalidate_group_ban_gate_cache(event.group_id)
-    await blacklist_add_cmd.finish(f"本群不再响应这 {len(targets)} 个灵魂：{', '.join(map(str, targets))}")
+    await blacklist_add_cmd.finish(f"在这里，米诺斯不再响应这 {len(targets)} 个灵魂：{', '.join(map(str, targets))}")
 
 
 @blacklist_remove_cmd.handle()
@@ -327,4 +327,4 @@ async def handle_blacklist_remove(bot: Bot, event: GroupMessageEvent | PrivateMe
         return
     await GroupConfig(event.group_id).remove_blocked_users(targets)
     await invalidate_group_ban_gate_cache(event.group_id)
-    await blacklist_remove_cmd.finish(f"本群又愿倾听这 {len(targets)} 个灵魂：{', '.join(map(str, targets))}")
+    await blacklist_remove_cmd.finish(f"在这里，米诺斯又愿倾听这 {len(targets)} 个灵魂：{', '.join(map(str, targets))}")

@@ -42,6 +42,7 @@ __plugin_meta__ = PluginMetadata(
 查看入群邀请 — 列出待处理入群邀请
 同意入群 <群号> — 同意指定群的邀请
 同意所有入群 — 同意当前全部入群邀请
+拒绝所有入群 — 拒绝当前全部入群邀请
 拒绝入群 <群号> — 拒绝指定群的邀请
 查看自动同意 — 查看自动同意开关
 开启/关闭自动同意好友 — 切换好友自动同意
@@ -61,6 +62,7 @@ __plugin_meta__ = PluginMetadata(
             {"id": "request.approve_all_friends", "label": "同意所有好友", "default": "bot_moderator"},
             {"id": "request.reject_all_friends", "label": "拒绝所有好友", "default": "bot_moderator"},
             {"id": "request.approve_all_groups", "label": "同意所有入群", "default": "bot_moderator"},
+            {"id": "request.reject_all_groups", "label": "拒绝所有入群", "default": "bot_moderator"},
             {"id": "request.approve_group", "label": "同意入群", "default": "bot_moderator"},
             {"id": "request.reject_group", "label": "拒绝入群", "default": "bot_moderator"},
             {"id": "request.auto_accept_status", "label": "查看自动同意", "default": "bot_moderator"},
@@ -114,14 +116,15 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "批量审批",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "同意所有好友 / 拒绝所有好友 / 同意所有入群（私聊）",
+                "trigger_condition": "同意/拒绝所有好友、同意/拒绝所有入群（私聊）",
                 "command_permissions": [
                     "request.approve_all_friends",
                     "request.reject_all_friends",
                     "request.approve_all_groups",
+                    "request.reject_all_groups",
                 ],
                 "brief_des": "好友或入群批量同意/拒绝",
-                "detail_des": "一次性同意或拒绝当前全部待处理好友申请，或同意全部入群邀请",
+                "detail_des": "一次性同意或拒绝当前全部待处理好友申请或入群邀请",
             },
             {
                 "func": "入群邀请审批",
@@ -172,7 +175,6 @@ PLUGIN_NAME = "request_handler"
 _NOTIFY_RECORD_MAX_AGE_SEC = 7 * 24 * 3600
 
 RH_HELP_CMD = "牛牛帮助 申请管理"
-RH_APPROVE_HINT = "同意：回复此消息「同意」或留空（什么都不发）；或直接发送「同意」处理最新一条申请"
 RH_HELP_HINT = f"帮助：{RH_HELP_CMD}"
 RH_LIST_TAIL_FRIEND = (
     "怎么操作：\n"
@@ -186,7 +188,7 @@ RH_LIST_TAIL_GROUP = (
     "• 私聊只发「同意」→ 处理牛牛最新一条入群提醒；\n"
     "• 引用某条入群提醒后再发 同意 → 只处理那条邀请；\n"
     "• 「同意入群 <群号>」同意、「拒绝入群 <群号>」拒绝；\n"
-    "• 「同意所有入群」→ 当前表里剩余的全部同意。"
+    "• 「同意所有入群」→ 全部同意、「拒绝所有入群」→ 全部拒绝。"
 )
 
 
@@ -253,7 +255,7 @@ def notify_ts_expired(ts: float, now: float | None = None) -> bool:
 
 
 def api_failure_is_request_gone(exc: BaseException) -> bool:
-    """协议返回「请求已不存在 / 已失效」等时可移除本地 pending。"""
+    """协议返回「请求已不存在 / 已失效」等（用于提示文案）。"""
     if not isinstance(exc, ActionFailed):
         return False
     for arg in exc.args:
@@ -264,6 +266,32 @@ def api_failure_is_request_gone(exc: BaseException) -> bool:
             if any(k in wording for k in ("失效", "过期", "不存在", "已处理", "无效")):
                 return True
     return False
+
+
+def failure_cleanup_friend(bot_key: str, uid_str: str) -> None:
+    """协议调用失败后移除本地好友 pending，避免失效记录占位。"""
+    bot_pending = pending_friend.get(bot_key)
+    if bot_pending and uid_str in bot_pending:
+        bot_pending.pop(uid_str, None)
+        save_json(FRIEND_REQ_FILE, pending_friend)
+    doubt_cache = cached_doubt_friend.get(bot_key)
+    if doubt_cache and uid_str in doubt_cache:
+        doubt_cache.pop(uid_str, None)
+    clear_quick_approve_state(bot_key, "friend", uid_str)
+
+
+def failure_cleanup_group(bot_key: str, group_key: str) -> None:
+    """协议调用失败后移除本地入群 pending，避免失效记录占位。"""
+    bot_pending = pending_group.get(bot_key)
+    if bot_pending and group_key in bot_pending:
+        bot_pending.pop(group_key, None)
+        save_json(GROUP_REQ_FILE, pending_group)
+    clear_quick_approve_state(bot_key, "group", group_key)
+
+
+def api_failure_user_message(exc: ActionFailed) -> str:
+    suffix = "（请求失效或已处理）" if api_failure_is_request_gone(exc) else "（已从待处理列表移除）"
+    return f"失败：{exc}{suffix}"
 
 
 def load_last_notified_store() -> tuple[dict[str, dict[str, str | float]], bool]:
@@ -561,7 +589,13 @@ async def approve_friend_by_uid(bot: Bot, bot_key: str, uid_str: str) -> tuple[b
     bot_pending = pending_friend.get(bot_key, {})
     flag = bot_pending.get(uid_str)
     if flag:
-        await bot.set_friend_add_request(flag=flag, approve=True)
+        try:
+            await bot.set_friend_add_request(flag=flag, approve=True)
+        except ActionFailed as e:
+            failure_cleanup_friend(bot_key, uid_str)
+            return False, api_failure_user_message(e)
+        except Exception as e:
+            return False, f"操作未成功：{e}（请稍后重试）"
         bot_pending.pop(uid_str, None)
         save_json(FRIEND_REQ_FILE, pending_friend)
         nickname = await get_nickname(bot, int(uid_str))
@@ -574,7 +608,13 @@ async def approve_friend_by_uid(bot: Bot, bot_key: str, uid_str: str) -> tuple[b
         nickname = await get_nickname(bot, int(uid_str))
         return False, f"未找到待处理申请：{nickname}（{uid_str}）"
 
-    await bot.call_api("set_doubt_friends_add_request", flag=doubt_flag, approve=True)
+    try:
+        await bot.call_api("set_doubt_friends_add_request", flag=doubt_flag, approve=True)
+    except ActionFailed as e:
+        failure_cleanup_friend(bot_key, uid_str)
+        return False, api_failure_user_message(e)
+    except Exception as e:
+        return False, f"操作未成功：{e}（请稍后重试）"
     cached_doubt_friend[bot_key].pop(uid_str, None)
     nickname = await get_nickname(bot, int(uid_str))
     return True, f"已同意好友：{nickname}（{uid_str}）"
@@ -587,11 +627,8 @@ async def reject_friend_by_uid(bot: Bot, bot_key: str, uid_str: str) -> tuple[bo
         try:
             await bot.set_friend_add_request(flag=flag, approve=False)
         except ActionFailed as e:
-            if api_failure_is_request_gone(e):
-                bot_pending.pop(uid_str, None)
-                save_json(FRIEND_REQ_FILE, pending_friend)
-                return False, f"失败：{e}（请求失效或已处理）"
-            return False, f"操作未成功：{e}（请稍后重试）"
+            failure_cleanup_friend(bot_key, uid_str)
+            return False, api_failure_user_message(e)
         except Exception as e:
             return False, f"操作未成功：{e}（请稍后重试）"
         bot_pending.pop(uid_str, None)
@@ -609,10 +646,8 @@ async def reject_friend_by_uid(bot: Bot, bot_key: str, uid_str: str) -> tuple[bo
     try:
         await bot.call_api("set_doubt_friends_add_request", flag=doubt_flag, approve=False)
     except ActionFailed as e:
-        if api_failure_is_request_gone(e):
-            cached_doubt_friend[bot_key].pop(uid_str, None)
-            return False, f"失败：{e}（请求失效或已处理）"
-        return False, f"操作未成功：{e}（请稍后重试）"
+        failure_cleanup_friend(bot_key, uid_str)
+        return False, api_failure_user_message(e)
     except Exception as e:
         return False, f"操作未成功：{e}（请稍后重试）"
     cached_doubt_friend[bot_key].pop(uid_str, None)
@@ -631,11 +666,8 @@ async def approve_group_invite_by_gid(bot: Bot, bot_key: str, group_key: str) ->
     try:
         await bot.set_group_add_request(flag=req["flag"], sub_type="invite", approve=True)
     except ActionFailed as e:
-        if api_failure_is_request_gone(e):
-            bot_pending.pop(group_key, None)
-            save_json(GROUP_REQ_FILE, pending_group)
-            return False, f"失败：{e}（请求失效或已处理）"
-        return False, f"操作未成功：{e}（请稍后重试）"
+        failure_cleanup_group(bot_key, group_key)
+        return False, api_failure_user_message(e)
     except Exception as e:
         return False, f"操作未成功：{e}（请稍后重试）"
     bot_pending.pop(group_key, None)
@@ -655,6 +687,7 @@ reject_all_friends_cmd = on_command("拒绝所有好友", priority=5, block=True
 list_groups_cmd = on_command("查看入群邀请", priority=5, block=True)
 approve_group_cmd = on_command("同意入群", priority=5, block=True)
 approve_all_groups_cmd = on_command("同意所有入群", priority=5, block=True)
+reject_all_groups_cmd = on_command("拒绝所有入群", priority=5, block=True)
 reject_friend_cmd = on_command("拒绝好友", priority=5, block=True)
 reject_group_cmd = on_command("拒绝入群", priority=5, block=True)
 auto_accept_status_cmd = on_command("查看自动同意", priority=5, block=True)
@@ -742,7 +775,7 @@ async def poll_doubt_friends_job() -> None:
             if uid in notified_set:
                 continue
             nickname = await get_nickname(bot, int(uid))
-            msg = f"[好友申请]\n申请人：{nickname}（{uid}）\n{RH_APPROVE_HINT}\n拒绝：拒绝好友 {uid}\n{RH_HELP_HINT}"
+            msg = f"[好友申请]\n申请人：{nickname}（{uid}）\n{RH_HELP_HINT}"
             if await notify_admins(bot, msg, kind="friend", target_id=uid):
                 set_last_notified(bot_key, "friend", uid)
                 notified_set.add(uid)
@@ -819,14 +852,7 @@ async def handle_friend_request(bot: Bot, event: FriendRequestEvent):
 
     if not await is_plugin_disabled(PLUGIN_NAME, bot_id=bot_id):
         nickname = await get_nickname(bot, event.user_id)
-        msg = (
-            f"[好友申请]\n"
-            f"申请人：{nickname}（{event.user_id}）\n"
-            f"验证：{event.comment or '-'}\n"
-            f"{RH_APPROVE_HINT}\n"
-            f"拒绝：拒绝好友 {event.user_id}\n"
-            f"{RH_HELP_HINT}"
-        )
+        msg = f"[好友申请]\n申请人：{nickname}（{event.user_id}）\n验证：{event.comment or '-'}\n{RH_HELP_HINT}"
         if await notify_admins(bot, msg, kind="friend", target_id=str(event.user_id)):
             set_last_notified(bot_key, "friend", str(event.user_id))
 
@@ -963,8 +989,6 @@ async def handle_group_request(bot: Bot, event: GroupRequestEvent):
                 f"[入群邀请]\n"
                 f"邀请人：{nickname}（{event.user_id}）\n"
                 f"群：{group_name}（{event.group_id}）\n"
-                f"{RH_APPROVE_HINT}\n"
-                f"拒绝：拒绝入群 {event.group_id}\n"
                 f"{RH_HELP_HINT}"
             )
             if await notify_admins(bot, msg, kind="group", target_id=group_key):
@@ -991,6 +1015,10 @@ async def handle_approve_all_friends(bot: Bot, event: MessageEvent):
             bot_pending.pop(uid, None)
             ok += 1
             cleared_friend_ids.add(uid)
+        except ActionFailed:
+            fail += 1
+            failure_cleanup_friend(bot_key, uid)
+            cleared_friend_ids.add(uid)
         except Exception:
             fail += 1
     save_json(FRIEND_REQ_FILE, pending_friend)
@@ -1000,6 +1028,10 @@ async def handle_approve_all_friends(bot: Bot, event: MessageEvent):
             await bot.call_api("set_doubt_friends_add_request", flag=flag, approve=True)
             cached_doubt_friend[bot_key].pop(uid, None)
             ok += 1
+            cleared_friend_ids.add(uid)
+        except ActionFailed:
+            fail += 1
+            failure_cleanup_friend(bot_key, uid)
             cleared_friend_ids.add(uid)
         except Exception:
             fail += 1
@@ -1030,6 +1062,10 @@ async def handle_reject_all_friends(bot: Bot, event: MessageEvent):
             bot_pending.pop(uid, None)
             ok += 1
             cleared_friend_ids.add(uid)
+        except ActionFailed:
+            fail += 1
+            failure_cleanup_friend(bot_key, uid)
+            cleared_friend_ids.add(uid)
         except Exception:
             fail += 1
     save_json(FRIEND_REQ_FILE, pending_friend)
@@ -1039,6 +1075,10 @@ async def handle_reject_all_friends(bot: Bot, event: MessageEvent):
             await bot.call_api("set_doubt_friends_add_request", flag=flag, approve=False)
             cached_doubt_friend[bot_key].pop(uid, None)
             ok += 1
+            cleared_friend_ids.add(uid)
+        except ActionFailed:
+            fail += 1
+            failure_cleanup_friend(bot_key, uid)
             cleared_friend_ids.add(uid)
         except Exception:
             fail += 1
@@ -1065,12 +1105,44 @@ async def handle_approve_all_groups(bot: Bot, event: MessageEvent):
             bot_pending.pop(key, None)
             ok += 1
             cleared_group_keys.add(key)
+        except ActionFailed:
+            fail += 1
+            failure_cleanup_group(bot_key, key)
+            cleared_group_keys.add(key)
         except Exception:
             fail += 1
     save_json(GROUP_REQ_FILE, pending_group)
     for gkey in cleared_group_keys:
         clear_quick_approve_state(bot_key, "group", gkey)
     await approve_all_groups_cmd.finish(f"已同意 {ok} 条入群邀请" + (f"，{fail} 条失败" if fail else ""))
+
+
+@reject_all_groups_cmd.handle()
+async def handle_reject_all_groups(bot: Bot, event: MessageEvent):
+    if not await satisfies_command_permission(bot, event, "request.reject_all_groups"):
+        return
+    bot_key = str(bot.self_id)
+    bot_pending = pending_group.get(bot_key, {})
+    if not bot_pending:
+        await reject_all_groups_cmd.finish("暂无待处理入群邀请")
+    ok, fail = 0, 0
+    cleared_group_keys: set[str] = set()
+    for key, req in list(bot_pending.items()):
+        try:
+            await bot.set_group_add_request(flag=req["flag"], sub_type="invite", approve=False)
+            bot_pending.pop(key, None)
+            ok += 1
+            cleared_group_keys.add(key)
+        except ActionFailed:
+            fail += 1
+            failure_cleanup_group(bot_key, key)
+            cleared_group_keys.add(key)
+        except Exception:
+            fail += 1
+    save_json(GROUP_REQ_FILE, pending_group)
+    for gkey in cleared_group_keys:
+        clear_quick_approve_state(bot_key, "group", gkey)
+    await reject_all_groups_cmd.finish(f"已拒绝 {ok} 条入群邀请" + (f"，{fail} 条失败" if fail else ""))
 
 
 @approve_group_cmd.handle()
@@ -1155,12 +1227,8 @@ async def handle_reject_group(bot: Bot, event: MessageEvent, args: Message = Com
     try:
         await bot.set_group_add_request(flag=req["flag"], sub_type="invite", approve=False)
     except ActionFailed as e:
-        if api_failure_is_request_gone(e):
-            bot_pending.pop(group_key, None)
-            save_json(GROUP_REQ_FILE, pending_group)
-            await reject_group_cmd.finish(f"失败：{e}（请求失效或已处理）")
-            return
-        await reject_group_cmd.finish(f"操作未成功：{e}（请稍后重试）")
+        failure_cleanup_group(bot_key, group_key)
+        await reject_group_cmd.finish(api_failure_user_message(e))
         return
     except Exception as e:
         await reject_group_cmd.finish(f"操作未成功：{e}（请稍后重试）")

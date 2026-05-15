@@ -39,6 +39,7 @@ DEFAULT_COMMAND_PERMISSIONS: dict[str, PermissionLevel] = {
     "request.list_groups": "bot_moderator",
     "request.approve_group": "bot_moderator",
     "request.approve_all_groups": "bot_moderator",
+    "request.reject_all_groups": "bot_moderator",
     "request.reject_friend": "bot_moderator",
     "request.reject_group": "bot_moderator",
     "request.auto_accept_status": "bot_moderator",
