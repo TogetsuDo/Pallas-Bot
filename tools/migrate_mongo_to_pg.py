@@ -732,6 +732,9 @@ async def _migrate_group_config(db, sf, GCRow, ins, batch_size, dry_run) -> _Tab
                     "banned": _as_bool(raw.get("banned")),
                     "sing_progress": _strip_null(sing) if isinstance(sing, dict) else None,
                     "disabled_plugins": [_strip_null(_as_str(x)) for x in _as_list(raw.get("disabled_plugins"))],
+                    "blocked_user_ids": [
+                        i for i in (_as_int(x) for x in _as_list(raw.get("blocked_user_ids"))) if i > 0
+                    ],
                 })
             except Exception as e:
                 stats.warn(f"groupconfig parse failed _id={raw.get('_id')}: {e}")
@@ -745,7 +748,13 @@ async def _migrate_group_config(db, sf, GCRow, ins, batch_size, dry_run) -> _Tab
                         index_elements=["group_id"],
                         set_={
                             f: getattr(stmt.excluded, f)
-                            for f in ("roulette_mode", "banned", "sing_progress", "disabled_plugins")
+                            for f in (
+                                "roulette_mode",
+                                "banned",
+                                "sing_progress",
+                                "disabled_plugins",
+                                "blocked_user_ids",
+                            )
                         },
                     )
                 )

@@ -316,6 +316,33 @@ class GroupConfig(Config):
         banned = await self._find("banned")
         return True if banned else False
 
+    async def blocked_user_ids(self) -> list[int]:
+        raw = await self._find("blocked_user_ids")
+        if not raw:
+            return []
+        out: list[int] = []
+        for x in raw:
+            try:
+                out.append(int(x))
+            except (TypeError, ValueError):
+                continue
+        return sorted(set(out))
+
+    async def set_blocked_user_ids(self, uids: list[int]) -> None:
+        await self._update("blocked_user_ids", sorted({int(u) for u in uids}))
+
+    async def add_blocked_users(self, uids: list[int]) -> None:
+        cur = set(await self.blocked_user_ids())
+        cur.update(int(u) for u in uids)
+        await self.set_blocked_user_ids(sorted(cur))
+
+    async def remove_blocked_users(self, uids: list[int]) -> None:
+        rm = {int(u) for u in uids}
+        await self.set_blocked_user_ids([u for u in await self.blocked_user_ids() if u not in rm])
+
+    async def is_user_blocked_in_group(self, user_id: int) -> bool:
+        return user_id in set(await self.blocked_user_ids())
+
     async def is_cooldown(self, action_type: str) -> bool:
         """
         是否冷却完成

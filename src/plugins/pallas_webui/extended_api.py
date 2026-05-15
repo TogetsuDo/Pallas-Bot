@@ -2290,6 +2290,7 @@ class _GroupConfigPatch(BaseModel):
     disabled_plugins: list[str] | None = None
     roulette_mode: int | None = Field(default=None, ge=0, le=1)
     banned: bool | None = None
+    blocked_user_ids: list[int] | None = None
 
 
 class _UserConfigPatch(BaseModel):
@@ -2427,9 +2428,23 @@ async def _apply_group_config_patch(group_id: int, body: _GroupConfigPatch) -> d
             fields[field_name] = [str(s).strip() for s in raw if str(s).strip()]
         elif field_name == "roulette_mode":
             fields[field_name] = 1 if int(raw) == 1 else 0
+        elif field_name == "blocked_user_ids" and raw is not None:
+            cleaned: list[int] = []
+            for x in raw:
+                try:
+                    i = int(x)
+                except (TypeError, ValueError):
+                    continue
+                if i > 0:
+                    cleaned.append(i)
+            fields[field_name] = sorted(set(cleaned))
         else:
             fields[field_name] = raw
     await repo.upsert_fields(group_id, fields)
+    if "blocked_user_ids" in fields:
+        from src.plugins.blacklist import invalidate_group_ban_gate_cache
+
+        await invalidate_group_ban_gate_cache(group_id)
     doc = await repo.get(group_id, ignore_cache=True)
     if doc is None:
         raise HTTPException(status_code=500, detail="config upsert 后回读失败")
@@ -2509,7 +2524,7 @@ async def _upsert_db_table_row(table: str, row_id: int, data: dict[str, Any]) ->
         return got
     if t == "group_config":
         repo = make_group_config_repository()
-        allowed = {"disabled_plugins", "roulette_mode", "banned", "sing_progress"}
+        allowed = {"disabled_plugins", "roulette_mode", "banned", "sing_progress", "blocked_user_ids"}
         for k in payload:
             if k not in allowed:
                 raise ValueError(f"group_config 不允许字段: {k}")
@@ -2517,6 +2532,10 @@ async def _upsert_db_table_row(table: str, row_id: int, data: dict[str, Any]) ->
         for k, v in payload.items():
             await repo.upsert_field(int(row_id), k, v)
         await repo.invalidate_cache()
+        if "blocked_user_ids" in payload:
+            from src.plugins.blacklist import invalidate_group_ban_gate_cache
+
+            await invalidate_group_ban_gate_cache(int(row_id))
         got = await _get_db_table_row_public("group_config", int(row_id))
         if got is None:
             raise ValueError("upsert 后回读失败")
@@ -3074,6 +3093,7 @@ def register_extended_api(
                             "banned": False,
                             "sing_progress": None,
                             "disabled_plugins": [],
+                            "blocked_user_ids": [],
                         },
                     )
                     rows_inner.append({

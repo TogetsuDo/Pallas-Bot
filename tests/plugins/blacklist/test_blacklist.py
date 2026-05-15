@@ -14,16 +14,18 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.adapters.onebot.v11.message import MessageSegment
 from nonebot.exception import IgnoredException
 
-from src.common.config import UserConfig
+from src.common.config import GroupConfig, UserConfig
 
 
 @pytest.fixture(autouse=True)
 async def reset_blacklist_gate_cache():
-    from src.plugins.blacklist import reset_user_ban_gate_cache
+    from src.plugins.blacklist import reset_group_ban_gate_cache, reset_user_ban_gate_cache
 
     await reset_user_ban_gate_cache()
+    await reset_group_ban_gate_cache()
     yield
     await reset_user_ban_gate_cache()
+    await reset_group_ban_gate_cache()
 
 
 def test_collect_target_qqs_at_plain_and_dedup():
@@ -320,9 +322,11 @@ async def test_handle_blacklist_add_bans_targets(beanie_fixture):
     bot = SimpleNamespace(self_id="1")
     with patch.object(blacklist_add_cmd, "finish", new_callable=AsyncMock) as mock_finish:
         await handle_blacklist_add(bot, event)
-    assert await UserConfig(target).is_banned() is True
+    assert await UserConfig(target).is_banned() is False
+    assert target in await GroupConfig(1).blocked_user_ids()
     mock_finish.assert_awaited_once()
     assert str(target) in mock_finish.await_args.args[0]
+    assert "本群" in mock_finish.await_args.args[0]
 
 
 @pytest.mark.asyncio
@@ -355,8 +359,8 @@ async def test_handle_blacklist_remove_unbans(beanie_fixture):
     from src.plugins.blacklist import blacklist_remove_cmd, handle_blacklist_remove
 
     target = 92002
-    await UserConfig(target).ban()
-    assert await UserConfig(target).is_banned() is True
+    await GroupConfig(1).add_blocked_users([target])
+    assert target in await GroupConfig(1).blocked_user_ids()
 
     event = GroupMessageEvent(
         time=1,
@@ -375,4 +379,71 @@ async def test_handle_blacklist_remove_unbans(beanie_fixture):
     bot = SimpleNamespace(self_id="1")
     with patch.object(blacklist_remove_cmd, "finish", new_callable=AsyncMock):
         await handle_blacklist_remove(bot, event)
+    assert target not in await GroupConfig(1).blocked_user_ids()
     assert await UserConfig(target).is_banned() is False
+
+
+@pytest.mark.asyncio
+async def test_handle_blacklist_add_private_global_bans(beanie_fixture):
+    from src.plugins.blacklist import blacklist_add_cmd, handle_blacklist_add
+
+    target = 91003
+    event = PrivateMessageEvent(
+        time=1,
+        self_id=11,
+        post_type="message",
+        message_type="private",
+        sub_type="friend",
+        message_id=1,
+        user_id=22,
+        message=Message(f"牛牛拉黑 {target}"),
+        raw_message=f"牛牛拉黑 {target}",
+        font=0,
+        sender={"user_id": 22},
+    )
+    bot = SimpleNamespace(self_id="11")
+    with patch.object(blacklist_add_cmd, "finish", new_callable=AsyncMock) as mock_finish:
+        await handle_blacklist_add(bot, event)
+    assert await UserConfig(target).is_banned() is True
+    assert target not in await GroupConfig(1).blocked_user_ids()
+    assert "全局" in mock_finish.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_block_group_only_does_not_block_friend_request(beanie_fixture):
+    from src.plugins.blacklist import block_globally_banned_users
+
+    await GroupConfig(10).add_blocked_users([22])
+    ev = FriendRequestEvent(
+        time=1,
+        self_id=11,
+        post_type="request",
+        request_type="friend",
+        user_id=22,
+        flag="f1",
+        comment="",
+    )
+    bot = SimpleNamespace(self_id="11")
+    with patch.object(UserConfig, "is_banned", new_callable=AsyncMock, return_value=False):
+        await block_globally_banned_users(bot, ev)
+
+
+@pytest.mark.asyncio
+async def test_block_group_recall_when_operator_group_blocked(beanie_fixture):
+    from src.plugins.blacklist import block_globally_banned_users
+
+    await GroupConfig(10).add_blocked_users([503])
+    gr = GroupRecallNoticeEvent(
+        time=1,
+        self_id=1,
+        post_type="notice",
+        notice_type="group_recall",
+        user_id=502,
+        operator_id=503,
+        message_id=9,
+        group_id=10,
+    )
+    bot = SimpleNamespace(self_id="1")
+    with patch.object(UserConfig, "is_banned", new_callable=AsyncMock, return_value=False):
+        with pytest.raises(IgnoredException):
+            await block_globally_banned_users(bot, gr)

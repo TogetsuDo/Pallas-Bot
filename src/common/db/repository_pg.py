@@ -21,9 +21,11 @@ from sqlalchemy import (
     UniqueConstraint,
     delete,
     insert,
+    inspect,
     literal_column,
     or_,
     select,
+    text,
     update,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -175,6 +177,7 @@ class GroupConfigRow(Base):
     banned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     sing_progress: Mapped[Any] = mapped_column(_JsonB, nullable=True)
     disabled_plugins: Mapped[Any] = mapped_column(_JsonB, nullable=False, default=list)
+    blocked_user_ids: Mapped[Any] = mapped_column(_JsonB, nullable=False, default=list)
 
 
 class UserConfigRow(Base):
@@ -203,6 +206,17 @@ _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
 
 
+def _ensure_pg_group_config_blocked_user_ids(connection) -> None:
+    """旧库 group_config 缺列时补列（create_all 不会改已有表结构）。"""
+    insp = inspect(connection)
+    if not insp.has_table("group_config"):
+        return
+    names = {c["name"] for c in insp.get_columns("group_config")}
+    if "blocked_user_ids" in names:
+        return
+    connection.execute(text("ALTER TABLE group_config ADD COLUMN blocked_user_ids JSONB NOT NULL DEFAULT '[]'::jsonb"))
+
+
 @asynccontextmanager
 async def get_session():
     if _session_factory is None:
@@ -212,12 +226,13 @@ async def get_session():
 
 
 async def init_pg(engine: AsyncEngine) -> None:
-    """创建表结构并注入 engine。新库首次启动时会建出当前最新 schema。"""
+    """创建表结构并注入 engine；对已有 PG 库补全 group_config.blocked_user_ids 等轻量迁移。"""
     global _engine, _session_factory
     _engine = engine
     _session_factory = async_sessionmaker(engine, expire_on_commit=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_ensure_pg_group_config_blocked_user_ids)
 
 
 async def dispose_pg() -> None:

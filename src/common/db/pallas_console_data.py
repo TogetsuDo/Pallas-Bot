@@ -37,12 +37,20 @@ def bot_config_to_public(doc_or_row: Any) -> dict[str, Any]:
 
 def group_config_to_public(doc_or_row: Any) -> dict[str, Any]:
     sp = getattr(doc_or_row, "sing_progress", None)
+    bu = getattr(doc_or_row, "blocked_user_ids", None) or []
+    blocked: list[int] = []
+    for x in bu:
+        try:
+            blocked.append(int(x))
+        except (TypeError, ValueError):
+            continue
     return {
         "group_id": int(doc_or_row.group_id),
         "roulette_mode": int(getattr(doc_or_row, "roulette_mode", 1)),
         "banned": bool(getattr(doc_or_row, "banned", False)),
         "sing_progress": _jsonable_sing_progress(sp),
         "disabled_plugins": list(doc_or_row.disabled_plugins or []),
+        "blocked_user_ids": sorted(set(blocked)),
     }
 
 

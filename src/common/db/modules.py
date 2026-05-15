@@ -43,6 +43,7 @@ class GroupConfigModule(Document):
     banned: bool = False
     sing_progress: SingProgress | None = None
     disabled_plugins: list[str] = Field(default_factory=list)
+    blocked_user_ids: list[int] = Field(default_factory=list)
 
     class Settings:
         name = "group_config"
