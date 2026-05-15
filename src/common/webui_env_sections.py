@@ -212,7 +212,12 @@ def get_webui_env_section(section_id: str) -> WebuiEnvSection:
     raise ValueError(f"未知 common-config: {section_id}")
 
 
-def webui_env_section_payload(section_id: str) -> dict[str, Any]:
+def webui_env_section_payload(
+    section_id: str,
+    *,
+    current_values: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """GET 默认读进程内配置；PUT 后应传 ``validated``，与刚写入 ``.env`` 的值一致。"""
     s = get_webui_env_section(section_id)
     cfg_obj = s.read_current()
     fields: list[dict[str, Any]] = []
@@ -222,7 +227,10 @@ def webui_env_section_payload(section_id: str) -> dict[str, Any]:
         env_key = s.field_to_env.get(key)
         if not env_key:
             continue
-        cur = getattr(cfg_obj, key, f.default)
+        if current_values is not None:
+            cur = current_values.get(key, getattr(cfg_obj, key, f.default))
+        else:
+            cur = getattr(cfg_obj, key, f.default)
         default_value = None if f.default is PydanticUndefined else f.default
         fields.append({
             "name": key,
@@ -239,7 +247,8 @@ def webui_env_section_payload(section_id: str) -> dict[str, Any]:
         "fields": fields,
     }
     if section_id == "cmd_perm":
-        base.update(_cmd_perm_payload_extras(cfg_obj))
+        perm_src = s.model_cls.model_validate(current_values) if current_values is not None else cfg_obj
+        base.update(_cmd_perm_payload_extras(perm_src))
     return base
 
 
@@ -277,4 +286,4 @@ def apply_webui_env_section_patch(section_id: str, patch: dict[str, Any]) -> dic
             clear_cmd_perm_cache()
         except Exception:
             pass
-    return webui_env_section_payload(section_id)
+    return webui_env_section_payload(section_id, current_values=validated)

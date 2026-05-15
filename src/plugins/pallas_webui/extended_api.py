@@ -326,12 +326,20 @@ def _field_kind_from_annotation(ann: Any) -> str:
     return "string"
 
 
-def _plugin_config_payload(plugin_name: str) -> dict[str, Any]:
+def _plugin_config_payload(
+    plugin_name: str,
+    *,
+    current_values: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """GET 用默认 ``current``；PUT 落盘后应传 ``validated``，避免 ``get_plugin_config`` 仍为旧内存。"""
     p, module_name, cfg_cls = _plugin_config_model_by_name(plugin_name)
     cfg_obj = get_plugin_config(cfg_cls)
     fields: list[dict[str, Any]] = []
     for key, f in cfg_cls.model_fields.items():
-        cur = getattr(cfg_obj, key, f.default)
+        if current_values is not None:
+            cur = current_values.get(key, getattr(cfg_obj, key, f.default))
+        else:
+            cur = getattr(cfg_obj, key, f.default)
         default_value = None if f.default is PydanticUndefined else f.default
         fields.append({
             "name": key,
@@ -2429,15 +2437,8 @@ async def _apply_group_config_patch(group_id: int, body: _GroupConfigPatch) -> d
         elif field_name == "roulette_mode":
             fields[field_name] = 1 if int(raw) == 1 else 0
         elif field_name == "blocked_user_ids" and raw is not None:
-            cleaned: list[int] = []
-            for x in raw:
-                try:
-                    i = int(x)
-                except (TypeError, ValueError):
-                    continue
-                if i > 0:
-                    cleaned.append(i)
-            fields[field_name] = sorted(set(cleaned))
+            # 与 bot_config.admins 一致：逐项 int()，非法项由请求体验证阶段报错
+            fields[field_name] = [int(x) for x in raw]
         else:
             fields[field_name] = raw
     await repo.upsert_fields(group_id, fields)
@@ -2764,7 +2765,7 @@ def register_extended_api(
             validated = cfg_cls(**merged).model_dump(mode="python")
             env_items = {str(k).upper(): env_value_to_str(validated[k]) for k in patch}
             upsert_env_dotenv_items(env_items)
-            data = _plugin_config_payload(plugin_name)
+            data = _plugin_config_payload(plugin_name, current_values=validated)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:  # noqa: BLE001
