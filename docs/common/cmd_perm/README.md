@@ -105,7 +105,8 @@ if not await satisfies_command_permission(bot, event, "my_plugin.do_something"):
 | `src/common/cmd_perm/registry.py` | 合法等级、`DEFAULT_COMMAND_PERMISSIONS`、`resolved_level` |
 | `src/common/cmd_perm/schema.py` | 合并 metadata 默认、WebUI `command_perm_ui` 数据结构 |
 | `src/common/cmd_perm/menu_display.py` | `raw_trigger_condition`、`effective_permission_avail_text`、帮助用权限文案 |
-| `src/common/webui_env_sections.py` | `cmd_perm` 配置段与 payload 附加字段 |
+| `src/common/webui/env_sections.py` | `cmd_perm` 配置段与 payload 附加字段 |
+| `src/common/cmd_perm/declare.py` | `command_perm_row` / `command_perm_list` 声明辅助 |
 | `src/plugins/help/markdown_generator.py` | 二/三级帮助 Markdown 生成 |
 
 ## 自检清单（新插件上线前）

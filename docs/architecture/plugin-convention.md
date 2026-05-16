@@ -54,6 +54,11 @@
 - 同层目录命名保持一致风格（小写 + 下划线）
 - 避免缩写命名，除非是领域内通用缩写
 
+## WebUI 配置与命令权限
+
+- 需在控制台保存 `.env` 后立即生效的插件配置：在 `config.py` 使用 `src.common.webui.install_hot_reload_config`（见 [WebUI 插件配置](../common/webui/README.md)）。
+- 可配置命令权限：在 `PluginMetadata.extra` 声明 `command_permissions`，matcher 使用 `src.common.cmd_perm.permission_for_command`（见 [cmd_perm](../common/cmd_perm/README.md)）。
+
 ## 测试配套约定
 
 - 插件测试放在 `tests/plugins/<plugin_name>/`

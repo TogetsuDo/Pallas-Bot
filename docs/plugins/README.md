@@ -6,6 +6,7 @@
 
 - [`message_scrub`](../common/message_scrub/README.md)：复读 / 做梦等共用的消息清洗与审查（本地词库、百度、自建网关；环境变量见该页）
 - [`cmd_perm`](../common/cmd_perm/README.md)：可配置命令权限、WebUI、帮助菜单中动态展示「当前需」的接入约定
+- [`webui`](../common/webui/README.md)：控制台插件配置热重载（`install_hot_reload_config`）、通用配置段
 
 ## 已有文档（按插件目录）
 

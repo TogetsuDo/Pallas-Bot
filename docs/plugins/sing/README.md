@@ -9,7 +9,7 @@
 
 ## 配置
 
-见 [`src/plugins/sing/config.py`](../../../src/plugins/sing/config.py)：`ai_server_host`、`ai_server_port`、`sing_endpoint`、`play_endpoint`、`request_endpoint`、`sing_length`、`sing_speakers`（角色名到 speaker id 映射）。
+见 [`src/plugins/sing/config.py`](../../../src/plugins/sing/config.py)：`ai_server_host`、`ai_server_port`、`sing_endpoint`、`play_endpoint`、`request_endpoint`、`sing_length`、`sing_speakers`（角色名到 speaker id 映射）。控制台修改后通过 [`webui` 热重载](../../common/webui/README.md) 立即生效，无需重启 Bot。
 
 ## 用法摘要
 
