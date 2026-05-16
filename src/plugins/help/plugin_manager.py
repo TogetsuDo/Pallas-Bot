@@ -76,6 +76,10 @@ async def is_plugin_disabled(
     检查插件是否被禁用
     """
     try:
+        if not ignore_cache and (bot_id or group_id):
+            disabled_names = await collect_disabled_plugin_names(bot_id, group_id)
+            return plugin_name in disabled_names
+
         if bot_id:
             bot_config = await bot_config_repo.get(bot_id, ignore_cache=ignore_cache)
             if bot_config:
