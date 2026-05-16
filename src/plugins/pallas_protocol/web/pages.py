@@ -10,10 +10,15 @@ from html import escape as html_escape
 from ..contract import resolve_public_mount_path
 
 
+def shell_brand_mark_src(public_base_path: str) -> str:
+    """侧栏品牌图（与 WebUI ``pallas-priest.png`` 同源）。"""
+    p = (public_base_path or "").strip().rstrip("/")
+    return f"{p}/_pallas_ui/pallas-priest.png" if p else "/_pallas_ui/pallas-priest.png"
+
+
 def shell_favicon_link(public_base_path: str) -> str:
     """favicon：静态目录 ``pallas-priest.png``。"""
-    p = (public_base_path or "").strip().rstrip("/")
-    href = f"{p}/_pallas_ui/pallas-priest.png" if p else "/_pallas_ui/pallas-priest.png"
+    href = shell_brand_mark_src(public_base_path)
     return f'  <link rel="icon" type="image/png" href="{html_escape(href, quote=True)}" />\n'
 
 
@@ -23,20 +28,33 @@ def shell_footer_html() -> str:
 
 
 def shell_font_stylesheet_link(public_base_path: str) -> str:
-    """fonts.css + Google Fonts。"""
-    p = (public_base_path or "").strip().rstrip("/")
-    href = f"{p}/_pallas_ui/fonts.css" if p else "/_pallas_ui/fonts.css"
+    """与 WebUI index.html 一致：Plus Jakarta Sans + Noto Sans SC + JetBrains Mono。"""
     gfont = (
         "https://fonts.googleapis.com/css2?"
-        "family=Noto+Sans+SC:wght@400;500;600;700"
-        "&family=JetBrains+Mono:wght@400;500;600"
+        "family=JetBrains+Mono:wght@400;500"
+        "&family=Noto+Sans+SC:wght@400;500;600;700"
+        "&family=Plus+Jakarta+Sans:wght@400;500;600;700;800"
         "&display=swap"
     )
     return (
         '  <link rel="preconnect" href="https://fonts.googleapis.com" />\n'
         '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />\n'
         f'  <link rel="stylesheet" href="{html_escape(gfont, quote=True)}" />\n'
-        f'  <link rel="stylesheet" href="{html_escape(href, quote=True)}" />\n'
+    )
+
+
+def shell_stylesheet_link(public_base_path: str) -> str:
+    """协议壳主样式（static/pallas_ui/shell.css）。"""
+    p = (public_base_path or "").strip().rstrip("/")
+    href = f"{p}/_pallas_ui/shell.css" if p else "/_pallas_ui/shell.css"
+    return f'  <link rel="stylesheet" href="{html_escape(href, quote=True)}" />\n'
+
+
+def shell_head_assets(public_base_path: str) -> str:
+    return (
+        shell_favicon_link(public_base_path)
+        + shell_font_stylesheet_link(public_base_path)
+        + shell_stylesheet_link(public_base_path)
     )
 
 
@@ -58,1122 +76,238 @@ def shell_pallas_web_console_topbar_chunk(pallas_console_http_base: str) -> str:
     )
 
 
-NAPCAT_SHELL_CSS = """
-:root {
-  --font-sans: "Pallas UI", "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
-  --font-mono: ui-monospace, "JetBrains Mono", "Cascadia Code", "Consolas", "Sarasa Mono SC", monospace;
-  --font: var(--font-sans);
-  /* 浅色页面对齐 WebUI pallas-theme（--el-bg-color-page / --el-bg-color） */
-  --bg0: #e4e9f2;
-  --bg1: #f1f4fa;
-  --card: rgba(255, 255, 255, 0.94);
-  --bd: rgba(22, 100, 196, 0.14);
-  --txt: #303133;
-  --muted: #606266;
-  --accent: #2563eb;
-  --accent-strong: #1d4ed8;
-  --accent-subtle: rgba(37, 99, 235, 0.14);
-  --accent-glow: rgba(37, 99, 235, 0.1);
-  --ok: #10b981;
-  --warn: #f59e0b;
-  --err: #ef4444;
-  --radius: 14px;
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 18px;
-  --radius-xl: 22px;
-  --pallas-elev-1: 0 10px 24px rgba(15, 35, 65, 0.08);
-  --pallas-elev-2: 0 16px 34px rgba(10, 30, 56, 0.14);
-  --shadow-card: var(--pallas-elev-1);
-  --glass-highlight: rgba(255, 255, 255, 0.42);
-  --glass-edge: rgba(255, 255, 255, 0.55);
-  --pallas-text-xs: 0.75rem;
-  --pallas-text-sm: 0.8125rem;
-  --pallas-text-base: 0.9375rem;
-  --pallas-text-md: 1rem;
-  --pallas-text-lg: 1.0625rem;
-  --pallas-text-xl: 1.25rem;
-  --pallas-text-2xl: 1.3125rem;
-  --pallas-text-stat: 1.125rem;
-  --pallas-weight-body: 450;
-  --pallas-weight-medium: 500;
-  --pallas-weight-semibold: 600;
-  --pallas-weight-bold: 700;
-}
-* { box-sizing: border-box; }
-html { color-scheme: light dark; }
-body {
-  margin: 0; min-height: 100vh; font-family: var(--font);
-  font-size: var(--pallas-text-base);
-  font-weight: var(--pallas-weight-body);
-  line-height: 1.55;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background:
-    radial-gradient(1100px 520px at 12% -12%, var(--accent-glow), transparent 58%),
-    radial-gradient(880px 420px at 98% 0%, rgba(37, 99, 235, 0.06), transparent 52%),
-    var(--bg0);
-  color: var(--txt);
-}
-body[data-theme="dark"] {
-  --bg0: #0a0a0b;
-  --bg1: #141414;
-  --card: rgba(20, 26, 38, 0.92);
-  --bd: rgba(255, 255, 255, 0.1);
-  --txt: #e5eaf3;
-  --muted: #a3a6ad;
-  --accent: #60a5fa;
-  --accent-strong: #3b82f6;
-  --accent-subtle: rgba(96, 165, 250, 0.22);
-  --accent-glow: rgba(96, 165, 250, 0.14);
-  --ok: #34d399;
-  --warn: #fbbf24;
-  --err: #f87171;
-  --pallas-elev-1: 0 10px 28px rgba(0, 0, 0, 0.45);
-  --pallas-elev-2: 0 16px 40px rgba(0, 0, 0, 0.5);
-  --shadow-card: var(--pallas-elev-1);
-  --glass-highlight: rgba(255, 255, 255, 0.14);
-  --glass-edge: rgba(255, 255, 255, 0.22);
-  background:
-    radial-gradient(1000px 500px at 14% -10%, rgba(96, 165, 250, 0.14), transparent 58%),
-    radial-gradient(760px 400px at 96% 4%, rgba(147, 197, 253, 0.06), transparent 48%),
-    var(--bg0);
-}
-::selection {
-  background: rgba(37, 99, 235, 0.2);
-  color: inherit;
-}
-body[data-theme="dark"] ::selection {
-  background: rgba(96, 165, 250, 0.26);
-  color: var(--txt);
-}
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: rgba(100, 116, 139, 0.35);
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.5); }
-body[data-theme="dark"] ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
-}
-body[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; color: var(--accent-strong); }
-.shell { max-width: 1280px; margin: 0 auto; padding: 28px 20px 48px; }
-.shell-footer {
-  margin-top: 28px;
-  padding-top: 16px;
-  border-top: 1px solid var(--bd);
-  font-size: var(--pallas-text-xs);
-  color: var(--muted);
-  text-align: center;
-  font-weight: var(--pallas-weight-medium);
-}
-.topbar {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 14px 20px;
-  margin-bottom: 28px;
-}
-.brand { font-size: var(--pallas-text-2xl); font-weight: var(--pallas-weight-bold); letter-spacing: -0.01em; }
-.brand span { color: var(--accent); }
-.pill {
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 8px 14px; border-radius: 999px;
-  background: color-mix(in srgb, var(--card) 88%, transparent);
-  border: 1px solid var(--bd);
-  font-size: 0.85rem; color: var(--muted);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  box-shadow: inset 0 1px 0 var(--glass-highlight);
-}
-.token-inline {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding: 6px 10px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--bd);
-  background: color-mix(in oklab, var(--bg1) 88%, var(--card));
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-}
-.token-inline input { width: 180px; height: 40px; padding: 10px 12px; }
-.drawer-backdrop {
-  position: fixed; inset: 0; z-index: 140;
-  background: rgba(8, 11, 18, 0.48);
-  opacity: 0; pointer-events: none; transition: opacity .2s ease;
-}
-.drawer-backdrop.open { opacity: 1; pointer-events: auto; }
-.drawer {
-  position: fixed; top: 0; right: 0; z-index: 150;
-  height: 100%; width: min(300px, 86vw);
-  background: var(--card); border-left: 1px solid var(--bd);
-  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.2);
-  transform: translateX(100%); transition: transform .26s ease;
-  padding: 22px 18px; display: flex; flex-direction: column; gap: 10px;
-}
-body[data-theme="dark"] .drawer {
-  box-shadow: -12px 0 48px rgba(0, 0, 0, 0.55);
-}
-.drawer.open { transform: translateX(0); }
-.drawer h3 { margin: 0 0 6px; font-size: 1rem; color: var(--muted); font-weight: 700; }
-.drawer a.nav-item {
-  display: block; padding: 12px 14px; border-radius: var(--radius-lg);
-  color: var(--txt); font-weight: 600; border: 1px solid var(--bd); background: var(--bg1);
-  text-decoration: none;
-}
-.drawer a.nav-item:hover { border-color: color-mix(in oklab, var(--accent) 45%, var(--bd)); }
-.btn-icon {
-  display: inline-flex; align-items: center; justify-content: center;
-  padding: 10px 12px; min-width: 44px; min-height: 44px;
-}
-.btn-icon svg { display: block; flex-shrink: 0; }
-.busy {
-  opacity: .75;
-  cursor: wait !important;
-}
-.section.loading, .card.loading {
-  animation: shell-fade-up .22s ease both;
-}
-input, textarea, select {
-  border: 1px solid var(--bd); color: var(--txt);
-  border-radius: var(--radius-lg); padding: 10px 12px; font: inherit;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  transition: border-color 0.15s ease, box-shadow 0.2s ease;
-}
-input, textarea {
-  background: color-mix(in srgb, var(--bg1) 92%, transparent);
-}
-select {
-  appearance: none;
-  background-color: color-mix(in srgb, var(--bg1) 92%, transparent);
-  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 55%),
-    linear-gradient(135deg, var(--muted) 45%, transparent 50%);
-  background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%;
-  background-size: 5px 5px, 5px 5px;
-  background-repeat: no-repeat;
-  padding-right: 36px;
-}
-input:focus, textarea:focus, select:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-subtle);
-}
-.btn {
-  border: 1px solid color-mix(in srgb, var(--glass-edge) 70%, var(--accent));
-  border-radius: var(--radius-lg);
-  padding: 10px 16px;
-  font-weight: 600;
-  cursor: pointer;
-  font: inherit;
-  color: #fff;
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--accent) 88%, #ffffff) 0%,
-    color-mix(in srgb, var(--accent-strong) 92%, #0f172a) 100%
-  );
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow:
-    inset 0 1px 0 var(--glass-highlight),
-    0 6px 20px color-mix(in srgb, var(--accent) 35%, transparent),
-    0 1px 2px rgba(15, 23, 42, 0.1);
-  transition: transform 0.16s ease, box-shadow 0.2s ease, border-color 0.15s ease, filter 0.15s ease;
-}
-.btn.secondary {
-  color: var(--txt);
-  background: color-mix(in srgb, var(--card) 65%, transparent);
-  border: 1px solid color-mix(in srgb, #ffffff 35%, var(--bd));
-  box-shadow:
-    inset 0 1px 0 var(--glass-highlight),
-    0 4px 18px rgba(15, 23, 42, 0.07);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-}
-.btn.linkish {
-  background: transparent;
-  color: var(--muted);
-  border: none;
-  box-shadow: none;
-  padding: 8px 10px;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-.btn.linkish:hover:not(:disabled) {
-  transform: none;
-  filter: none;
-  box-shadow: none;
-  color: var(--accent);
-}
-.btn.danger {
-  background: linear-gradient(135deg, color-mix(in srgb, #f87171 85%, #ffffff), color-mix(in srgb, #dc2626 92%, #1f0505));
-  border: 1px solid color-mix(in srgb, #ffffff 35%, #dc2626);
-  color: #fff;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.35),
-    0 6px 18px rgba(220, 38, 38, 0.35);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-.btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  filter: brightness(1.04);
-  box-shadow:
-    inset 0 1px 0 var(--glass-highlight),
-    0 10px 28px color-mix(in srgb, var(--accent) 40%, transparent),
-    0 2px 6px rgba(15, 23, 42, 0.12);
-}
-.btn.secondary:hover:not(:disabled) {
-  box-shadow:
-    inset 0 1px 0 var(--glass-highlight),
-    0 8px 22px rgba(15, 23, 42, 0.12);
-}
-.btn.danger:hover:not(:disabled) {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.35),
-    0 10px 26px rgba(220, 38, 38, 0.45);
-}
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 16px; }
-.card {
-  background: var(--card); border: 1px solid var(--bd); border-radius: var(--radius-xl);
-  padding: 18px 18px 16px; display: flex; flex-direction: column; gap: 10px;
-  box-shadow: var(--shadow-card);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease;
-}
-.card:hover {
-  transform: translateY(-2px);
-  border-color: color-mix(in oklab, var(--accent) 38%, var(--bd));
-  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.1);
-}
-body[data-theme="dark"] .card:hover {
-  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.55);
-}
-.card h3 { margin: 0; font-size: 1.05rem; }
-.tag { font-size: 0.72rem; padding: 3px 10px; border-radius: var(--radius-sm); font-weight: 600; }
-.tag.ok { background: color-mix(in oklab, var(--ok) 18%, transparent); color: var(--ok); }
-.tag.run { background: var(--accent-subtle); color: var(--accent); }
-.tag.stop { background: rgba(148, 163, 184, 0.18); color: var(--muted); }
-.tag.bad { background: color-mix(in oklab, var(--err) 18%, transparent); color: var(--err); }
-table.acc-table .tag {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  white-space: nowrap;
-  max-width: 100%;
-  box-sizing: border-box;
-}
-.muted { color: var(--muted); font-size: var(--pallas-text-sm); line-height: 1.5; font-weight: var(--pallas-weight-body); }
-.mono {
-  font-family: var(--font-mono);
-  font-size: 0.78rem; word-break: break-all;
-}
-.acc-card-top {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: nowrap;
-}
-.acc-card-top-main {
-  flex: 1;
-  min-width: 0;
-}
-.acc-card-console-btn {
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-.acc-card-hd {
-  margin: 0;
-  font-family: var(--font);
-  font-size: var(--pallas-text-lg);
-  font-weight: var(--pallas-weight-bold);
-  color: var(--txt);
-  line-height: 1.35;
-  display: block;
-  min-width: 0;
-  word-break: break-word;
-}
-.acc-card-status {
-  margin-top: 6px;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.acc-card-meta {
-  margin: 3px 0 0;
-  font-family: var(--font);
-  font-size: var(--pallas-text-sm);
-  font-weight: var(--pallas-weight-body);
-  line-height: 1.55;
-  color: var(--muted);
-}
-.acc-card-webui {
-  margin-top: 8px;
-  padding-top: 10px;
-  border-top: 1px solid var(--bd);
-  font-family: var(--font);
-  font-size: 0.875rem;
-  line-height: 1.45;
-}
-.acc-card-webui-hd {
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: var(--muted);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  margin-bottom: 6px;
-}
-.acc-card-webui-line {
-  color: var(--txt);
-  word-break: break-word;
-  margin-top: 6px;
-}
-.acc-card-webui-hd + .acc-card-webui-line { margin-top: 0; }
-.acc-card-webui-line .mono {
-  font-size: 0.8125rem;
-}
-.section { margin-top: 32px; }
-.section > h2 {
-  font-size: var(--pallas-text-sm); margin: 0 0 14px; color: var(--muted); font-weight: var(--pallas-weight-semibold);
-  letter-spacing: 0.04em; text-transform: uppercase;
-}
-.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 12px; }
-.kpi {
-  background: var(--bg1); border: 1px solid var(--bd); border-radius: var(--radius-lg); padding: 10px 12px;
-}
-.kpi .k { color: var(--muted); font-size: var(--pallas-text-xs); font-weight: var(--pallas-weight-semibold); }
-.kpi .v { font-size: var(--pallas-text-stat); font-weight: var(--pallas-weight-bold); margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.toolbar { margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-.toolbar .grow { flex: 1; min-width: 220px; }
-.help-tip { font-size: 0.78rem; color: var(--muted); }
-.view-toggle {
-  display: inline-flex;
-  border: 1px solid var(--bd);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  background: color-mix(in srgb, var(--card) 82%, transparent);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  box-shadow: inset 0 1px 0 var(--glass-highlight);
-}
-.view-toggle .btn {
-  border-radius: 0;
-  border: none;
-  padding: 9px 12px;
-  background: transparent;
-  color: var(--muted);
-  box-shadow: none;
-  transform: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-.view-toggle .btn:hover { filter: none; box-shadow: none; transform: none; color: var(--txt); }
-.view-toggle .btn.active {
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--accent) 88%, #ffffff) 0%,
-    color-mix(in srgb, var(--accent-strong) 92%, #0f172a) 100%
-  );
-  color: #fff;
-  box-shadow: inset 0 1px 0 var(--glass-highlight);
-}
-.proto-switch-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin: 16px 0 20px;
-}
-.proto-switch {
-  display: inline-flex;
-  align-items: stretch;
-  padding: 5px;
-  border-radius: 999px;
-  background: var(--bg1);
-  border: 1px solid var(--bd);
-  gap: 4px;
-  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.05);
-}
-body[data-theme="dark"] .proto-switch {
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
-}
-.proto-switch button {
-  appearance: none;
-  border: 1px solid transparent;
-  cursor: pointer;
-  font: inherit;
-  font-weight: 600;
-  font-size: 0.88rem;
-  padding: 8px 20px;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--muted);
-  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.2s ease, transform 0.12s ease;
-}
-.proto-switch button:hover:not(.active) {
-  color: var(--txt);
-  background: rgba(255, 255, 255, 0.55);
-}
-body[data-theme="dark"] .proto-switch button:hover:not(.active) {
-  background: rgba(255, 255, 255, 0.06);
-}
-.proto-switch button.active {
-  color: #fff;
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--accent) 88%, #ffffff) 0%,
-    color-mix(in srgb, var(--accent-strong) 92%, #0f172a) 100%
-  );
-  border: 1px solid color-mix(in srgb, var(--glass-edge) 65%, var(--accent));
-  box-shadow:
-    inset 0 1px 0 var(--glass-highlight),
-    0 4px 16px color-mix(in srgb, var(--accent) 38%, transparent);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-}
-body[data-theme="dark"] .proto-switch button.active {
-  box-shadow:
-    inset 0 1px 0 var(--glass-highlight),
-    0 4px 18px color-mix(in srgb, var(--accent) 45%, transparent);
-}
-.proto-switch button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-.table-wrap {
-  overflow: auto;
-  border: 1px solid var(--bd);
-  border-radius: var(--radius-lg);
-  background: var(--bg1);
-}
-table.acc-table { width: 100%; border-collapse: collapse; min-width: 760px; }
-table.acc-table th, table.acc-table td { padding: 10px 12px; border-bottom: 1px solid var(--bd); text-align: left; }
-table.acc-table th { color: var(--muted); font-size: var(--pallas-text-sm); font-weight: var(--pallas-weight-semibold); letter-spacing: 0; text-transform: none; }
-table.acc-table td { font-size: var(--pallas-text-base); font-weight: var(--pallas-weight-body); }
-.acc-td-val {
-  min-width: 0;
-  flex: 1;
-  word-break: break-word;
-}
-@media (max-width: 720px) {
-  .table-wrap {
-    overflow: visible;
-    -webkit-overflow-scrolling: touch;
-  }
-  table.acc-table--responsive {
-    min-width: 0 !important;
-    width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
-  }
-  table.acc-table--responsive thead {
-    clip: rect(0 0 0 0);
-    clip-path: inset(50%);
-    height: 1px;
-    overflow: hidden;
-    position: absolute;
-    white-space: nowrap;
-    width: 1px;
-  }
-  table.acc-table--responsive tbody tr {
-    display: block;
-    margin-bottom: 14px;
-    border: 1px solid var(--bd);
-    border-radius: var(--radius-lg);
-    background: var(--card);
-    overflow: hidden;
-    box-shadow: var(--shadow-card);
-  }
-  table.acc-table--responsive tbody td {
-    display: flex;
-    flex-wrap: nowrap;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--bd);
-    font-size: 0.9rem;
-    vertical-align: top;
-  }
-  table.acc-table--responsive tbody tr > td:last-child {
-    border-bottom: none;
-  }
-  table.acc-table--responsive tbody td::before {
-    content: attr(data-label);
-    flex: 0 0 5.25rem;
-    color: var(--muted);
-    font-size: 0.75rem;
-    font-weight: 700;
-    line-height: 1.45;
-    padding-top: 0.2em;
-  }
-  table.acc-table--responsive tbody td[data-label="状态"] {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
-  }
-  table.acc-table--responsive tbody td[data-label="状态"]::before {
-    flex: none;
-    width: 100%;
-    padding-top: 0;
-  }
-  table.acc-table--responsive tbody td[data-label="状态"] .acc-td-val {
-    flex: none;
-    width: auto;
-    max-width: 100%;
-  }
-  table.acc-table--responsive tbody td.acc-td-actions {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
-  }
-  table.acc-table--responsive tbody td.acc-td-actions::before {
-    flex: none;
-    width: 100%;
-    padding-top: 0;
-  }
-  table.acc-table--responsive tbody td.acc-td-actions .row {
-    width: 100%;
-    justify-content: flex-start;
-  }
-  table.acc-table--responsive .acc-td-actions .btn {
-    font-size: 0.82rem;
-    padding: 8px 11px;
-    min-height: 40px;
-  }
-  table.acc-table--responsive tbody tr.acc-table-empty {
-    border-style: dashed;
-    background: color-mix(in srgb, var(--bg1) 88%, var(--card));
-    box-shadow: none;
-  }
-  table.acc-table--responsive tbody tr.acc-table-empty td {
-    display: block;
-    text-align: center;
-    border: none;
-    padding: 18px 14px;
-    font-size: 0.9rem;
-  }
-  table.acc-table--responsive tbody tr.acc-table-empty td::before {
-    content: none !important;
-  }
-}
-.statusbar {
-  position: fixed; right: 16px; bottom: 16px; z-index: 99;
-  display: flex; flex-direction: column; gap: 8px; max-width: min(460px, 92vw);
-}
-.toast {
-  background: color-mix(in srgb, var(--card) 90%, transparent);
-  border: 1px solid var(--bd); color: var(--txt);
-  border-radius: var(--radius-lg); padding: 10px 12px; box-shadow: 0 10px 28px rgba(0,0,0,0.3);
-  font-size: 13px;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-.toast.ok { border-color: rgba(52,211,153,0.45); animation: toast-in .22s ease both, success-pulse .9s ease .15s; }
-.toast.warn { border-color: rgba(251,191,36,0.45); }
-.toast.err { border-color: rgba(248,113,113,0.5); }
-@keyframes toast-in {
-  from { opacity: 0; transform: translateY(8px) scale(.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-.toast { animation: toast-in .22s ease both; }
-@keyframes shell-fade-up {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-.section, .topbar, .layout-acc { animation: shell-fade-up .28s ease both; }
-@keyframes spin { to { transform: rotate(360deg); } }
-.spinner {
-  display: inline-block; width: 13px; height: 13px;
-  border: 2px solid rgba(255,255,255,0.35);
-  border-top-color: currentColor;
-  border-radius: 50%;
-  animation: spin .65s linear infinite;
-  vertical-align: middle; margin-right: 5px;
-}
-.btn.secondary .spinner { border-color: rgba(100,120,160,0.22); border-top-color: var(--muted); }
-@keyframes success-pulse {
-  0%   { box-shadow: 0 0 0 0 rgba(34,160,107,0.5); }
-  60%  { box-shadow: 0 0 0 8px rgba(34,160,107,0); }
-  100% { box-shadow: 0 0 0 0 rgba(34,160,107,0); }
-}
-.page-overlay {
-  position: fixed; inset: 0; z-index: 9000;
-  background: rgba(8, 11, 18, 0.52);
-  backdrop-filter: blur(4px);
-  display: flex; align-items: center; justify-content: center;
-  opacity: 0; pointer-events: none;
-  transition: opacity .2s ease;
-}
-.page-overlay.visible { opacity: 1; pointer-events: auto; }
-.page-overlay-inner {
-  display: flex; flex-direction: column; align-items: center; gap: 16px;
-  background: var(--card); border: 1px solid var(--bd); border-radius: var(--radius-xl);
-  padding: 32px 40px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-}
-.page-overlay-spinner {
-  width: 36px; height: 36px;
-  border: 3px solid rgba(96, 165, 250, 0.28);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin .7s linear infinite;
-}
-.page-overlay-label { font-size: 0.95rem; font-weight: 600; color: var(--txt); }
-pre.logs {
-  font-family: var(--font-mono);
-  background: color-mix(in srgb, var(--bg1) 94%, transparent);
-  color: var(--txt);
-  padding: 14px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--bd);
-  max-height: min(68vh, 560px);
-  overflow: auto;
-  font-size: 12px;
-  line-height: 1.45;
-  user-select: text;
-  -webkit-user-select: text;
-  cursor: text;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-}
-pre.logs::selection {
-  background: rgba(37, 99, 235, 0.18);
-  color: inherit;
-}
-pre.logs.logs-protocol {
-  line-height: 1;
-  letter-spacing: 0;
-  font-size: 11px;
-  word-break: normal;
-  overflow-wrap: normal;
-}
-body[data-theme="dark"] pre.logs::selection {
-  background: rgba(96, 165, 250, 0.28);
-}
-body[data-theme="dark"] pre.logs {
-  background: rgba(12, 16, 24, 0.95);
-  color: #e2e8f0;
-}
-body[data-theme="dark"] pre.logs.logs-protocol {
-  color: #f1f5f9;
-}
-pre.mono {
-  user-select: text;
-  -webkit-user-select: text;
-  cursor: text;
-}
-.layout-acc { display: grid; grid-template-columns: clamp(180px, 22vw, 240px) minmax(0, 1fr); gap: 22px; align-items: start; }
-.acc-main {
-  min-width: 0;
-  width: 100%;
-  max-width: 980px;
-}
-@media (max-width: 860px) {
-  .layout-acc { grid-template-columns: 1fr; gap: 12px; }
-  .acc-main { max-width: none; }
-  .side {
-    position: static;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
-    gap: 8px;
-    padding: 10px;
-  }
-  .side a {
-    margin: 0;
-    text-align: center;
-    padding: 10px 8px;
-  }
-  .row {
-    gap: 8px;
-  }
-}
-.side {
-  position: sticky; top: 18px;
-  background: var(--card); border: 1px solid var(--bd); border-radius: var(--radius-xl); padding: 12px;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-.side a {
-  display: block; padding: 10px 12px; border-radius: var(--radius-lg); color: var(--muted); font-weight: 600; font-size: 0.92rem;
-}
-.side a:hover { background: var(--bg1); color: var(--txt); text-decoration: none; }
-.side a.active { background: var(--accent-subtle); color: var(--accent); }
-.panel { display: none; }
-.panel.active { display: block; width: 100%; }
-.panel > .card {
-  width: 100%;
-}
-.field label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
-.field { margin-bottom: 14px; }
-.field input, .field textarea { width: 100%; }
-.field .shell-pretty-wrap { width: 100%; }
-.row > .shell-pretty-wrap {
-  flex: 1;
-  min-width: 200px;
-}
-textarea.cfg { min-height: 220px; }
-#onebotHint, #setMsg, #cfgMsg { margin: 2px 0 8px; }
-.assets-napcat-global-card { margin-bottom: 22px; }
-.shell-pretty-wrap { position: relative; width: 100%; min-height: 42px; }
-.shell-pretty-wrap--open { z-index: 20000; }
-.shell-pretty-native {
-  position: absolute !important;
-  width: 1px !important;
-  height: 1px !important;
-  padding: 0 !important;
-  margin: -1px !important;
-  overflow: hidden !important;
-  clip: rect(0, 0, 0, 0) !important;
-  border: 0 !important;
-  opacity: 0 !important;
-  pointer-events: none !important;
-}
-.shell-pretty-btn {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  min-height: 40px;
-  text-align: left;
-  border: 1px solid var(--bd);
-  border-radius: var(--radius-lg);
-  padding: 10px 36px 10px 12px;
-  background: color-mix(in srgb, var(--bg1) 92%, transparent);
-  color: var(--txt);
-  font: inherit;
-  font-weight: 500;
-  cursor: pointer;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  transition: border-color 0.15s ease, box-shadow 0.2s ease;
-  position: relative;
-  box-sizing: border-box;
-}
-.shell-pretty-btn::after {
-  content: "";
-  position: absolute;
-  right: 14px;
-  top: 50%;
-  margin-top: -2px;
-  border: 5px solid transparent;
-  border-top-color: var(--muted);
-}
-.shell-pretty-btn:hover:not(:disabled) {
-  border-color: var(--accent);
-}
-.shell-pretty-btn:focus-visible {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-subtle);
-}
-.shell-pretty-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-.shell-pretty-panel {
-  display: none;
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: calc(100% + 4px);
-  z-index: 1;
-  background: var(--card);
-  border: 1px solid var(--bd);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-  padding: 6px;
-  max-height: min(52vh, 320px);
-  overflow-y: auto;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-}
-.shell-pretty-panel.is-open { display: block; }
-.shell-pretty-option {
-  display: block;
-  width: 100%;
-  text-align: left;
-  border: none;
-  border-radius: var(--radius-md);
-  padding: 10px 12px;
-  margin: 2px 0;
-  background: transparent;
-  color: var(--txt);
-  font: inherit;
-  cursor: pointer;
-}
-.shell-pretty-option:hover {
-  background: var(--accent-subtle);
-}
-.shell-pretty-option.is-active {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  font-weight: 600;
-}
-.sl-runlog {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  background: var(--card);
-  border: 1px solid var(--bd);
-  border-radius: var(--radius-xl);
-  padding: 16px 18px 14px;
-  box-shadow: var(--shadow-card);
-  max-height: min(calc(100vh - 14rem), 720px);
-  min-height: 280px;
-}
-.sl-runlog-hd {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-.sl-runlog-titles h2 { margin: 0 0 4px; font-size: 1.05rem; }
-.sl-runlog-titles p { margin: 0; font-size: 0.78rem; color: var(--muted); }
-.sl-runlog-bad {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  margin-left: 8px;
-  border: 1px solid var(--bd);
-  background: color-mix(in srgb, var(--bg1) 90%, transparent);
-}
-.sl-runlog-bad.ok { color: var(--ok); border-color: rgba(52, 211, 153, 0.35); }
-.sl-runlog-bad.wait { color: var(--muted); }
-.sl-runlog-bad.err { color: var(--warn); }
-.sl-runlog-tools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-.sl-runlog-tools input[type="search"] {
-  min-width: 160px;
-  flex: 1;
-  max-width: 240px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--bd);
-  background: color-mix(in srgb, var(--bg1) 92%, transparent);
-  color: var(--txt);
-  padding: 7px 10px;
-  font: inherit;
-  font-size: 0.82rem;
-}
-.sl-runlog-scope {
-  border-radius: var(--radius-md);
-  border: 1px solid var(--bd);
-  background: color-mix(in srgb, var(--bg1) 92%, transparent);
-  color: var(--txt);
-  padding: 6px 10px;
-  font: inherit;
-  font-size: 0.78rem;
-}
-.sl-runlog-levels {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.sl-runlog-levels button {
-  border-radius: 999px;
-  border: 1px solid var(--bd);
-  padding: 3px 10px;
-  font-size: 0.68rem;
-  font-weight: 600;
-  cursor: pointer;
-  background: transparent;
-  color: var(--muted);
-}
-.sl-runlog-levels button.on { border-color: transparent; background: color-mix(in srgb, var(--bg1) 94%, transparent); }
-.sl-runlog-levels button.off { opacity: 0.45; text-decoration: line-through; }
-.sl-runlog-viewport {
-  flex: 1;
-  min-height: 200px;
-  overflow: auto;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--bd);
-  background: color-mix(in srgb, var(--bg1) 94%, transparent);
-}
-.sl-runlog-inner {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.45;
-  padding: 6px 4px 10px;
-}
-.sl-runlog-row {
-  display: flex;
-  gap: 8px;
-  padding: 2px 10px;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-.sl-runlog-row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
-.sl-runlog-t { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
-.sl-runlog-lv {
-  flex: none;
-  width: 3.2rem;
-  font-weight: 700;
-  font-size: 10px;
-}
-.sl-lv-debug { color: var(--muted); }
-.sl-lv-info { color: var(--accent); }
-.sl-lv-success { color: var(--ok); }
-.sl-lv-warn { color: var(--warn); }
-.sl-lv-error { color: var(--err); font-weight: 800; }
-.sl-runlog-sc { flex: none; width: 7rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
-.sl-runlog-msg { flex: 1; min-width: 0; }
-.sl-runlog-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 160px;
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-html.pallas-density-compact .shell {
-  --pallas-text-base: 0.875rem;
-  --pallas-text-sm: 0.8125rem;
-  --pallas-text-md: 0.9375rem;
-}
-html.pallas-density-compact .shell .topbar,
-html.pallas-density-compact .shell .brand span {
-  font-size: 0.92rem;
-}
+def shell_pallas_web_console_nav_link(pallas_console_http_base: str) -> str:
+    """侧栏「前端控制台」入口（与 WebUI 主导航风格一致）。"""
+    root_js = json.dumps(_normalize_pallas_console_http_base(pallas_console_http_base))
+    return (
+        '<a class="shell__nav-link shell__nav-link--ext" id="linkPallasWebConsole" href="#" title="前端控制台" '
+        'target="_blank" rel="noopener noreferrer">'
+        '<span class="shell__nav-ico" aria-hidden="true">↗</span>'
+        '<span class="shell__nav-text"><span class="shell__nav-label">前端控制台</span>'
+        '<span class="shell__nav-desc">Pallas WebUI</span></span></a>'
+        f"<script>(function(){{var e=document.getElementById('linkPallasWebConsole');"
+        f"if(e)e.href=location.origin+{root_js}+'/';}})();</script>"
+    )
+
+
+_PROTOCOL_NAV: tuple[tuple[str, str, str, str, str], ...] = (
+    ("dashboard", "", "📊", "仪表盘", "账号与运行日志"),
+    ("new", "/new", "➕", "创建账号", "新建协议实例"),
+    ("import", "/import", "📥", "导入账号", "批量导入旧数据"),
+    ("assets", "/assets", "📦", "协议资产", "运行时与镜像"),
+    ("settings", "/settings", "⚙", "偏好设置", "外观与轮询"),
+)
+
+
+def _render_protocol_sidebar(base_path: str, active: str, pallas_console_http_base: str) -> str:
+    p = (base_path or "").strip().rstrip("/")
+    home = html_escape(f"{p}/", quote=True)
+    links: list[str] = []
+    for nav_id, suffix, icon, label, desc in _PROTOCOL_NAV:
+        href = html_escape(f"{p}{suffix}" if suffix else f"{p}/", quote=True)
+        cls = "shell__nav-link is-router-active" if nav_id == active else "shell__nav-link"
+        label_esc = html_escape(label)
+        links.append(
+            f'<a class="{cls}" href="{href}" title="{label_esc}">'
+            f'<span class="shell__nav-ico" aria-hidden="true">{html_escape(icon)}</span>'
+            f'<span class="shell__nav-text"><span class="shell__nav-label">{label_esc}</span>'
+            f'<span class="shell__nav-desc">{html_escape(desc)}</span></span></a>'
+        )
+    nav_body = "\n        ".join(links)
+    ext = shell_pallas_web_console_nav_link(pallas_console_http_base)
+    mark_src = html_escape(shell_brand_mark_src(p), quote=True)
+    return f"""    <aside class="shell__sidebar" aria-label="协议端导航">
+      <div class="shell__sidebar-top">
+        <a class="shell__brand" href="{home}">
+          <img class="shell__brand-mark" src="{mark_src}" alt="" width="28" height="28" decoding="async" />
+          <span class="shell__brand-text">
+            <span class="shell__brand-name shell__title">Pallas-Bot</span>
+            <span class="shell__brand-sub">协议端</span>
+          </span>
+        </a>
+      </div>
+      <nav class="shell__nav">
+        <div class="shell__nav-section">管理</div>
+        {nav_body}
+        <div class="shell__nav-section">外部</div>
+        {ext}
+      </nav>
+    </aside>"""
+
+
+def shell_topbar_collapse_html() -> str:
+    return """      <div class="shell__topbar-start">
+        <div class="shell__topbar-rail">
+          <button type="button" class="shell__topbar-collapse" id="protoSidebarCollapse" aria-expanded="true" aria-label="收起菜单栏">«</button>
+          <span class="shell__topbar-vrule" aria-hidden="true"></span>
+        </div>
+      </div>"""
+
+
+def shell_topbar_theme_html() -> str:
+    moon = (
+        '<svg class="shell__ico" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'
+        '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>'
+    )
+    sun = (
+        '<svg class="shell__ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+        'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        '<circle cx="12" cy="12" r="4"/>'
+        '<path d="M12 2v2m0 16v2M2 12h2m16 0h2M4.93 4.93l1.41 1.41m11.31 11.31l1.41 1.41'
+        'M19.07 4.93l-1.41 1.41M6.34 17.66l-1.41 1.41"/></svg>'
+    )
+    monitor = (
+        '<svg class="shell__ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+        'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>'
+    )
+    return f"""        <div class="shell-toolbar__seg shell-toolbar__seg--compact shell__topbar-theme" role="group" aria-label="颜色模式">
+          <button type="button" data-proto-theme="dark" title="深色" aria-label="深色">
+            <span class="shell__theme-ico">{moon}</span>
+          </button>
+          <button type="button" data-proto-theme="light" title="浅色" aria-label="浅色">
+            <span class="shell__theme-ico">{sun}</span>
+          </button>
+          <button type="button" data-proto-theme="system" title="跟随系统" aria-label="跟随系统">
+            <span class="shell__theme-ico">{monitor}</span>
+          </button>
+        </div>"""
+
+
+def render_protocol_shell_open(
+    base_path: str,
+    pallas_console_http_base: str,
+    *,
+    active: str,
+    page_title: str,
+    page_desc: str = "",
+    topbar_actions: str = "",
+) -> str:
+    sidebar = _render_protocol_sidebar(base_path, active, pallas_console_http_base)
+    title_esc = html_escape(page_title)
+    desc_block = (
+        f'<p class="shell__topbar-desc muted">{html_escape(page_desc)}</p>' if (page_desc or "").strip() else ""
+    )
+    return f"""  <div class="shell__bg" aria-hidden="true"></div>
+  <div class="shell proto-shell">
+{sidebar}
+    <header class="shell__topbar">
+{shell_topbar_collapse_html()}
+      <div class="shell__topbar-lead">
+        <h1 class="shell__topbar-title"><span class="shell__topbar-title-text">{title_esc}</span></h1>
+        {desc_block}
+      </div>
+      <div class="shell__topbar-end row-actions">
+{shell_topbar_theme_html()}
+        {topbar_actions}
+        <button class="btn secondary shell__topbar-exit" type="button" data-action="logout" title="退出登录" aria-label="退出登录">退出</button>
+      </div>
+    </header>
+    <main class="shell__main">
+      <div class="shell__main-inner proto-shell__main-inner">
+"""
+
+
+def render_protocol_shell_close() -> str:
+    return f"""{shell_footer_html()}      </div>
+    </main>
+  </div>
 """
 
 
 def _pallas_theme_bridge_js() -> str:
-    """与 Pallas-Bot-WebUI src/utils/theme.ts 共用 localStorage 键，深浅色与控制台一致。"""
+    """与 Pallas-Bot-WebUI consolePrefs 共用 pallas_console_prefs_v1。"""
     return """
+    const PALLAS_CONSOLE_PREFS_KEY = "pallas_console_prefs_v1";
     const PALLAS_THEME_KEY = "pallas-webui-theme";
     const PALLAS_PROTOCOL_THEME_LEGACY = "pallas_protocol_theme";
     const PALLAS_THEME_MODE_KEY = "pallas-theme-mode";
-    function resolvePallasThemePreference() {
+    const __SHELL_ACCENT_IDS = ["sky", "indigo", "emerald", "rose", "amber", "violet"];
+    function readConsolePrefsJson() {
       try {
-        const mode = localStorage.getItem(PALLAS_THEME_MODE_KEY);
-        if (mode === "system") {
-          try {
-            return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-          } catch (e) { return "light"; }
-        }
-        if (mode === "dark" || mode === "light") return mode;
-      } catch (e) {}
-      try {
-        const w = localStorage.getItem(PALLAS_THEME_KEY);
-        if (w === "dark" || w === "light") return w;
-      } catch (e) {}
-      try {
-        const p = localStorage.getItem(PALLAS_PROTOCOL_THEME_LEGACY);
-        if (p === "dark" || p === "light") return p;
-      } catch (e) {}
-      try {
-        if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) return "dark";
-      } catch (e) {}
-      return "light";
+        const raw = localStorage.getItem(PALLAS_CONSOLE_PREFS_KEY);
+        if (!raw) return {};
+        const o = JSON.parse(raw);
+        return o && typeof o === "object" ? o : {};
+      } catch (e) { return {}; }
     }
-    function applyPallasShellTheme(mode) {
-      const next = mode === "dark" ? "dark" : "light";
+    function writeConsolePrefsJson(patch) {
+      try {
+        const cur = readConsolePrefsJson();
+        localStorage.setItem(PALLAS_CONSOLE_PREFS_KEY, JSON.stringify({ ...cur, ...patch }));
+      } catch (e) {}
+    }
+    function resolveThemeModeFromStorage() {
+      const prefs = readConsolePrefsJson();
+      let mode = prefs.theme;
+      if (mode !== "dark" && mode !== "light" && mode !== "system") {
+        try {
+          const legacy = localStorage.getItem(PALLAS_THEME_MODE_KEY);
+          if (legacy === "dark" || legacy === "light" || legacy === "system") mode = legacy;
+        } catch (e) {}
+      }
+      if (mode !== "dark" && mode !== "light" && mode !== "system") return "system";
+      return mode;
+    }
+    function resolvePallasThemePreference() {
+      const mode = resolveThemeModeFromStorage();
+      if (mode === "system") {
+        try {
+          return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        } catch (e) { return "light"; }
+      }
+      return mode;
+    }
+    function applyPallasShellTheme(resolved, options) {
+      const next = resolved === "dark" ? "dark" : "light";
+      document.documentElement.dataset.theme = next;
+      document.documentElement.style.colorScheme = next;
       document.body.setAttribute("data-theme", next);
       document.documentElement.classList.toggle("dark", next === "dark");
+      const persist = options && options.persist;
+      if (!persist) return;
       try {
         localStorage.setItem(PALLAS_THEME_KEY, next);
         localStorage.setItem(PALLAS_PROTOCOL_THEME_LEGACY, next);
       } catch (e) {}
     }
     function initPallasShellThemeFromStorage() {
-      applyPallasShellTheme(resolvePallasThemePreference());
+      applyPallasShellTheme(resolvePallasThemePreference(), { persist: false });
     }
+    try {
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+        if (resolveThemeModeFromStorage() === "system") {
+          applyPallasShellTheme(resolvePallasThemePreference(), { persist: false });
+        }
+      });
+    } catch (e) {}
 """
 
 
 def _shell_prefs_js() -> str:
-    """与 WebUI ``pallasUiPrefs.ts`` 相同键：强调色、圆角、密度作用于协议壳 CSS 变量。"""
+    """与 WebUI consolePrefs：data-accent / data-radius / data-density。"""
     return """
-    const __SHELL_PREF = { ACCENT: "pallas-accent-hex", RADIUS: "pallas-radius-rem", DENSITY: "pallas-density" };
-    function __shellRgb(hex) {
-      const m = /^#?([a-fA-F\\d]{2})([a-fA-F\\d]{2})([a-fA-F\\d]{2})$/.exec(String(hex || "").trim());
-      if (!m) return [37, 99, 235];
-      return [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)];
-    }
-    function __shellToHex(r, g, b) {
-      const c = (x) => {
-        const t = Math.max(0, Math.min(255, x | 0)).toString(16);
-        return t.length === 1 ? "0" + t : t;
-      };
-      return "#" + c(r) + c(g) + c(b);
-    }
-    function __shellRgba(hex, a) {
-      const [r, g, b] = __shellRgb(hex);
-      return "rgba(" + r + "," + g + "," + b + "," + a + ")";
-    }
-    function __shellDarkenHex(hex, factor) {
-      const [r, g, b] = __shellRgb(hex);
-      return __shellToHex(Math.round(r * factor), Math.round(g * factor), Math.round(b * factor));
-    }
-    function applyShellAccentFromStorage() {
-      let hex = "#2563eb";
-      try {
-        const v = (localStorage.getItem(__SHELL_PREF.ACCENT) || "").trim();
-        if (/^#[0-9A-Fa-f]{6}$/.test(v)) hex = v;
-      } catch (e) {}
-      const strong = __shellDarkenHex(hex, 0.88);
-      const subtle = __shellRgba(hex, 0.14);
-      const glow = __shellRgba(hex, 0.1);
-      [document.documentElement, document.body].forEach((el) => {
-        if (!el) return;
-        el.style.setProperty("--accent", hex);
-        el.style.setProperty("--accent-strong", strong);
-        el.style.setProperty("--accent-subtle", subtle);
-        el.style.setProperty("--accent-glow", glow);
-      });
-    }
-    function applyShellRadiusFromStorage() {
-      let rem = 0.75;
-      try {
-        const x = parseFloat(localStorage.getItem(__SHELL_PREF.RADIUS) || "");
-        if (Number.isFinite(x)) rem = x;
-      } catch (e) {}
-      const k = rem / 0.75;
-      const px = (n) => Math.round(n * k) + "px";
-      const root = document.documentElement;
-      root.style.setProperty("--radius", px(14));
-      root.style.setProperty("--radius-sm", px(10));
-      root.style.setProperty("--radius-md", px(14));
-      root.style.setProperty("--radius-lg", px(18));
-      root.style.setProperty("--radius-xl", px(22));
-    }
-    function applyShellDensityFromStorage() {
-      let compact = false;
-      try {
-        compact = localStorage.getItem(__SHELL_PREF.DENSITY) === "compact";
-      } catch (e) {}
-      document.documentElement.classList.toggle("pallas-density-compact", compact);
-    }
     function applyShellUiPrefsFromStorage() {
-      applyShellAccentFromStorage();
-      applyShellRadiusFromStorage();
-      applyShellDensityFromStorage();
+      const prefs = readConsolePrefsJson();
+      const root = document.documentElement;
+      const accent = __SHELL_ACCENT_IDS.includes(prefs.accentPreset) ? prefs.accentPreset : "sky";
+      root.dataset.accent = accent;
+      const radius = prefs.radius === "tight" || prefs.radius === "round" ? prefs.radius : "default";
+      if (radius === "default") delete root.dataset.radius;
+      else root.dataset.radius = radius;
+      const density = prefs.density === "compact" ? "compact" : "comfortable";
+      if (density === "comfortable") delete root.dataset.density;
+      else root.dataset.density = density;
     }
     try {
       window.addEventListener("storage", (e) => {
         if (!e || !e.key) return;
-        if ([__SHELL_PREF.ACCENT, __SHELL_PREF.RADIUS, __SHELL_PREF.DENSITY, "pallas-theme-mode", "pallas-webui-theme"].includes(e.key)) {
+        if (e.key === PALLAS_CONSOLE_PREFS_KEY || e.key === PALLAS_THEME_MODE_KEY || e.key === PALLAS_THEME_KEY) {
           applyShellUiPrefsFromStorage();
-          if (e.key === "pallas-theme-mode" || e.key === "pallas-webui-theme") {
-            applyPallasShellTheme(resolvePallasThemePreference());
+          applySidebarCollapsedFromStorage();
+          syncShellThemeToolbar();
+          if (e.key === PALLAS_CONSOLE_PREFS_KEY || e.key === PALLAS_THEME_MODE_KEY || e.key === PALLAS_THEME_KEY) {
+            applyPallasShellTheme(resolvePallasThemePreference(), { persist: false });
           }
         }
       });
@@ -1184,10 +318,66 @@ def _shell_prefs_js() -> str:
 """
 
 
+def _shell_chrome_js() -> str:
+    return """
+    function syncShellThemeToolbar() {
+      const mode = resolveThemeModeFromStorage();
+      document.querySelectorAll("[data-proto-theme]").forEach((btn) => {
+        const m = btn.getAttribute("data-proto-theme");
+        btn.classList.toggle("is-on", m === mode);
+      });
+    }
+    function applySidebarCollapsedFromStorage() {
+      const collapsed = !!readConsolePrefsJson().sidebarCollapsed;
+      document.querySelectorAll(".proto-shell").forEach((el) => {
+        el.classList.toggle("shell--sidebar-collapsed", collapsed);
+      });
+      const btn = document.getElementById("protoSidebarCollapse");
+      if (!btn) return;
+      btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      btn.textContent = collapsed ? "»" : "«";
+      btn.setAttribute("aria-label", collapsed ? "展开菜单栏" : "收起菜单栏");
+    }
+    function toggleProtocolSidebar() {
+      const prefs = readConsolePrefsJson();
+      writeConsolePrefsJson({ sidebarCollapsed: !prefs.sidebarCollapsed });
+      applySidebarCollapsedFromStorage();
+    }
+    function setConsoleThemeMode(mode) {
+      if (mode !== "dark" && mode !== "light" && mode !== "system") return;
+      writeConsolePrefsJson({ theme: mode });
+      applyPallasShellTheme(resolvePallasThemePreference(), { persist: false });
+      syncShellThemeToolbar();
+    }
+    function initProtocolShellChrome() {
+      applySidebarCollapsedFromStorage();
+      syncShellThemeToolbar();
+      const collapseBtn = document.getElementById("protoSidebarCollapse");
+      if (collapseBtn && !collapseBtn.dataset.bound) {
+        collapseBtn.dataset.bound = "1";
+        collapseBtn.addEventListener("click", toggleProtocolSidebar);
+      }
+      document.querySelectorAll("[data-proto-theme]").forEach((btn) => {
+        if (btn.dataset.bound) return;
+        btn.dataset.bound = "1";
+        btn.addEventListener("click", () => {
+          setConsoleThemeMode(btn.getAttribute("data-proto-theme"));
+        });
+      });
+    }
+    try {
+      document.addEventListener("DOMContentLoaded", () => {
+        try { initProtocolShellChrome(); } catch (e) {}
+      });
+    } catch (e) {}
+"""
+
+
 def _render_common_api_js() -> str:
     return (
         _pallas_theme_bridge_js()
         + _shell_prefs_js()
+        + _shell_chrome_js()
         + """
     function getSessionToken() {
       return (sessionStorage.getItem("pallas_protocol_token_session") || "").trim();
@@ -1435,14 +625,21 @@ def render_settings_page(base_path: str, pallas_console_http_base: str = "/palla
     p = json.dumps(path)
     common_api_js = _render_common_api_js()
     token_sync_js = _render_hidden_token_sync_js("backDash")
-    back_href = html_escape(f"{path}/", quote=True)
+    shell_open = render_protocol_shell_open(
+        path,
+        pallas_console_http_base,
+        active="settings",
+        page_title="偏好设置",
+        page_desc="外观、轮询与控制台口令",
+    )
+    shell_close = render_protocol_shell_close()
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-{shell_favicon_link(path)}{shell_font_stylesheet_link(path)}  <title>Pallas-Bot · 协议端偏好设置</title>
-  <style>{NAPCAT_SHELL_CSS}
+{shell_head_assets(path)}  <title>Pallas-Bot · 协议端偏好设置</title>
+  <style>
 .pref-card {{ margin-bottom: 14px; }}
 .pref-title {{ margin: 0 0 6px; font-size: 1rem; }}
 .pref-desc {{ margin: 0 0 12px; font-size: 0.82rem; color: var(--muted); line-height: 1.45; }}
@@ -1472,15 +669,7 @@ def render_settings_page(base_path: str, pallas_console_http_base: str = "/palla
 </head>
 <body>
   <input type="hidden" id="token" value="" autocomplete="off" />
-  <div class="shell">
-    <header class="topbar">
-      <div class="brand">Pallas-Bot <span>偏好设置</span></div>
-      <div class="row" style="margin-left:auto;align-items:center;gap:8px">
-        {shell_pallas_web_console_topbar_chunk(pallas_console_http_base)}
-        <a class="btn secondary" href="{back_href}">← 返回仪表盘</a>
-        <button class="btn secondary" type="button" data-action="logout">退出登录</button>
-      </div>
-    </header>
+  {shell_open}
     <div class="section" style="max-width:52rem;margin:0 auto;padding-bottom:48px">
       <div class="card pref-card">
         <h3 class="pref-title">统一控制台口令</h3>
@@ -1499,7 +688,7 @@ def render_settings_page(base_path: str, pallas_console_http_base: str = "/palla
       </div>
       <div class="card pref-card">
         <h3 class="pref-title">强调色</h3>
-        <p class="pref-desc">作用于协议壳按钮高亮与渐变（与控制台 Element Plus 主色同源键）。</p>
+        <p class="pref-desc">与 Pallas-Bot 控制台偏好中的强调色预设共用存储。</p>
         <div class="pref-row" id="prefAccentRow"></div>
         <p class="muted" style="margin:10px 0 0;font-size:0.78rem" id="prefAccentHint"></p>
       </div>
@@ -1518,25 +707,26 @@ def render_settings_page(base_path: str, pallas_console_http_base: str = "/palla
         <p class="muted" style="margin:10px 0 0;font-size:0.78rem" id="prefPollHint"></p>
       </div>
     </div>
-{shell_footer_html()}  </div>
+{shell_close}
   <script>
     const basePath = {p};
 {common_api_js}
 {token_sync_js}
     initPallasShellThemeFromStorage();
     applyShellUiPrefsFromStorage();
+    initProtocolShellChrome();
     const ACCENTS = [
-      {{ id: "blue", label: "蓝", hex: "#2563eb" }},
-      {{ id: "emerald", label: "翠", hex: "#059669" }},
-      {{ id: "violet", label: "紫", hex: "#7c3aed" }},
-      {{ id: "rose", label: "玫", hex: "#e11d48" }},
-      {{ id: "amber", label: "琥珀", hex: "#d97706" }},
-      {{ id: "cyan", label: "青", hex: "#0891b2" }},
+      {{ id: "sky", label: "天蓝", swatch: "#38bdf8" }},
+      {{ id: "indigo", label: "靛蓝", swatch: "#818cf8" }},
+      {{ id: "emerald", label: "翠绿", swatch: "#34d399" }},
+      {{ id: "rose", label: "玫红", swatch: "#fb7185" }},
+      {{ id: "amber", label: "琥珀", swatch: "#fbbf24" }},
+      {{ id: "violet", label: "紫罗兰", swatch: "#a78bfa" }},
     ];
     const RADII = [
-      {{ value: 0.5, label: "较小" }},
-      {{ value: 0.75, label: "默认" }},
-      {{ value: 1, label: "更圆" }},
+      {{ id: "tight", label: "紧凑" }},
+      {{ id: "default", label: "默认" }},
+      {{ id: "round", label: "圆润" }},
     ];
     const POLLS = [
       {{ value: 0, label: "暂停" }},
@@ -1547,30 +737,29 @@ def render_settings_page(base_path: str, pallas_console_http_base: str = "/palla
       {{ value: 30000, label: "30 秒" }},
     ];
     function syncPrefsUi() {{
+      const prefs = readConsolePrefsJson();
       try {{
-        const mode = localStorage.getItem(PALLAS_THEME_MODE_KEY) || "system";
+        const mode = resolveThemeModeFromStorage();
         document.querySelectorAll("#prefThemeRow .pref-chip").forEach((b) => {{
           b.classList.toggle("on", b.dataset.mode === mode);
         }});
       }} catch (e) {{}}
       try {{
-        const hex = (localStorage.getItem(__SHELL_PREF.ACCENT) || "#2563eb").trim();
+        const accent = __SHELL_ACCENT_IDS.includes(prefs.accentPreset) ? prefs.accentPreset : "sky";
         document.querySelectorAll("#prefAccentRow .pref-swatch").forEach((b) => {{
-          b.classList.toggle("on", (b.dataset.hex || "").toLowerCase() === hex.toLowerCase());
+          b.classList.toggle("on", b.dataset.accent === accent);
         }});
-        const lab = ACCENTS.find((a) => a.hex.toLowerCase() === hex.toLowerCase());
-        document.getElementById("prefAccentHint").textContent = "当前：" + (lab ? lab.label : "自定义") + "（" + hex + "）";
+        const lab = ACCENTS.find((a) => a.id === accent);
+        document.getElementById("prefAccentHint").textContent = "当前：" + (lab ? lab.label : accent);
       }} catch (e) {{}}
       try {{
-        const rem = parseFloat(localStorage.getItem(__SHELL_PREF.RADIUS) || "0.75");
-        const r = Number.isFinite(rem) ? rem : 0.75;
+        const radius = prefs.radius === "tight" || prefs.radius === "round" ? prefs.radius : "default";
         document.querySelectorAll("#prefRadiusRow .pref-chip").forEach((b) => {{
-          const v = parseFloat(b.dataset.rem || "0");
-          b.classList.toggle("on", Math.abs(v - r) < 0.001);
+          b.classList.toggle("on", b.dataset.radius === radius);
         }});
       }} catch (e) {{}}
       try {{
-        const d = localStorage.getItem(__SHELL_PREF.DENSITY) === "compact" ? "compact" : "cozy";
+        const d = prefs.density === "compact" ? "compact" : "comfortable";
         document.querySelectorAll("#prefDensityRow button").forEach((b) => {{
           b.classList.toggle("on", b.dataset.density === d);
         }});
@@ -1594,9 +783,11 @@ def render_settings_page(base_path: str, pallas_console_http_base: str = "/palla
         b.dataset.mode = m;
         b.textContent = lab;
         b.addEventListener("click", () => {{
+          writeConsolePrefsJson({{ theme: m }});
           try {{ localStorage.setItem(PALLAS_THEME_MODE_KEY, m); }} catch (e) {{}}
-          applyPallasShellTheme(resolvePallasThemePreference());
+          applyPallasShellTheme(resolvePallasThemePreference(), {{ persist: false }});
           applyShellUiPrefsFromStorage();
+          syncShellThemeToolbar();
           syncPrefsUi();
         }});
         tr.appendChild(b);
@@ -1606,11 +797,11 @@ def render_settings_page(base_path: str, pallas_console_http_base: str = "/palla
         const b = document.createElement("button");
         b.type = "button";
         b.className = "pref-swatch";
-        b.dataset.hex = a.hex;
+        b.dataset.accent = a.id;
         b.title = a.label;
-        b.style.backgroundColor = a.hex;
+        b.style.backgroundColor = a.swatch;
         b.addEventListener("click", () => {{
-          try {{ localStorage.setItem(__SHELL_PREF.ACCENT, a.hex); }} catch (e) {{}}
+          writeConsolePrefsJson({{ accentPreset: a.id }});
           applyShellUiPrefsFromStorage();
           syncPrefsUi();
         }});
@@ -1621,10 +812,10 @@ def render_settings_page(base_path: str, pallas_console_http_base: str = "/palla
         const b = document.createElement("button");
         b.type = "button";
         b.className = "pref-chip";
-        b.dataset.rem = String(r.value);
-        b.textContent = r.label + "（" + r.value + "rem）";
+        b.dataset.radius = r.id;
+        b.textContent = r.label;
         b.addEventListener("click", () => {{
-          try {{ localStorage.setItem(__SHELL_PREF.RADIUS, String(r.value)); }} catch (e) {{}}
+          writeConsolePrefsJson({{ radius: r.id }});
           applyShellUiPrefsFromStorage();
           syncPrefsUi();
         }});
@@ -1632,7 +823,7 @@ def render_settings_page(base_path: str, pallas_console_http_base: str = "/palla
       }});
       const dr = document.getElementById("prefDensityRow");
       [
-        {{ key: "cozy", title: "舒适", desc: "默认间距，阅读更轻松" }},
+        {{ key: "comfortable", title: "舒适", desc: "默认间距，阅读更轻松" }},
         {{ key: "compact", title: "紧凑", desc: "更小字号与行距，单屏更多信息" }},
       ].forEach((x) => {{
         const b = document.createElement("button");
@@ -1640,7 +831,7 @@ def render_settings_page(base_path: str, pallas_console_http_base: str = "/palla
         b.dataset.density = x.key;
         b.innerHTML = "<span class=\\"t\\">" + x.title + "</span><span class=\\"d\\">" + x.desc + "</span>";
         b.addEventListener("click", () => {{
-          try {{ localStorage.setItem(__SHELL_PREF.DENSITY, x.key); }} catch (e) {{}}
+          writeConsolePrefsJson({{ density: x.key }});
           applyShellUiPrefsFromStorage();
           syncPrefsUi();
         }});
@@ -1701,36 +892,41 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
     path = base_path.rstrip("/") or resolve_public_mount_path(path_override="", implementation_slug="")
     p = json.dumps(path)
     common_api_js = _render_common_api_js()
+    token_sync_js = _render_hidden_token_sync_js("backDash")
+    shell_open = render_protocol_shell_open(
+        path,
+        pallas_console_http_base,
+        active="dashboard",
+        page_title="仪表盘",
+        page_desc="协议账号与运行日志",
+        topbar_actions=(
+            '<button class="btn secondary" id="btnRefresh" type="button" onclick="refreshAccounts()">刷新</button>'
+        ),
+    )
+    shell_close = render_protocol_shell_close()
+    new_href = html_escape(f"{path}/new", quote=True)
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-{shell_favicon_link(path)}{shell_font_stylesheet_link(path)}  <title>Pallas-Bot · 协议端仪表盘</title>
-  <style>{NAPCAT_SHELL_CSS}</style>
+{shell_head_assets(path)}  <title>Pallas-Bot · 协议端仪表盘</title>
 </head>
 <body data-base-path="{html_escape(path, quote=True)}">
-  <div class="shell">
-    <header class="topbar">
-      <div class="brand">Pallas-Bot <span>协议端仪表盘</span></div>
-      <div class="row" style="margin-left:auto;align-items:center;flex-wrap:wrap;gap:8px">
-        {shell_pallas_web_console_topbar_chunk(pallas_console_http_base)}
-        <a href="{html_escape(path + "/settings", quote=True)}" class="btn secondary">偏好设置</a>
-        <a href="#" class="btn secondary" id="linkRuntime">协议资产</a>
-        <a href="#" class="btn secondary" id="linkImport">导入账号</a>
-        <button class="btn secondary" type="button" data-action="logout">退出登录</button>
-        <button class="btn secondary" id="btnTheme" type="button">切换深浅</button>
-        <button class="btn secondary" id="btnRefresh" type="button" onclick="refreshAccounts()">刷新</button>
-      </div>
-    </header>
-
-    <div class="section">
-      <div class="row" style="justify-content:flex-start;align-items:center;margin-bottom:14px;gap:8px">
-        <h2 style="margin:0">账号</h2>
-        <a href="#" class="btn" id="linkNewAccount">+ 创建账号</a>
+  <input type="hidden" id="token" value="" autocomplete="off" />
+{shell_open}
+    <div class="panel proto-panel">
+      <div class="panel__hd panel__hd--split">
+        <h2 class="panel__title">账号</h2>
+        <div class="row-actions proto-panel__toolbar">
+        <a href="{new_href}" class="btn btn--primary">+ 创建账号</a>
         <button class="btn secondary" id="btnToggleAll" type="button" onclick="toggleAllAccounts(this)">一键启动全部</button>
+        <button class="btn secondary" id="btnStopSelected" type="button" onclick="stopSelectedAccounts(this)" disabled>停止所选</button>
         <button class="btn secondary" id="btnRestartAll" type="button" onclick="restartAllAccounts(this)">一键重启全部</button>
+        <span class="muted" id="selectedCountHint" style="font-size:0.82rem">已选 0</span>
+        </div>
       </div>
+      <div class="panel__bd">
       <div class="kpi-grid" id="kpis"></div>
       <div class="toolbar">
         <input id="search" class="grow" placeholder="筛选：输入 QQ / 实例名 / 账号 ID" oninput="renderAccounts()" />
@@ -1739,15 +935,20 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
           <button id="btnViewTable" class="btn" type="button" onclick="setViewMode('table')">表格视图</button>
         </div>
         <label class="pill" style="cursor:pointer">
+          <input id="selectAllFiltered" type="checkbox" style="margin-right:6px" onchange="toggleSelectAllFiltered(this.checked)" />
+          全选当前列表
+        </label>
+        <label class="pill" style="cursor:pointer">
           <input id="autoRefresh" type="checkbox" checked style="margin-right:6px" />
           自动刷新日志
         </label>
       </div>
       <div id="cards" class="grid"></div>
       <div id="tableWrap" class="table-wrap" style="display:none"></div>
+      </div>
     </div>
 
-    <div class="section">
+    <div class="panel proto-panel proto-panel--log">
       <div class="sl-runlog" id="nbLogCard">
         <div class="sl-runlog-hd">
           <div class="sl-runlog-titles">
@@ -1775,18 +976,14 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
         </div>
       </div>
     </div>
-{shell_footer_html()}  </div>
+{shell_close}
   <script>
     const basePath = {p};
 {common_api_js}
+{token_sync_js}
     let accountRows = [];
     let viewMode = "card";
-    function syncThemeToggleLabel() {{
-      const b = document.getElementById("btnTheme");
-      if (!b) return;
-      const next = document.body.getAttribute("data-theme") === "dark" ? "dark" : "light";
-      b.textContent = next === "dark" ? "切换浅色" : "切换深色";
-    }}
+    const selectedAccountIds = new Set();
     function setBusy(el, busy, idleText = "刷新", busyText = "刷新中...") {{
       if (!el) return;
       el.disabled = !!busy;
@@ -1796,12 +993,7 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
     (function initPagePrefs() {{
       initPallasShellThemeFromStorage();
       applyShellUiPrefsFromStorage();
-      syncThemeToggleLabel();
-      document.getElementById("btnTheme").addEventListener("click", () => {{
-        const now = document.body.getAttribute("data-theme") === "dark" ? "dark" : "light";
-        applyPallasShellTheme(now === "dark" ? "light" : "dark");
-        syncThemeToggleLabel();
-      }});
+      initProtocolShellChrome();
     }})();
     function notify(msg, level = "ok") {{
       const host = document.getElementById("statusbar");
@@ -1928,13 +1120,11 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
     function nbStartSse() {{
       nbStopSse();
       const tok = getSessionToken();
-      if (!tok) {{
-        nbStreamBadge("未登录", "err");
-        return;
-      }}
       const scopeEl = document.getElementById("nbLogScope");
       const sc = scopeEl ? scopeEl.value : "all";
-      const url = `${{basePath}}/api/nonebot-logs/stream?token=${{encodeURIComponent(tok)}}&scope=${{encodeURIComponent(sc)}}`;
+      let url = `${{basePath}}/api/nonebot-logs/stream?scope=${{encodeURIComponent(sc)}}`;
+      if (tok) url += `&token=${{encodeURIComponent(tok)}}`;
+      nbStreamBadge("连接中", "wait");
       const es = new EventSource(url);
       nbLogEs = es;
       es.onopen = () => nbStreamBadge("实时", "ok");
@@ -1973,23 +1163,97 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
         nbStartSse();
       }});
     }}
-    document.getElementById("linkNewAccount").addEventListener("click", (e) => {{
-      e.preventDefault();
-      location.href = `${{basePath}}/new`;
-    }});
-    document.getElementById("linkRuntime").addEventListener("click", (e) => {{
-      e.preventDefault();
-      location.href = `${{basePath}}/assets`;
-    }});
-    document.getElementById("linkImport").addEventListener("click", (e) => {{
-      e.preventDefault();
-      location.href = `${{basePath}}/import`;
-    }});
     function openAccount(id) {{
       location.href = `${{basePath}}/account/${{encodeURIComponent(id)}}`;
     }}
     function escHtmlDash(s) {{
       return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }}
+    function qqAvatarUrl(uin) {{
+      const n = String(uin ?? "").replace(/\\s/g, "");
+      if (!/^\\d+$/.test(n)) return "";
+      return `https://q1.qlogo.cn/g?b=qq&nk=${{encodeURIComponent(n)}}&s=160`;
+    }}
+    function accCardAvatarHtml(qqOrId) {{
+      const q = String(qqOrId ?? "").trim();
+      const url = qqAvatarUrl(q);
+      const label = escHtmlDash(q ? q.slice(-2) : "?");
+      if (!url) {{
+        return `<div class="acc-card-avatar"><span class="acc-card-avatar-fallback">${{label}}</span></div>`;
+      }}
+      return `<div class="acc-card-avatar"><img src="${{url}}" alt="" width="48" height="48" loading="lazy" decoding="async" onerror="this.style.display='none';var f=this.nextElementSibling;if(f)f.style.display='flex';" /><span class="acc-card-avatar-fallback" style="display:none">${{label}}</span></div>`;
+    }}
+    function getFilteredAccountRows() {{
+      const q = (document.getElementById("search").value || "").trim().toLowerCase();
+      if (!q) return accountRows;
+      return accountRows.filter((a) => {{
+        return String(a.id || "").toLowerCase().includes(q)
+          || String(a.qq || "").toLowerCase().includes(q)
+          || String(a.display_name || "").toLowerCase().includes(q);
+      }});
+    }}
+    function accountSelectCheckbox(id) {{
+      const on = selectedAccountIds.has(id) ? " checked" : "";
+      return `<label class="acc-select" onclick="event.stopPropagation()"><input type="checkbox"${{on}} onchange="toggleAccountSelected('${{escHtmlDash(id)}}', this.checked)" aria-label="选择账号" /><span class="acc-select__box" aria-hidden="true"></span></label>`;
+    }}
+    function toggleAccountSelected(id, checked) {{
+      if (checked) selectedAccountIds.add(id);
+      else selectedAccountIds.delete(id);
+      updateSelectionUi();
+      syncSelectAllCheckbox();
+    }}
+    function syncSelectAllCheckbox() {{
+      const box = document.getElementById("selectAllFiltered");
+      if (!box) return;
+      const rows = getFilteredAccountRows();
+      if (!rows.length) {{
+        box.checked = false;
+        box.indeterminate = false;
+        return;
+      }}
+      const n = rows.filter((a) => selectedAccountIds.has(a.id)).length;
+      box.checked = n > 0 && n === rows.length;
+      box.indeterminate = n > 0 && n < rows.length;
+    }}
+    function toggleSelectAllFiltered(checked) {{
+      getFilteredAccountRows().forEach((a) => {{
+        if (checked) selectedAccountIds.add(a.id);
+        else selectedAccountIds.delete(a.id);
+      }});
+      renderAccounts();
+      updateSelectionUi();
+    }}
+    function updateSelectionUi() {{
+      const n = selectedAccountIds.size;
+      const btn = document.getElementById("btnStopSelected");
+      if (btn) btn.disabled = n === 0;
+      const hint = document.getElementById("selectedCountHint");
+      if (hint) hint.textContent = "已选 " + n;
+    }}
+    function pruneSelectedAccountIds() {{
+      const valid = new Set((accountRows || []).map((a) => a.id));
+      for (const id of [...selectedAccountIds]) {{
+        if (!valid.has(id)) selectedAccountIds.delete(id);
+      }}
+      updateSelectionUi();
+      syncSelectAllCheckbox();
+    }}
+    async function stopSelectedAccounts(btn) {{
+      const ids = [...selectedAccountIds];
+      if (!ids.length) {{
+        notify("请先勾选要停止的账号", "warn");
+        return;
+      }}
+      btnLoad(btn, "停止中…");
+      try {{
+        await Promise.all(ids.map((id) => api(`/api/accounts/${{id}}/stop`, {{ method: "POST" }})));
+        await refreshAccounts({{ silent: true }});
+        notify("已停止 " + ids.length + " 个账号", "warn");
+      }} catch (e) {{
+        notify(e.message || e, "err");
+      }} finally {{
+        btnReset(btn);
+      }}
     }}
     function renderKpis(rows) {{
       const total = rows.length;
@@ -2004,13 +1268,8 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
         <div class="kpi"><div class="k">异常</div><div class="v">${{bad}}</div></div>`;
     }}
     function renderAccounts() {{
-      const q = (document.getElementById("search").value || "").trim().toLowerCase();
       const mode = viewMode || "card";
-      const rows = !q ? accountRows : accountRows.filter((a) => {{
-        return String(a.id || "").toLowerCase().includes(q)
-          || String(a.qq || "").toLowerCase().includes(q)
-          || String(a.display_name || "").toLowerCase().includes(q);
-      }});
+      const rows = getFilteredAccountRows();
       const g = document.getElementById("cards");
       const tw = document.getElementById("tableWrap");
       g.innerHTML = "";
@@ -2042,6 +1301,7 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
             ? `<button class="btn secondary" type="button" onclick="stopAccount('${{a.id}}',this)">停止</button>`
             : `<button class="btn secondary" type="button" onclick="startAccount('${{a.id}}',this)">启动</button>`;
           return `<tr>
+            <td data-label="选择" class="acc-td-select">${{accountSelectCheckbox(a.id)}}</td>
             <td data-label="实例名"><span class="acc-td-val">${{a.display_name || a.qq || a.id}}</span></td>
             <td data-label="QQ号"><span class="acc-td-val">${{a.qq || a.id}}</span></td>
             <td data-label="版本"><span class="acc-td-val">${{a.runtime_version || "未知"}}<div class="muted" style="font-size:0.75rem">${{a.runtime_source || "未知来源"}}</div></span></td>
@@ -2057,8 +1317,9 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
           </tr>`;
         }}).join("");
         tw.innerHTML = `<table class="acc-table acc-table--responsive"><thead><tr>
-          <th>实例名</th><th>QQ号</th><th>版本</th><th>状态</th><th>内置 WebUI</th><th>操作</th>
-        </tr></thead><tbody>${{body || `<tr class="acc-table-empty"><td colspan="6" class="muted">无匹配账号</td></tr>`}}</tbody></table>`;
+          <th class="acc-th-select">选择</th><th>实例名</th><th>QQ号</th><th>版本</th><th>状态</th><th>内置 WebUI</th><th>操作</th>
+        </tr></thead><tbody>${{body || `<tr class="acc-table-empty"><td colspan="7" class="muted">无匹配账号</td></tr>`}}</tbody></table>`;
+        syncSelectAllCheckbox();
         return;
       }}
       g.style.display = "grid";
@@ -2091,6 +1352,8 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
           : `<button class="btn secondary" type="button" onclick="startAccount('${{a.id}}',this)">启动</button>`;
         card.innerHTML = `
           <div class="acc-card-top">
+            ${{accountSelectCheckbox(a.id)}}
+            ${{accCardAvatarHtml(a.qq || a.id)}}
             <div class="acc-card-top-main">
               <h3 class="acc-card-hd">${{a.display_name || a.id}}</h3>
               <div class="acc-card-status"><span class="tag ${{cls}}">${{st}}</span></div>
@@ -2108,6 +1371,7 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
           </div>`;
         g.appendChild(card);
       }});
+      syncSelectAllCheckbox();
     }}
     function setViewMode(mode) {{
       viewMode = mode === "table" ? "table" : "card";
@@ -2123,6 +1387,7 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
         const data = await api("/api/accounts");
         accountRows = sortAccountsOnlineFirst(data.accounts || []);
         renderKpis(accountRows);
+        pruneSelectedAccountIds();
         renderAccounts();
         updateToggleAllButton();
         if (!silent) notify("已刷新账号列表", "ok");
@@ -2141,13 +1406,13 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
       btn.disabled = false;
       btn.textContent = btn.dataset.idle || btn.textContent;
     }}
-    function isAccountOnline(a) {{
-      return !!(a && a.connected);
+    function isAccountRunning(a) {{
+      return !!(a && a.process_running);
     }}
     function sortAccountsOnlineFirst(rows) {{
       return [...(rows || [])].sort((a, b) => {{
-        const ao = isAccountOnline(a) ? 1 : 0;
-        const bo = isAccountOnline(b) ? 1 : 0;
+        const ao = isAccountRunning(a) ? 1 : 0;
+        const bo = isAccountRunning(b) ? 1 : 0;
         if (ao !== bo) return bo - ao;
         const an = String(a?.display_name || a?.qq || a?.id || "");
         const bn = String(b?.display_name || b?.qq || b?.id || "");
@@ -2157,8 +1422,8 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
     function updateToggleAllButton() {{
       const btn = document.getElementById("btnToggleAll");
       if (!btn) return;
-      const allOnline = accountRows.length > 0 && accountRows.every((a) => isAccountOnline(a));
-      btn.textContent = allOnline ? "一键停止全部" : "一键启动全部";
+      const allRunning = accountRows.length > 0 && accountRows.every((a) => isAccountRunning(a));
+      btn.textContent = allRunning ? "一键停止全部" : "一键启动全部";
     }}
     async function startAccount(id, btn) {{
       btnLoad(btn, "启动中…");
@@ -2183,14 +1448,14 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
         notify("当前没有可操作实例", "warn");
         return;
       }}
-      const allOnline = accountRows.every((a) => isAccountOnline(a));
-      const action = allOnline ? "stop" : "start";
-      const loadingText = allOnline ? "停止全部中…" : "启动全部中…";
+      const allRunning = accountRows.every((a) => isAccountRunning(a));
+      const action = allRunning ? "stop" : "start";
+      const loadingText = allRunning ? "停止全部中…" : "启动全部中…";
       btnLoad(btn, loadingText);
       try {{
         await Promise.all(accountRows.map((a) => api(`/api/accounts/${{a.id}}/${{action}}`, {{ method: "POST" }})));
         await refreshAccounts({{ silent: true }});
-        notify(allOnline ? "已停止全部实例" : "已启动全部实例", allOnline ? "warn" : "ok");
+        notify(allRunning ? "已停止全部实例" : "已启动全部实例", allRunning ? "warn" : "ok");
       }} catch (e) {{
         notify(e.message || e, "err");
       }} finally {{
@@ -2247,13 +1512,17 @@ def render_import_page(base_path: str, pallas_console_http_base: str = "/pallas"
     p = json.dumps(path)
     common_api_js = _render_common_api_js()
     token_sync_js = _render_hidden_token_sync_js("backDash")
+    shell_open = render_protocol_shell_open(
+        path, pallas_console_http_base, active="import", page_title="导入账号", page_desc="批量导入旧协议端数据"
+    )
+    shell_close = render_protocol_shell_close()
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-{shell_favicon_link(path)}{shell_font_stylesheet_link(path)}  <title>导入账号</title>
-  <style>{NAPCAT_SHELL_CSS}
+{shell_head_assets(path)}  <title>导入账号</title>
+  <style>
 .result-row {{ display:flex; gap:8px; align-items:baseline; padding:6px 0; border-bottom:1px solid var(--bd); font-size:0.88rem; }}
 .result-row:last-child {{ border-bottom:none; }}
 .result-row .folder {{ font-weight:600; min-width:160px; }}
@@ -2262,17 +1531,9 @@ def render_import_page(base_path: str, pallas_console_http_base: str = "/pallas"
 </head>
 <body>
   <input type="hidden" id="token" value="" autocomplete="off" />
-  <div class="shell">
-    <header class="topbar">
-      <div class="brand">Pallas-Bot <span>导入账号</span></div>
-      <div class="row" style="margin-left:auto;align-items:center;gap:8px">
-        {shell_pallas_web_console_topbar_chunk(pallas_console_http_base)}
-        <button class="btn secondary" type="button" data-action="logout">退出登录</button>
-        <a class="btn secondary" id="backDash" href="{html_escape(path, quote=True)}" style="display:inline-flex;align-items:center">← 返回仪表盘</a>
-      </div>
-    </header>
-
-    <div class="card" style="max-width:42rem">
+  {shell_open}
+    <div class="proto-form-page">
+    <div class="card">
       <h3 style="margin:0 0 4px">批量导入旧协议端账号</h3>
       <p class="muted" style="margin:0 0 16px">
         扫描指定目录下的账号文件夹（格式：<code>&lt;昵称&gt;/config/</code>），
@@ -2309,16 +1570,17 @@ def render_import_page(base_path: str, pallas_console_http_base: str = "/pallas"
       </div>
     </div>
 
-    <div id="resultSection" style="display:none;margin-top:24px">
+    <div id="resultSection" class="proto-form-results" style="display:none">
       <div class="kpi-grid" id="resultKpis"></div>
-      <div class="card" style="margin-top:12px;max-width:42rem">
+      <div class="card" style="margin-top:12px">
         <h3 style="margin:0 0 10px">导入结果</h3>
         <div id="resultImported"></div>
         <div id="resultSkipped" style="margin-top:10px"></div>
         <div id="resultFailed" style="margin-top:10px"></div>
       </div>
     </div>
-{shell_footer_html()}  </div>
+    </div>
+{shell_close}
 
   <script>
     const basePath = {p};
@@ -2392,26 +1654,22 @@ def render_new_account_page(base_path: str, pallas_console_http_base: str = "/pa
     p = json.dumps(path)
     common_api_js = _render_common_api_js()
     token_sync_js = _render_hidden_token_sync_js("backDash")
+    shell_open = render_protocol_shell_open(
+        path, pallas_console_http_base, active="new", page_title="创建账号", page_desc="新建协议实例"
+    )
+    shell_close = render_protocol_shell_close()
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-{shell_favicon_link(path)}{shell_font_stylesheet_link(path)}  <title>新建账号</title>
-  <style>{NAPCAT_SHELL_CSS}</style>
+{shell_head_assets(path)}  <title>新建账号</title>
 </head>
 <body data-base-path="{html_escape(path, quote=True)}">
   <input type="hidden" id="token" value="" autocomplete="off" />
-  <div class="shell">
-    <header class="topbar">
-      <div class="brand">新建 <span>账号</span></div>
-      <div class="row" style="margin-left:auto;align-items:center;gap:8px">
-        {shell_pallas_web_console_topbar_chunk(pallas_console_http_base)}
-        <button class="btn secondary" type="button" data-action="logout">退出登录</button>
-        <a class="btn secondary" id="backDash" href="{html_escape(path, quote=True)}" style="display:inline-flex;align-items:center">← 返回仪表盘</a>
-      </div>
-    </header>
-    <div class="card" style="max-width:28rem">
+  {shell_open}
+    <div class="proto-form-page proto-form-page--full">
+    <div class="card">
       <div class="field"><label>QQ 号</label>
         <input id="qq" inputmode="numeric" autocomplete="off" />
       </div>
@@ -2446,7 +1704,8 @@ def render_new_account_page(base_path: str, pallas_console_http_base: str = "/pa
         <button class="btn" type="button" onclick="createAccount()">创建</button>
       </div>
     </div>
-{shell_footer_html()}  </div>
+    </div>
+{shell_close}
   <script>
     const basePath = {p};
 {token_sync_js}
@@ -2499,25 +1758,20 @@ def render_protocol_assets_page(base_path: str, pallas_console_http_base: str = 
     p = json.dumps(path)
     common_api_js = _render_common_api_js()
     token_sync_js = _render_hidden_token_sync_js("backDash")
+    shell_open = render_protocol_shell_open(
+        path, pallas_console_http_base, active="assets", page_title="协议资产", page_desc="运行时下载与 Docker"
+    )
+    shell_close = render_protocol_shell_close()
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-{shell_favicon_link(path)}{shell_font_stylesheet_link(path)}  <title>协议资产</title>
-  <style>{NAPCAT_SHELL_CSS}</style>
+{shell_head_assets(path)}  <title>协议资产</title>
 </head>
 <body>
   <input type="hidden" id="token" value="" autocomplete="off" />
-  <div class="shell">
-    <header class="topbar">
-      <div class="brand">Pallas-Bot <span>协议资产</span></div>
-      <div class="row" style="margin-left:auto;align-items:center;gap:8px">
-        {shell_pallas_web_console_topbar_chunk(pallas_console_http_base)}
-        <button class="btn secondary" type="button" data-action="logout">退出登录</button>
-        <a class="btn secondary" id="backDash" href="{html_escape(path, quote=True)}" style="display:inline-flex;align-items:center">← 返回仪表盘</a>
-      </div>
-    </header>
+  {shell_open}
     <div class="card">
       <p class="muted" style="margin:0 0 14px">
         在此管理 NapCat / SnowLuma 发行包与全局运行方式；改完后点上方「保存设置」。
@@ -2713,7 +1967,7 @@ def render_protocol_assets_page(base_path: str, pallas_console_http_base: str = 
       </details>
       </div>
     </div>
-{shell_footer_html()}  </div>
+{shell_close}
   <script>
     const basePath = {p};
 {common_api_js}
@@ -3585,29 +2839,26 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
     p = json.dumps(path)
     aid = json.dumps(account_id)
     aid_h = html_escape(account_id, quote=True)
-    acc_settings_href = html_escape(f"{path}/settings", quote=True)
     common_api_js = _render_common_api_js()
     token_sync_js = _render_hidden_token_sync_js("backDash")
+    shell_open = render_protocol_shell_open(
+        path,
+        pallas_console_http_base,
+        active="",
+        page_title=f"账号 {account_id}",
+        page_desc="实例控制台",
+    )
+    shell_close = render_protocol_shell_close()
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-{shell_favicon_link(path)}{shell_font_stylesheet_link(path)}  <title>账号 {aid_h}</title>
-  <style>{NAPCAT_SHELL_CSS}</style>
+{shell_head_assets(path)}  <title>账号 {aid_h}</title>
 </head>
 <body>
   <input type="hidden" id="token" value="" autocomplete="off" />
-  <div class="shell">
-    <header class="topbar">
-      <div class="brand">账号 <span>{aid_h}</span></div>
-      <div class="row" style="margin-left:auto;align-items:center;gap:8px">
-        {shell_pallas_web_console_topbar_chunk(pallas_console_http_base)}
-        <button class="btn secondary" type="button" data-action="logout">退出登录</button>
-        <a class="btn secondary" href="{acc_settings_href}" style="display:inline-flex;align-items:center">偏好设置</a>
-        <a class="btn secondary" id="backDash" href="{html_escape(path, quote=True)}" style="display:inline-flex;align-items:center">← 返回仪表盘</a>
-      </div>
-    </header>
+  {shell_open}
     <div class="layout-acc">
       <nav class="side" id="nav">
         <a href="#" class="active" data-tab="overview">概览</a>
@@ -3752,7 +3003,7 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
         </section>
       </div>
     </div>
-{shell_footer_html()}  </div>
+{shell_close}
   <script>
     const basePath = {p};
     const accountId = {aid};
@@ -3877,13 +3128,11 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
     function accNbStartSse() {{
       accNbStopSse();
       const tok = getSessionToken();
-      if (!tok) {{
-        accNbStreamBadge("未登录", "err");
-        return;
-      }}
       const scopeEl = document.getElementById("accNbLogScope");
       const sc = scopeEl ? scopeEl.value : "all";
-      const url = `${{basePath}}/api/nonebot-logs/stream?token=${{encodeURIComponent(tok)}}&scope=${{encodeURIComponent(sc)}}`;
+      let url = `${{basePath}}/api/nonebot-logs/stream?scope=${{encodeURIComponent(sc)}}`;
+      if (tok) url += `&token=${{encodeURIComponent(tok)}}`;
+      accNbStreamBadge("连接中", "wait");
       const es = new EventSource(url);
       accNbLogEs = es;
       es.onopen = () => accNbStreamBadge("实时", "ok");

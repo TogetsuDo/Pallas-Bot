@@ -75,7 +75,13 @@ def register_pallas_protocol_routes(
         async def _legacy_protocol_napcat_subpath(request: Request, rest: str) -> RedirectResponse:
             return _redirect_protocol_napcat_bookmark(request, rest)
 
-    def _auth(h: str | None, q: str | None, c: str | None = None) -> None:
+    def _auth(
+        h: str | None,
+        q: str | None,
+        c: str | None = None,
+        *,
+        request: Request | None = None,
+    ) -> None:
         from src.common.pallas_console_login import (
             current_http_request,
             extract_session_from_request,
@@ -83,7 +89,7 @@ def register_pallas_protocol_routes(
         )
 
         _ = plugin_config
-        req = current_http_request()
+        req = request if request is not None else current_http_request()
         if req is None:
             raise HTTPException(status_code=500, detail="协议端鉴权缺少请求上下文")
         cookies = dict(req.cookies)
@@ -111,7 +117,7 @@ def register_pallas_protocol_routes(
     ) -> RedirectResponse | None:
         try:
             cookie_token = request.cookies.get(page_cookie_name)
-            _auth(x_pallas_protocol_token, token, cookie_token)
+            _auth(x_pallas_protocol_token, token, cookie_token, request=request)
             return None
         except HTTPException as e:
             encoded_next = quote(next_path, safe="/?=&-_.~")
@@ -216,7 +222,7 @@ def register_pallas_protocol_routes(
         x_pallas_protocol_token: str | None = Header(default=None, alias="X-Pallas-Protocol-Token"),
     ) -> JSONResponse:
         cookie_token = request.cookies.get(page_cookie_name)
-        _auth(x_pallas_protocol_token, token, cookie_token)
+        _auth(x_pallas_protocol_token, token, cookie_token, request=request)
         from src.common.pallas_console_login import set_shared_console_login_token
 
         try:
@@ -450,12 +456,14 @@ def register_pallas_protocol_routes(
 
     @app.get(f"{base}/api/nonebot-logs")
     async def nonebot_log_tail(
+        request: Request,
         lines: int = Query(default=400, ge=1, le=2000),
         scope: str = Query(default="all"),
         token: str | None = Query(default=None),
         x_pallas_protocol_token: str | None = Header(default=None, alias="X-Pallas-Protocol-Token"),
     ):
-        _auth(x_pallas_protocol_token, token)
+        cookie_token = request.cookies.get(page_cookie_name)
+        _auth(x_pallas_protocol_token, token, cookie_token, request=request)
         from src.common.web import (
             install_nonebot_log_sink,
             tail_nonebot_log_entries_scoped,
@@ -473,11 +481,13 @@ def register_pallas_protocol_routes(
 
     @app.get(f"{base}/api/nonebot-logs/stream")
     async def nonebot_logs_stream(
+        request: Request,
         scope: str = Query(default="all"),
         token: str | None = Query(default=None),
         x_pallas_protocol_token: str | None = Header(default=None, alias="X-Pallas-Protocol-Token"),
     ):
-        _auth(x_pallas_protocol_token, token)
+        cookie_token = request.cookies.get(page_cookie_name)
+        _auth(x_pallas_protocol_token, token, cookie_token, request=request)
         from src.common.web import install_nonebot_log_sink, iter_nonebot_log_sse
 
         install_nonebot_log_sink()
