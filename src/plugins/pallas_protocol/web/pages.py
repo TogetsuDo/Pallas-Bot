@@ -76,16 +76,22 @@ def shell_pallas_web_console_topbar_chunk(pallas_console_http_base: str) -> str:
     )
 
 
-def shell_pallas_web_console_nav_link(pallas_console_http_base: str) -> str:
-    """侧栏「前端控制台」入口（与 WebUI 主导航风格一致）。"""
+def shell_pallas_web_console_nav_link(
+    pallas_console_http_base: str,
+    *,
+    link_class: str = "shell__nav-link",
+    element_id: str = "linkPallasWebConsole",
+) -> str:
+    """侧栏 / 移动抽屉「前端控制台」入口。"""
     root_js = json.dumps(_normalize_pallas_console_http_base(pallas_console_http_base))
+    eid = html_escape(element_id, quote=True)
     return (
-        '<a class="shell__nav-link shell__nav-link--ext" id="linkPallasWebConsole" href="#" title="前端控制台" '
+        f'<a class="{html_escape(link_class)} shell__nav-link--ext" id="{eid}" href="#" title="前端控制台" '
         'target="_blank" rel="noopener noreferrer">'
         '<span class="shell__nav-ico" aria-hidden="true">↗</span>'
         '<span class="shell__nav-text"><span class="shell__nav-label">前端控制台</span>'
         '<span class="shell__nav-desc">Pallas WebUI</span></span></a>'
-        f"<script>(function(){{var e=document.getElementById('linkPallasWebConsole');"
+        f"<script>(function(){{var e=document.getElementById({json.dumps(element_id)});"
         f"if(e)e.href=location.origin+{root_js}+'/';}})();</script>"
     )
 
@@ -99,13 +105,17 @@ _PROTOCOL_NAV: tuple[tuple[str, str, str, str, str], ...] = (
 )
 
 
-def _render_protocol_sidebar(base_path: str, active: str, pallas_console_http_base: str) -> str:
+def _render_protocol_nav_links(
+    base_path: str,
+    active: str,
+    *,
+    link_class: str,
+) -> str:
     p = (base_path or "").strip().rstrip("/")
-    home = html_escape(f"{p}/", quote=True)
     links: list[str] = []
     for nav_id, suffix, icon, label, desc in _PROTOCOL_NAV:
         href = html_escape(f"{p}{suffix}" if suffix else f"{p}/", quote=True)
-        cls = "shell__nav-link is-router-active" if nav_id == active else "shell__nav-link"
+        cls = f"{link_class} is-router-active" if nav_id == active else link_class
         label_esc = html_escape(label)
         links.append(
             f'<a class="{cls}" href="{href}" title="{label_esc}">'
@@ -113,7 +123,13 @@ def _render_protocol_sidebar(base_path: str, active: str, pallas_console_http_ba
             f'<span class="shell__nav-text"><span class="shell__nav-label">{label_esc}</span>'
             f'<span class="shell__nav-desc">{html_escape(desc)}</span></span></a>'
         )
-    nav_body = "\n        ".join(links)
+    return "\n        ".join(links)
+
+
+def _render_protocol_sidebar(base_path: str, active: str, pallas_console_http_base: str) -> str:
+    p = (base_path or "").strip().rstrip("/")
+    home = html_escape(f"{p}/", quote=True)
+    nav_body = _render_protocol_nav_links(base_path, active, link_class="shell__nav-link")
     ext = shell_pallas_web_console_nav_link(pallas_console_http_base)
     mark_src = html_escape(shell_brand_mark_src(p), quote=True)
     return f"""    <aside class="shell__sidebar" aria-label="协议端导航">
@@ -135,10 +151,42 @@ def _render_protocol_sidebar(base_path: str, active: str, pallas_console_http_ba
     </aside>"""
 
 
+def _render_protocol_mobile_nav(base_path: str, active: str, pallas_console_http_base: str) -> str:
+    mark_src = html_escape(shell_brand_mark_src(base_path), quote=True)
+    nav_body = _render_protocol_nav_links(base_path, active, link_class="shell-mobile-nav__link")
+    ext = shell_pallas_web_console_nav_link(
+        pallas_console_http_base,
+        link_class="shell-mobile-nav__link",
+        element_id="linkPallasWebConsoleMobile",
+    )
+    return f"""  <div id="protoMobileNav" class="shell-mobile-nav" hidden>
+    <aside id="proto-mobile-nav-panel" class="shell-mobile-nav__panel" role="dialog" aria-modal="true" aria-label="协议端导航">
+      <div class="shell-mobile-nav__head">
+        <div class="shell-mobile-nav__brand-block">
+          <img class="shell-mobile-nav__mark" src="{mark_src}" alt="" width="28" height="28" decoding="async" />
+          <div class="shell-mobile-nav__brand-text">
+            <span class="shell-mobile-nav__brand">Pallas-Bot</span>
+            <span class="shell-mobile-nav__ver">协议端</span>
+          </div>
+        </div>
+        <button type="button" class="shell-mobile-nav__close" id="protoMobileNavClose" aria-label="关闭菜单">×</button>
+      </div>
+      <nav class="shell-mobile-nav__links" aria-label="协议端导航">
+        <div class="shell-mobile-nav__section" role="presentation">管理</div>
+        {nav_body}
+        <div class="shell-mobile-nav__section" role="presentation">外部</div>
+        {ext}
+      </nav>
+    </aside>
+    <div class="shell-mobile-nav__backdrop" id="protoMobileNavBackdrop" aria-hidden="true"></div>
+  </div>"""
+
+
 def shell_topbar_collapse_html() -> str:
     return """      <div class="shell__topbar-start">
         <div class="shell__topbar-rail">
           <button type="button" class="shell__topbar-collapse" id="protoSidebarCollapse" aria-expanded="true" aria-label="收起菜单栏">«</button>
+          <button type="button" class="shell__topbar-menu" id="protoMobileNavOpen" aria-label="打开导航菜单" aria-controls="proto-mobile-nav-panel">☰</button>
           <span class="shell__topbar-vrule" aria-hidden="true"></span>
         </div>
       </div>"""
@@ -186,7 +234,9 @@ def render_protocol_shell_open(
     sidebar = _render_protocol_sidebar(base_path, active, pallas_console_http_base)
     title_esc = html_escape(page_title)
     desc_block = (
-        f'<p class="shell__topbar-desc muted">{html_escape(page_desc)}</p>' if (page_desc or "").strip() else ""
+        f'<p class="shell__topbar-desc muted shell__topbar-desc--hide-narrow">{html_escape(page_desc)}</p>'
+        if (page_desc or "").strip()
+        else ""
     )
     return f"""  <div class="shell__bg" aria-hidden="true"></div>
   <div class="shell proto-shell">
@@ -208,10 +258,17 @@ def render_protocol_shell_open(
 """
 
 
-def render_protocol_shell_close() -> str:
+def render_protocol_shell_close(
+    base_path: str,
+    *,
+    active: str,
+    pallas_console_http_base: str,
+) -> str:
+    mobile_nav = _render_protocol_mobile_nav(base_path, active, pallas_console_http_base)
     return f"""{shell_footer_html()}      </div>
     </main>
   </div>
+{mobile_nav}
 """
 
 
@@ -320,6 +377,22 @@ def _shell_prefs_js() -> str:
 
 def _shell_chrome_js() -> str:
     return """
+    const PROTO_SHELL_NARROW_MQ = "(max-width: 860px)";
+    function isProtoShellNarrow() {
+      try { return window.matchMedia(PROTO_SHELL_NARROW_MQ).matches; } catch (e) { return false; }
+    }
+    function openProtocolMobileNav() {
+      const root = document.getElementById("protoMobileNav");
+      if (!root) return;
+      root.hidden = false;
+      document.body.classList.add("shell-mobile-nav-open");
+    }
+    function closeProtocolMobileNav() {
+      const root = document.getElementById("protoMobileNav");
+      if (!root) return;
+      root.hidden = true;
+      document.body.classList.remove("shell-mobile-nav-open");
+    }
     function syncShellThemeToolbar() {
       const mode = resolveThemeModeFromStorage();
       document.querySelectorAll("[data-proto-theme]").forEach((btn) => {
@@ -356,6 +429,36 @@ def _shell_chrome_js() -> str:
       if (collapseBtn && !collapseBtn.dataset.bound) {
         collapseBtn.dataset.bound = "1";
         collapseBtn.addEventListener("click", toggleProtocolSidebar);
+      }
+      const mobileOpenBtn = document.getElementById("protoMobileNavOpen");
+      if (mobileOpenBtn && !mobileOpenBtn.dataset.bound) {
+        mobileOpenBtn.dataset.bound = "1";
+        mobileOpenBtn.addEventListener("click", openProtocolMobileNav);
+      }
+      const mobileCloseBtn = document.getElementById("protoMobileNavClose");
+      if (mobileCloseBtn && !mobileCloseBtn.dataset.bound) {
+        mobileCloseBtn.dataset.bound = "1";
+        mobileCloseBtn.addEventListener("click", closeProtocolMobileNav);
+      }
+      const mobileBackdrop = document.getElementById("protoMobileNavBackdrop");
+      if (mobileBackdrop && !mobileBackdrop.dataset.bound) {
+        mobileBackdrop.dataset.bound = "1";
+        mobileBackdrop.addEventListener("click", closeProtocolMobileNav);
+      }
+      document.querySelectorAll("#protoMobileNav .shell-mobile-nav__link").forEach((link) => {
+        if (link.dataset.bound) return;
+        link.dataset.bound = "1";
+        link.addEventListener("click", () => {
+          if (isProtoShellNarrow()) closeProtocolMobileNav();
+        });
+      });
+      if (!window.__protoShellNarrowMqBound) {
+        window.__protoShellNarrowMqBound = true;
+        try {
+          window.matchMedia(PROTO_SHELL_NARROW_MQ).addEventListener("change", () => {
+            if (!isProtoShellNarrow()) closeProtocolMobileNav();
+          });
+        } catch (e) {}
       }
       document.querySelectorAll("[data-proto-theme]").forEach((btn) => {
         if (btn.dataset.bound) return;
@@ -632,7 +735,9 @@ def render_settings_page(base_path: str, pallas_console_http_base: str = "/palla
         page_title="偏好设置",
         page_desc="外观、轮询与控制台口令",
     )
-    shell_close = render_protocol_shell_close()
+    shell_close = render_protocol_shell_close(
+        path, active="settings", pallas_console_http_base=pallas_console_http_base
+    )
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -903,7 +1008,9 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
             '<button class="btn secondary" id="btnRefresh" type="button" onclick="refreshAccounts()">刷新</button>'
         ),
     )
-    shell_close = render_protocol_shell_close()
+    shell_close = render_protocol_shell_close(
+        path, active="dashboard", pallas_console_http_base=pallas_console_http_base
+    )
     new_href = html_escape(f"{path}/new", quote=True)
     return f"""<!doctype html>
 <html lang="zh-CN">
@@ -915,15 +1022,17 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
 <body data-base-path="{html_escape(path, quote=True)}">
   <input type="hidden" id="token" value="" autocomplete="off" />
 {shell_open}
-    <div class="panel proto-panel">
-      <div class="panel__hd panel__hd--split">
-        <h2 class="panel__title">账号</h2>
-        <div class="row-actions proto-panel__toolbar">
-        <a href="{new_href}" class="btn btn--primary">+ 创建账号</a>
+    <div class="panel proto-panel proto-panel--accounts">
+      <div class="panel__hd panel__hd--split proto-panel__hd">
+        <h2 class="panel__title">协议账号</h2>
+        <div class="proto-panel__toolbar">
+        <a href="{new_href}" class="btn btn--primary proto-panel__hd-create">+ 创建账号</a>
+        <div class="row-actions proto-panel__hd-batch">
         <button class="btn secondary" id="btnToggleAll" type="button" onclick="toggleAllAccounts(this)">一键启动全部</button>
         <button class="btn secondary" id="btnStopSelected" type="button" onclick="stopSelectedAccounts(this)" disabled>停止所选</button>
         <button class="btn secondary" id="btnRestartAll" type="button" onclick="restartAllAccounts(this)">一键重启全部</button>
-        <span class="muted" id="selectedCountHint" style="font-size:0.82rem">已选 0</span>
+        <span class="muted proto-panel__hd-count" id="selectedCountHint">已选 0</span>
+        </div>
         </div>
       </div>
       <div class="panel__bd">
@@ -1515,7 +1624,7 @@ def render_import_page(base_path: str, pallas_console_http_base: str = "/pallas"
     shell_open = render_protocol_shell_open(
         path, pallas_console_http_base, active="import", page_title="导入账号", page_desc="批量导入旧协议端数据"
     )
-    shell_close = render_protocol_shell_close()
+    shell_close = render_protocol_shell_close(path, active="import", pallas_console_http_base=pallas_console_http_base)
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -1657,7 +1766,7 @@ def render_new_account_page(base_path: str, pallas_console_http_base: str = "/pa
     shell_open = render_protocol_shell_open(
         path, pallas_console_http_base, active="new", page_title="创建账号", page_desc="新建协议实例"
     )
-    shell_close = render_protocol_shell_close()
+    shell_close = render_protocol_shell_close(path, active="new", pallas_console_http_base=pallas_console_http_base)
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -1761,7 +1870,7 @@ def render_protocol_assets_page(base_path: str, pallas_console_http_base: str = 
     shell_open = render_protocol_shell_open(
         path, pallas_console_http_base, active="assets", page_title="协议资产", page_desc="运行时下载与 Docker"
     )
-    shell_close = render_protocol_shell_close()
+    shell_close = render_protocol_shell_close(path, active="assets", pallas_console_http_base=pallas_console_http_base)
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -2848,7 +2957,7 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
         page_title=f"账号 {account_id}",
         page_desc="实例控制台",
     )
-    shell_close = render_protocol_shell_close()
+    shell_close = render_protocol_shell_close(path, active="", pallas_console_http_base=pallas_console_http_base)
     return f"""<!doctype html>
 <html lang="zh-CN">
 <head>
