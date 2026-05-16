@@ -1,6 +1,6 @@
 import time
 
-from nonebot import get_plugin_config, logger, on_message
+from nonebot import logger, on_message
 from nonebot.adapters import Bot, Event
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, permission
 from nonebot.plugin import PluginMetadata
@@ -12,7 +12,7 @@ from src.common.config import GroupConfig, TaskManager
 from src.common.db import SingProgress
 from src.common.utils import HTTPXClient
 
-from .config import Config
+from .config import get_sing_config, sing_server_url
 from .ncm_login import get_song_id, get_song_title
 
 __plugin_meta__ = PluginMetadata(
@@ -86,11 +86,6 @@ __plugin_meta__ = PluginMetadata(
     },
 )
 
-plugin_config = get_plugin_config(Config)
-
-SERVER_URL = f"http://{plugin_config.ai_server_host}:{plugin_config.ai_server_port}"
-
-SPEAKERS = plugin_config.sing_speakers.keys()
 SING_CMD = "唱歌"
 REQUEST_SONG_CMD = "点歌"
 SING_CONTINUE_CMDS = {"继续唱", "接着唱"}
@@ -102,6 +97,7 @@ WHAT_SONG_COOLDOWN_KEY = "song_title"
 
 
 async def is_to_sing(event: GroupMessageEvent, state: T_State) -> bool:
+    plugin_config = get_sing_config()
     if not plugin_config.sing_enable:
         return False
     text = event.get_plaintext()
@@ -177,6 +173,7 @@ sing_msg = on_message(
 
 @sing_msg.handle()
 async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
+    plugin_config = get_sing_config()
     config = GroupConfig(event.group_id, cooldown=10)
     if not await config.is_cooldown(SING_COOLDOWN_KEY):
         return
@@ -198,7 +195,7 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
         },
     )
 
-    url = f"{SERVER_URL}{plugin_config.sing_endpoint}/{request_id}"
+    url = f"{sing_server_url(plugin_config)}{plugin_config.sing_endpoint}/{request_id}"
     response = await HTTPXClient.post(
         url,
         json={
@@ -227,6 +224,7 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
 
 
 async def is_play(bot: Bot, event: Event, state: T_State) -> bool:
+    plugin_config = get_sing_config()
     text = event.get_plaintext()
     if not text or not text.endswith(SING_CMD):
         return False
@@ -250,13 +248,14 @@ play_cmd = on_message(
 
 @play_cmd.handle()
 async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
+    plugin_config = get_sing_config()
     config = GroupConfig(event.group_id, cooldown=10)
     if not await config.is_cooldown(PLAY_COOLDOWN_KEY):
         return
     await config.refresh_cooldown(PLAY_COOLDOWN_KEY)
 
     speaker = state["speaker"]
-    url = f"{SERVER_URL}{plugin_config.play_endpoint}/{speaker}"
+    url = f"{sing_server_url(plugin_config)}{plugin_config.play_endpoint}/{speaker}"
     response = await HTTPXClient.get(url)
     if not response:
         await play_cmd.finish("我习惯了站着不动思考。有时候啊，也会被大家突然戳一戳，看看睡着了没有。")
@@ -277,6 +276,7 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
 
 
 async def is_to_request_song(event: GroupMessageEvent, state: T_State) -> bool:
+    plugin_config = get_sing_config()
     if not plugin_config.sing_enable:
         return False
     text = event.get_plaintext()
@@ -319,6 +319,7 @@ request_song_msg = on_message(
 
 @request_song_msg.handle()
 async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
+    plugin_config = get_sing_config()
     config = GroupConfig(event.group_id, cooldown=10)
     if not await config.is_cooldown(REQUEST_SONG_COOLDOWN_KEY):
         return
@@ -331,7 +332,7 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
         return False
 
     request_id = str(ULID())
-    url = f"{SERVER_URL}{plugin_config.request_endpoint}/{request_id}"
+    url = f"{sing_server_url(plugin_config)}{plugin_config.request_endpoint}/{request_id}"
 
     response = await HTTPXClient.post(
         url,
@@ -362,7 +363,8 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
 
 async def what_song(event: Event) -> bool:
     text = event.get_plaintext()
-    return any(text.startswith(spk) for spk in SPEAKERS) and any(key in text for key in WHAT_SONG_CMDS)
+    speakers = get_sing_config().sing_speakers.keys()
+    return any(text.startswith(spk) for spk in speakers) and any(key in text for key in WHAT_SONG_CMDS)
 
 
 song_title_cmd = on_message(

@@ -337,6 +337,10 @@ def _plugin_config_payload(
         from src.plugins.pallas_image.config import get_pallas_image_config
 
         cfg_obj = get_pallas_image_config()
+    elif module_name.endswith(".sing"):
+        from src.plugins.sing.config import get_sing_config
+
+        cfg_obj = get_sing_config()
     else:
         cfg_obj = get_plugin_config(cfg_cls)
     fields: list[dict[str, Any]] = []
@@ -2830,6 +2834,10 @@ def register_extended_api(
                 from src.plugins.pallas_image.config import get_pallas_image_config
 
                 current = get_pallas_image_config().model_dump(mode="python")
+            elif module_name.endswith(".sing"):
+                from src.plugins.sing.config import get_sing_config
+
+                current = get_sing_config().model_dump(mode="python")
             else:
                 current = get_plugin_config(cfg_cls).model_dump(mode="python")
             patch = dict(body.values or {})
@@ -2846,6 +2854,13 @@ def register_extended_api(
                     from src.plugins.pallas_image.config import reload_image_gen_config
 
                     reload_image_gen_config()
+                except Exception:
+                    pass
+            elif module_name.endswith(".sing"):
+                try:
+                    from src.plugins.sing.config import reload_sing_config
+
+                    reload_sing_config()
                 except Exception:
                     pass
             data = _plugin_config_payload(plugin_name, current_values=validated)
