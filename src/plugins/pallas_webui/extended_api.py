@@ -3212,9 +3212,7 @@ def register_extended_api(
         from src.common.db.pallas_console_data import group_config_to_public
 
         repo = make_group_config_repository()
-        doc = await repo.get(group_id, ignore_cache=True)
-        if doc is None:
-            raise HTTPException(status_code=404, detail="未找到该群配置")
+        doc, _created = await repo.get_or_create(group_id, disabled_plugins=[])
         return JSONResponse({"ok": True, "data": group_config_to_public(doc)})
 
     @router.put(f"{x}/group-configs/{{group_id}}", include_in_schema=True)
