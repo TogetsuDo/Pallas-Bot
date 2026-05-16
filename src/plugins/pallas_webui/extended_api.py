@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import copy
-import importlib
 import json
 import os
 import platform
@@ -29,7 +28,6 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_core import PydanticUndefined
 
-from src.common.env_dotenv import env_value_to_str, upsert_env_dotenv_items
 from src.common.pallas_console_login import (
     current_http_request,
     extract_session_from_request,
@@ -40,6 +38,7 @@ from src.common.pallas_console_login import (
     verify_console_password,
 )
 from src.common.web.bot_web import LogScope  # noqa: TC001  # FastAPI/OpenAPI 需在运行时解析注解
+from src.common.webui import apply_plugin_config_patch, plugin_config_payload
 
 from .api import _merge_console_version_from_disk
 
@@ -277,93 +276,6 @@ def _jsonable_value(v: Any) -> Any:
     if isinstance(v, (set, tuple)):
         return [_jsonable_value(x) for x in v]
     return v
-
-
-def _find_loaded_plugin(plugin_name: str):
-    target = (plugin_name or "").strip()
-    for p in get_loaded_plugins():
-        if str(getattr(p, "name", "") or "").strip() == target:
-            return p
-    return None
-
-
-def _plugin_module_name(p: Any) -> str:
-    mod = getattr(p, "module", None)
-    module_name = getattr(mod, "__name__", "") if mod is not None else ""
-    if not module_name:
-        module_name = str(getattr(p, "module_name", "") or "")
-    return module_name.strip()
-
-
-def _plugin_config_model_by_name(plugin_name: str):
-    p = _find_loaded_plugin(plugin_name)
-    if p is None:
-        raise ValueError(f"未找到插件: {plugin_name}")
-    module_name = _plugin_module_name(p)
-    if not module_name:
-        raise ValueError(f"插件模块名为空: {plugin_name}")
-    cfg_mod_name = module_name if module_name.endswith(".config") else f"{module_name}.config"
-    try:
-        cfg_mod = importlib.import_module(cfg_mod_name)
-    except Exception as e:  # noqa: BLE001
-        raise ValueError(f"插件缺少 config.py: {plugin_name}") from e
-    cfg_cls = getattr(cfg_mod, "Config", None)
-    if cfg_cls is None or not isinstance(cfg_cls, type) or not issubclass(cfg_cls, BaseModel):
-        raise ValueError(f"插件 config.py 未定义 Config(BaseModel): {plugin_name}")
-    return p, module_name, cfg_cls
-
-
-def _field_kind_from_annotation(ann: Any) -> str:
-    text = str(ann).lower()
-    if "list" in text or "dict" in text or "set" in text or "tuple" in text:
-        return "json"
-    if "bool" in text:
-        return "bool"
-    if "int" in text:
-        return "int"
-    if "float" in text:
-        return "float"
-    return "string"
-
-
-def _plugin_config_payload(
-    plugin_name: str,
-    *,
-    current_values: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """GET 用默认 ``current``；PUT 落盘后应传 ``validated``，避免 ``get_plugin_config`` 仍为旧内存。"""
-    p, module_name, cfg_cls = _plugin_config_model_by_name(plugin_name)
-    if module_name.endswith(".pallas_image"):
-        from src.plugins.pallas_image.config import get_pallas_image_config
-
-        cfg_obj = get_pallas_image_config()
-    elif module_name.endswith(".sing"):
-        from src.plugins.sing.config import get_sing_config
-
-        cfg_obj = get_sing_config()
-    else:
-        cfg_obj = get_plugin_config(cfg_cls)
-    fields: list[dict[str, Any]] = []
-    for key, f in cfg_cls.model_fields.items():
-        if current_values is not None:
-            cur = current_values.get(key, getattr(cfg_obj, key, f.default))
-        else:
-            cur = getattr(cfg_obj, key, f.default)
-        default_value = None if f.default is PydanticUndefined else f.default
-        fields.append({
-            "name": key,
-            "kind": _field_kind_from_annotation(f.annotation),
-            "required": bool(f.is_required()),
-            "description": str(f.description or ""),
-            "env_key": key.upper(),
-            "default": _jsonable_value(default_value),
-            "current": _jsonable_value(cur),
-        })
-    return {
-        "plugin": str(getattr(p, "name", "") or plugin_name),
-        "module": module_name,
-        "fields": fields,
-    }
 
 
 _BOT_SESSION_CONNECTED_UNIX: dict[str, int] = {}
@@ -2812,7 +2724,7 @@ def register_extended_api(
     @router.get(f"{x}/plugins/{{plugin_name}}/config", include_in_schema=True)
     async def _plugin_config_get(plugin_name: str) -> JSONResponse:
         try:
-            data = _plugin_config_payload(plugin_name)
+            data = plugin_config_payload(plugin_name)
         except ValueError:
             # 无 config.py 或配置模型不可用时返回空配置，前端以“不可编辑”展示
             data = {"plugin": plugin_name, "module": "", "fields": []}
@@ -2829,41 +2741,7 @@ def register_extended_api(
     ) -> JSONResponse:
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
         try:
-            _, module_name, cfg_cls = _plugin_config_model_by_name(plugin_name)
-            if module_name.endswith(".pallas_image"):
-                from src.plugins.pallas_image.config import get_pallas_image_config
-
-                current = get_pallas_image_config().model_dump(mode="python")
-            elif module_name.endswith(".sing"):
-                from src.plugins.sing.config import get_sing_config
-
-                current = get_sing_config().model_dump(mode="python")
-            else:
-                current = get_plugin_config(cfg_cls).model_dump(mode="python")
-            patch = dict(body.values or {})
-            allowed = set(cfg_cls.model_fields.keys())
-            for k in patch:
-                if k not in allowed:
-                    raise ValueError(f"未知配置项: {k}")
-            merged = {**current, **patch}
-            validated = cfg_cls(**merged).model_dump(mode="python")
-            env_items = {str(k).upper(): env_value_to_str(validated[k]) for k in patch}
-            upsert_env_dotenv_items(env_items)
-            if module_name.endswith(".pallas_image"):
-                try:
-                    from src.plugins.pallas_image.config import reload_image_gen_config
-
-                    reload_image_gen_config()
-                except Exception:
-                    pass
-            elif module_name.endswith(".sing"):
-                try:
-                    from src.plugins.sing.config import reload_sing_config
-
-                    reload_sing_config()
-                except Exception:
-                    pass
-            data = _plugin_config_payload(plugin_name, current_values=validated)
+            data = apply_plugin_config_patch(plugin_name, dict(body.values or {}))
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:  # noqa: BLE001
@@ -2872,13 +2750,13 @@ def register_extended_api(
 
     @router.get(f"{x}/common-config/sections", include_in_schema=True)
     async def _common_config_sections_list() -> JSONResponse:
-        from src.common.webui_env_sections import list_webui_env_sections
+        from src.common.webui.env_sections import list_webui_env_sections
 
         return JSONResponse({"ok": True, "data": list_webui_env_sections()})
 
     @router.get(f"{x}/common-config/{{section_id}}", include_in_schema=True)
     async def _common_config_get(section_id: str) -> JSONResponse:
-        from src.common.webui_env_sections import webui_env_section_payload
+        from src.common.webui.env_sections import webui_env_section_payload
 
         try:
             data = webui_env_section_payload(section_id)
@@ -2894,7 +2772,7 @@ def register_extended_api(
         x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
     ) -> JSONResponse:
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
-        from src.common.webui_env_sections import apply_webui_env_section_patch
+        from src.common.webui.env_sections import apply_webui_env_section_patch
 
         try:
             data = apply_webui_env_section_patch(section_id, dict(body.values or {}))
