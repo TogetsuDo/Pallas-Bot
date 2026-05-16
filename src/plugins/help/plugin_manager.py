@@ -1,5 +1,7 @@
+import asyncio
 import copy
 import shutil
+import time
 from typing import Any
 
 from nonebot import get_loaded_plugins, logger
@@ -17,6 +19,19 @@ group_config_repo = make_group_config_repository()
 plugin_config = load_config()
 ignored_plugins = plugin_config.ignored_plugins if plugin_config else []
 CORE_PLUGINS = ["help"]
+
+_DISABLED_GATE_CACHE_TTL_SEC = 45.0
+_DISABLED_GATE_CACHE_MAX = 50_000
+_disabled_gate_cache: dict[tuple[int | None, int | None], tuple[float, frozenset[str]]] = {}
+_disabled_gate_lock = asyncio.Lock()
+_disabled_bot_generation: dict[int, int] = {}
+_disabled_group_generation: dict[int, int] = {}
+_disabled_fetch_tasks: dict[tuple[int | None, int | None], asyncio.Task[frozenset[str]]] = {}
+_disabled_fetch_tasks_lock = asyncio.Lock()
+
+
+def _disabled_gate_key(bot_id: int | None, group_id: int | None) -> tuple[int | None, int | None]:
+    return (bot_id, group_id)
 
 
 def plugin_display_name(plugin: Any) -> str:
@@ -83,13 +98,13 @@ async def is_plugin_disabled(
         return False
 
 
-async def collect_disabled_plugin_names(
+async def load_disabled_plugin_names_from_db(
     bot_id: int | None,
     group_id: int | None,
     *,
     ignore_cache: bool = False,
 ) -> frozenset[str]:
-    """合并 Bot 全局与群级的禁用插件名，供批量判断（与逐插件调用 is_plugin_disabled 语义一致）。"""
+    """合并 Bot 全局与群级的禁用插件名（直读仓储，不经门禁 TTL）。"""
     names: set[str] = set()
     if bot_id:
         bot_config = await bot_config_repo.get(bot_id, ignore_cache=ignore_cache)
@@ -101,6 +116,109 @@ async def collect_disabled_plugin_names(
         if group_config:
             names.update(group_config.disabled_plugins)
     return frozenset(names)
+
+
+async def invalidate_disabled_plugin_gate_cache(
+    *,
+    bot_id: int | None = None,
+    group_id: int | None = None,
+    clear_all: bool = False,
+) -> None:
+    """使禁用插件门禁缓存失效（toggle / WebUI 改 disabled_plugins 后应调用）。"""
+    if clear_all:
+        async with _disabled_fetch_tasks_lock:
+            for t in list(_disabled_fetch_tasks.values()):
+                if not t.done():
+                    t.cancel()
+            _disabled_fetch_tasks.clear()
+        async with _disabled_gate_lock:
+            _disabled_gate_cache.clear()
+            _disabled_bot_generation.clear()
+            _disabled_group_generation.clear()
+        return
+
+    async with _disabled_gate_lock:
+        if bot_id is not None:
+            _disabled_bot_generation[bot_id] = _disabled_bot_generation.get(bot_id, 0) + 1
+            for k in [k for k in _disabled_gate_cache if k[0] == bot_id]:
+                _disabled_gate_cache.pop(k, None)
+        if group_id is not None:
+            _disabled_group_generation[group_id] = _disabled_group_generation.get(group_id, 0) + 1
+            for k in [k for k in _disabled_gate_cache if k[1] == group_id]:
+                _disabled_gate_cache.pop(k, None)
+
+
+async def reset_disabled_plugin_gate_cache() -> None:
+    """清空禁用插件门禁内存缓存（供测试调用）。"""
+    await invalidate_disabled_plugin_gate_cache(clear_all=True)
+
+
+async def _await_disabled_plugins_deduped(
+    bot_id: int | None,
+    group_id: int | None,
+    *,
+    ignore_cache: bool,
+) -> frozenset[str]:
+    key = _disabled_gate_key(bot_id, group_id)
+
+    async def _runner() -> frozenset[str]:
+        try:
+            return await load_disabled_plugin_names_from_db(bot_id, group_id, ignore_cache=ignore_cache)
+        finally:
+            async with _disabled_fetch_tasks_lock:
+                cur = asyncio.current_task()
+                if _disabled_fetch_tasks.get(key) is cur:
+                    _disabled_fetch_tasks.pop(key, None)
+
+    async with _disabled_fetch_tasks_lock:
+        t = _disabled_fetch_tasks.get(key)
+        if t is not None and not t.done():
+            task = t
+        else:
+            task = asyncio.create_task(_runner())
+            _disabled_fetch_tasks[key] = task
+    return await task
+
+
+async def collect_disabled_plugin_names(
+    bot_id: int | None,
+    group_id: int | None,
+    *,
+    ignore_cache: bool = False,
+) -> frozenset[str]:
+    """合并 Bot 全局与群级的禁用插件名，供批量判断（与逐插件调用 is_plugin_disabled 语义一致）。"""
+    if ignore_cache:
+        return await load_disabled_plugin_names_from_db(bot_id, group_id, ignore_cache=True)
+
+    key = _disabled_gate_key(bot_id, group_id)
+    while True:
+        now = time.monotonic()
+        async with _disabled_gate_lock:
+            hit = _disabled_gate_cache.get(key)
+            if hit is not None:
+                exp, val = hit
+                if now < exp:
+                    return val
+                _disabled_gate_cache.pop(key, None)
+            if len(_disabled_gate_cache) > _DISABLED_GATE_CACHE_MAX:
+                stale = [k for k, (e, _) in _disabled_gate_cache.items() if now >= e]
+                for k in stale:
+                    _disabled_gate_cache.pop(k, None)
+                if len(_disabled_gate_cache) > _DISABLED_GATE_CACHE_MAX:
+                    _disabled_gate_cache.clear()
+            bot_snap = _disabled_bot_generation.get(bot_id, 0) if bot_id is not None else 0
+            group_snap = _disabled_group_generation.get(group_id, 0) if group_id is not None else 0
+
+        names = await _await_disabled_plugins_deduped(bot_id, group_id, ignore_cache=False)
+
+        expire_at = time.monotonic() + _DISABLED_GATE_CACHE_TTL_SEC
+        async with _disabled_gate_lock:
+            if bot_id is not None and _disabled_bot_generation.get(bot_id, 0) != bot_snap:
+                continue
+            if group_id is not None and _disabled_group_generation.get(group_id, 0) != group_snap:
+                continue
+            _disabled_gate_cache[key] = (expire_at, names)
+        return names
 
 
 async def is_plugin_globally_disabled(plugin_name: str, bot_id: int, ignore_cache: bool = False) -> bool:
@@ -140,6 +258,7 @@ async def update_bot_config(bot_id: int, disabled_plugins: list[str]) -> BotConf
     """
     await bot_config_repo.upsert_field(bot_id, "disabled_plugins", disabled_plugins.copy())
     await bot_config_repo.invalidate_cache()
+    await invalidate_disabled_plugin_gate_cache(bot_id=bot_id)
 
     # 清理所有缓存，因为全局设置影响所有群组
     clear_help_cache()
@@ -158,6 +277,7 @@ async def update_group_config(group_id: int, disabled_plugins: list[str]) -> Gro
     """
     await group_config_repo.upsert_field(group_id, "disabled_plugins", disabled_plugins.copy())
     await group_config_repo.invalidate_cache()
+    await invalidate_disabled_plugin_gate_cache(group_id=group_id)
     clear_help_cache(group_id)
 
     group_config = await group_config_repo.get(group_id, ignore_cache=True)

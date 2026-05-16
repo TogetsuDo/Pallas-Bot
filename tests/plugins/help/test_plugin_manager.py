@@ -119,3 +119,32 @@ async def test_collect_disabled_plugin_names_bot_only(beanie_fixture):
     merged = await plugin_manager.collect_disabled_plugin_names(30001, None, ignore_cache=True)
     assert merged == frozenset()
     assert await plugin_manager.is_plugin_disabled("x", group_id=None, bot_id=30001, ignore_cache=True) is False
+
+
+@pytest.mark.asyncio
+async def test_collect_disabled_plugin_names_gate_cache(beanie_fixture, monkeypatch):
+    from src.plugins.help import plugin_manager
+
+    await plugin_manager.reset_disabled_plugin_gate_cache()
+    calls: list[tuple[int | None, int | None]] = []
+    real_load = plugin_manager.load_disabled_plugin_names_from_db
+
+    async def counting_load(bot_id, group_id, *, ignore_cache=False):
+        calls.append((bot_id, group_id))
+        return await real_load(bot_id, group_id, ignore_cache=ignore_cache)
+
+    monkeypatch.setattr(plugin_manager, "load_disabled_plugin_names_from_db", counting_load)
+
+    await plugin_manager.bot_config_repo.upsert_field(77, "disabled_plugins", ["a"])
+    first = await plugin_manager.collect_disabled_plugin_names(77, 5001)
+    second = await plugin_manager.collect_disabled_plugin_names(77, 5001)
+    assert first == frozenset({"a"})
+    assert second == frozenset({"a"})
+    assert len(calls) == 1
+
+    await plugin_manager.invalidate_disabled_plugin_gate_cache(bot_id=77)
+    third = await plugin_manager.collect_disabled_plugin_names(77, 5001)
+    assert third == frozenset({"a"})
+    assert len(calls) == 2
+
+    await plugin_manager.reset_disabled_plugin_gate_cache()

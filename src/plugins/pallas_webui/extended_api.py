@@ -2464,6 +2464,10 @@ async def _apply_bot_config_patch(account: int, body: _BotConfigPatch) -> dict[s
         else:
             fields[field_name] = raw
     await repo.upsert_fields(account, fields)
+    if "disabled_plugins" in fields:
+        from src.plugins.help.plugin_manager import invalidate_disabled_plugin_gate_cache
+
+        await invalidate_disabled_plugin_gate_cache(bot_id=account)
     doc = await repo.get(account, ignore_cache=True)
     if doc is None:
         raise HTTPException(status_code=500, detail="config upsert 后回读失败")
@@ -2492,6 +2496,10 @@ async def _apply_group_config_patch(group_id: int, body: _GroupConfigPatch) -> d
         from src.plugins.blacklist import invalidate_group_ban_gate_cache
 
         await invalidate_group_ban_gate_cache(group_id)
+    if "disabled_plugins" in fields:
+        from src.plugins.help.plugin_manager import invalidate_disabled_plugin_gate_cache
+
+        await invalidate_disabled_plugin_gate_cache(group_id=group_id)
     doc = await repo.get(group_id, ignore_cache=True)
     if doc is None:
         raise HTTPException(status_code=500, detail="config upsert 后回读失败")
@@ -2565,6 +2573,10 @@ async def _upsert_db_table_row(table: str, row_id: int, data: dict[str, Any]) ->
         for k, v in payload.items():
             await repo.upsert_field(int(row_id), k, v)
         await repo.invalidate_cache()
+        if "disabled_plugins" in payload:
+            from src.plugins.help.plugin_manager import invalidate_disabled_plugin_gate_cache
+
+            await invalidate_disabled_plugin_gate_cache(bot_id=int(row_id))
         got = await _get_db_table_row_public("bot_config", int(row_id))
         if got is None:
             raise ValueError("upsert 后回读失败")
@@ -2583,6 +2595,10 @@ async def _upsert_db_table_row(table: str, row_id: int, data: dict[str, Any]) ->
             from src.plugins.blacklist import invalidate_group_ban_gate_cache
 
             await invalidate_group_ban_gate_cache(int(row_id))
+        if "disabled_plugins" in payload:
+            from src.plugins.help.plugin_manager import invalidate_disabled_plugin_gate_cache
+
+            await invalidate_disabled_plugin_gate_cache(group_id=int(row_id))
         got = await _get_db_table_row_public("group_config", int(row_id))
         if got is None:
             raise ValueError("upsert 后回读失败")
