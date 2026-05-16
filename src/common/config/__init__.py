@@ -249,10 +249,9 @@ async def get_bot_admins(bot_id: int) -> list[int]:
     """
     返回 BotConfig 持久化字段 admins 中的管理员 QQ 列表；无配置或为空时返回 []。
     """
-    raw = await BotConfig(bot_id)._find("admins")
-    if not raw:
-        return []
-    return list(raw)
+    from .bot_admins_cache import get_bot_admins_cached
+
+    return await get_bot_admins_cached(bot_id)
 
 
 async def user_is_bot_admin(bot_id: int, user_id: int) -> bool:
@@ -266,17 +265,12 @@ async def user_is_admin_of_any_bot(user_id: int) -> bool:
     """
     判断 user_id 是否在任意已持久化的 BotConfig.admins 中（多实例下跨 Bot 管理员）。
     """
-    from src.common.db.pallas_console_data import list_all_bot_configs_public
+    from .bot_admins_cache import any_bot_admin_user_ids_cached
 
     try:
-        configs = await list_all_bot_configs_public()
+        return user_id in await any_bot_admin_user_ids_cached()
     except Exception:
         return False
-    for cfg in configs:
-        admins = cfg.get("admins") or []
-        if user_id in admins:
-            return True
-    return False
 
 
 class GroupConfig(Config):

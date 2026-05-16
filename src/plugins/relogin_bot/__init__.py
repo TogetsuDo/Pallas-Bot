@@ -268,6 +268,9 @@ async def _create_got_owners(
     try:
         repo = make_bot_config_repository()
         await repo.upsert_field(int(qq), "admins", owner_ids)
+        from src.common.config.bot_admins_cache import invalidate_bot_admins_cache
+
+        await invalidate_bot_admins_cache(int(qq))
     except Exception as e:
         await create_cmd.finish(f"账号已创建并启动，但写入号主失败：{e}")
 

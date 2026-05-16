@@ -2468,6 +2468,10 @@ async def _apply_bot_config_patch(account: int, body: _BotConfigPatch) -> dict[s
         from src.plugins.help.plugin_manager import invalidate_disabled_plugin_gate_cache
 
         await invalidate_disabled_plugin_gate_cache(bot_id=account)
+    if "admins" in fields:
+        from src.common.config.bot_admins_cache import invalidate_bot_admins_cache
+
+        await invalidate_bot_admins_cache(account)
     doc = await repo.get(account, ignore_cache=True)
     if doc is None:
         raise HTTPException(status_code=500, detail="config upsert 后回读失败")
@@ -2577,6 +2581,10 @@ async def _upsert_db_table_row(table: str, row_id: int, data: dict[str, Any]) ->
             from src.plugins.help.plugin_manager import invalidate_disabled_plugin_gate_cache
 
             await invalidate_disabled_plugin_gate_cache(bot_id=int(row_id))
+        if "admins" in payload:
+            from src.common.config.bot_admins_cache import invalidate_bot_admins_cache
+
+            await invalidate_bot_admins_cache(int(row_id))
         got = await _get_db_table_row_public("bot_config", int(row_id))
         if got is None:
             raise ValueError("upsert 后回读失败")
