@@ -7,6 +7,7 @@ from .check import (
     satisfies_command_permission,
 )
 from .config import CmdPermConfig, clear_cmd_perm_cache, get_cmd_perm_config
+from .declare import command_perm_list, command_perm_row
 from .menu_display import (
     effective_permission_avail_text,
     raw_trigger_condition,
@@ -15,6 +16,8 @@ from .menu_display import (
 from .registry import DEFAULT_COMMAND_PERMISSIONS, VALID_LEVELS, normalize_level, resolved_level
 
 __all__ = [
+    "command_perm_list",
+    "command_perm_row",
     "CmdPermConfig",
     "DEFAULT_COMMAND_PERMISSIONS",
     "VALID_LEVELS",
