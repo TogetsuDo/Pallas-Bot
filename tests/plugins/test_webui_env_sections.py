@@ -8,7 +8,7 @@ skip_no_message_scrub = pytest.mark.skipif(not _MS_CFG.is_file(), reason="无 me
 
 @skip_no_message_scrub
 def test_list_webui_env_sections_contains_message_scrub():
-    from src.common.webui_env_sections import list_webui_env_sections
+    from src.common.webui import list_webui_env_sections
 
     rows = list_webui_env_sections()
     ids = {r["id"] for r in rows}
@@ -16,7 +16,7 @@ def test_list_webui_env_sections_contains_message_scrub():
 
 
 def test_list_webui_env_sections_contains_plugin_common_sections():
-    from src.common.webui_env_sections import list_webui_env_sections
+    from src.common.webui import list_webui_env_sections
 
     rows = list_webui_env_sections()
     ids = {r["id"] for r in rows}
@@ -26,7 +26,7 @@ def test_list_webui_env_sections_contains_plugin_common_sections():
 
 
 def test_field_to_env_uppercase_keys_matches_plugin_api():
-    from src.common.webui_env_sections import field_to_env_uppercase_keys
+    from src.common.webui import field_to_env_uppercase_keys
     from src.plugins.pallas_webui.config import Config
 
     m = field_to_env_uppercase_keys(Config)
@@ -34,7 +34,7 @@ def test_field_to_env_uppercase_keys_matches_plugin_api():
 
 
 def test_pallas_webui_section_payload_env_keys_uppercase():
-    from src.common.webui_env_sections import webui_env_section_payload
+    from src.common.webui import webui_env_section_payload
 
     data = webui_env_section_payload("pallas_webui")
     assert data["plugin"] == "pallas_webui"
@@ -45,7 +45,7 @@ def test_pallas_webui_section_payload_env_keys_uppercase():
 
 def test_pallas_webui_patch_writes_uppercase_env(tmp_path, monkeypatch):
     from src.common import env_dotenv as ed
-    from src.common.webui_env_sections import apply_webui_env_section_patch
+    from src.common.webui import apply_webui_env_section_patch
 
     env_file = tmp_path / ".env"
     monkeypatch.setattr(ed, "repo_env_path", lambda: env_file)
@@ -56,7 +56,7 @@ def test_pallas_webui_patch_writes_uppercase_env(tmp_path, monkeypatch):
 
 @skip_no_message_scrub
 def test_message_scrub_payload_shape():
-    from src.common.webui_env_sections import webui_env_section_payload
+    from src.common.webui import webui_env_section_payload
 
     data = webui_env_section_payload("message_scrub")
     assert data["plugin"] == "message_scrub"
@@ -72,7 +72,7 @@ def test_message_scrub_payload_shape():
 @skip_no_message_scrub
 def test_message_scrub_patch_roundtrip(tmp_path, monkeypatch):
     from src.common import env_dotenv as ed
-    from src.common.webui_env_sections import apply_webui_env_section_patch
+    from src.common.webui import apply_webui_env_section_patch
 
     env_file = tmp_path / ".env"
     monkeypatch.setattr(ed, "repo_env_path", lambda: env_file)

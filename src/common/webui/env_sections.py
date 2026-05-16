@@ -1,10 +1,11 @@
-"""在 WebUI 中暴露的「通用配置段」：对应走根目录 `.env` 的 Pydantic 模型。
+"""在 WebUI「通用配置」中暴露的配置段：对应根目录 ``.env`` 的 Pydantic 模型。
 
-- `message_scrub`：显式 `field_to_env`（与历史 `PALLAS_*` 键名一致）。
-- `cmd_perm`：命令权限覆盖（`PALLAS_COMMAND_PERMISSION_OVERRIDES`）。
-- 若干 NoneBot 插件：字段名大写写入 `.env`，与控制台「插件」配置 PUT 规则一致。
+- ``message_scrub``：显式 ``field_to_env``（与历史 ``PALLAS_*`` 键名一致）。
+- ``cmd_perm``：命令权限覆盖（``PALLAS_COMMAND_PERMISSION_OVERRIDES``）。
+- 若干 NoneBot 插件：字段名大写写入 ``.env``。
 
-新增段：在 `_registered_sections` 中追加构建函数；插件段优先用 `_plugin_env_section_from_module`。
+新增段：在 ``_registered_sections`` 中追加；插件段可用 ``_plugin_env_section_from_module``。
+已使用 ``install_hot_reload_config`` 的插件会通过注册表读取当前值。
 """
 
 from __future__ import annotations
@@ -21,10 +22,12 @@ from pydantic_core import PydanticUndefined
 
 from src.common.env_dotenv import env_value_to_str, upsert_env_dotenv_items
 
+_COMMON_ROOT = Path(__file__).resolve().parent.parent
+
 
 @lru_cache(maxsize=1)
 def _message_scrub_models() -> tuple[type[BaseModel], Any]:
-    path = Path(__file__).resolve().parent / "message_scrub" / "config.py"
+    path = _COMMON_ROOT / "message_scrub" / "config.py"
     name = "_pallas_webui_message_scrub_config"
     spec = importlib_util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
@@ -108,7 +111,7 @@ def clear_webui_env_sections_cache() -> None:
 
 
 def field_to_env_uppercase_keys(model_cls: type[BaseModel]) -> dict[str, str]:
-    """与 `extended_api` 插件配置 PUT 一致：环境变量键为字段名的全大写形式。"""
+    """与插件配置 PUT 一致：环境变量键为字段名的全大写形式。"""
     return {name: name.upper() for name in model_cls.model_fields}
 
 
@@ -119,7 +122,7 @@ def _plugin_env_section_from_module(
     module_label: str,
     config_module: str,
 ) -> WebuiEnvSection | None:
-    """从 `*.config` 模块加载 `Config`（BaseModel），运行时通过 `get_plugin_config` 读当前值。"""
+    """从 ``*.config`` 加载 ``Config``；若已 ``install_hot_reload_config`` 则走注册表。"""
     try:
         mod = importlib.import_module(config_module)
     except ModuleNotFoundError:
@@ -131,10 +134,18 @@ def _plugin_env_section_from_module(
     if cfg_cls is None or not isinstance(cfg_cls, type) or not issubclass(cfg_cls, BaseModel):
         return None
 
+    plugin_module = config_module.removesuffix(".config")
+
     def read_current() -> BaseModel:
         from nonebot import get_plugin_config
 
-        return get_plugin_config(cfg_cls)
+        from .registry import read_plugin_config
+
+        return read_plugin_config(
+            plugin_module,
+            cfg_cls,
+            fallback_getter=lambda: get_plugin_config(cfg_cls),
+        )
 
     return WebuiEnvSection(
         id=section_id,
@@ -169,7 +180,7 @@ def _registered_sections() -> tuple[WebuiEnvSection, ...]:
     if _sections_cache is not None:
         return _sections_cache
     parts: list[WebuiEnvSection] = []
-    if (Path(__file__).resolve().parent / "message_scrub" / "config.py").is_file():
+    if (_COMMON_ROOT / "message_scrub" / "config.py").is_file():
         parts.append(_message_scrub_section())
     parts.append(_cmd_perm_section())
     parts.extend(
@@ -286,4 +297,13 @@ def apply_webui_env_section_patch(section_id: str, patch: dict[str, Any]) -> dic
             clear_cmd_perm_cache()
         except Exception:
             pass
+    else:
+        plugin_module = s.module_label if s.module_label.startswith("src.") else ""
+        if plugin_module:
+            try:
+                from .registry import reload_plugin_config
+
+                reload_plugin_config(plugin_module)
+            except Exception:
+                pass
     return webui_env_section_payload(section_id, current_values=validated)
