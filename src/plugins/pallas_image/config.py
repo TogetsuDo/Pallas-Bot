@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
-from threading import Lock
 from typing import Any, Self
 
-from nonebot import get_plugin_config
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.common.env_dotenv import merged_repo_dotenv_upper, repo_layered_dotenv_files_exist
+from src.common.webui import config_from_env, install_hot_reload_config
 
 
 class ImageBackendEntry(BaseModel):
@@ -119,19 +116,7 @@ class Config(BaseModel, extra="ignore"):
 
     @classmethod
     def from_env(cls) -> Self:
-        merged = merged_repo_dotenv_upper()
-        data: dict[str, Any] = {}
-        for name, field in cls.model_fields.items():
-            key = name.upper()
-            raw: str | None = None
-            if key in os.environ:
-                raw = os.environ.get(key)
-            elif key in merged:
-                raw = merged[key]
-            if raw is None:
-                continue
-            data[name] = parse_pallas_image_env_value(name, str(raw), field.annotation)
-        return cls.model_validate(data)
+        return config_from_env(cls, parse_env_value=parse_pallas_image_env_value)
 
 
 def parse_pallas_image_env_value(name: str, raw: str, ann: Any) -> Any:
@@ -159,27 +144,6 @@ class ImageApiBackend:
     api_key: str
     model: str
     label: str
-
-
-_config_lock = Lock()
-_cached_pallas_image_config: Config | None = None
-
-
-def clear_pallas_image_config_cache() -> None:
-    global _cached_pallas_image_config
-    with _config_lock:
-        _cached_pallas_image_config = None
-
-
-def get_pallas_image_config() -> Config:
-    global _cached_pallas_image_config
-    with _config_lock:
-        if _cached_pallas_image_config is None:
-            if repo_layered_dotenv_files_exist():
-                _cached_pallas_image_config = Config.from_env()
-            else:
-                _cached_pallas_image_config = get_plugin_config(Config)
-        return _cached_pallas_image_config
 
 
 class ImageGenSettings:
@@ -334,14 +298,21 @@ class ImageGenSettings:
         return self._c.pallas_image_draw_command_cooldown
 
 
-image_gen_config = ImageGenSettings(get_pallas_image_config())
-
-
-def reload_image_gen_config() -> None:
-    """WebUI 写入 .env 后调用，使牛牛画画配置与并发限制立即生效。"""
-    clear_pallas_image_config_cache()
-    cfg = get_pallas_image_config()
+def on_pallas_image_config_reload(cfg: Config) -> None:
     image_gen_config.reload(cfg)
     from .runtime_state import sync_image_gen_semaphore
 
     sync_image_gen_semaphore(cfg.pallas_image_max_concurrency)
+
+
+plugin_webui = install_hot_reload_config(
+    Config,
+    config_module=__name__,
+    parse_env_value=parse_pallas_image_env_value,
+    on_reload=on_pallas_image_config_reload,
+)
+get_pallas_image_config = plugin_webui.get
+reload_image_gen_config = plugin_webui.reload
+clear_pallas_image_config_cache = plugin_webui.clear_cache
+
+image_gen_config = ImageGenSettings(get_pallas_image_config())
