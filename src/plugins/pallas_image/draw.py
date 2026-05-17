@@ -16,12 +16,13 @@ from src.common.cmd_perm import group_message_permission_for_command
 from src.common.config import GroupConfig
 from src.common.utils.http_msg import PALLAS_VAGUE_REPLY, user_failure_reply
 
-from .config import image_gen_config
+from .config import ImageApiBackend, image_gen_config
 from .draw_usage_store import bump_pallas_draw_usage, pallas_draw_usage_today
 from .image_api import (
     CffiRequestsError,
     bytes_from_image_reference,
     generations_payload,
+    image_api_body_issue_label,
     image_edits_endpoint,
     image_gen_auth_headers_json,
     image_gen_endpoint,
@@ -53,6 +54,36 @@ def dedupe_urls(urls: list[str]) -> list[str]:
             seen.add(u)
             out.append(u)
     return out
+
+
+def image_backends_with_endpoint(
+    backends: list[ImageApiBackend],
+    endpoint_fn,
+) -> list[ImageApiBackend]:
+    return [b for b in backends if endpoint_fn(b)]
+
+
+def log_image_backend_unusable(
+    bot_id: int,
+    op: str,
+    backend_label: str,
+    group_id: int,
+    body_text: str,
+    *,
+    has_more: bool,
+) -> None:
+    issue = image_api_body_issue_label(body_text) or "image_send_failed"
+    snippet = body_text[:200]
+    if has_more:
+        logger.info(
+            f"bot [{bot_id}] pallas_image {op} backend={backend_label} unusable "
+            f"in group [{group_id}] issue={issue} body={snippet!r}, trying next",
+        )
+    else:
+        logger.warning(
+            f"bot [{bot_id}] pallas_image {op} backend={backend_label} unusable "
+            f"in group [{group_id}] issue={issue} body={snippet!r}",
+        )
 
 
 _MAX_PALLAS_DRAW_USER_LOCKS = 8192
@@ -196,10 +227,10 @@ async def pallas_draw_execute(
                                 f"requested {len(ref_urls)} refs, got {len(blobs)} blobs",
                             )
                         last_body = ""
-                        for backend in backends:
+                        edit_backends = image_backends_with_endpoint(backends, image_edits_endpoint)
+                        for idx, backend in enumerate(edit_backends):
+                            has_more = idx < len(edit_backends) - 1
                             edits_ep = image_edits_endpoint(backend)
-                            if not edits_ep:
-                                continue
                             logger.info(
                                 f"bot [{bot_id}] pallas_image edits request in group [{group_id}] "
                                 f"backend={backend.label} url={edits_ep} images={len(blobs)}",
@@ -215,10 +246,16 @@ async def pallas_draw_execute(
                                 CffiRequestsError,
                                 RuntimeError,
                             ) as e:
-                                logger.warning(
-                                    f"bot [{bot_id}] pallas_image edits transport error "
-                                    f"backend={backend.label} group=[{group_id}]: {e}",
-                                )
+                                if has_more:
+                                    logger.info(
+                                        f"bot [{bot_id}] pallas_image edits transport error "
+                                        f"backend={backend.label} group=[{group_id}]: {e}, trying next",
+                                    )
+                                else:
+                                    logger.warning(
+                                        f"bot [{bot_id}] pallas_image edits transport error "
+                                        f"backend={backend.label} group=[{group_id}]: {e}",
+                                    )
                                 continue
                             last_body = body_text
                             logger.info(
@@ -228,19 +265,37 @@ async def pallas_draw_execute(
                                 f"body_len={len(body_text)} url={edits_ep}",
                             )
                             if status == 200:
-                                await reply_from_image_api_json(
+                                if await reply_from_image_api_json(
                                     matcher,
                                     http_client,
                                     body_text,
                                     at_user_id=user_id,
                                     persist_draw=(usage_key[0], usage_key[1]),
+                                    finish_on_error=not has_more,
+                                ):
+                                    bump_pallas_draw_usage(usage_key, count_usage)
+                                    return
+                                log_image_backend_unusable(
+                                    bot_id,
+                                    "edits",
+                                    backend.label,
+                                    group_id,
+                                    body_text,
+                                    has_more=has_more,
                                 )
-                                bump_pallas_draw_usage(usage_key, count_usage)
+                                if has_more:
+                                    continue
                                 return
-                            logger.warning(
-                                f"bot [{bot_id}] pallas_image edits failed in group [{group_id}]: "
-                                f"backend={backend.label} status={status} body={body_text[:500]}",
-                            )
+                            if has_more:
+                                logger.info(
+                                    f"bot [{bot_id}] pallas_image edits backend={backend.label} "
+                                    f"status={status} in group [{group_id}], trying next",
+                                )
+                            else:
+                                logger.warning(
+                                    f"bot [{bot_id}] pallas_image edits failed in group [{group_id}]: "
+                                    f"backend={backend.label} status={status} body={body_text[:500]}",
+                                )
                         logger.error(
                             f"bot [{bot_id}] pallas_image edits exhausted backends in group [{group_id}]",
                         )
@@ -249,10 +304,10 @@ async def pallas_draw_execute(
 
                 payload_model = backends[0].model if backends else cfg.model
                 last_body = ""
-                for backend in backends:
+                gen_backends = image_backends_with_endpoint(backends, image_gen_endpoint)
+                for idx, backend in enumerate(gen_backends):
+                    has_more = idx < len(gen_backends) - 1
                     gen_ep = image_gen_endpoint(backend)
-                    if not gen_ep:
-                        continue
                     payload = generations_payload(gen_prompt, ref_urls, model=backend.model or payload_model)
                     auth_json_headers = image_gen_auth_headers_json(backend)
                     logger.info(
@@ -274,10 +329,16 @@ async def pallas_draw_execute(
                         CffiRequestsError,
                         RuntimeError,
                     ) as e:
-                        logger.warning(
-                            f"bot [{bot_id}] pallas_image generations transport error "
-                            f"backend={backend.label} group=[{group_id}]: {e}",
-                        )
+                        if has_more:
+                            logger.info(
+                                f"bot [{bot_id}] pallas_image generations transport error "
+                                f"backend={backend.label} group=[{group_id}]: {e}, trying next",
+                            )
+                        else:
+                            logger.warning(
+                                f"bot [{bot_id}] pallas_image generations transport error "
+                                f"backend={backend.label} group=[{group_id}]: {e}",
+                            )
                         continue
                     last_body = body_text
                     logger.info(
@@ -287,19 +348,37 @@ async def pallas_draw_execute(
                         f"body_len={len(body_text)} url={gen_ep}",
                     )
                     if status == 200:
-                        await reply_from_image_api_json(
+                        if await reply_from_image_api_json(
                             matcher,
                             http_client,
                             body_text,
                             at_user_id=user_id,
                             persist_draw=(usage_key[0], usage_key[1]),
+                            finish_on_error=not has_more,
+                        ):
+                            bump_pallas_draw_usage(usage_key, count_usage)
+                            return
+                        log_image_backend_unusable(
+                            bot_id,
+                            "generations",
+                            backend.label,
+                            group_id,
+                            body_text,
+                            has_more=has_more,
                         )
-                        bump_pallas_draw_usage(usage_key, count_usage)
+                        if has_more:
+                            continue
                         return
-                    logger.warning(
-                        f"bot [{bot_id}] pallas_image generations failed in group [{group_id}]: "
-                        f"backend={backend.label} status={status} body={body_text[:500]}",
-                    )
+                    if has_more:
+                        logger.info(
+                            f"bot [{bot_id}] pallas_image generations backend={backend.label} "
+                            f"status={status} in group [{group_id}], trying next",
+                        )
+                    else:
+                        logger.warning(
+                            f"bot [{bot_id}] pallas_image generations failed in group [{group_id}]: "
+                            f"backend={backend.label} status={status} body={body_text[:500]}",
+                        )
                 logger.error(
                     f"bot [{bot_id}] pallas_image generations exhausted backends in group [{group_id}]",
                 )

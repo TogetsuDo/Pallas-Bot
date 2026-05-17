@@ -421,24 +421,48 @@ def optional_message_at_user(
     return message_at_user(user_id, tail)
 
 
+def image_api_body_issue_label(body_text: str) -> str | None:
+    """HTTP 200 时正文是否可发图；不可用时返回简短原因（供日志，不暴露给用户）。"""
+    try:
+        data = json.loads(body_text)
+    except Exception:
+        return "invalid_json"
+    if not isinstance(data, dict):
+        return "invalid_shape"
+    if data.get("error") is not None:
+        return "upstream_error"
+    remote_url, raw = extract_image_from_generation_payload(data)
+    if raw or remote_url:
+        return None
+    return "no_image"
+
+
 async def reply_from_image_api_json(
     matcher,
     client: httpx.AsyncClient,
     body_text: str,
     at_user_id: int | None = None,
     persist_draw: tuple[int, int] | None = None,
-) -> None:
+    *,
+    finish_on_error: bool = True,
+) -> bool:
     try:
         data = json.loads(body_text)
     except Exception:
         logger.error(f"pallas_image api invalid json body_prefix={body_text[:500]!r}")
-        await matcher.finish(optional_message_at_user(at_user_id, PALLAS_VAGUE_REPLY))
+        if finish_on_error:
+            await matcher.finish(optional_message_at_user(at_user_id, PALLAS_VAGUE_REPLY))
+        return False
 
     if not isinstance(data, dict):
-        await matcher.finish(optional_message_at_user(at_user_id, PALLAS_VAGUE_REPLY))
+        if finish_on_error:
+            await matcher.finish(optional_message_at_user(at_user_id, PALLAS_VAGUE_REPLY))
+        return False
 
     if data.get("error") is not None:
-        await matcher.finish(optional_message_at_user(at_user_id, user_failure_reply(body_text)))
+        if finish_on_error:
+            await matcher.finish(optional_message_at_user(at_user_id, user_failure_reply(body_text)))
+        return False
 
     remote_url, raw = extract_image_from_generation_payload(data)
     if raw:
@@ -450,7 +474,7 @@ async def reply_from_image_api_json(
                 await persist_generated_draw(raw, persist_draw[0], persist_draw[1])
             except Exception as e:
                 logger.warning(f"pallas_image persist archive failed group={persist_draw[0]}: {e}")
-        return
+        return True
     if remote_url:
         try:
             img_resp = await client.get(remote_url)
@@ -464,11 +488,14 @@ async def reply_from_image_api_json(
                         await persist_generated_draw(content, persist_draw[0], persist_draw[1])
                     except Exception as e:
                         logger.warning(f"pallas_image persist archive failed group={persist_draw[0]}: {e}")
-                return
+                return True
         except httpx.HTTPError:
             pass
         logger.error(f"pallas_image download generated image failed url={remote_url}")
-        await matcher.send(PALLAS_VAGUE_REPLY)
-        return
+        if finish_on_error:
+            await matcher.finish(optional_message_at_user(at_user_id, PALLAS_VAGUE_REPLY))
+        return False
     logger.warning(f"pallas_image response missing image url/b64 data_prefix={str(data)[:800]!r}")
-    await matcher.finish(PALLAS_VAGUE_REPLY)
+    if finish_on_error:
+        await matcher.finish(optional_message_at_user(at_user_id, PALLAS_VAGUE_REPLY))
+    return False
