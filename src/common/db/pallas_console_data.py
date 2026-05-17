@@ -9,6 +9,7 @@ from src.common.db import get_db_backend
 # 防止误扫全表拖垮进程；超出部分由 API 文档说明需用其它工具
 _BOT_LIST_CAP = 10_000
 _GROUP_LIST_CAP = 10_000
+_USER_LIST_CAP = 10_000
 
 
 def _jsonable_sing_progress(obj: Any) -> Any:
@@ -104,6 +105,26 @@ async def list_group_configs_public(limit: int) -> list[dict[str, Any]]:
             result = await session.execute(select(GroupConfigRow).limit(cap))
             rows = list(result.scalars().all())
         return [group_config_to_public(r) for r in rows]
+    raise ValueError(f"不支持的 DB 后端: {backend}")
+
+
+async def list_user_configs_public(limit: int) -> list[dict[str, Any]]:
+    cap = max(1, min(limit, _USER_LIST_CAP))
+    backend = get_db_backend()
+    if backend == "mongodb":
+        from src.common.db.modules import UserConfigModule
+
+        docs = await UserConfigModule.find().limit(cap).to_list()
+        return [user_config_to_public(d) for d in docs]
+    if _is_pg_backend(backend):
+        from sqlalchemy import select
+
+        from src.common.db.repository_pg import UserConfigRow, get_session
+
+        async with get_session() as session:
+            result = await session.execute(select(UserConfigRow).limit(cap))
+            rows = list(result.scalars().all())
+        return [user_config_to_public(r) for r in rows]
     raise ValueError(f"不支持的 DB 后端: {backend}")
 
 

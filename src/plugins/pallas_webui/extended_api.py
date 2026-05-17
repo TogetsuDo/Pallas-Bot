@@ -2945,7 +2945,9 @@ def register_extended_api(
         except Exception as e:  # noqa: BLE001
             logger.exception("Pallas-Bot 控制台: 删除表行失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
-        _drop_read_cache(("db_overview", "bot_configs_list", "group_configs_list", "instances"))
+        _drop_read_cache(
+            ("db_overview", "bot_configs_list", "group_configs_list", "user_configs_list", "instances"),
+        )
         if not deleted:
             raise HTTPException(status_code=404, detail="未找到该行")
         return JSONResponse({"ok": True, "data": {"deleted": True}})
