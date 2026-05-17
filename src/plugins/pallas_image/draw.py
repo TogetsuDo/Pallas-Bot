@@ -159,31 +159,65 @@ async def pallas_draw_handle(bot: Bot, event: GroupMessageEvent, args: Message =
             )
         )
 
-    async with get_pallas_draw_user_lock(group_id, user_id):
-        usage_key = (group_id, user_id)
-        count_usage = draw_should_count_usage(group_id, user_id)
-        if await SUPERUSER(bot, event):
-            count_usage = False
-        limit_n = image_gen_config.draw_per_user_limit
-        if count_usage and pallas_draw_usage_today(usage_key) >= limit_n:
-            await pallas_draw.finish(message_at_user(user_id, f"你在本群今日的画画次数已达上限（{limit_n}）。"))
+    usage_key = (group_id, user_id)
+    count_usage = draw_should_count_usage(group_id, user_id)
+    if await SUPERUSER(bot, event):
+        count_usage = False
+    limit_n = image_gen_config.draw_per_user_limit
+    if count_usage and pallas_draw_usage_today(usage_key) >= limit_n:
+        await pallas_draw.finish(message_at_user(user_id, f"你在本群今日的画画次数已达上限（{limit_n}）。"))
 
-        text = args.extract_plain_text().strip()
-        ref_urls = dedupe_urls(
-            extract_image_urls_from_message(args)
-            + (extract_image_urls_from_message(event.reply.message) if event.reply else [])
-        )
-        if not text and not ref_urls:
-            await pallas_draw.finish(
-                message_at_user(
-                    user_id,
-                    "请说明想画什么，例如：牛牛画画 一只穿斗篷的羊。\n"
-                    "也可附带一张或多张参考图"
-                    "或回复一条带图的消息后再发「牛牛画画」 做图生图。",
-                )
+    text = args.extract_plain_text().strip()
+    ref_urls = dedupe_urls(
+        extract_image_urls_from_message(args)
+        + (extract_image_urls_from_message(event.reply.message) if event.reply else [])
+    )
+    if not text and not ref_urls:
+        await pallas_draw.finish(
+            message_at_user(
+                user_id,
+                "请说明想画什么，例如：牛牛画画 一只穿斗篷的羊。\n"
+                "也可附带一张或多张参考图"
+                "或回复一条带图的消息后再发「牛牛画画」 做图生图。",
             )
+        )
 
-        await pallas_draw_execute(pallas_draw, int(event.self_id), usage_key, count_usage, user_id, text, ref_urls)
+    await pallas_draw.send("欢呼吧！")
+    asyncio.create_task(
+        run_pallas_draw_queued(
+            pallas_draw,
+            int(event.self_id),
+            usage_key,
+            count_usage,
+            user_id,
+            text,
+            ref_urls,
+        ),
+        name=f"pallas_draw:{group_id}:{user_id}",
+    )
+
+
+async def run_pallas_draw_queued(
+    matcher,
+    bot_id: int,
+    usage_key: tuple[int, int],
+    count_usage: bool,
+    user_id: int,
+    text: str,
+    ref_urls: list[str],
+) -> None:
+    group_id, _ = usage_key
+    try:
+        async with get_pallas_draw_user_lock(group_id, user_id):
+            limit_n = image_gen_config.draw_per_user_limit
+            if count_usage and pallas_draw_usage_today(usage_key) >= limit_n:
+                await matcher.send(message_at_user(user_id, f"你在本群今日的画画次数已达上限（{limit_n}）。"))
+                return
+            await pallas_draw_execute(matcher, bot_id, usage_key, count_usage, user_id, text, ref_urls)
+    except FinishedException:
+        raise
+    except Exception as e:
+        logger.exception(f"bot [{bot_id}] pallas_image queued draw failed in group [{group_id}]: {e}")
 
 
 async def pallas_draw_execute(
@@ -209,7 +243,6 @@ async def pallas_draw_execute(
         gen_prompt = default_prompt
 
     httpx_timeout = httpx.Timeout(cfg.request_timeout)
-    await matcher.send("欢呼吧！")
     async with image_gen_semaphore:
         try:
             async with httpx.AsyncClient(timeout=httpx_timeout, trust_env=True) as http_client:
