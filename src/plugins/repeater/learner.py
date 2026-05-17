@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from src.common.db import Answer, Context, make_context_repository
 from src.common.db import Message as MessageModel
 
+from .context_exists_cache import context_exists_for_learn, note_context_exists
 from .message_store import MessageStore
 
 if TYPE_CHECKING:
@@ -30,6 +31,16 @@ class Learner:
         """
 
         if len(chat_data.raw_message.strip()) == 0:
+            return False
+
+        from .responder import Responder
+
+        if chat_data.user_id in Responder._repeat_ignore_user_ids():
+            return False
+
+        from src.plugins.duel.duel_session import should_skip_repeater_learn
+
+        if await should_skip_repeater_learn(chat_data.group_id, chat_data.user_id, chat_data.raw_message):
             return False
 
         group_id = chat_data.group_id
@@ -81,8 +92,7 @@ class Learner:
         pre_keywords = pre_msg.keywords
         cur_time = chat_data.time
 
-        context = await context_repo.find_by_keywords(pre_keywords)
-        if context:
+        if await context_exists_for_learn(pre_keywords):
             # 使用细粒度 upsert_answer：原子地 inc count / set time / 可选 push message
             # append_on_existing 保留原有 "仅 plain text 才追加 message" 的语义
             await context_repo.upsert_answer(
@@ -93,6 +103,7 @@ class Learner:
                 message=raw_message,
                 append_on_existing=chat_data.is_plain_text,
             )
+            await note_context_exists(pre_keywords)
         else:
             context = Context.model_construct(
                 keywords=pre_keywords,
@@ -103,3 +114,4 @@ class Learner:
                 clear_time=0,
             )
             await context_repo.insert(context)
+            await note_context_exists(pre_keywords)

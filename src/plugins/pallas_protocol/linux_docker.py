@@ -1,18 +1,43 @@
-"""Linux：基于 mlikiowa/napcat-docker（NapCat-Docker）无头跑 NapCat。
-
-参考: https://github.com/NapNeko/NapCat-Docker
-"""
+"""Linux：NapCat Docker（mlikiowa/napcat-docker）。"""
 
 from __future__ import annotations
 
-import asyncio
 import os
 import re
-import shutil
-import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit, urlunsplit
+
+from . import docker_cli
+from .docker_onebot_host import (
+    docker_host_gateway_extra_args,
+    effective_docker_onebot_host,
+    resolve_docker_onebot_host_from_config,
+)
+
+docker_container_running = docker_cli.docker_inspect_running_async
+docker_container_running_sync = docker_cli.docker_inspect_running_sync
+docker_remove_force = docker_cli.docker_rm_force_async
+docker_stop = docker_cli.docker_stop_async
+docker_stop_sync = docker_cli.docker_stop_sync
+
+__all__ = [
+    "build_docker_run_argv",
+    "docker_cache_path",
+    "docker_container_name",
+    "docker_container_running",
+    "docker_container_running_sync",
+    "docker_remove_force",
+    "docker_stop",
+    "docker_stop_sync",
+    "docker_volume_paths",
+    "is_linux",
+    "apply_docker_runtime_toggle_to_ws_url",
+    "is_plain_ws_url",
+    "rewrite_onebot_ws_url_for_container",
+    "sanitize_docker_name_suffix",
+    "ws_url_host_should_rewrite_for_docker_bridge",
+]
 
 if TYPE_CHECKING:
     from .config import Config
@@ -101,16 +126,26 @@ def build_docker_run_argv(
     if network_mode == "host":
         argv.extend(["--network", "host"])
     else:
-        argv.extend(["-p", f"{host_map}:{in_port}"])
+        argv.extend([*docker_host_gateway_extra_args(), "-p", f"{host_map}:{in_port}"])
     argv.append(img)
     return argv
 
 
+def is_plain_ws_url(url: str) -> bool:
+    """是否为 URI scheme ``ws``（明文 WebSocket，非 ``wss``）的 URL。"""
+    u = str(url or "").strip()
+    if not u:
+        return False
+    return urlsplit(u).scheme.lower() == "ws"
+
+
 def rewrite_onebot_ws_url_for_container(url: str, docker_host: str) -> str:
-    if not (url and url.startswith("ws://")):  # nosemgrep: javascript.lang.security.detect-insecure-websocket
+    if not (url and is_plain_ws_url(url)):
         return url
     u = urlsplit(url)
-    dhost = (docker_host or "").strip() or "172.17.0.1"
+    dhost = (docker_host or "").strip()
+    if not dhost or dhost.lower() == "auto":
+        dhost = effective_docker_onebot_host("", docker_network_mode="bridge")
     if u.port is not None:
         netloc = f"{dhost}:{u.port}"
     else:
@@ -118,70 +153,67 @@ def rewrite_onebot_ws_url_for_container(url: str, docker_host: str) -> str:
     return urlunsplit((u.scheme, netloc, u.path, u.query, u.fragment))
 
 
-async def docker_container_running(name: str) -> bool:
-    if not shutil.which("docker"):
+_IPV4_RE = re.compile(r"^(?:25[0-5]|2[0-4]\d|[01]?\d{1,3})(?:\.(?:25[0-5]|2[0-4]\d|[01]?\d{1,3})){3}$")
+
+
+def ws_url_host_should_rewrite_for_docker_bridge(url: str) -> bool:
+    """是否应把明文 ``ws`` URL 的主机替换为 Docker 侧可达地址（如网关）。
+
+    用于 NapCat/SnowLuma 容器访问宿主机 Bot；对非 127 的 IPv4 与其它 IPv6字面量（除 ::1）不替换。
+    """
+    if not (url and is_plain_ws_url(url)):
         return False
-    proc = await asyncio.create_subprocess_exec(
-        "docker",
-        "inspect",
-        "-f",
-        "{{.State.Running}}",
-        name,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.DEVNULL,
-    )
-    out, _ = await proc.communicate()
-    if proc.returncode != 0:
+    host = (urlsplit(url).hostname or "").strip().lower()
+    if not host:
+        return True
+    if host in ("localhost", "host.docker.internal"):
+        return True
+    if host == "::1":
+        return True
+    if ":" in host:
         return False
-    return b"true" in (out or b"").lower()
+    if _IPV4_RE.match(host):
+        return host.startswith("127.")
+    return True
 
 
-async def docker_remove_force(name: str) -> None:
-    if not shutil.which("docker"):
-        return
-    p = await asyncio.create_subprocess_exec("docker", "rm", "-f", name, stderr=asyncio.subprocess.DEVNULL)
-    await p.wait()
+def apply_docker_runtime_toggle_to_ws_url(
+    url: str,
+    *,
+    prev_docker_runtime: bool,
+    now_docker_runtime: bool,
+    config: Any,
+) -> str | None:
+    """Docker 与本地运行切换时，按规则改写 ``ws_url`` 主机（与 ``napcat_linux_docker`` 等标记一致，不限定 OS）。"""
+    if prev_docker_runtime == now_docker_runtime:
+        return None
+    if not (url and is_plain_ws_url(url)):
+        return None
+    if now_docker_runtime:
+        if not ws_url_host_should_rewrite_for_docker_bridge(url):
+            return None
+        dh = resolve_docker_onebot_host_from_config(config)
+        new_url = rewrite_onebot_ws_url_for_container(url, dh)
+        return new_url if new_url != url else None
+    from .config import resolve_onebot_ws_settings
 
-
-async def docker_stop(name: str) -> None:
-    if not shutil.which("docker"):
-        return
-    proc = await asyncio.create_subprocess_exec(
-        "docker",
-        "stop",
-        name,
-        stdout=asyncio.subprocess.DEVNULL,
-        stderr=asyncio.subprocess.DEVNULL,
-    )
-    try:
-        await asyncio.wait_for(proc.wait(), timeout=60)
-    except TimeoutError:
-        proc.kill()
-        await proc.wait()
-
-
-def docker_container_running_sync(name: str) -> bool:
-    if not shutil.which("docker"):
-        return False
-    try:
-        r = subprocess.run(  # noqa: S603
-            ["docker", "inspect", "-f", "{{.State.Running}}", name],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=6,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    if r.returncode != 0:
-        return False
-    return "true" in (r.stdout or "").lower()
-
-
-def docker_stop_sync(name: str) -> None:
-    if not shutil.which("docker"):
-        return
-    try:
-        subprocess.run(["docker", "stop", name], check=False, capture_output=True, timeout=60)  # noqa: S603
-    except (OSError, subprocess.TimeoutExpired):
-        pass
+    dh = (resolve_docker_onebot_host_from_config(config) or "").strip().lower()
+    u = urlsplit(url)
+    h = (u.hostname or "").strip().lower()
+    bridge_style = ws_url_host_should_rewrite_for_docker_bridge(url)
+    host_is_docker_target = h == "host.docker.internal" or (bool(dh) and h == dh) or bridge_style
+    if not host_is_docker_target:
+        return None
+    base_url, _, _ = resolve_onebot_ws_settings(config)
+    if base_url:
+        ub = urlsplit(base_url)
+        new_host = (ub.hostname or "").strip() or "127.0.0.1"
+        port = u.port if u.port is not None else ub.port
+    else:
+        new_host = "127.0.0.1"
+        port = u.port if u.port is not None else 8088
+    if not new_host:
+        new_host = "127.0.0.1"
+    netloc = f"{new_host}:{port}" if port is not None else new_host
+    new_url = urlunsplit(("ws", netloc, u.path, u.query, u.fragment))
+    return new_url if new_url != url else None

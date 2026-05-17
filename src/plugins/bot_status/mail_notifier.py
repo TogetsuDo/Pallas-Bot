@@ -2,7 +2,7 @@ from datetime import datetime
 
 from nonebot import logger
 
-from src.common.config import BotConfig
+from src.common.config import get_bot_admins
 
 from .config import MailConfig, plugin_config
 from .utils import send_mail
@@ -15,14 +15,11 @@ async def get_bot_admin_emails(bot_id: int) -> list[str]:
     emails: list[str] = []
 
     try:
-        bot_config = BotConfig(bot_id=bot_id)
-        admins = await bot_config._find("admins")
-
-        # 为每个admin生成QQ邮箱
+        admins = await get_bot_admins(bot_id)
         if admins:
             emails.extend(f"{admin_id}@qq.com" for admin_id in admins)
     except Exception as e:
-        logger.debug(f"Failed to get admins for bot {bot_id}: {e}")
+        logger.debug(f"bot [{bot_id}] bot_status get_bot_admin_emails failed: {e}")
 
     return emails
 
@@ -63,9 +60,9 @@ async def notify_bot_offline(bot_id: int, nickname: str, offline_reason: str = "
         # 发送给配置的邮箱
         result: str | None = await send_mail(title, content, mail_config)
         if result:
-            logger.error(f"Failed to send offline notification mail: {result}")
+            logger.error(f"bot [{bot_id}] offline notification mail failed: {result}")
         else:
-            logger.info(f"Offline notification mail sent for bot {bot_id}")
+            logger.info(f"bot [{bot_id}] offline notification mail sent (notice_email)")
 
         # 发送给admin邮箱
         for email in admin_emails:
@@ -79,13 +76,13 @@ async def notify_bot_offline(bot_id: int, nickname: str, offline_reason: str = "
                 )
                 result = await send_mail(title, content, admin_mail_config)
                 if result:
-                    logger.error(f"Failed to send offline notification mail to admin {email}: {result}")
+                    logger.error(f"bot [{bot_id}] offline mail to admin [{email}] failed: {result}")
                 else:
-                    logger.info(f"Offline notification mail sent to admin {email} for bot {bot_id}")
+                    logger.info(f"bot [{bot_id}] offline notification mail sent to admin [{email}]")
             except Exception as e:
-                logger.error(f"Exception occurred while sending mail to admin {email}: {e}")
+                logger.error(f"bot [{bot_id}] offline mail to admin [{email}] exception: {e}")
     else:
-        logger.warning("Mail configuration incomplete, cannot send offline notification")
+        logger.warning("bot_status mail skipped: SMTP config incomplete")
 
 
 async def handle_test_mail_command(bot, event) -> None:

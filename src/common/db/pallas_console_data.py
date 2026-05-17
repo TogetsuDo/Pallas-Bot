@@ -1,4 +1,4 @@
-"""Pallas 控制台 API 用的数据读取/概览，与具体 HTTP 层解耦。"""
+"""Pallas-Bot 控制台 API 用的数据读取/概览，与具体 HTTP 层解耦。"""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from src.common.db import get_db_backend
 # 防止误扫全表拖垮进程；超出部分由 API 文档说明需用其它工具
 _BOT_LIST_CAP = 10_000
 _GROUP_LIST_CAP = 10_000
+_USER_LIST_CAP = 10_000
 
 
 def _jsonable_sing_progress(obj: Any) -> Any:
@@ -37,12 +38,20 @@ def bot_config_to_public(doc_or_row: Any) -> dict[str, Any]:
 
 def group_config_to_public(doc_or_row: Any) -> dict[str, Any]:
     sp = getattr(doc_or_row, "sing_progress", None)
+    bu = getattr(doc_or_row, "blocked_user_ids", None) or []
+    blocked: list[int] = []
+    for x in bu:
+        try:
+            blocked.append(int(x))
+        except (TypeError, ValueError):
+            continue
     return {
         "group_id": int(doc_or_row.group_id),
         "roulette_mode": int(getattr(doc_or_row, "roulette_mode", 1)),
         "banned": bool(getattr(doc_or_row, "banned", False)),
         "sing_progress": _jsonable_sing_progress(sp),
         "disabled_plugins": list(doc_or_row.disabled_plugins or []),
+        "blocked_user_ids": sorted(set(blocked)),
     }
 
 
@@ -96,6 +105,26 @@ async def list_group_configs_public(limit: int) -> list[dict[str, Any]]:
             result = await session.execute(select(GroupConfigRow).limit(cap))
             rows = list(result.scalars().all())
         return [group_config_to_public(r) for r in rows]
+    raise ValueError(f"不支持的 DB 后端: {backend}")
+
+
+async def list_user_configs_public(limit: int) -> list[dict[str, Any]]:
+    cap = max(1, min(limit, _USER_LIST_CAP))
+    backend = get_db_backend()
+    if backend == "mongodb":
+        from src.common.db.modules import UserConfigModule
+
+        docs = await UserConfigModule.find().limit(cap).to_list()
+        return [user_config_to_public(d) for d in docs]
+    if _is_pg_backend(backend):
+        from sqlalchemy import select
+
+        from src.common.db.repository_pg import UserConfigRow, get_session
+
+        async with get_session() as session:
+            result = await session.execute(select(UserConfigRow).limit(cap))
+            rows = list(result.scalars().all())
+        return [user_config_to_public(r) for r in rows]
     raise ValueError(f"不支持的 DB 后端: {backend}")
 
 
@@ -282,11 +311,17 @@ def pallas_protocol_snapshot() -> dict[str, Any] | None:
             accounts = mgr.list_accounts()
         except Exception:  # noqa: BLE001
             accounts = []
+        try:
+            from src.common.pallas_console_login import is_console_auth_configured
+
+            auth_ok = is_console_auth_configured()
+        except Exception:  # noqa: BLE001
+            auth_ok = False
         return {
             "plugin": "pallas_protocol",
             "webui_enabled": bool(getattr(cfg, "pallas_protocol_webui_enabled", False)),
             "webui_path": path,
-            "has_token": bool((getattr(cfg, "pallas_protocol_token", None) or "").strip()),
+            "console_auth_configured": auth_ok,
             "accounts": accounts,
         }
     return None

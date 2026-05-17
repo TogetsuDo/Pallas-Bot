@@ -13,10 +13,10 @@ from nonebot.adapters.onebot.v11 import (
     MessageSegment,
     permission,
 )
-from nonebot.permission import Permission
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
+from src.common.cmd_perm import group_message_permission_for_command
 from src.common.config import BotConfig, GroupConfig
 
 from .config import JUDGMENT_CFG, RESCUE_CFG, SHOT_CFG
@@ -26,9 +26,10 @@ __plugin_meta__ = PluginMetadata(
     name="牛牛轮盘",
     description="危险的轮盘游戏，参与者可能被踢出群聊或禁言，有概率炸膛哦",
     usage="""
-管理员可以启动游戏：
+管理员可以更改游戏模式：
 1. 启动游戏：
-    - 发送"牛牛轮盘"启动默认模式（踢人模式）
+    - 要求牛牛是管理员
+    - 发送"牛牛轮盘"启动默认模式（禁言模式）
     - 发送"牛牛轮盘踢人"启动踢人模式
     - 发送"牛牛轮盘禁言"启动禁言模式
 2. 参与游戏：
@@ -48,13 +49,16 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "version": "3.0.0",
+        "command_permissions": [
+            {"id": "roulette.mode_switch", "label": "牛牛轮盘切换模式", "default": "staff"},
+        ],
         "menu_data": [
             {
                 "func": "牛牛轮盘",
                 "trigger_method": "on_message",
-                "trigger_condition": "牛牛轮盘/牛牛轮盘踢人/牛牛轮盘禁言",
+                "trigger_condition": "牛牛轮盘（开局）；牛牛轮盘踢人/禁言等切换模式",
                 "brief_des": "启动轮盘",
-                "detail_des": "管理员可以启动，可选择踢人模式或禁言模式。游戏开始后，六个弹槽中只有一颗子弹，触发者可能会被踢出群聊或禁言。",  # noqa: E501
+                "detail_des": "管理员可选择踢人模式或禁言模式，任何人都可以发送牛牛轮盘开启游戏。游戏开始后，六个弹槽中只有一颗子弹，触发者可能会被踢出群聊或禁言。",  # noqa: E501
             },
             {
                 "func": "参与轮盘",
@@ -68,7 +72,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_method": "on_message",
                 "trigger_condition": "牛牛喝酒/牛牛干杯/牛牛继续喝",
                 "brief_des": "在轮盘游戏中通过喝酒参与",
-                "detail_des": "在轮盘游戏进行中，发送'牛牛喝酒'、'牛牛干杯'或'牛牛继续喝'可以参与游戏，增加被选中概率。",  # noqa: E501
+                "detail_des": "在轮盘游戏进行中，发送'牛牛喝酒'、'牛牛干杯'或'牛牛继续喝'被视为加入轮盘，成为牛牛喝酒后乱开枪的对象。牛牛喝酒后所有参与轮盘的玩家均有概率中弹",  # noqa: E501
             },
             {
                 "func": "牛牛救一下",
@@ -163,7 +167,7 @@ async def participate_in_roulette(event: GroupMessageEvent) -> bool:
 
 async def roulette(messagae_handle, event: GroupMessageEvent):
     rand = random.randint(1, 6)
-    logger.info(f"Roulette rand: {rand}")
+    logger.info(f"bot [{event.self_id}] roulette started roll={rand} in group [{event.group_id}]")
     roulette_status[event.group_id] = rand
     roulette_count[event.group_id] = 0
     roulette_time[event.group_id] = int(time.time())
@@ -193,17 +197,11 @@ async def is_roulette_type_msg(bot: Bot, event: GroupMessageEvent) -> bool:
     return False
 
 
-async def is_config_admin(event: GroupMessageEvent) -> bool:
-    return await BotConfig(event.self_id).is_admin_of_bot(event.user_id)
-
-
-IsAdmin = permission.GROUP_OWNER | permission.GROUP_ADMIN | Permission(is_config_admin)
-
 roulette_type_msg = on_message(
     priority=5,
     block=True,
     rule=Rule(is_roulette_type_msg),
-    permission=IsAdmin,
+    permission=group_message_permission_for_command("roulette.mode_switch"),
 )
 
 
@@ -315,7 +313,10 @@ async def shot(self_id: int, user_id: int, group_id: int) -> Callable[[], Awaita
                 },
             )
             ban_players.append(user_id, group_id)
-            logger.info(f"用户 {user_id} 被禁言")
+            dur = SHOT_CFG.ban_duration()
+            logger.info(
+                f"bot [{self_id}] roulette ban applied user [{user_id}] in group [{group_id}] duration_sec={dur}"
+            )
 
         return group_ban
 
@@ -523,7 +524,10 @@ async def rescue_or_judgment_handler(bot: Bot, event: GroupMessageEvent):
                 processed_users.append(target_user_id)
                 ban_players.find_and_refresh(target_user_id, current_group_id)
             except Exception as e:
-                logger.error(e)
+                logger.error(
+                    f"bot [{event.self_id}] roulette judgment set_group_ban failed in group [{current_group_id}] "
+                    f"target [{target_user_id}]: {e}"
+                )
 
         if processed_users:
             reply_segments = [MessageSegment.text(cfg.target_prefix)]
@@ -551,7 +555,10 @@ async def rescue_or_judgment_handler(bot: Bot, event: GroupMessageEvent):
             affected_users.append(user_id)
             ban_players.find_and_refresh(user_id, current_group_id)
         except Exception as e:
-            logger.error(e)
+            logger.error(
+                f"bot [{event.self_id}] roulette judgment set_group_ban failed in group [{current_group_id}] "
+                f"user [{user_id}]: {e}"
+            )
 
     if is_rescue:
         ban_players.clear(current_group_id)

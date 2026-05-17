@@ -8,16 +8,20 @@ from nonebot import get_bot, get_driver, logger, on_message, on_notice
 from nonebot.adapters import Bot
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, GroupRecallNoticeEvent, Message, MessageSegment, permission
 from nonebot.exception import ActionFailed
-from nonebot.permission import SUPERUSER, Permission
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule, keyword, to_me
 from nonebot.typing import T_State
 from nonebot_plugin_apscheduler import scheduler
 
+from src.common.cmd_perm import group_message_permission_for_command
 from src.common.config import BotConfig
+from src.common.message_scrub import is_message_scrub_blocked_async
+from src.common.message_scrub.log_preview import scrub_intercept_log_preview
 from src.common.utils.array2cqcode import try_convert_to_cqcode
 from src.common.utils.media_cache import get_image, insert_image
+from src.plugins.dream.ban_ack_state import DREAM_BAN_ACK_SENT_STATE_KEY
 
+from .ban_state import REPEATER_BAN_ACK_SENT_STATE_KEY
 from .emoji_reaction import reaction_msg
 from .model import Chat
 
@@ -25,7 +29,7 @@ __plugin_meta__ = PluginMetadata(
     name="牛牛复读",
     description="具备智能学习和复读功能的聊天插件，可以学习群内对话并进行智能回复",
     usage="""
-这个插件会自动学习群内对话并在适当时候进行回复：
+这个插件会自动学习群内对话并在适当时候进行回复，这是一项被动技能：
 1. 牛牛会自动学习群内对话内容
 2. 当群内出现相似话题时，牛牛会自动回复相关内容
 3. 当群内有消息被重复发送多次时，牛牛会复读该消息
@@ -44,6 +48,10 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "version": "3.0.0",
+        "command_permissions": [
+            {"id": "repeater.ban", "label": "复读「不可以」", "default": "staff"},
+            {"id": "repeater.ban_latest", "label": "复读「不可以发这个」", "default": "staff"},
+        ],
         "menu_data": [
             {
                 "func": "牛牛复读",
@@ -69,7 +77,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "不可以",
                 "trigger_method": "on_message",
-                "trigger_condition": "管理员指令",
+                "trigger_condition": ("@牛牛 回复并说「不可以」或说「不可以发这个」"),
+                "command_permissions": ["repeater.ban", "repeater.ban_latest"],
                 "brief_des": "管理员可以管理牛牛的回复内容",
                 "detail_des": "管理员可以通过回复并发送'不可以'、'不可以发这个'或撤回牛牛的消息来禁止牛牛回复某些内容。",  # noqa: E501
             },
@@ -107,6 +116,32 @@ __plugin_meta__ = PluginMetadata(
 )
 message_id_lock = asyncio.Lock()
 message_id_dict = defaultdict(lambda: deque(maxlen=100))
+
+# 多 Bot 同群时，协议可能对同一条群消息向每个连接各上报一次
+# 不合并会在 MessageStore 里堆出多条「连续相同句」，误触复读。
+_GROUP_EVENT_DEDUP_MAX = 4000
+_group_event_dedup_lock = asyncio.Lock()
+_group_event_sigs: deque[tuple[int, int, str, int]] = deque()
+_group_event_sig_set: set[tuple[int, int, str, int]] = set()
+
+
+def _normalize_group_raw_message(raw_message: str) -> str:
+    # 与 ChatData / learn 侧一致，避免图片子类型差异导致去重失败
+    return re.sub(r"\.image,.+?\]", ".image]", raw_message)
+
+
+async def _should_skip_duplicate_group_event(group_id: int, user_id: int, norm_raw: str, time: int) -> bool:
+    sig = (group_id, user_id, norm_raw, time)
+    async with _group_event_dedup_lock:
+        if sig in _group_event_sig_set:
+            return True
+        while len(_group_event_sigs) >= _GROUP_EVENT_DEDUP_MAX:
+            old = _group_event_sigs.popleft()
+            _group_event_sig_set.discard(old)
+        _group_event_sigs.append(sig)
+        _group_event_sig_set.add(sig)
+        return False
+
 
 driver = get_driver()
 
@@ -182,19 +217,27 @@ any_msg = on_message(
 
 @any_msg.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
-    to_learn = True
     # 多账号登陆，且在同一群中时；避免一条消息被处理多次
     async with message_id_lock:
         message_id = event.message_id
         group_id = event.group_id
-        if group_id in message_id_dict:
-            if message_id in message_id_dict[group_id]:
-                to_learn = False
-        else:
+        if group_id not in message_id_dict:
             message_id_dict[group_id] = deque(maxlen=100)
+        if message_id in message_id_dict[group_id]:
+            return
+        message_id_dict[group_id].append(message_id)
 
-        group_message = message_id_dict[group_id]
-        group_message.append(message_id)
+    norm_raw = _normalize_group_raw_message(event.raw_message)
+    if await _should_skip_duplicate_group_event(event.group_id, event.user_id, norm_raw, event.time):
+        return
+
+    if await is_message_scrub_blocked_async(plain_text=event.get_plaintext(), raw_message=norm_raw):
+        pv = scrub_intercept_log_preview(event.get_plaintext(), norm_raw)
+        logger.info(
+            f"bot [{event.self_id}] repeater capture skipped (message_scrub) in group [{event.group_id}] "
+            f"user [{event.user_id}] msg_id [{event.message_id}] preview [{pv}]"
+        )
+        return
 
     chat: Chat = Chat(event)
 
@@ -203,12 +246,11 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if await config.is_cooldown("repeat"):
         answers = await chat.answer()
 
-    if to_learn:
-        for seg in event.message:
-            if seg.type == "image":
-                await insert_image(seg)
+    for seg in event.message:
+        if seg.type == "image":
+            await insert_image(seg)
 
-        await chat.learn()
+    await chat.learn()
 
     if not answers:
         return
@@ -236,13 +278,6 @@ async def _(bot: Bot, event: GroupMessageEvent):
         delay = random.randint(1, 3)
 
 
-async def is_config_admin(event: GroupMessageEvent) -> bool:
-    return await BotConfig(event.self_id).is_admin_of_bot(event.user_id)
-
-
-IsAdmin = permission.GROUP_OWNER | permission.GROUP_ADMIN | SUPERUSER | Permission(is_config_admin)
-
-
 async def is_reply(event: GroupMessageEvent) -> bool:
     return bool(event.reply)
 
@@ -251,12 +286,12 @@ ban_msg = on_message(
     rule=to_me() & keyword("不可以") & Rule(is_reply),
     priority=5,
     block=True,
-    permission=IsAdmin,
+    permission=group_message_permission_for_command("repeater.ban"),
 )
 
 
 @ban_msg.handle()
-async def _(bot: Bot, event: GroupMessageEvent):
+async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
     if "[CQ:reply," not in try_convert_to_cqcode(event.raw_message):
         return False
 
@@ -273,8 +308,13 @@ async def _(bot: Bot, event: GroupMessageEvent):
     except ActionFailed:
         logger.warning(f"bot [{event.self_id}] failed to delete [{raw_message}] in group [{event.group_id}]")
 
-    if await Chat.ban(event.group_id, event.self_id, raw_message, str(event.user_id)):
-        await ban_msg.finish("这对角可能会不小心撞倒些家具，我会尽量小心。")
+    banned = await Chat.ban(event.group_id, event.self_id, raw_message, str(event.user_id))
+    if banned:
+        if not state.get(DREAM_BAN_ACK_SENT_STATE_KEY):
+            state[REPEATER_BAN_ACK_SENT_STATE_KEY] = True
+            await ban_msg.finish("这对角可能会不小心撞倒些家具，我会尽量小心。")
+    elif not state.get(DREAM_BAN_ACK_SENT_STATE_KEY):
+        pass
 
 
 async def is_admin_recall_self_msg(bot: Bot, event: GroupRecallNoticeEvent):
@@ -318,8 +358,13 @@ async def _(bot: Bot, event: GroupRecallNoticeEvent, state: T_State):
 
     logger.info(f"bot [{event.self_id}] ready to ban [{raw_message}] in group [{event.group_id}]")
 
-    if await Chat.ban(event.group_id, event.self_id, raw_message, str(f"recall by {event.operator_id}")):
-        await ban_recalled_msg.finish("这对角可能会不小心撞倒些家具，我会尽量小心。")
+    banned = await Chat.ban(event.group_id, event.self_id, raw_message, str(f"recall by {event.operator_id}"))
+    if banned:
+        if not state.get(DREAM_BAN_ACK_SENT_STATE_KEY):
+            state[REPEATER_BAN_ACK_SENT_STATE_KEY] = True
+            await ban_recalled_msg.finish("这对角可能会不小心撞倒些家具，我会尽量小心。")
+    elif not state.get(DREAM_BAN_ACK_SENT_STATE_KEY):
+        pass
 
 
 async def message_is_ban(bot: Bot, event: GroupMessageEvent, state: T_State) -> bool:
@@ -330,7 +375,7 @@ ban_msg_latest = on_message(
     rule=to_me() & Rule(message_is_ban),
     priority=5,
     block=True,
-    permission=IsAdmin,
+    permission=group_message_permission_for_command("repeater.ban_latest"),
 )
 
 

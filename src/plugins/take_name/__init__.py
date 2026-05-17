@@ -16,7 +16,7 @@ __plugin_meta__ = PluginMetadata(
     name="自动夺舍",
     description="牛牛自动取名和同步群名片的功能",
     usage="""
-这个插件会让牛牛自动更换群名片：
+这个插件会让牛牛自动更换群名片，这是一项被动技能：
 1. 牛牛会定期自动更换自己的群名片为群内随机用户的名片
 2. 当牛牛醉酒时，有一定概率会"夺舍"其他群友的名片
 3. 当被取名的用户修改自己的群名片时，牛牛会同步修改自己的群名片为该用户的新名片
@@ -74,7 +74,7 @@ async def change_name():
 
         bot = get_bot(str(bot_id))
         if not bot:
-            logger.error("no bot: " + str(bot_id))
+            logger.error(f"bot [{bot_id}] take_name get_bot returned None")
             continue
 
         try:
@@ -92,7 +92,7 @@ async def change_name():
             continue
 
         card = info["card"] or info["nickname"]
-        logger.info(f"bot [{bot_id}] ready to change name to[{card}] in group [{group_id}]")
+        logger.info(f"bot [{bot_id}] ready to change name to [{card}] in group [{group_id}]")
         try:
             # 改牛牛自己的群名片
             await bot.call_api(

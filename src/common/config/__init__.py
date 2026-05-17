@@ -42,10 +42,13 @@ class Config:
 
     @classmethod
     async def _update_all(cls, key: str, value: Any) -> None:
-        for cache_key in cls._in_memory_cache:
-            if cache_key.startswith(key):
-                async with cls._lock:
-                    cls._in_memory_cache[cache_key] = value
+        if cls._in_memory_cache is None or cls._lock is None:
+            return
+        async with cls._lock:
+            for document_cache in cls._in_memory_cache.values():
+                for cache_key in document_cache:
+                    if isinstance(cache_key, str) and cache_key.startswith(key):
+                        document_cache[cache_key] = value
 
     def __init__(self, repo: ConfigRepository, key_id: int) -> None:
         self._document_key = key_id
@@ -103,8 +106,7 @@ class BotConfig(Config):
         """
         是否是管理员
         """
-        admins = await self._find("admins")
-        return user_id in admins if admins else False
+        return await user_is_bot_admin(self.bot_id, user_id)
 
     async def is_cooldown(self, action_type: str) -> bool:
         """
@@ -207,6 +209,23 @@ class BotConfig(Config):
         """
         await self._update_in_memory(f"sleep{KEY_JOINER}{self.group_id}", time.time() + seconds)
 
+    async def dream_until(self) -> float:
+        """
+        做梦状态结束时间戳
+        """
+        v = await self._find_in_memory(f"dream{KEY_JOINER}{self.group_id}")
+        return float(v) if v else 0.0
+
+    async def is_dreaming(self) -> bool:
+        return await self.dream_until() > time.time()
+
+    async def start_dream(self, duration_sec: int) -> None:
+        sec = max(1, int(duration_sec))
+        await self._update_in_memory(f"dream{KEY_JOINER}{self.group_id}", time.time() + sec)
+
+    async def stop_dream(self) -> None:
+        await self._update_in_memory(f"dream{KEY_JOINER}{self.group_id}", 0.0)
+
     async def taken_name(self) -> int | None:
         """
         返回在该群夺舍的账号
@@ -224,6 +243,34 @@ class BotConfig(Config):
             user_ids = {}
         user_ids[self.group_id] = user_id
         await self._update("taken_name", user_ids)
+
+
+async def get_bot_admins(bot_id: int) -> list[int]:
+    """
+    返回 BotConfig 持久化字段 admins 中的管理员 QQ 列表；无配置或为空时返回 []。
+    """
+    from .bot_admins_cache import get_bot_admins_cached
+
+    return await get_bot_admins_cached(bot_id)
+
+
+async def user_is_bot_admin(bot_id: int, user_id: int) -> bool:
+    """
+    根据 BotConfig 持久化字段 admins 判断 user_id 是否为该 bot 账号的管理员。
+    """
+    return user_id in await get_bot_admins(bot_id)
+
+
+async def user_is_admin_of_any_bot(user_id: int) -> bool:
+    """
+    判断 user_id 是否在任意已持久化的 BotConfig.admins 中（多实例下跨 Bot 管理员）。
+    """
+    from .bot_admins_cache import any_bot_admin_user_ids_cached
+
+    try:
+        return user_id in await any_bot_admin_user_ids_cached()
+    except Exception:
+        return False
 
 
 class GroupConfig(Config):
@@ -262,6 +309,33 @@ class GroupConfig(Config):
         """
         banned = await self._find("banned")
         return True if banned else False
+
+    async def blocked_user_ids(self) -> list[int]:
+        raw = await self._find("blocked_user_ids")
+        if not raw:
+            return []
+        out: list[int] = []
+        for x in raw:
+            try:
+                out.append(int(x))
+            except (TypeError, ValueError):
+                continue
+        return sorted(set(out))
+
+    async def set_blocked_user_ids(self, uids: list[int]) -> None:
+        await self._update("blocked_user_ids", sorted({int(u) for u in uids}))
+
+    async def add_blocked_users(self, uids: list[int]) -> None:
+        cur = set(await self.blocked_user_ids())
+        cur.update(int(u) for u in uids)
+        await self.set_blocked_user_ids(sorted(cur))
+
+    async def remove_blocked_users(self, uids: list[int]) -> None:
+        rm = {int(u) for u in uids}
+        await self.set_blocked_user_ids([u for u in await self.blocked_user_ids() if u not in rm])
+
+    async def is_user_blocked_in_group(self, user_id: int) -> bool:
+        return user_id in set(await self.blocked_user_ids())
 
     async def is_cooldown(self, action_type: str) -> bool:
         """
@@ -318,6 +392,9 @@ class UserConfig(Config):
         """
         banned = await self._find("banned")
         return True if banned else False
+
+    async def unban(self) -> None:
+        await self._update("banned", False)
 
 
 class TaskManager:

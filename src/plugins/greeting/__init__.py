@@ -12,6 +12,7 @@ from nonebot.adapters.onebot.v11 import (
     GroupIncreaseNoticeEvent,
     GroupMessageEvent,
     Message,
+    MessageEvent,
     MessageSegment,
     PokeNotifyEvent,
     PrivateMessageEvent,
@@ -21,33 +22,63 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule, to_me
 from nonebot.typing import T_State
 
+from src.common.cmd_perm import (
+    group_message_permission_for_command,
+    private_message_permission_for_command,
+)
 from src.common.config import BotConfig, GroupConfig, UserConfig
 from src.common.paths import plugin_data_dir
 from src.common.utils import HTTPXClient, is_bot_admin
+from src.plugins.blacklist import invalidate_user_ban_gate_cache
 from src.plugins.help.plugin_manager import is_plugin_disabled
 
 from .config import Config
 from .voice import get_random_voice, get_voice_filepath
 
 __plugin_meta__ = PluginMetadata(
-    name="牛牛群欢迎",
+    name="牛牛欢迎",
     description="处理群变动信息以及支持自定义好友欢迎消息",
     usage="""
-设置好友欢迎 - 设置自定义好友欢迎消息（文本/图片/图文混合）
-清除好友欢迎 - 清除已设置的好友欢迎消息
+设置好友欢迎 - 设置自定义好友欢迎消息（文本/图片/图文混合，私聊）
+清除好友欢迎 - 清除已设置的好友欢迎消息（私聊）
+设置群欢迎 - 在当前群设置自定义入群欢迎（文本/图片/图文混合，群内）
+清除群欢迎 - 清除当前群的自定义入群欢迎（群内）
+所需权限以「牛牛帮助」本插件功能详情中的触发条件为准（可由 WebUI「命令权限」覆盖）。
     """.strip(),
     type="application",
     homepage="https://github.com/PallasBot/Pallas-Bot",
     supported_adapters={"~onebot.v11"},
     extra={
         "version": "3.0.0",
+        "command_permissions": [
+            {
+                "id": "greeting.set_friend_welcome",
+                "label": "设置好友欢迎",
+                "default": "bot_moderator",
+            },
+            {
+                "id": "greeting.clear_friend_welcome",
+                "label": "清除好友欢迎",
+                "default": "bot_moderator",
+            },
+            {
+                "id": "greeting.set_group_welcome",
+                "label": "设置群欢迎",
+                "default": "group_moderator",
+            },
+            {
+                "id": "greeting.clear_group_welcome",
+                "label": "清除群欢迎",
+                "default": "group_moderator",
+            },
+        ],
         "menu_data": [
             {
                 "func": "入群欢迎",
                 "trigger_method": "on_notice",
                 "trigger_condition": "群成员增加通知",
                 "brief_des": "新成员入群时发送欢迎消息",
-                "detail_des": "牛牛作为群管理员时，新成员入群自动发送欢迎语；牛牛自己入群时也会自我介绍",
+                "detail_des": "新成员入群时发送欢迎",
             },
             {
                 "func": "好友欢迎",
@@ -59,16 +90,34 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "设置好友欢迎",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "设置好友欢迎",
+                "trigger_condition": "设置好友欢迎（私聊）",
+                "command_permission": "greeting.set_friend_welcome",
                 "brief_des": "设置自定义好友欢迎消息",
-                "detail_des": "由牛牛管理员在私聊中执行，支持文本、图片或图文混合",
+                "detail_des": "私聊中按提示发送内容，支持文本、图片或图文混合",
             },
             {
                 "func": "清除好友欢迎",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "清除好友欢迎",
+                "trigger_condition": "清除好友欢迎（私聊）",
+                "command_permission": "greeting.clear_friend_welcome",
                 "brief_des": "清除已设置的好友欢迎消息",
-                "detail_des": "由牛牛管理员在私聊中执行",
+                "detail_des": "私聊中执行，清除已保存的好友欢迎素材",
+            },
+            {
+                "func": "设置群欢迎",
+                "trigger_method": "on_cmd",
+                "trigger_condition": "设置群欢迎（群内）",
+                "command_permission": "greeting.set_group_welcome",
+                "brief_des": "设置本群自定义入群欢迎",
+                "detail_des": "群内发起后按提示发送内容，支持文本、图片或图文混合；新人入群时若已配置则优先发送该欢迎",
+            },
+            {
+                "func": "清除群欢迎",
+                "trigger_method": "on_cmd",
+                "trigger_condition": "清除群欢迎（群内）",
+                "command_permission": "greeting.clear_group_welcome",
+                "brief_des": "清除本群自定义入群欢迎",
+                "detail_des": "群内使用该命令，清除已保存的本群欢迎素材",
             },
             {
                 "func": "被踢自动拉黑",
@@ -132,11 +181,57 @@ async def _download_image(url: str) -> tuple[bytes, str]:
 
 
 def _clear_welcome_files(bot_dir: Path) -> None:
-    """删除该 bot 目录下所有欢迎消息文件。"""
+    """删除该 bot 目录下所有好友欢迎消息文件。"""
     for name in ("friend_welcome.txt", "friend_welcome.jpg", "friend_welcome.png"):
         f = bot_dir / name
         if f.exists():
             f.unlink()
+
+
+async def user_is_group_admin_or_owner(bot_id: int, group_id: int, user_id: int) -> bool:
+    info = await get_bot(str(bot_id)).call_api(
+        "get_group_member_info",
+        user_id=user_id,
+        group_id=group_id,
+        no_cache=False,
+    )
+    return info.get("role") in ("admin", "owner")
+
+
+def _group_welcome_dir(bot_id: int, group_id: int) -> Path:
+    d = GREETING_DIR / str(bot_id) / str(group_id)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _clear_group_welcome_files(group_dir: Path) -> None:
+    for name in ("group_welcome.txt", "group_welcome.jpg", "group_welcome.png"):
+        f = group_dir / name
+        if f.exists():
+            f.unlink()
+
+
+async def get_custom_group_welcome_message(bot_id: int, group_id: int) -> Message | None:
+    """读取本群自定义入群欢迎，无内容时返回 None。"""
+    group_dir = GREETING_DIR / str(bot_id) / str(group_id)
+    if not group_dir.exists():
+        return None
+
+    msg = Message()
+
+    text_file = group_dir / "group_welcome.txt"
+    if text_file.exists():
+        content = text_file.read_text(encoding="utf-8").strip()
+        if content:
+            msg.append(MessageSegment.text(content))
+
+    for ext in (".jpg", ".png"):
+        img_file = group_dir / f"group_welcome{ext}"
+        if img_file.exists():
+            msg.append(MessageSegment.image(img_file.read_bytes()))
+            break
+
+    return msg or None
 
 
 async def get_custom_friend_welcome_message(bot_id: int) -> Message | None:
@@ -164,7 +259,7 @@ async def get_custom_friend_welcome_message(bot_id: int) -> Message | None:
 
 set_friend_welcome = on_command(
     "设置好友欢迎",
-    permission=permission.PRIVATE,
+    permission=private_message_permission_for_command("greeting.set_friend_welcome"),
     priority=10,
     block=True,
 )
@@ -172,8 +267,6 @@ set_friend_welcome = on_command(
 
 @set_friend_welcome.handle()
 async def handle_set_friend_welcome(bot: Bot, event: PrivateMessageEvent, state: T_State):
-    if not await BotConfig(event.self_id).is_admin_of_bot(event.user_id):
-        await set_friend_welcome.finish("你没有权限执行此操作")
     await set_friend_welcome.send("请发送你想要设置的好友欢迎消息（可以是文本、图片或图文混合）：")
     state["bot_id"] = event.self_id
 
@@ -216,7 +309,7 @@ async def handle_friend_welcome_message(bot: Bot, event: PrivateMessageEvent, st
 
 clear_friend_welcome = on_command(
     "清除好友欢迎",
-    permission=permission.PRIVATE,
+    permission=private_message_permission_for_command("greeting.clear_friend_welcome"),
     priority=10,
     block=True,
 )
@@ -224,9 +317,6 @@ clear_friend_welcome = on_command(
 
 @clear_friend_welcome.handle()
 async def handle_clear_friend_welcome(bot: Bot, event: PrivateMessageEvent):
-    if not await BotConfig(event.self_id).is_admin_of_bot(event.user_id):
-        await clear_friend_welcome.finish("你没有权限执行此操作")
-
     d = GREETING_DIR / str(event.self_id)
     if not d.exists():
         await clear_friend_welcome.finish("未设置自定义好友欢迎消息")
@@ -239,6 +329,94 @@ async def handle_clear_friend_welcome(bot: Bot, event: PrivateMessageEvent):
         await clear_friend_welcome.finish("好友欢迎消息已清除！")
     else:
         await clear_friend_welcome.finish("未设置自定义好友欢迎消息")
+
+
+set_group_welcome = on_command(
+    "设置群欢迎",
+    permission=group_message_permission_for_command("greeting.set_group_welcome"),
+    priority=10,
+    block=True,
+)
+
+
+@set_group_welcome.handle()
+async def handle_set_group_welcome(bot: Bot, event: GroupMessageEvent, state: T_State):
+    if not await user_is_group_admin_or_owner(event.self_id, event.group_id, event.user_id):
+        await set_group_welcome.finish("只有群主或群管理员可以设置本群欢迎")
+    await set_group_welcome.send("请发送你想要设置的本群入群欢迎（可以是文本、图片或图文混合）：")
+    state["bot_id"] = event.self_id
+    state["group_id"] = event.group_id
+
+
+@set_group_welcome.got("message")
+async def handle_group_welcome_message(bot: Bot, event: MessageEvent, state: T_State):
+    if not isinstance(event, GroupMessageEvent):
+        await set_group_welcome.reject("请在群内发送欢迎消息内容：")
+    group_id: int = state["group_id"]
+    if event.group_id != group_id:
+        await set_group_welcome.reject("请在发起设置的同一个群内发送欢迎消息内容：")
+    if not await user_is_group_admin_or_owner(event.self_id, event.group_id, event.user_id):
+        await set_group_welcome.finish("只有群主或群管理员可以设置本群欢迎")
+
+    bot_id: int = state["bot_id"]
+    message = event.get_message()
+    images = [seg for seg in message if seg.type == "image"]
+    text_parts = [seg.data.get("text", "").strip() for seg in message if seg.type == "text"]
+    text_content = "\n".join(p for p in text_parts if p)
+
+    if not images and not text_content:
+        await set_group_welcome.reject("欢迎消息不能为空，请重新发送（可以是文本或图片）：")
+
+    d = _group_welcome_dir(bot_id, group_id)
+    _clear_group_welcome_files(d)
+
+    if text_content:
+        (d / "group_welcome.txt").write_text(text_content, encoding="utf-8")
+
+    if images:
+        image_url = images[0].data.get("url") or images[0].data.get("file", "")
+        if not image_url:
+            await set_group_welcome.reject("无法获取图片链接，请重新发送：")
+        try:
+            data, ext = await _download_image(image_url)
+            (d / f"group_welcome{ext}").write_bytes(data)
+        except Exception as e:
+            await set_group_welcome.reject(f"图片下载失败：{e}\n请重新发送：")
+
+    parts = []
+    if text_content:
+        parts.append("文本")
+    if images:
+        parts.append("图片")
+    label = "＋".join(parts)
+    await set_group_welcome.finish(f"本群入群欢迎（{label}）已设置成功！")
+
+
+clear_group_welcome = on_command(
+    "清除群欢迎",
+    permission=group_message_permission_for_command("greeting.clear_group_welcome"),
+    priority=10,
+    block=True,
+)
+
+
+@clear_group_welcome.handle()
+async def handle_clear_group_welcome(bot: Bot, event: GroupMessageEvent):
+    if not await user_is_group_admin_or_owner(event.self_id, event.group_id, event.user_id):
+        await clear_group_welcome.finish("只有群主或群管理员可以清除本群欢迎")
+
+    d = GREETING_DIR / str(event.self_id) / str(event.group_id)
+    if not d.exists():
+        await clear_group_welcome.finish("未设置自定义本群入群欢迎")
+
+    before = list(d.glob("group_welcome*"))
+    _clear_group_welcome_files(d)
+    after = list(d.glob("group_welcome*"))
+
+    if len(before) > len(after):
+        await clear_group_welcome.finish("本群入群欢迎已清除！")
+    else:
+        await clear_group_welcome.finish("未设置自定义本群入群欢迎")
 
 
 async def message_equal(event: GroupMessageEvent) -> bool:
@@ -327,12 +505,16 @@ async def handle_notice(event: _NoticeEvent):
                 "我是来自米诺斯的祭司帕拉斯，会在罗德岛休息一段时间......"
                 "虽然这么说，我渴望以美酒和戏剧被招待，更渴望走向战场。"
             )
-        elif await is_bot_admin(event.self_id, event.group_id):
-            msg = MessageSegment.at(event.user_id) + MessageSegment.text(
-                "博士，欢迎加入这盛大的庆典！我是来自米诺斯的祭司帕拉斯......要来一杯美酒么？"
-            )
         else:
-            return
+            custom = await get_custom_group_welcome_message(event.self_id, event.group_id)
+            if custom:
+                msg = MessageSegment.at(event.user_id) + custom
+            elif await is_bot_admin(event.self_id, event.group_id):
+                msg = MessageSegment.at(event.user_id) + MessageSegment.text(
+                    "博士，欢迎加入这盛大的庆典！我是来自米诺斯的祭司帕拉斯......要来一杯美酒么？"
+                )
+            else:
+                return
         await all_notice.finish(msg)
 
     elif event.notice_type == "group_admin" and event.sub_type == "set" and event.user_id == event.self_id:
@@ -356,3 +538,4 @@ async def handle_notice(event: _NoticeEvent):
         if plugin_config.enable_kick_ban:
             await GroupConfig(event.group_id).ban()
             await UserConfig(event.operator_id).ban()
+            await invalidate_user_ban_gate_cache(event.operator_id)

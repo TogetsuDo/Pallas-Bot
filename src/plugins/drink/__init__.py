@@ -10,13 +10,14 @@ from nonebot.rule import Rule
 from nonebot_plugin_apscheduler import scheduler
 
 from src.common.config import BotConfig
+from src.plugins.dream.runtime import send_dream_wake_text, stop_dream_worker
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛喝酒",
     description="让牛牛喝酒！",
     usage="""
 牛牛喝酒 - 让牛牛喝酒，增加聊天概率，有概率睡着zzz...
-牛牛醒一醒 - 让牛牛醒酒
+牛牛醒一醒 - 让牛牛醒酒；若本群在做梦则一并结束做梦
     """.strip(),
     type="application",
     homepage="https://github.com/PallasBot",
@@ -36,7 +37,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_method": "on_message",
                 "trigger_condition": "牛牛醒一醒/牛牛别喝了",
                 "brief_des": "让牛牛醒酒",
-                "detail_des": "立即清除牛牛的醉酒状态",
+                "detail_des": "立即清除醉酒；若本群处于牛牛做梦状态则同时结束做梦并发梦醒提示",
             },
         ],
         "menu_template": "default",
@@ -128,10 +129,22 @@ sober_up_msg = on_message(
 @sober_up_msg.handle()
 async def _(event: GroupMessageEvent):
     config = BotConfig(event.self_id, event.group_id)
-    if await config.drunkenness() <= 0:
+    had_drunk = await config.drunkenness() > 0
+    had_dream = await config.is_dreaming()
+    if not had_drunk and not had_dream:
         return
-    await config.fully_sober_up_now()
-    await sober_up_msg.send("呃......咳嗯，下次不能喝、喝这么多了......")
+    if had_drunk:
+        await config.fully_sober_up_now()
+    if had_dream:
+        await config.stop_dream()
+        await stop_dream_worker(event.self_id, event.group_id)
+    if had_drunk:
+        try:
+            await sober_up_msg.send("呃......咳嗯，下次不能喝、喝这么多了......")
+        except ActionFailed:
+            pass
+    if had_dream:
+        await send_dream_wake_text(event.self_id, event.group_id)
 
 
 @scheduler.scheduled_job("cron", hour=4)

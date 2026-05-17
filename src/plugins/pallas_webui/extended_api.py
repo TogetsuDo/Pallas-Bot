@@ -3,25 +3,44 @@
 from __future__ import annotations
 
 import asyncio
-import importlib
+import copy
 import json
+import os
 import platform
-import re
 import shutil
+import socket
+import sys
+import threading
 import time
+import traceback
 import typing
+from collections import defaultdict
+from operator import itemgetter
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi.responses import JSONResponse, StreamingResponse
 from nonebot import get_bots, get_driver, get_loaded_plugins, get_plugin_config, logger
 from nonebot.adapters import Bot as BaseBot  # noqa: TC002
 from nonebot.adapters import Event  # noqa: TC002
+from nonebot.matcher import Matcher  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_core import PydanticUndefined
 
+from src.common.pallas_console_login import (
+    current_http_request,
+    extract_session_from_request,
+    is_console_auth_configured,
+    mint_session_token,
+    register_console_session_invalidation_hook,
+    set_shared_console_login_token,
+    verify_console_password,
+)
 from src.common.web.bot_web import LogScope  # noqa: TC001  # FastAPI/OpenAPI 需在运行时解析注解
+from src.common.webui import apply_plugin_config_patch, plugin_config_payload
+
+from .api import _merge_console_version_from_disk
 
 if typing.TYPE_CHECKING:
     from .config import Config
@@ -29,8 +48,96 @@ if typing.TYPE_CHECKING:
 _CONSOLE_EXTRA: dict[str, Any] = {}
 _INIT_LOG_SINK = False
 _READ_CACHE: dict[str, dict[str, Any]] = {}
-_MSG_STATS: dict[str, dict[str, int]] = {}  # {self_id: {"sent": N, "received": N}}
+
+
+def clear_extended_read_cache() -> None:
+    """清空控制台扩展 JSON 的进程内读缓存（口令轮换或新登录后调用）。"""
+    _READ_CACHE.clear()
+
+
+def _cache_value_copy(data: Any) -> Any:
+    """避免调用方就地修改 dict/list 污染缓存条目。"""
+    if isinstance(data, (dict, list)):
+        try:
+            return copy.deepcopy(data)
+        except Exception:  # noqa: BLE001
+            return data
+    return data
+
+
+_MSG_STATS: dict[str, dict[str, Any]] = {}  # self_id -> sent/received + 按本地日切片的 day_*
 _MSG_TRACKING_INIT = False
+# self_id -> 与 day_received / day_runs 等对齐的本地自然日（YYYY-MM-DD）；日切时落盘并清零当日字段
+_CONSOLE_CAL_DAY: dict[str, str] = {}
+
+
+def _parse_console_hist_params() -> tuple[int, int]:
+    """协议 API / 消息吞吐 / Matcher 进程内时序桶（重启清空）。
+
+    默认 1 分钟桶、最多 1440 桶（约 24 小时滑动窗口）。环境变量：
+    - PALLAS_CONSOLE_HIST_BUCKET_SEC：桶宽（秒），建议能整除 86400（如 30、60、120、300）。
+    - PALLAS_CONSOLE_HIST_MAX_BUCKETS：最多保留桶数；覆盖时长 ≈ 二者乘积。
+    """
+    default_bucket, default_max = 60, 1440
+    try:
+        raw_b = os.environ.get("PALLAS_CONSOLE_HIST_BUCKET_SEC", "").strip()
+        bucket_sec = int(raw_b) if raw_b else default_bucket
+    except ValueError:
+        bucket_sec = default_bucket
+    bucket_sec = max(30, min(3600, bucket_sec))
+
+    try:
+        raw_m = os.environ.get("PALLAS_CONSOLE_HIST_MAX_BUCKETS", "").strip()
+        max_buckets = int(raw_m) if raw_m else default_max
+    except ValueError:
+        max_buckets = default_max
+    max_buckets = max(48, min(10080, max_buckets))
+
+    return bucket_sec, max_buckets
+
+
+_API_HIST_BUCKET_SEC, _API_HIST_MAX_BUCKETS = _parse_console_hist_params()
+
+
+def _hist_bucket_start_local(ts: int, bucket_sec: int) -> int:
+    """将 Unix 时刻向下取整到 *bucket_sec* 对齐的「本地 wall-clock」桶起点。
+
+    使用进程所在主机的本地时区、以当地自然日 00:00 起算的秒偏移对齐（非 Unix 纪元对齐）。
+    """
+    if bucket_sec <= 0:
+        return int(ts)
+    lt = time.localtime(ts)
+    day0 = int(
+        time.mktime((
+            lt.tm_year,
+            lt.tm_mon,
+            lt.tm_mday,
+            0,
+            0,
+            0,
+            lt.tm_wday,
+            lt.tm_yday,
+            lt.tm_isdst,
+        ))
+    )
+    offset = int(ts) - day0
+    floored = offset - (offset % bucket_sec)
+    return day0 + floored
+
+
+# self_id -> { day_key, by_plugin: { plugin: { runs, errors, day_runs, day_errors } } }
+_PLUGIN_RUN_STATS: dict[str, dict[str, Any]] = {}
+_PLUGIN_RUN_TRACKING_INIT = False
+_EXCLUDED_PLUGIN_RUN_NAMES = frozenset({"pallas_webui"})
+_MATCHER_ERROR_LOG_CAP = 80
+_MATCHER_ERROR_MSG_MAX = 2000
+_MATCHER_ERROR_TB_MAX = 8000
+_MATCHER_ERROR_JSONL_LOCK = threading.Lock()
+_LOG_ERROR_LOG_CAP = _MATCHER_ERROR_LOG_CAP
+_LOG_ERROR_MSG_MAX = _MATCHER_ERROR_MSG_MAX
+_LOG_ERROR_TB_MAX = _MATCHER_ERROR_TB_MAX
+_LOG_ERROR_JSONL_LOCK = threading.Lock()
+_LOG_ERROR_BUFFER: list[dict[str, Any]] = []
 
 
 def set_console_meta(d: dict[str, Any] | None) -> None:
@@ -42,13 +149,14 @@ def set_console_meta(d: dict[str, Any] | None) -> None:
 
 def _ensure_log_sink() -> None:
     global _INIT_LOG_SINK
-    if _INIT_LOG_SINK:
-        return
-    from src.common.web import install_nonebot_log_sink
+    from src.common.web import install_nonebot_log_sink, set_log_error_capture
 
     install_nonebot_log_sink()
+    set_log_error_capture(_append_log_error_from_sink)
+    if _INIT_LOG_SINK:
+        return
     _INIT_LOG_SINK = True
-    logger.info("Pallas 控制台: 已接入 NoneBot 日志环（/pallas/api/logs）")
+    logger.info("Pallas-Bot 控制台: 已接入 NoneBot 日志环（/pallas/api/logs）")
 
 
 async def _cached_read(
@@ -58,24 +166,28 @@ async def _cached_read(
     ttl_sec: float = 1.0,
     stale_sec: float = 20.0,
 ) -> Any:
-    """读取接口防抖：短 TTL 复用；失败时回退最近成功快照，降低前端空白概率。"""
+    """读取接口防抖：短 TTL 复用；失败时回退最近成功快照，降低前端空白概率。
+
+    返回值对 dict/list 做拷贝，避免调用方修改污染缓存；口令轮换或新登录会清空整表。
+    """
     now = time.monotonic()
     hit = _READ_CACHE.get(key)
     if hit and now < float(hit["exp"]):
-        return hit["data"]
+        return _cache_value_copy(hit["data"])
     try:
         data = await loader()
     except Exception:
         if hit and now < float(hit["stale_exp"]):
-            logger.warning("Pallas 控制台: 使用缓存兜底 key={}", key)
-            return hit["data"]
+            logger.warning("Pallas-Bot 控制台: 使用缓存兜底 key={}", key)
+            return _cache_value_copy(hit["data"])
         raise
+    stored = _cache_value_copy(data)
     _READ_CACHE[key] = {
-        "data": data,
+        "data": stored,
         "exp": now + max(0.05, ttl_sec),
         "stale_exp": now + max(ttl_sec, stale_sec),
     }
-    return data
+    return _cache_value_copy(stored)
 
 
 def _drop_read_cache(prefixes: tuple[str, ...]) -> None:
@@ -83,6 +195,16 @@ def _drop_read_cache(prefixes: tuple[str, ...]) -> None:
         return
     for k in [k for k in _READ_CACHE if any(k.startswith(p) for p in prefixes)]:
         _READ_CACHE.pop(k, None)
+
+
+# 审批写操作后：好友/群 OneBot 列表与按 Bot 群配置合并视图一并失效
+_CONSOLE_APPROVAL_RELATED_CACHE_PREFIXES: tuple[str, ...] = (
+    "friend_requests",
+    "request_overview",
+    "friend_list:",
+    "group_list:",
+    "group_configs_bot:",
+)
 
 
 def _metadata_to_dict(meta: object | None) -> dict[str, Any] | None:
@@ -156,114 +278,44 @@ def _jsonable_value(v: Any) -> Any:
     return v
 
 
-def _plugin_env_path() -> Path:
-    return Path(__file__).resolve().parents[3] / ".env"
+_BOT_SESSION_CONNECTED_UNIX: dict[str, int] = {}
+_BOT_SESSION_HOOKS_REGISTERED = False
 
 
-def _find_loaded_plugin(plugin_name: str):
-    target = (plugin_name or "").strip()
-    for p in get_loaded_plugins():
-        if str(getattr(p, "name", "") or "").strip() == target:
-            return p
-    return None
+def _ensure_bot_session_hooks() -> None:
+    """进程内记录 Bot 接入时刻（连接时长展示）；WebUI 插件加载时注册一次。"""
+    global _BOT_SESSION_HOOKS_REGISTERED
+    if _BOT_SESSION_HOOKS_REGISTERED:
+        return
+    _BOT_SESSION_HOOKS_REGISTERED = True
 
+    drv = get_driver()
 
-def _plugin_module_name(p: Any) -> str:
-    mod = getattr(p, "module", None)
-    module_name = getattr(mod, "__name__", "") if mod is not None else ""
-    if not module_name:
-        module_name = str(getattr(p, "module_name", "") or "")
-    return module_name.strip()
+    @drv.on_startup
+    async def _prime_bot_session_times() -> None:
+        try:
+            for key in get_bots():
+                _BOT_SESSION_CONNECTED_UNIX.setdefault(str(key), int(time.time()))
+        except Exception:  # noqa: BLE001
+            pass
 
-
-def _plugin_config_model_by_name(plugin_name: str):
-    p = _find_loaded_plugin(plugin_name)
-    if p is None:
-        raise ValueError(f"未找到插件: {plugin_name}")
-    module_name = _plugin_module_name(p)
-    if not module_name:
-        raise ValueError(f"插件模块名为空: {plugin_name}")
-    cfg_mod_name = module_name if module_name.endswith(".config") else f"{module_name}.config"
-    try:
-        cfg_mod = importlib.import_module(cfg_mod_name)
-    except Exception as e:  # noqa: BLE001
-        raise ValueError(f"插件缺少 config.py: {plugin_name}") from e
-    cfg_cls = getattr(cfg_mod, "Config", None)
-    if cfg_cls is None or not isinstance(cfg_cls, type) or not issubclass(cfg_cls, BaseModel):
-        raise ValueError(f"插件 config.py 未定义 Config(BaseModel): {plugin_name}")
-    return p, module_name, cfg_cls
-
-
-def _field_kind_from_annotation(ann: Any) -> str:
-    text = str(ann).lower()
-    if "list" in text or "dict" in text or "set" in text or "tuple" in text:
-        return "json"
-    if "bool" in text:
-        return "bool"
-    if "int" in text:
-        return "int"
-    if "float" in text:
-        return "float"
-    return "string"
-
-
-def _plugin_config_payload(plugin_name: str) -> dict[str, Any]:
-    p, module_name, cfg_cls = _plugin_config_model_by_name(plugin_name)
-    cfg_obj = get_plugin_config(cfg_cls)
-    fields: list[dict[str, Any]] = []
-    for key, f in cfg_cls.model_fields.items():
-        cur = getattr(cfg_obj, key, f.default)
-        default_value = None if f.default is PydanticUndefined else f.default
-        fields.append({
-            "name": key,
-            "kind": _field_kind_from_annotation(f.annotation),
-            "required": bool(f.is_required()),
-            "description": str(f.description or ""),
-            "env_key": key.upper(),
-            "default": _jsonable_value(default_value),
-            "current": _jsonable_value(cur),
-        })
-    return {
-        "plugin": str(getattr(p, "name", "") or plugin_name),
-        "module": module_name,
-        "fields": fields,
-    }
-
-
-def _to_env_value(v: Any) -> str:
-    if isinstance(v, bool):
-        return "true" if v else "false"
-    if isinstance(v, (dict, list)):
-        return json.dumps(v, ensure_ascii=False)
-    if v is None:
-        return ""
-    return str(v)
-
-
-def _upsert_env_items(items: dict[str, str]) -> None:
-    path = _plugin_env_path()
-    if path.exists():
-        lines = path.read_text(encoding="utf-8").splitlines()
-    else:
-        lines = []
-    remained = set(items.keys())
-    out: list[str] = []
-    for line in lines:
-        replaced = False
-        for k, v in items.items():
-            # 同名键若存在注释行，直接改写并取消注释
-            if re.match(rf"^\s*#?\s*{re.escape(k)}\s*=", line):
-                out.append(f"{k}={v}")
-                remained.discard(k)
-                replaced = True
-                break
-        if not replaced:
-            out.append(line)
-    if remained:
-        if out and out[-1].strip() != "":
-            out.append("")
-        out.extend(f"{k}={items[k]}" for k in sorted(remained))
-    path.write_text("\n".join(out) + "\n", encoding="utf-8")
+    @drv.on_bot_connect
+    async def _mark_bot_session(bot: BaseBot) -> None:
+        try:
+            for key, b in get_bots().items():
+                if b is bot:
+                    _BOT_SESSION_CONNECTED_UNIX[str(key)] = int(time.time())
+                    return
+            sid = getattr(bot, "self_id", None)
+            if sid is None:
+                return
+            sids = str(sid)
+            for key, b in get_bots().items():
+                if str(getattr(b, "self_id", "")) == sids:
+                    _BOT_SESSION_CONNECTED_UNIX[str(key)] = int(time.time())
+                    return
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _list_bots_dict() -> list[dict[str, Any]]:
@@ -285,6 +337,7 @@ def _list_bots_dict() -> list[dict[str, Any]]:
             "connection_key": str(key),
             "self_id": self_id,
             "adapter": adapter,
+            "connected_at_unix": _BOT_SESSION_CONNECTED_UNIX.get(str(key)),
         })
     return rows
 
@@ -310,7 +363,6 @@ def _is_onebot_v11_bot(bot: object) -> bool:
 
 def _read_pending_friend_requests_disk() -> dict[str, dict[str, str]]:
     """与 request_handler 插件写入的 JSON 结构一致：{ bot_id: { user_id: flag } }。"""
-    import json
 
     from src.common.paths import plugin_data_dir
 
@@ -333,8 +385,6 @@ def _read_pending_friend_requests_disk() -> dict[str, dict[str, str]]:
 
 
 def _save_pending_friend_requests_disk(data: dict[str, dict[str, str]]) -> None:
-    import json
-
     from src.common.paths import plugin_data_dir
 
     path = plugin_data_dir("request_handler") / "pending_friend_requests.json"
@@ -343,7 +393,6 @@ def _save_pending_friend_requests_disk(data: dict[str, dict[str, str]]) -> None:
 
 def _read_pending_group_requests_disk() -> dict[str, dict[str, dict[str, Any]]]:
     """与 request_handler 插件写入的 JSON 结构一致：{ bot_id: { group_id: request } }。"""
-    import json
 
     from src.common.paths import plugin_data_dir
 
@@ -386,8 +435,6 @@ def _read_pending_group_requests_disk() -> dict[str, dict[str, dict[str, Any]]]:
 
 
 def _save_pending_group_requests_disk(data: dict[str, dict[str, dict[str, Any]]]) -> None:
-    import json
-
     from src.common.paths import plugin_data_dir
 
     path = plugin_data_dir("request_handler") / "pending_group_requests.json"
@@ -442,7 +489,7 @@ def _normalize_ai_extension_config(raw: dict[str, Any] | None) -> dict[str, Any]
     root = Path(__file__).resolve().parents[3]
     default_ai_root = (root.parent / "Pallas-Bot-AI").resolve()
     default_uvicorn_log = str(default_ai_root / "logs" / "app.log")
-    default_celery_log = str(default_ai_root / "logs" / "app.log")
+    default_celery_log = str(default_ai_root / "logs" / "celery.log")
     uvicorn_log_file = str(d.get("uvicorn_log_file", "")).strip() or default_uvicorn_log
     celery_log_file = str(d.get("celery_log_file", "")).strip() or default_celery_log
     # 任一路径越界即回退默认值，避免被持票攻击者污染配置后读任意文件
@@ -468,8 +515,6 @@ def _normalize_ai_extension_config(raw: dict[str, Any] | None) -> dict[str, Any]
 
 
 def _load_ai_extension_config() -> dict[str, Any]:
-    import json
-
     path = _ai_extension_config_path()
     if not path.exists():
         return _normalize_ai_extension_config(None)
@@ -483,8 +528,6 @@ def _load_ai_extension_config() -> dict[str, Any]:
 
 
 def _save_ai_extension_config(data: dict[str, Any]) -> dict[str, Any]:
-    import json
-
     clean = _normalize_ai_extension_config(data)
     path = _ai_extension_config_path()
     path.write_text(json.dumps(clean, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -569,7 +612,7 @@ async def _call_get_group_list(
     try:
         raw = await bot.call_api("get_group_list")  # type: ignore[union-attr]
     except Exception as e:  # noqa: BLE001
-        logger.warning("Pallas 控制台: get_group_list 调用失败: {}", e)
+        logger.warning("Pallas-Bot 控制台: get_group_list 调用失败: {}", e)
         return [], str(e), False
     groups_raw: list[Any]
     if isinstance(raw, list):
@@ -582,16 +625,16 @@ async def _call_get_group_list(
                 groups_raw = v
                 break
         if not groups_raw:
-            logger.warning("Pallas 控制台: get_group_list 返回 dict 但未找到列表字段, keys={}", list(raw.keys()))
+            logger.warning("Pallas-Bot 控制台: get_group_list 返回 dict 但未找到列表字段, keys={}", list(raw.keys()))
     else:
-        logger.warning("Pallas 控制台: get_group_list 返回意外类型 {}", type(raw).__name__)
+        logger.warning("Pallas-Bot 控制台: get_group_list 返回意外类型 {}", type(raw).__name__)
         groups_raw = []
     out: list[dict[str, Any]] = []
     for it in groups_raw:
         try:
             row = _normalize_group_list_item(it)
         except Exception as e:  # noqa: BLE001
-            logger.warning("Pallas 控制台: 群列表条目解析失败 item={} err={}", repr(it), e)
+            logger.warning("Pallas-Bot 控制台: 群列表条目解析失败 item={} err={}", repr(it), e)
             continue
         if row:
             out.append(row)
@@ -639,23 +682,121 @@ async def _call_get_friend_list(
     return out, None, truncated
 
 
+def _rows_from_doubt_friends_api(raw: object) -> list[dict[str, Any]]:
+    if isinstance(raw, list):
+        return [x for x in raw if isinstance(x, dict)]
+    if isinstance(raw, dict):
+        data = raw.get("data")
+        if isinstance(data, list):
+            return [x for x in data if isinstance(x, dict)]
+    return []
+
+
 async def _call_get_doubt_friends(bot: object) -> list[dict[str, Any]]:
     try:
         raw = await bot.call_api("get_doubt_friends_add_request", count=50)  # type: ignore[union-attr]
     except Exception:  # noqa: BLE001
         return []
-    if not isinstance(raw, list):
-        return []
+    rows = _rows_from_doubt_friends_api(raw)
     out: list[dict[str, Any]] = []
-    for x in raw:
-        if not isinstance(x, dict) or "user_id" not in x:
+    for x in rows:
+        uid_raw = x.get("user_id")
+        if uid_raw is None:
+            uid_raw = x.get("uin")
+        if uid_raw is None:
             continue
         try:
-            uid = int(x["user_id"])
+            uid = int(uid_raw)
         except (TypeError, ValueError):
             continue
-        out.append({"user_id": uid, "flag": str(x.get("flag", ""))})
+        flag = x.get("flag")
+        if flag is None:
+            continue
+        flag_str = str(flag).strip()
+        if not flag_str:
+            continue
+        row: dict[str, Any] = {"user_id": uid, "flag": flag_str}
+        nick_raw = x.get("nickname") or x.get("nick") or x.get("name")
+        if isinstance(nick_raw, str) and nick_raw.strip():
+            row["nickname"] = nick_raw.strip()
+        out.append(row)
     return out
+
+
+async def _call_get_stranger_info_raw(bot: object, user_id: int) -> dict[str, Any] | None:
+    try:
+        raw = await bot.call_api("get_stranger_info", user_id=user_id)  # type: ignore[union-attr]
+    except Exception:  # noqa: BLE001
+        return None
+    return raw if isinstance(raw, dict) else None
+
+
+def _nickname_from_stranger_info(raw: dict[str, Any]) -> str:
+    nick = raw.get("nickname")
+    if isinstance(nick, str) and nick.strip():
+        return nick.strip()
+    data = raw.get("data")
+    if isinstance(data, dict):
+        nick2 = data.get("nickname")
+        if isinstance(nick2, str) and nick2.strip():
+            return nick2.strip()
+    return ""
+
+
+async def _enrich_friend_request_rows_nicknames(
+    bot: object,
+    pending: list[dict[str, Any]],
+    doubt: list[dict[str, Any]],
+) -> None:
+    if not _is_onebot_v11_bot(bot):
+        return
+    need: set[int] = set()
+    for p in pending:
+        if str(p.get("nickname", "")).strip():
+            continue
+        uid = p.get("user_id")
+        if uid is None:
+            continue
+        try:
+            need.add(int(uid))
+        except (TypeError, ValueError):
+            pass
+    for d in doubt:
+        if str(d.get("nickname", "")).strip():
+            continue
+        uid = d.get("user_id")
+        if uid is None:
+            continue
+        try:
+            need.add(int(uid))
+        except (TypeError, ValueError):
+            pass
+    nick_map: dict[int, str] = {}
+    for uid in sorted(need):
+        raw = await _call_get_stranger_info_raw(bot, uid)
+        if raw is None:
+            continue
+        nick = _nickname_from_stranger_info(raw)
+        if nick:
+            nick_map[uid] = nick
+    for p in pending:
+        try:
+            uid = int(p["user_id"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if str(p.get("nickname", "")).strip():
+            continue
+        if uid in nick_map:
+            p["nickname"] = nick_map[uid]
+    for d in doubt:
+        try:
+            uid = int(d["user_id"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if str(d.get("nickname", "")).strip():
+            continue
+        if uid in nick_map:
+            d["nickname"] = nick_map[uid]
 
 
 def _normalize_message_item(item: object) -> dict[str, Any] | None:
@@ -789,11 +930,342 @@ def _extract_message_stats(raw: object) -> dict[str, int]:
     return {"sent": sent, "received": recv}
 
 
+def _sum_matcher_day_runs(sid: str) -> int:
+    pblock = _PLUGIN_RUN_STATS.get(sid)
+    if not isinstance(pblock, dict):
+        return 0
+    bp = pblock.get("by_plugin")
+    if not isinstance(bp, dict):
+        return 0
+    n = 0
+    for prow in bp.values():
+        if isinstance(prow, dict):
+            n += int(prow.get("day_runs", 0))
+    return n
+
+
+def _rollover_console_day_if_needed(sid: str, today: str) -> None:
+    """跨自然日时把上一日的消息收/发与 Matcher 当日计数写入磁盘并清零当日字段。"""
+    from src.plugins.pallas_webui import daily_stats_store
+
+    sid = str(sid).strip()
+    if not sid:
+        return
+    cur = _CONSOLE_CAL_DAY.get(sid)
+    if cur is None:
+        _CONSOLE_CAL_DAY[sid] = today
+        return
+    if cur == today:
+        return
+    mem = _MSG_STATS.get(sid)
+    dr = int(mem.get("day_received", 0)) if isinstance(mem, dict) else 0
+    ds = int(mem.get("day_sent", 0)) if isinstance(mem, dict) else 0
+    mr = _sum_matcher_day_runs(sid)
+    daily_stats_store.write_day_totals(cur, sid, dr, ds, mr)
+    if isinstance(mem, dict):
+        mem["day_key"] = today
+        mem["day_sent"] = 0
+        mem["day_received"] = 0
+        mem["day_api_total"] = 0
+        mem["day_api_counts"] = {}
+    pblock = _PLUGIN_RUN_STATS.get(sid)
+    if isinstance(pblock, dict):
+        pblock["day_key"] = today
+        bp = pblock.get("by_plugin")
+        if isinstance(bp, dict):
+            for prow in bp.values():
+                if isinstance(prow, dict):
+                    prow["day_runs"] = 0
+                    prow["day_errors"] = 0
+    _CONSOLE_CAL_DAY[sid] = today
+
+
+def _flush_today_console_daily_stats_disk() -> None:
+    """定时刷盘：当前自然日内累计值写入磁盘（不按桶）。"""
+    from src.plugins.pallas_webui import daily_stats_store
+
+    today = time.strftime("%Y-%m-%d", time.localtime())
+    sids = set(_MSG_STATS.keys()) | set(_PLUGIN_RUN_STATS.keys()) | set(_CONSOLE_CAL_DAY.keys())
+    for sid in sids:
+        sid = str(sid).strip()
+        if not sid:
+            continue
+        _rollover_console_day_if_needed(sid, today)
+        mem = _MSG_STATS.get(sid)
+        dr = int(mem.get("day_received", 0)) if isinstance(mem, dict) else 0
+        ds = int(mem.get("day_sent", 0)) if isinstance(mem, dict) else 0
+        mr = _sum_matcher_day_runs(sid)
+        daily_stats_store.write_day_totals(today, sid, dr, ds, mr)
+
+
+def _msg_stats_get_mut(sid: str) -> dict[str, Any]:
+    """返回可写的内存统计行；跨本地自然日时清零当日计数（与 Matcher 日计数统一落盘）。"""
+    today = time.strftime("%Y-%m-%d", time.localtime())
+    _rollover_console_day_if_needed(sid, today)
+    rec = _MSG_STATS.setdefault(
+        sid,
+        {
+            "sent": 0,
+            "received": 0,
+            "day_sent": 0,
+            "day_received": 0,
+            "day_key": today,
+            "day_api_total": 0,
+            "day_api_counts": {},
+            "api_call_buckets": [],
+            "msg_traffic_buckets": [],
+        },
+    )
+    rec["day_key"] = today
+    rec.setdefault("sent", 0)
+    rec.setdefault("received", 0)
+    rec.setdefault("day_sent", 0)
+    rec.setdefault("day_received", 0)
+    rec.setdefault("day_api_total", 0)
+    if not isinstance(rec.get("day_api_counts"), dict):
+        rec["day_api_counts"] = {}
+    if not isinstance(rec.get("api_call_buckets"), list):
+        rec["api_call_buckets"] = []
+    if not isinstance(rec.get("msg_traffic_buckets"), list):
+        rec["msg_traffic_buckets"] = []
+    return rec
+
+
+_HIST_API_SERIES_MAX = 24
+_HIST_PLUGIN_SERIES_MAX = 20
+
+
+def _api_call_history_bump(row: dict[str, Any], api: str) -> None:
+    """按时间桶记录各接口成功调用次数（与 day_api_total 口径一致；桶按主机本地 wall-clock 对齐）。"""
+    api_key = str(api).strip() or "_"
+    now = int(time.time())
+    bucket = _hist_bucket_start_local(now, _API_HIST_BUCKET_SEC)
+    cutoff = bucket - (_API_HIST_MAX_BUCKETS - 1) * _API_HIST_BUCKET_SEC
+    hist = row.setdefault("api_call_buckets", [])
+    if not isinstance(hist, list):
+        row["api_call_buckets"] = []
+        hist = row["api_call_buckets"]
+    i = 0
+    while i < len(hist):
+        h = hist[i]
+        if not isinstance(h, dict):
+            hist.pop(i)
+            continue
+        try:
+            at = int(h.get("at") or 0)
+        except (TypeError, ValueError):
+            hist.pop(i)
+            continue
+        if at < cutoff:
+            hist.pop(i)
+        else:
+            i += 1
+    if hist and isinstance(hist[-1], dict):
+        try:
+            last_at = int(hist[-1].get("at") or 0)
+        except (TypeError, ValueError):
+            last_at = 0
+        if last_at == bucket:
+            apis = hist[-1].setdefault("apis", {})
+            if not isinstance(apis, dict):
+                hist[-1]["apis"] = {}
+                apis = hist[-1]["apis"]
+            apis[api_key] = int(apis.get(api_key, 0)) + 1
+            return
+    hist.append({"at": bucket, "apis": {api_key: 1}})
+
+
+def _msg_traffic_history_bump(row: dict[str, Any], *, recv_delta: int = 0, sent_delta: int = 0) -> None:
+    """按与协议 API 相同的时间桶记录消息收/发条数（进程内，重启丢失；桶按主机本地 wall-clock 对齐）。"""
+    try:
+        rd = int(recv_delta)
+        sd = int(sent_delta)
+    except (TypeError, ValueError):
+        return
+    if rd <= 0 and sd <= 0:
+        return
+    now = int(time.time())
+    bucket = _hist_bucket_start_local(now, _API_HIST_BUCKET_SEC)
+    cutoff = bucket - (_API_HIST_MAX_BUCKETS - 1) * _API_HIST_BUCKET_SEC
+    hist = row.setdefault("msg_traffic_buckets", [])
+    if not isinstance(hist, list):
+        row["msg_traffic_buckets"] = []
+        hist = row["msg_traffic_buckets"]
+    i = 0
+    while i < len(hist):
+        h = hist[i]
+        if not isinstance(h, dict):
+            hist.pop(i)
+            continue
+        try:
+            at = int(h.get("at") or 0)
+        except (TypeError, ValueError):
+            hist.pop(i)
+            continue
+        if at < cutoff:
+            hist.pop(i)
+        else:
+            i += 1
+    if hist and isinstance(hist[-1], dict):
+        try:
+            last_at = int(hist[-1].get("at") or 0)
+        except (TypeError, ValueError):
+            last_at = 0
+        if last_at == bucket:
+            if rd > 0:
+                hist[-1]["received"] = int(hist[-1].get("received", 0)) + rd
+            if sd > 0:
+                hist[-1]["sent"] = int(hist[-1].get("sent", 0)) + sd
+            return
+    entry: dict[str, Any] = {"at": bucket}
+    if rd > 0:
+        entry["received"] = rd
+    if sd > 0:
+        entry["sent"] = sd
+    hist.append(entry)
+
+
+def _msg_traffic_history_public(row: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = row.get("msg_traffic_buckets")
+    if not isinstance(raw, list) or not raw:
+        return []
+    out: list[dict[str, Any]] = []
+    for it in raw:
+        if not isinstance(it, dict) or "at" not in it:
+            continue
+        try:
+            at = int(it["at"])
+        except (TypeError, ValueError):
+            continue
+        try:
+            nr = int(it.get("received", 0))
+        except (TypeError, ValueError):
+            nr = 0
+        try:
+            ns = int(it.get("sent", 0))
+        except (TypeError, ValueError):
+            ns = 0
+        out.append({"at": at, "received": nr, "sent": ns})
+    out.sort(key=lambda x: int(x["at"]))
+    return out
+
+
+def _legacy_api_hist_aggregate(row: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = row.get("api_hist")
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for it in raw:
+        if not isinstance(it, dict) or "at" not in it:
+            continue
+        try:
+            out.append({"at": int(it["at"]), "total": int(it.get("total", 0))})
+        except (TypeError, ValueError):
+            continue
+    out.sort(key=lambda x: int(x["at"]))
+    return out
+
+
+def _api_call_history_aggregate(row: dict[str, Any]) -> list[dict[str, Any]]:
+    raw = row.get("api_call_buckets")
+    if not isinstance(raw, list) or not raw:
+        return _legacy_api_hist_aggregate(row)
+    out: list[dict[str, Any]] = []
+    for it in raw:
+        if not isinstance(it, dict) or "at" not in it:
+            continue
+        apis = it.get("apis")
+        tot = 0
+        if isinstance(apis, dict):
+            for v in apis.values():
+                try:
+                    tot += int(v)
+                except (TypeError, ValueError):
+                    pass
+        try:
+            out.append({"at": int(it["at"]), "total": tot})
+        except (TypeError, ValueError):
+            continue
+    out.sort(key=lambda x: int(x["at"]))
+    return out
+
+
+def _ranked_api_names_for_series(row: dict[str, Any], *, limit: int) -> list[str]:
+    counts = row.get("day_api_counts")
+    ranked: list[str] = []
+    if isinstance(counts, dict) and counts:
+        ranked = sorted(counts.keys(), key=lambda k: -int(counts.get(k, 0) or 0))
+        ranked = [str(k) for k in ranked if str(k).strip()][:limit]
+        return ranked
+    acc: dict[str, int] = {}
+    raw = row.get("api_call_buckets")
+    if isinstance(raw, list):
+        for it in raw:
+            apis = it.get("apis") if isinstance(it, dict) else None
+            if not isinstance(apis, dict):
+                continue
+            for k, v in apis.items():
+                try:
+                    acc[str(k)] = acc.get(str(k), 0) + int(v)
+                except (TypeError, ValueError):
+                    continue
+    ranked = sorted(acc.keys(), key=lambda k: -acc[k])[:limit]
+    return ranked
+
+
+def _api_call_history_by_api_series(row: dict[str, Any], *, limit: int = _HIST_API_SERIES_MAX) -> list[dict[str, Any]]:
+    raw = row.get("api_call_buckets")
+    if not isinstance(raw, list) or not raw:
+        return []
+    names = _ranked_api_names_for_series(row, limit=limit)
+    if not names:
+        return []
+    buckets = sorted(
+        [x for x in raw if isinstance(x, dict) and "at" in x],
+        key=lambda x: int(x.get("at") or 0),
+    )
+    out: list[dict[str, Any]] = []
+    for an in names:
+        points: list[dict[str, Any]] = []
+        for it in buckets:
+            apis = it.get("apis")
+            n = 0
+            if isinstance(apis, dict):
+                try:
+                    n = int(apis.get(an, 0))
+                except (TypeError, ValueError):
+                    n = 0
+            try:
+                points.append({"at": int(it["at"]), "total": n})
+            except (TypeError, ValueError):
+                continue
+        out.append({"api": str(an), "points": points})
+    return out
+
+
+def _api_call_history_public(row: dict[str, Any]) -> list[dict[str, Any]]:
+    """兼容旧字段名：聚合曲线。"""
+    return _api_call_history_aggregate(row)
+
+
+def _top_api_call_today(counts: object) -> tuple[str, int]:
+    if not isinstance(counts, dict) or not counts:
+        return "", 0
+    top_n = 0
+    top_name = ""
+    for name, c in counts.items():
+        try:
+            n = int(c)
+        except (TypeError, ValueError):
+            continue
+        if n > top_n:
+            top_n = n
+            top_name = str(name)
+    return top_name, top_n
+
+
 def _init_message_tracking() -> None:
-    """注册 NoneBot2 钩子，在内存中统计每个 Bot 的收发消息数。
-    - 收消息：event_preprocessor，事件类型为 "message" 时计数
-    - 发消息：Bot.on_called_api，send_msg / send_group_msg / send_private_msg 成功时计数
-    """
+    """注册 NoneBot2 钩子：消息收/发；协议 API 今日计数与按时间桶（见 _API_HIST_BUCKET_SEC）；消息收/发时间桶。"""
     global _MSG_TRACKING_INIT
     if _MSG_TRACKING_INIT:
         return
@@ -803,6 +1275,18 @@ def _init_message_tracking() -> None:
     from nonebot.message import event_preprocessor
 
     _send_apis = frozenset({"send_msg", "send_group_msg", "send_private_msg", "send_message"})
+    _api_count_exclude = _send_apis | frozenset(
+        {
+            "get_status",
+            "get_login_info",
+            "get_version",
+            "can_send_image",
+            "can_send_record",
+            "get_cookies",
+            "get_csrf_token",
+            "get_msg",
+        },
+    )
 
     @BaseBot.on_called_api
     async def _count_sent(
@@ -815,7 +1299,34 @@ def _init_message_tracking() -> None:
         if exception is None and api in _send_apis:
             sid = str(getattr(bot, "self_id", "") or "").strip()
             if sid:
-                _MSG_STATS.setdefault(sid, {"sent": 0, "received": 0})["sent"] += 1
+                row = _msg_stats_get_mut(sid)
+                row["sent"] = int(row["sent"]) + 1
+                row["day_sent"] = int(row["day_sent"]) + 1
+                _msg_traffic_history_bump(row, sent_delta=1)
+
+    @BaseBot.on_called_api
+    async def _count_protocol_api_calls(
+        bot: BaseBot,
+        exception: Exception | None,
+        api: str,
+        data: dict[str, Any],
+        result: Any,
+    ) -> None:
+        if exception is not None:
+            return
+        if not api or api in _api_count_exclude or str(api).startswith("_"):
+            return
+        sid = str(getattr(bot, "self_id", "") or "").strip()
+        if not sid:
+            return
+        row = _msg_stats_get_mut(sid)
+        counts = row.get("day_api_counts")
+        if not isinstance(counts, dict):
+            counts = {}
+            row["day_api_counts"] = counts
+        row["day_api_total"] = int(row.get("day_api_total", 0)) + 1
+        counts[str(api)] = int(counts.get(str(api), 0)) + 1
+        _api_call_history_bump(row, str(api))
 
     @event_preprocessor
     async def _count_received(bot: BaseBot, event: Event) -> None:
@@ -823,7 +1334,10 @@ def _init_message_tracking() -> None:
             if event.get_type() == "message":
                 sid = str(getattr(bot, "self_id", "") or "").strip()
                 if sid:
-                    _MSG_STATS.setdefault(sid, {"sent": 0, "received": 0})["received"] += 1
+                    row = _msg_stats_get_mut(sid)
+                    row["received"] = int(row["received"]) + 1
+                    row["day_received"] = int(row["day_received"]) + 1
+                    _msg_traffic_history_bump(row, recv_delta=1)
         except Exception:  # noqa: BLE001
             pass
 
@@ -832,6 +1346,8 @@ async def _message_stats_overview(*, self_id: str | None) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     total_sent = 0
     total_received = 0
+    total_today_sent = 0
+    total_today_received = 0
     for key, bot in get_bots().items():
         sid = str(getattr(bot, "self_id", "") or "").strip()
         if not sid:
@@ -842,9 +1358,11 @@ async def _message_stats_overview(*, self_id: str | None) -> dict[str, Any]:
             continue
 
         # 优先使用内存计数器（兼容 NapCat 等 stat:{} 为空的实现）
-        mem = _MSG_STATS.get(sid, {"sent": 0, "received": 0})
-        sent = mem["sent"]
-        received = mem["received"]
+        mem = _msg_stats_get_mut(sid)
+        sent = int(mem["sent"])
+        received = int(mem["received"])
+        today_sent = int(mem["day_sent"])
+        today_received = int(mem["day_received"])
 
         # 同时尝试 get_status（go-cqhttp 等会返回真实统计），取较大值
         try:
@@ -857,13 +1375,571 @@ async def _message_stats_overview(*, self_id: str | None) -> dict[str, Any]:
 
         total_sent += sent
         total_received += received
+        total_today_sent += today_sent
+        total_today_received += today_received
+        counts = mem.get("day_api_counts")
+        top_name, top_cnt = _top_api_call_today(counts)
         rows.append({
             "self_id": sid,
             "connection_key": str(key),
             "sent": sent,
             "received": received,
+            "today_sent": today_sent,
+            "today_received": today_received,
+            "today_api_calls": int(mem.get("day_api_total", 0)),
+            "today_top_api": top_name,
+            "today_top_api_count": top_cnt,
+            "api_calls_history": _api_call_history_public(mem),
+            "api_calls_history_by_api": _api_call_history_by_api_series(mem),
+            "message_traffic_history": _msg_traffic_history_public(mem),
         })
-    return {"total_sent": total_sent, "total_received": total_received, "bots": rows}
+    return {
+        "total_sent": total_sent,
+        "total_received": total_received,
+        "today_sent": total_today_sent,
+        "today_received": total_today_received,
+        "api_calls_history_bucket_sec": _API_HIST_BUCKET_SEC,
+        "api_calls_history_max_buckets": _API_HIST_MAX_BUCKETS,
+        "message_traffic_history_bucket_sec": _API_HIST_BUCKET_SEC,
+        "message_traffic_history_max_buckets": _API_HIST_MAX_BUCKETS,
+        "bots": rows,
+    }
+
+
+def _plugin_short_name_from_matcher(matcher: object) -> str:
+    module_name = getattr(matcher, "plugin_name", None)
+    if module_name:
+        parts = str(module_name).split(".")
+        for part in reversed(parts):
+            if part != "__init__":
+                return part
+    return str(module_name or "") or "unknown"
+
+
+def _plugin_run_bot_bucket(sid: str) -> dict[str, Any]:
+    today = time.strftime("%Y-%m-%d", time.localtime())
+    _rollover_console_day_if_needed(sid, today)
+    rec = _PLUGIN_RUN_STATS.setdefault(sid, {"day_key": today, "by_plugin": {}, "matcher_hist": []})
+    rec.setdefault("by_plugin", {})
+    rec["day_key"] = today
+    if not isinstance(rec.get("matcher_hist"), list):
+        rec["matcher_hist"] = []
+    return rec
+
+
+def _plugin_run_plugin_row(sid: str, plugin: str) -> dict[str, Any]:
+    rec = _plugin_run_bot_bucket(sid)
+    by_plugin = rec["by_plugin"]
+    row = by_plugin.setdefault(plugin, {"runs": 0, "errors": 0, "day_runs": 0, "day_errors": 0})
+    row.setdefault("runs", 0)
+    row.setdefault("errors", 0)
+    row.setdefault("day_runs", 0)
+    row.setdefault("day_errors", 0)
+    return row
+
+
+def _append_matcher_error_log(sid: str, plugin: str, exception: BaseException) -> None:
+    """进程内环形缓冲 + jsonl；与定时清理共用锁，避免与每日清空交错。"""
+    from src.common.paths import plugin_data_dir
+
+    tb = "".join(
+        traceback.format_exception(
+            type(exception),
+            exception,
+            exception.__traceback__,
+        )
+    )
+    if len(tb) > _MATCHER_ERROR_TB_MAX:
+        tb = tb[:_MATCHER_ERROR_TB_MAX] + "\n…(truncated)"
+    msg = str(exception)
+    if len(msg) > _MATCHER_ERROR_MSG_MAX:
+        msg = msg[:_MATCHER_ERROR_MSG_MAX] + "…"
+    entry: dict[str, Any] = {
+        "at": int(time.time()),
+        "plugin": plugin,
+        "exc_type": type(exception).__name__,
+        "message": msg,
+        "traceback": tb,
+    }
+    line_obj = {**entry, "self_id": sid}
+    try:
+        path = plugin_data_dir("pallas_webui") / "matcher_errors.jsonl"
+        line = json.dumps(line_obj, ensure_ascii=False) + "\n"
+        with _MATCHER_ERROR_JSONL_LOCK:
+            rec = _plugin_run_bot_bucket(sid)
+            log = rec.setdefault("matcher_error_log", [])
+            if not isinstance(log, list):
+                rec["matcher_error_log"] = []
+                log = rec["matcher_error_log"]
+            log.append(entry)
+            while len(log) > _MATCHER_ERROR_LOG_CAP:
+                log.pop(0)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as f:
+                f.write(line)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _matcher_error_log_public(rec: dict[str, Any], *, limit: int = 30, tb_limit: int = 4000) -> list[dict[str, Any]]:
+    raw = rec.get("matcher_error_log")
+    if not isinstance(raw, list) or not raw:
+        return []
+    out: list[dict[str, Any]] = []
+    for it in raw[-limit:]:
+        if not isinstance(it, dict):
+            continue
+        tb = str(it.get("traceback") or "")
+        if len(tb) > tb_limit:
+            tb = tb[:tb_limit] + "\n…(truncated)"
+        try:
+            at = int(it.get("at") or 0)
+        except (TypeError, ValueError):
+            at = 0
+        out.append({
+            "at": at,
+            "plugin": str(it.get("plugin") or ""),
+            "exc_type": str(it.get("exc_type") or ""),
+            "message": str(it.get("message") or "")[:2000],
+            "traceback": tb,
+        })
+    return out
+
+
+def _dotted_module_short_name(module_name: str) -> str:
+    parts = str(module_name).split(".")
+    for part in reversed(parts):
+        if part and part != "__init__":
+            return part
+    return str(module_name or "") or "unknown"
+
+
+def _tb_and_exc_type_from_log_record(record: Any) -> tuple[str, str, str]:
+    """从 loguru record 取 (exc_type, message, traceback 文本)。"""
+    try:
+        msg = str(record["message"])
+    except Exception:  # noqa: BLE001
+        msg = ""
+    exc_type = "LogError"
+    tb = ""
+    try:
+        ex = record["exception"]
+    except Exception:  # noqa: BLE001
+        return exc_type, msg, tb
+    if not ex:
+        return exc_type, msg, tb
+    et = val = tb_obj = None
+    try:
+        if hasattr(ex, "type"):
+            et = ex.type
+            val = getattr(ex, "value", None)
+            tb_obj = getattr(ex, "traceback", None)
+        elif isinstance(ex, tuple) and len(ex) >= 3:
+            et, val, tb_obj = ex[0], ex[1], ex[2]
+    except Exception:  # noqa: BLE001
+        return exc_type, msg, tb
+    if val is not None:
+        exc_type = type(val).__name__
+    elif et is not None:
+        exc_type = getattr(et, "__name__", str(et))
+    try:
+        tb = "".join(traceback.format_exception(et, val, tb_obj))
+    except Exception:  # noqa: BLE001
+        tb = str(val) if val is not None else ""
+    return exc_type, msg, tb
+
+
+def _append_console_log_error(entry: dict[str, Any]) -> None:
+    from src.common.paths import plugin_data_dir
+
+    path = plugin_data_dir("pallas_webui") / "log_errors.jsonl"
+    line_obj = {k: v for k, v in entry.items() if k != "raw_line"}
+    line = json.dumps(line_obj, ensure_ascii=False) + "\n"
+    try:
+        with _LOG_ERROR_JSONL_LOCK:
+            buf = entry.copy()
+            buf.pop("raw_line", None)
+            _LOG_ERROR_BUFFER.append(buf)
+            while len(_LOG_ERROR_BUFFER) > _LOG_ERROR_LOG_CAP:
+                _LOG_ERROR_BUFFER.pop(0)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as f:
+                f.write(line)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _append_log_error_from_sink(text: str, record: Any) -> None:
+    exc_type, msg, tb = _tb_and_exc_type_from_log_record(record)
+    try:
+        full_name = str(record["name"] or "")
+    except Exception:  # noqa: BLE001
+        full_name = ""
+    plugin = _dotted_module_short_name(full_name)
+    if len(tb) > _LOG_ERROR_TB_MAX:
+        tb = tb[:_LOG_ERROR_TB_MAX] + "\n…(truncated)"
+    if len(msg) > _LOG_ERROR_MSG_MAX:
+        msg = msg[:_LOG_ERROR_MSG_MAX] + "…"
+    if not msg.strip():
+        msg = (text or "")[:_LOG_ERROR_MSG_MAX]
+        if len(text or "") > _LOG_ERROR_MSG_MAX:
+            msg = msg + "…"
+    entry: dict[str, Any] = {
+        "at": int(time.time()),
+        "plugin": plugin,
+        "exc_type": exc_type,
+        "message": msg,
+        "traceback": tb,
+        "raw_line": text,
+    }
+    _append_console_log_error(entry)
+
+
+def _log_error_log_public(*, limit: int = 30, tb_limit: int = 4000) -> list[dict[str, Any]]:
+    with _LOG_ERROR_JSONL_LOCK:
+        raw = list(_LOG_ERROR_BUFFER)
+    if not raw:
+        return []
+    out: list[dict[str, Any]] = []
+    for it in raw[-limit:]:
+        if not isinstance(it, dict):
+            continue
+        tb = str(it.get("traceback") or "")
+        if len(tb) > tb_limit:
+            tb = tb[:tb_limit] + "\n…(truncated)"
+        try:
+            at = int(it.get("at") or 0)
+        except (TypeError, ValueError):
+            at = 0
+        out.append({
+            "at": at,
+            "plugin": str(it.get("plugin") or ""),
+            "exc_type": str(it.get("exc_type") or ""),
+            "message": str(it.get("message") or "")[:2000],
+            "traceback": tb,
+        })
+    return out
+
+
+def _cleanup_log_error_archives_sync() -> None:
+    from src.common.paths import plugin_data_dir
+
+    path = plugin_data_dir("pallas_webui") / "log_errors.jsonl"
+    with _LOG_ERROR_JSONL_LOCK:
+        try:
+            if path.exists():
+                path.unlink()
+        except OSError as e:
+            logger.warning("Pallas-Bot 控制台: 删除 log_errors.jsonl 失败: {}", str(e))
+        _LOG_ERROR_BUFFER.clear()
+
+
+async def _scheduled_cleanup_matcher_error_logs() -> None:
+    """每日 4:00 清理 Matcher 异常与日志 ERROR 归档（jsonl + 进程内缓冲）。"""
+    from src.common.paths import plugin_data_dir
+
+    path = plugin_data_dir("pallas_webui") / "matcher_errors.jsonl"
+    with _MATCHER_ERROR_JSONL_LOCK:
+        try:
+            if path.exists():
+                path.unlink()
+        except OSError as e:
+            logger.warning("Pallas-Bot 控制台: 删除 matcher_errors.jsonl 失败: {}", str(e))
+        for rec in _PLUGIN_RUN_STATS.values():
+            if isinstance(rec, dict):
+                rec["matcher_error_log"] = []
+    _cleanup_log_error_archives_sync()
+    _drop_read_cache(("plugin-run-stats:",))
+    logger.info(
+        "Pallas-Bot 控制台: 控制台异常记录已按计划清理（每日 4:00，"
+        "matcher_errors.jsonl、log_errors.jsonl 与进程内缓冲）"
+    )
+
+
+def _matcher_hist_bump(sid: str, plugin: str, had_error: bool) -> None:
+    """Matcher 执行按时间桶、按插件名记录（与 plugin-run-stats 插件维度一致）。"""
+    pname = str(plugin).strip() or "_"
+    rec = _plugin_run_bot_bucket(sid)
+    hist = rec.setdefault("matcher_hist", [])
+    if not isinstance(hist, list):
+        rec["matcher_hist"] = []
+        hist = rec["matcher_hist"]
+    now = int(time.time())
+    bucket = _hist_bucket_start_local(now, _API_HIST_BUCKET_SEC)
+    cutoff = bucket - (_API_HIST_MAX_BUCKETS - 1) * _API_HIST_BUCKET_SEC
+    i = 0
+    while i < len(hist):
+        h = hist[i]
+        if not isinstance(h, dict):
+            hist.pop(i)
+            continue
+        try:
+            at = int(h.get("at") or 0)
+        except (TypeError, ValueError):
+            hist.pop(i)
+            continue
+        if at < cutoff:
+            hist.pop(i)
+        else:
+            i += 1
+    if hist and isinstance(hist[-1], dict):
+        try:
+            last_at = int(hist[-1].get("at") or 0)
+        except (TypeError, ValueError):
+            last_at = 0
+        if last_at == bucket:
+            plugs = hist[-1].setdefault("plugins", {})
+            if not isinstance(plugs, dict):
+                hist[-1]["plugins"] = {}
+                plugs = hist[-1]["plugins"]
+            plugs[pname] = int(plugs.get(pname, 0)) + 1
+            if had_error:
+                errs = hist[-1].setdefault("plugin_errors", {})
+                if not isinstance(errs, dict):
+                    hist[-1]["plugin_errors"] = {}
+                    errs = hist[-1]["plugin_errors"]
+                errs[pname] = int(errs.get(pname, 0)) + 1
+            return
+    entry: dict[str, Any] = {"at": bucket, "plugins": {pname: 1}}
+    if had_error:
+        entry["plugin_errors"] = {pname: 1}
+    hist.append(entry)
+
+
+def _matcher_hist_series_public(rec: dict[str, Any], *, limit: int = _HIST_PLUGIN_SERIES_MAX) -> dict[str, Any]:
+    raw = rec.get("matcher_hist")
+    by_plugin = rec.get("by_plugin")
+    ranked: list[str] = []
+    if isinstance(by_plugin, dict) and by_plugin:
+        ranked = sorted(
+            by_plugin.keys(),
+            key=lambda k: (
+                -int((by_plugin.get(k) or {}).get("day_runs", 0) if isinstance(by_plugin.get(k), dict) else 0)
+            ),
+        )
+        ranked = [str(k) for k in ranked if str(k).strip()][:limit]
+    if not ranked and isinstance(raw, list):
+        acc: set[str] = set()
+        for it in raw:
+            plugs = it.get("plugins") if isinstance(it, dict) else None
+            if isinstance(plugs, dict):
+                acc.update(str(k) for k in plugs if str(k).strip())
+        ranked = sorted(acc)[:limit]
+    if not isinstance(raw, list) or not raw or not ranked:
+        return {"matcher_runs_by_plugin": [], "matcher_errors_by_plugin": []}
+    buckets = sorted(
+        [x for x in raw if isinstance(x, dict) and "at" in x],
+        key=lambda x: int(x.get("at") or 0),
+    )
+    runs_out: list[dict[str, Any]] = []
+    err_out: list[dict[str, Any]] = []
+    for pname in ranked:
+        r_pts: list[dict[str, Any]] = []
+        e_pts: list[dict[str, Any]] = []
+        for it in buckets:
+            try:
+                at = int(it["at"])
+            except (TypeError, ValueError, KeyError):
+                continue
+            plugs = it.get("plugins")
+            r = 0
+            if isinstance(plugs, dict):
+                try:
+                    r = int(plugs.get(pname, 0))
+                except (TypeError, ValueError):
+                    r = 0
+            errs = it.get("plugin_errors")
+            e = 0
+            if isinstance(errs, dict):
+                try:
+                    e = int(errs.get(pname, 0))
+                except (TypeError, ValueError):
+                    e = 0
+            r_pts.append({"at": at, "total": r})
+            e_pts.append({"at": at, "total": e})
+        if sum(int(x.get("total", 0) or 0) for x in r_pts):
+            runs_out.append({"plugin": pname, "points": r_pts})
+        if sum(int(x.get("total", 0) or 0) for x in e_pts):
+            err_out.append({"plugin": pname, "points": e_pts})
+    return {"matcher_runs_by_plugin": runs_out, "matcher_errors_by_plugin": err_out}
+
+
+def _init_plugin_run_tracking() -> None:
+    """run_postprocessor：Matcher.run 结束后计数（不含被 run_preprocessor 拦截的调度）。"""
+    global _PLUGIN_RUN_TRACKING_INIT
+    if _PLUGIN_RUN_TRACKING_INIT:
+        return
+    _PLUGIN_RUN_TRACKING_INIT = True
+
+    from nonebot.message import run_postprocessor
+
+    @run_postprocessor
+    async def _count_plugin_matcher_run(
+        matcher: Matcher,
+        exception: Exception | None,
+        bot: BaseBot,
+        _event: Event,
+    ) -> None:
+        plugin = _plugin_short_name_from_matcher(matcher).strip()
+        if not plugin or plugin.lower() in _EXCLUDED_PLUGIN_RUN_NAMES:
+            return
+        sid = str(getattr(bot, "self_id", "") or "").strip()
+        if not sid:
+            return
+        try:
+            row = _plugin_run_plugin_row(sid, plugin)
+            row["runs"] = int(row["runs"]) + 1
+            row["day_runs"] = int(row["day_runs"]) + 1
+            if exception is not None:
+                row["errors"] = int(row["errors"]) + 1
+                row["day_errors"] = int(row["day_errors"]) + 1
+                _append_matcher_error_log(sid, plugin, exception)
+            _matcher_hist_bump(sid, plugin, exception is not None)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _plugin_run_stats_overview(*, self_id: str | None) -> dict[str, Any]:
+    rows_out: list[dict[str, Any]] = []
+    total_runs = 0
+    total_errors = 0
+    total_runs_today = 0
+    total_errors_today = 0
+    for key, bot in get_bots().items():
+        sid = str(getattr(bot, "self_id", "") or "").strip()
+        if not sid:
+            continue
+        if self_id and sid != str(self_id).strip():
+            continue
+        if not _is_onebot_v11_bot(bot):
+            continue
+        _plugin_run_bot_bucket(sid)
+        bucket = _PLUGIN_RUN_STATS.get(sid, {})
+        by_plugin = bucket.get("by_plugin", {}) if isinstance(bucket, dict) else {}
+        plugins_list: list[dict[str, Any]] = []
+        br = be = brt = bet = 0
+        for pname, prow in by_plugin.items():
+            if not isinstance(prow, dict):
+                continue
+            r = int(prow.get("runs", 0))
+            e = int(prow.get("errors", 0))
+            rt = int(prow.get("day_runs", 0))
+            et = int(prow.get("day_errors", 0))
+            plugins_list.append({
+                "name": str(pname),
+                "runs": r,
+                "runs_today": rt,
+                "errors": e,
+                "errors_today": et,
+            })
+            br += r
+            be += e
+            brt += rt
+            bet += et
+        plugins_list.sort(key=lambda x: (-int(x["runs_today"]), -int(x["runs"]), str(x["name"])))
+        hist_pack = _matcher_hist_series_public(bucket if isinstance(bucket, dict) else {})
+        err_log = _matcher_error_log_public(bucket if isinstance(bucket, dict) else {})
+        rows_out.append({
+            "self_id": sid,
+            "connection_key": str(key),
+            "runs": br,
+            "errors": be,
+            "runs_today": brt,
+            "errors_today": bet,
+            "plugins": plugins_list,
+            "matcher_runs_by_plugin": hist_pack["matcher_runs_by_plugin"],
+            "matcher_errors_by_plugin": hist_pack["matcher_errors_by_plugin"],
+            "matcher_error_log": err_log,
+        })
+        total_runs += br
+        total_errors += be
+        total_runs_today += brt
+        total_errors_today += bet
+    return {
+        "total_runs": total_runs,
+        "total_errors": total_errors,
+        "total_runs_today": total_runs_today,
+        "total_errors_today": total_errors_today,
+        "matcher_calls_history_bucket_sec": _API_HIST_BUCKET_SEC,
+        "matcher_calls_history_max_buckets": _API_HIST_MAX_BUCKETS,
+        "log_error_log": _log_error_log_public(),
+        "bots": rows_out,
+    }
+
+
+def _console_daily_stats_payload(
+    *,
+    self_id: str | None,
+    start: str | None,
+    end: str | None,
+) -> dict[str, Any]:
+    """按自然日汇总：消息收/发与 Matcher 次数（磁盘 + 当前日内存）。"""
+    from datetime import date, timedelta
+
+    from src.plugins.pallas_webui import daily_stats_store
+
+    clock_today = time.strftime("%Y-%m-%d", time.localtime())
+    today_d = date.fromisoformat(clock_today)
+    end_d = today_d
+    if end:
+        try:
+            end_d = date.fromisoformat(str(end).strip()[:10])
+        except ValueError:
+            end_d = today_d
+    start_d = end_d - timedelta(days=89)
+    if start:
+        try:
+            start_d = date.fromisoformat(str(start).strip()[:10])
+        except ValueError:
+            pass
+    if start_d > end_d:
+        start_d, end_d = end_d, start_d
+    sid_f = str(self_id).strip() if self_id else None
+    if sid_f == "":
+        sid_f = None
+    rows, s1, s2 = daily_stats_store.load_range(
+        self_id=sid_f,
+        start_day=start_d.isoformat(),
+        end_day=end_d.isoformat(),
+    )
+    by_key: dict[tuple[str, str], dict[str, Any]] = {(r["date"], r["self_id"]): dict(r) for r in rows}
+    live_out: dict[str, dict[str, int]] = {}
+    for sid in set(_MSG_STATS.keys()) | set(_PLUGIN_RUN_STATS.keys()):
+        sid = str(sid).strip()
+        if not sid:
+            continue
+        if sid_f is not None and sid != sid_f:
+            continue
+        _rollover_console_day_if_needed(sid, clock_today)
+        mem = _MSG_STATS.get(sid)
+        dr = int(mem.get("day_received", 0)) if isinstance(mem, dict) else 0
+        ds = int(mem.get("day_sent", 0)) if isinstance(mem, dict) else 0
+        mr = _sum_matcher_day_runs(sid)
+        live_out[sid] = {"received": dr, "sent": ds, "matcher_runs": mr}
+        if start_d <= today_d <= end_d:
+            k = (clock_today, sid)
+            if k in by_key:
+                by_key[k]["received"] = dr
+                by_key[k]["sent"] = ds
+                by_key[k]["matcher_runs"] = mr
+            else:
+                by_key[k] = {
+                    "date": clock_today,
+                    "self_id": sid,
+                    "received": dr,
+                    "sent": ds,
+                    "matcher_runs": mr,
+                }
+    merged = sorted(by_key.values(), key=itemgetter("date", "self_id"))
+    return {
+        "start": s1,
+        "end": s2,
+        "query_start": start_d.isoformat(),
+        "query_end": end_d.isoformat(),
+        "rows": merged,
+        "live_today": live_out,
+        "server_date": clock_today,
+    }
 
 
 async def _call_get_message_history(
@@ -937,7 +2013,7 @@ async def _collect_online_bot_profiles() -> dict[str, dict[str, Any]]:
         try:
             raw = await bot.call_api("get_login_info")  # type: ignore[union-attr]
         except Exception:  # noqa: BLE001
-            logger.debug("Pallas 控制台: get_login_info 失败 key={} self_id={}", key, self_id)
+            logger.debug("Pallas-Bot 控制台: get_login_info 失败 key={} self_id={}", key, self_id)
             continue
         if not isinstance(raw, dict):
             continue
@@ -985,6 +2061,8 @@ async def _friend_requests_overview(
             adapter = _bot_adapter_label(bot)
             if include_doubt and _is_onebot_v11_bot(bot):
                 doubt = await _call_get_doubt_friends(bot)
+            if _is_onebot_v11_bot(bot):
+                await _enrich_friend_request_rows_nicknames(bot, pending, doubt)
         rows.append({
             "self_id": sid,
             "connection_key": conn,
@@ -1015,6 +2093,10 @@ def _system_dict() -> dict[str, Any]:
             port_s = int(port)
         except (TypeError, ValueError):
             port_s = None
+    console = dict(_CONSOLE_EXTRA)
+    sr = str(console.get("static_root", "") or "").strip()
+    static_path = Path(sr) if sr else None
+    _merge_console_version_from_disk(console, static_path)
     return {
         "nonebot2_driver": {
             "host": host_s,
@@ -1024,24 +2106,55 @@ def _system_dict() -> dict[str, Any]:
         "server_time": time.time(),
         "plugin_count": len(_list_plugins_dict()),
         "bot_count": len(get_bots()),
-        "console": dict(_CONSOLE_EXTRA),
+        "console": console,
         "runtime": _runtime_metrics(),
     }
 
 
 def _runtime_metrics() -> dict[str, Any]:
     cpu_percent: float | None = None
+    cpu_per_core: list[float] = []
+    cpu_load_avg: list[float] | None = None
     mem: dict[str, Any] = {"total": None, "used": None, "percent": None}
     try:
         import psutil  # type: ignore
 
-        cpu_percent = float(psutil.cpu_percent(interval=0.0))
+        percpu = psutil.cpu_percent(interval=0.0, percpu=True)
+        if isinstance(percpu, (list, tuple)) and len(percpu) > 0:
+            cpu_per_core = [round(float(min(100.0, max(0.0, float(x)))), 2) for x in percpu]
+            cpu_percent = round(sum(cpu_per_core) / len(cpu_per_core), 2)
+        else:
+            cpu_percent = float(psutil.cpu_percent(interval=0.0))
         vm = psutil.virtual_memory()
         mem = {
             "total": int(getattr(vm, "total", 0) or 0),
             "used": int(getattr(vm, "used", 0) or 0),
-            "percent": float(getattr(vm, "percent", 0.0) or 0.0),
+            "percent": round(float(getattr(vm, "percent", 0.0) or 0.0), 2),
         }
+        av = getattr(vm, "available", None)
+        if isinstance(av, (int, float)):
+            mem["available"] = int(av)
+        fr = getattr(vm, "free", None)
+        if isinstance(fr, (int, float)):
+            mem["free"] = int(fr)
+        for _k in ("buffers", "cached", "shared", "wired"):
+            _v = getattr(vm, _k, None)
+            if isinstance(_v, (int, float)) and int(_v) > 0:
+                mem[_k] = int(_v)
+    except Exception:  # noqa: BLE001
+        pass
+
+    try:
+        import os as _os_load
+
+        if hasattr(_os_load, "getloadavg"):
+            tup = _os_load.getloadavg()
+            if isinstance(tup, (list, tuple)) and len(tup) >= 3:
+                cpu_load_avg = [
+                    round(float(tup[0]), 2),
+                    round(float(tup[1]), 2),
+                    round(float(tup[2]), 2),
+                ]
     except Exception:  # noqa: BLE001
         pass
 
@@ -1059,10 +2172,40 @@ def _runtime_metrics() -> dict[str, Any]:
     except Exception:  # noqa: BLE001
         pass
 
+    hostname_s = (platform.node() or "").strip()
+    if not hostname_s:
+        try:
+            hostname_s = (socket.gethostname() or "").strip()
+        except Exception:  # noqa: BLE001
+            hostname_s = ""
+    if not hostname_s:
+        hostname_s = (os.environ.get("COMPUTERNAME") or os.environ.get("HOSTNAME") or "").strip()
+
+    boot_time: float | None = None
+    try:
+        import psutil as _psutil_boot  # type: ignore
+
+        boot_time = float(_psutil_boot.boot_time())
+    except Exception as e:  # noqa: BLE001
+        logger.debug("Pallas-Bot 控制台: psutil.boot_time 不可用，将尝试其它方式 err={}", e)
+
+    if boot_time is None and sys.platform == "win32":
+        try:
+            import ctypes
+
+            ms = int(ctypes.windll.kernel32.GetTickCount64())
+            boot_time = float(time.time() - ms / 1000.0)
+        except Exception as e:  # noqa: BLE001
+            logger.debug("Pallas-Bot 控制台: Windows GetTickCount64 推算启动时间失败 err={}", e)
+
     return {
         "platform": platform.platform(),
         "python": platform.python_version(),
+        "hostname": hostname_s or None,
+        "boot_time": boot_time,
         "cpu_percent": cpu_percent,
+        "cpu_per_core": cpu_per_core,
+        "cpu_load_avg": cpu_load_avg,
         "memory": mem,
         "disk": disk,
         "gpu": _gpu_metrics(),
@@ -1075,18 +2218,26 @@ def _require_pallas_token_configured(
     x_pallas_token: str | None,
     token: str | None,
 ) -> None:
-    """所有控制台 API 共享的鉴权入口：未配置 token 时直接 403，避免匿名滥用。"""
-    need = (getattr(plugin_config, "pallas_webui_api_token", None) or "").strip()
-    if not need:
+    """所有控制台 API 共享的鉴权入口：与协议端共用会话（Cookie 或 X-Pallas-Token）。"""
+    if bool(getattr(plugin_config, "pallas_webui_dev_mode", False)):
+        return
+    req = current_http_request()
+    if req is None:
+        raise HTTPException(status_code=500, detail="控制台鉴权缺少请求上下文")
+    cookies = dict(req.cookies)
+    if extract_session_from_request(
+        cookies=cookies,
+        header_token=x_pallas_token,
+        query_token=token,
+        cookie_token=None,
+    ):
+        return
+    if not is_console_auth_configured():
         raise HTTPException(
-            status_code=403,
-            detail=(
-                "pallas_webui_api_token 未配置，控制台 API 已禁用；"
-                "请在 .env 中设置 PALLAS_WEBUI_API_TOKEN 并在控制台设置页填入后再试"
-            ),
+            status_code=503,
+            detail="统一控制台鉴权未初始化，请检查 data/pallas_console/",
         )
-    if (x_pallas_token or token or "").strip() != need:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    raise HTTPException(status_code=401, detail="Invalid token")
 
 
 # 历史调用点保留同名别名，写操作与受保护读操作行为已统一
@@ -1109,6 +2260,7 @@ class _GroupConfigPatch(BaseModel):
     disabled_plugins: list[str] | None = None
     roulette_mode: int | None = Field(default=None, ge=0, le=1)
     banned: bool | None = None
+    blocked_user_ids: list[int] | None = None
 
 
 class _UserConfigPatch(BaseModel):
@@ -1171,6 +2323,12 @@ class _PluginConfigUpdateBody(BaseModel):
     values: dict[str, Any] = Field(default_factory=dict)
 
 
+class _ChangeConsoleLoginBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    new_password: str = Field(min_length=1, max_length=256)
+
+
 class _RequestActionBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1180,6 +2338,30 @@ class _RequestActionBody(BaseModel):
     source: Literal["pending", "doubt"] = "pending"
     user_id: int | None = Field(default=None, ge=1)
     group_id: int | None = Field(default=None, ge=1)
+
+
+class _RequestBatchFriendRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    self_id: int = Field(ge=1)
+    user_id: int = Field(ge=1)
+    source: Literal["pending", "doubt"] = "pending"
+
+
+class _RequestBatchGroupRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    self_id: int = Field(ge=1)
+    user_id: int = Field(ge=1)
+    group_id: int = Field(ge=1)
+
+
+class _RequestActionsBatchBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["approve", "reject"] = "approve"
+    friends: list[_RequestBatchFriendRow] = Field(default_factory=list, max_length=500)
+    groups: list[_RequestBatchGroupRow] = Field(default_factory=list, max_length=500)
 
 
 async def _apply_bot_config_patch(account: int, body: _BotConfigPatch) -> dict[str, Any]:
@@ -1198,6 +2380,14 @@ async def _apply_bot_config_patch(account: int, body: _BotConfigPatch) -> dict[s
         else:
             fields[field_name] = raw
     await repo.upsert_fields(account, fields)
+    if "disabled_plugins" in fields:
+        from src.plugins.help.plugin_manager import invalidate_disabled_plugin_gate_cache
+
+        await invalidate_disabled_plugin_gate_cache(bot_id=account)
+    if "admins" in fields:
+        from src.common.config.bot_admins_cache import invalidate_bot_admins_cache
+
+        await invalidate_bot_admins_cache(account)
     doc = await repo.get(account, ignore_cache=True)
     if doc is None:
         raise HTTPException(status_code=500, detail="config upsert 后回读失败")
@@ -1216,9 +2406,20 @@ async def _apply_group_config_patch(group_id: int, body: _GroupConfigPatch) -> d
             fields[field_name] = [str(s).strip() for s in raw if str(s).strip()]
         elif field_name == "roulette_mode":
             fields[field_name] = 1 if int(raw) == 1 else 0
+        elif field_name == "blocked_user_ids" and raw is not None:
+            # 与 bot_config.admins 一致：逐项 int()，非法项由请求体验证阶段报错
+            fields[field_name] = [int(x) for x in raw]
         else:
             fields[field_name] = raw
     await repo.upsert_fields(group_id, fields)
+    if "blocked_user_ids" in fields:
+        from src.plugins.blacklist import invalidate_group_ban_gate_cache
+
+        await invalidate_group_ban_gate_cache(group_id)
+    if "disabled_plugins" in fields:
+        from src.plugins.help.plugin_manager import invalidate_disabled_plugin_gate_cache
+
+        await invalidate_disabled_plugin_gate_cache(group_id=group_id)
     doc = await repo.get(group_id, ignore_cache=True)
     if doc is None:
         raise HTTPException(status_code=500, detail="config upsert 后回读失败")
@@ -1292,13 +2493,21 @@ async def _upsert_db_table_row(table: str, row_id: int, data: dict[str, Any]) ->
         for k, v in payload.items():
             await repo.upsert_field(int(row_id), k, v)
         await repo.invalidate_cache()
+        if "disabled_plugins" in payload:
+            from src.plugins.help.plugin_manager import invalidate_disabled_plugin_gate_cache
+
+            await invalidate_disabled_plugin_gate_cache(bot_id=int(row_id))
+        if "admins" in payload:
+            from src.common.config.bot_admins_cache import invalidate_bot_admins_cache
+
+            await invalidate_bot_admins_cache(int(row_id))
         got = await _get_db_table_row_public("bot_config", int(row_id))
         if got is None:
             raise ValueError("upsert 后回读失败")
         return got
     if t == "group_config":
         repo = make_group_config_repository()
-        allowed = {"disabled_plugins", "roulette_mode", "banned", "sing_progress"}
+        allowed = {"disabled_plugins", "roulette_mode", "banned", "sing_progress", "blocked_user_ids"}
         for k in payload:
             if k not in allowed:
                 raise ValueError(f"group_config 不允许字段: {k}")
@@ -1306,6 +2515,14 @@ async def _upsert_db_table_row(table: str, row_id: int, data: dict[str, Any]) ->
         for k, v in payload.items():
             await repo.upsert_field(int(row_id), k, v)
         await repo.invalidate_cache()
+        if "blocked_user_ids" in payload:
+            from src.plugins.blacklist import invalidate_group_ban_gate_cache
+
+            await invalidate_group_ban_gate_cache(int(row_id))
+        if "disabled_plugins" in payload:
+            from src.plugins.help.plugin_manager import invalidate_disabled_plugin_gate_cache
+
+            await invalidate_disabled_plugin_gate_cache(group_id=int(row_id))
         got = await _get_db_table_row_public("group_config", int(row_id))
         if got is None:
             raise ValueError("upsert 后回读失败")
@@ -1372,7 +2589,9 @@ def register_extended_api(
     api_base: str,
     plugin_config: Config,
 ) -> None:
+    _ensure_bot_session_hooks()
     _init_message_tracking()
+    _init_plugin_run_tracking()
     x = (api_base or "/pallas/api").strip()
     if not x.startswith("/"):
         x = "/" + x
@@ -1389,7 +2608,34 @@ def register_extended_api(
             token=token,
         )
 
-    router = APIRouter(tags=["Pallas 控制台"], dependencies=[Depends(_pallas_token_dep)])
+    class _AuthLoginBody(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+
+        password: str = Field(min_length=1, max_length=512)
+
+    router_pub = APIRouter(tags=["Pallas-Bot 控制台"])
+
+    @router_pub.post(f"{x}/auth/login", include_in_schema=False)
+    async def _auth_login(request: Request, body: _AuthLoginBody) -> JSONResponse:
+        from src.common.pallas_console_login import SESSION_COOKIE_NAME, SESSION_TTL_SEC
+
+        if not verify_console_password(body.password):
+            raise HTTPException(status_code=401, detail="口令错误")
+        tok = mint_session_token()
+        resp = JSONResponse({"ok": True, "data": {"token": tok}})
+        resp.set_cookie(
+            key=SESSION_COOKIE_NAME,
+            value=tok,
+            max_age=SESSION_TTL_SEC,
+            httponly=True,
+            samesite="lax",
+            secure=request.url.scheme == "https",
+            path="/",
+        )
+        clear_extended_read_cache()
+        return resp
+
+    router = APIRouter(tags=["Pallas-Bot 控制台"], dependencies=[Depends(_pallas_token_dep)])
 
     @router.get(f"{x}/system", include_in_schema=True)
     async def _system() -> JSONResponse:
@@ -1408,6 +2654,34 @@ def register_extended_api(
 
         key = f"message-stats:{self_id or 'all'}"
         data = await _cached_read(key=key, loader=_load, ttl_sec=2.0, stale_sec=10.0)
+        return JSONResponse({"ok": True, "data": data})
+
+    @router.get(f"{x}/plugin-run-stats", include_in_schema=True)
+    async def _plugin_run_stats(
+        self_id: int | None = Query(default=None, ge=1),
+    ) -> JSONResponse:
+        async def _load() -> dict[str, Any]:
+            return _plugin_run_stats_overview(self_id=str(self_id) if self_id is not None else None)
+
+        key = f"plugin-run-stats:{self_id or 'all'}"
+        data = await _cached_read(key=key, loader=_load, ttl_sec=2.0, stale_sec=10.0)
+        return JSONResponse({"ok": True, "data": data})
+
+    @router.get(f"{x}/console-daily-stats", include_in_schema=True)
+    async def _console_daily_stats(
+        self_id: int | None = Query(default=None, ge=1),
+        start: str | None = Query(default=None, description="YYYY-MM-DD，含当日"),
+        end: str | None = Query(default=None, description="YYYY-MM-DD，含当日"),
+    ) -> JSONResponse:
+        async def _load() -> dict[str, Any]:
+            return _console_daily_stats_payload(
+                self_id=str(self_id) if self_id is not None else None,
+                start=start,
+                end=end,
+            )
+
+        key = f"console-daily-stats:{self_id or 'all'}:{start or ''}:{end or ''}"
+        data = await _cached_read(key=key, loader=_load, ttl_sec=3.0, stale_sec=15.0)
         return JSONResponse({"ok": True, "data": data})
 
     @router.get(f"{x}/plugins", include_in_schema=True)
@@ -1450,7 +2724,7 @@ def register_extended_api(
     @router.get(f"{x}/plugins/{{plugin_name}}/config", include_in_schema=True)
     async def _plugin_config_get(plugin_name: str) -> JSONResponse:
         try:
-            data = _plugin_config_payload(plugin_name)
+            data = plugin_config_payload(plugin_name)
         except ValueError:
             # 无 config.py 或配置模型不可用时返回空配置，前端以“不可编辑”展示
             data = {"plugin": plugin_name, "module": "", "fields": []}
@@ -1467,18 +2741,41 @@ def register_extended_api(
     ) -> JSONResponse:
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
         try:
-            _, _, cfg_cls = _plugin_config_model_by_name(plugin_name)
-            current = get_plugin_config(cfg_cls).model_dump(mode="python")
-            patch = dict(body.values or {})
-            allowed = set(cfg_cls.model_fields.keys())
-            for k in patch:
-                if k not in allowed:
-                    raise ValueError(f"未知配置项: {k}")
-            merged = {**current, **patch}
-            validated = cfg_cls(**merged).model_dump(mode="python")
-            env_items = {str(k).upper(): _to_env_value(validated[k]) for k in patch}
-            _upsert_env_items(env_items)
-            data = _plugin_config_payload(plugin_name)
+            data = apply_plugin_config_patch(plugin_name, dict(body.values or {}))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": data})
+
+    @router.get(f"{x}/common-config/sections", include_in_schema=True)
+    async def _common_config_sections_list() -> JSONResponse:
+        from src.common.webui.env_sections import list_webui_env_sections
+
+        return JSONResponse({"ok": True, "data": list_webui_env_sections()})
+
+    @router.get(f"{x}/common-config/{{section_id}}", include_in_schema=True)
+    async def _common_config_get(section_id: str) -> JSONResponse:
+        from src.common.webui.env_sections import webui_env_section_payload
+
+        try:
+            data = webui_env_section_payload(section_id)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": data})
+
+    @router.put(f"{x}/common-config/{{section_id}}", include_in_schema=True)
+    async def _common_config_put(
+        section_id: str,
+        body: _PluginConfigUpdateBody,
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        from src.common.webui.env_sections import apply_webui_env_section_patch
+
+        try:
+            data = apply_webui_env_section_patch(section_id, dict(body.values or {}))
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:  # noqa: BLE001
@@ -1507,16 +2804,42 @@ def register_extended_api(
         ] = "all",
     ) -> JSONResponse:
         _ensure_log_sink()
-        from src.common.web import tail_nonebot_log_lines_scoped
+        from src.common.web import tail_nonebot_log_entries_scoped, tail_nonebot_log_lines_scoped
 
         return JSONResponse({
             "ok": True,
             "data": {
                 "lines": tail_nonebot_log_lines_scoped(n, scope),
+                "entries": tail_nonebot_log_entries_scoped(n, scope),
                 "max": plugin_config.pallas_webui_log_lines_max,
                 "scope": scope,
             },
         })
+
+    @router.get(
+        f"{x}/logs/stream",
+        include_in_schema=True,
+    )
+    async def _logs_stream(
+        scope: Annotated[
+            LogScope,
+            Query(
+                description=("all=全部；webui=仅 pallas_webui 相关；protocol=仅 pallas_protocol 相关"),
+            ),
+        ] = "all",
+    ) -> StreamingResponse:
+        _ensure_log_sink()
+        from src.common.web import iter_nonebot_log_sse
+
+        return StreamingResponse(
+            iter_nonebot_log_sse(scope),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     @router.get(
         f"{x}/plugin-config-hint",
@@ -1542,7 +2865,7 @@ def register_extended_api(
                 stale_sec=30.0,
             )
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas 控制台: 数据库概览失败")
+            logger.exception("Pallas-Bot 控制台: 数据库概览失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": data})
 
@@ -1552,7 +2875,7 @@ def register_extended_api(
         token: str | None = Query(default=None),
         x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
     ) -> JSONResponse:
-        """受限 MongoDB aggregate（只读阶段白名单 + 强制结果上限）；须配置并携带 pallas_webui_api_token。"""
+        """受限 MongoDB aggregate（只读阶段白名单 + 强制结果上限）；须携带有效控制台会话。"""
         _require_pallas_token_configured(
             plugin_config,
             x_pallas_token=x_pallas_token,
@@ -1568,7 +2891,7 @@ def register_extended_api(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas 控制台: Mongo aggregate 失败")
+            logger.exception("Pallas-Bot 控制台: Mongo aggregate 失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": {"rows": rows, "truncated_to": len(rows)}})
 
@@ -1582,7 +2905,7 @@ def register_extended_api(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas 控制台: 读取表行失败")
+            logger.exception("Pallas-Bot 控制台: 读取表行失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
         if data is None:
             raise HTTPException(status_code=404, detail="未找到该行")
@@ -1602,9 +2925,11 @@ def register_extended_api(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas 控制台: 写入表行失败")
+            logger.exception("Pallas-Bot 控制台: 写入表行失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
-        _drop_read_cache(("db_overview", "bot_configs_list", "group_configs_list", "instances"))
+        _drop_read_cache(
+            ("db_overview", "bot_configs_list", "group_configs_list", "user_configs_list", "instances"),
+        )
         return JSONResponse({"ok": True, "data": data})
 
     @router.delete(f"{x}/db/table-row", include_in_schema=True)
@@ -1620,9 +2945,11 @@ def register_extended_api(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas 控制台: 删除表行失败")
+            logger.exception("Pallas-Bot 控制台: 删除表行失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
-        _drop_read_cache(("db_overview", "bot_configs_list", "group_configs_list", "instances"))
+        _drop_read_cache(
+            ("db_overview", "bot_configs_list", "group_configs_list", "user_configs_list", "instances"),
+        )
         if not deleted:
             raise HTTPException(status_code=404, detail="未找到该行")
         return JSONResponse({"ok": True, "data": {"deleted": True}})
@@ -1653,7 +2980,7 @@ def register_extended_api(
                 stale_sec=20.0,
             )
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas 控制台: 加载实例视图失败")
+            logger.exception("Pallas-Bot 控制台: 加载实例视图失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": payload})
 
@@ -1700,7 +3027,7 @@ def register_extended_api(
         except HTTPException:
             raise
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas 控制台: 更新 Bot 配置失败")
+            logger.exception("Pallas-Bot 控制台: 更新 Bot 配置失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
         _drop_read_cache(("instances", "bot_configs_list", "db_overview"))
         return JSONResponse({"ok": True, "data": data})
@@ -1712,56 +3039,78 @@ def register_extended_api(
     ) -> JSONResponse:
         from src.common.db.pallas_console_data import list_group_configs_by_ids_public, list_group_configs_public
 
-        # 按账号过滤：拉取 Bot 的群列表，再从 DB 取对应群配置并合并
+        # 按账号过滤：拉取 Bot 的群列表，再从 DB 取对应群配置并合并（走 OneBot，结果短时缓存）
         if self_id is not None:
-            target = str(int(self_id))
-            bot = None
-            for b in get_bots().values():
-                if str(getattr(b, "self_id", "") or "") == target:
-                    bot = b
-                    break
-            if bot is None:
-                raise HTTPException(status_code=404, detail="指定账号当前未连接")
-            if not _is_onebot_v11_bot(bot):
-                raise HTTPException(status_code=400, detail="当前连接不是 OneBot V11，无法拉取群列表")
+            cache_key_bot = f"group_configs_bot:{int(self_id)}:{int(limit)}"
 
-            groups, err, truncated = await _call_get_group_list(bot, limit=int(limit))
-            group_ids = [int(g["group_id"]) for g in groups]
+            async def _load_bot_merge() -> dict[str, Any]:
+                target_inner = str(int(self_id))
+                bot_inner = None
+                for b in get_bots().values():
+                    if str(getattr(b, "self_id", "") or "") == target_inner:
+                        bot_inner = b
+                        break
+                if bot_inner is None:
+                    raise HTTPException(status_code=404, detail="指定账号当前未连接")
+                if not _is_onebot_v11_bot(bot_inner):
+                    raise HTTPException(status_code=400, detail="当前连接不是 OneBot V11，无法拉取群列表")
+
+                groups_inner, err, truncated = await _call_get_group_list(bot_inner, limit=int(limit))
+                group_ids = [int(g["group_id"]) for g in groups_inner]
+
+                try:
+                    db_configs = await list_group_configs_by_ids_public(group_ids)
+                except Exception as e:  # noqa: BLE001
+                    raise HTTPException(status_code=500, detail=str(e)) from e
+
+                rows_inner: list[dict[str, Any]] = []
+                for g in groups_inner:
+                    gid = int(g["group_id"])
+                    cfg = db_configs.get(
+                        gid,
+                        {
+                            "group_id": gid,
+                            "roulette_mode": 1,
+                            "banned": False,
+                            "sing_progress": None,
+                            "disabled_plugins": [],
+                            "blocked_user_ids": [],
+                        },
+                    )
+                    rows_inner.append({
+                        **cfg,
+                        "group_name": g.get("group_name", ""),
+                        "member_count": g.get("member_count", 0),
+                    })
+
+                return {
+                    "rows": rows_inner,
+                    "meta": {
+                        "limit": limit,
+                        "self_id": target_inner,
+                        "from_bot": True,
+                        "error": err,
+                        "truncated": truncated,
+                    },
+                }
 
             try:
-                db_configs = await list_group_configs_by_ids_public(group_ids)
-            except Exception as e:  # noqa: BLE001
-                raise HTTPException(status_code=500, detail=str(e)) from e
-
-            rows: list[dict[str, Any]] = []
-            for g in groups:
-                gid = int(g["group_id"])
-                cfg = db_configs.get(
-                    gid,
-                    {
-                        "group_id": gid,
-                        "roulette_mode": 1,
-                        "banned": False,
-                        "sing_progress": None,
-                        "disabled_plugins": [],
-                    },
+                packed = await _cached_read(
+                    key=cache_key_bot,
+                    loader=_load_bot_merge,
+                    ttl_sec=2.0,
+                    stale_sec=22.0,
                 )
-                rows.append({
-                    **cfg,
-                    "group_name": g.get("group_name", ""),
-                    "member_count": g.get("member_count", 0),
-                })
+            except HTTPException:
+                raise
+            except Exception as e:  # noqa: BLE001
+                logger.exception("Pallas-Bot 控制台: 群配置（按 Bot）加载失败")
+                raise HTTPException(status_code=500, detail=str(e)) from e
 
             return JSONResponse({
                 "ok": True,
-                "data": rows,
-                "meta": {
-                    "limit": limit,
-                    "self_id": target,
-                    "from_bot": True,
-                    "error": err,
-                    "truncated": truncated,
-                },
+                "data": packed["rows"],
+                "meta": packed["meta"],
             })
 
         # 原有行为：返回 DB 中所有群配置
@@ -1784,9 +3133,7 @@ def register_extended_api(
         from src.common.db.pallas_console_data import group_config_to_public
 
         repo = make_group_config_repository()
-        doc = await repo.get(group_id, ignore_cache=True)
-        if doc is None:
-            raise HTTPException(status_code=404, detail="未找到该群配置")
+        doc, _created = await repo.get_or_create(group_id, disabled_plugins=[])
         return JSONResponse({"ok": True, "data": group_config_to_public(doc)})
 
     @router.put(f"{x}/group-configs/{{group_id}}", include_in_schema=True)
@@ -1804,10 +3151,27 @@ def register_extended_api(
         except HTTPException:
             raise
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas 控制台: 更新群配置失败")
+            logger.exception("Pallas-Bot 控制台: 更新群配置失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
-        _drop_read_cache(("group_configs_list", "db_overview"))
+        _drop_read_cache(("group_configs_list", "db_overview", "group_configs_bot:"))
         return JSONResponse({"ok": True, "data": data})
+
+    @router.get(f"{x}/user-configs", include_in_schema=True)
+    async def _user_configs_list(
+        limit: int = Query(default=1000, ge=1, le=10_000),
+    ) -> JSONResponse:
+        from src.common.db.pallas_console_data import list_user_configs_public
+
+        cache_key = f"user_configs_list:{int(limit)}"
+
+        async def _load() -> list[dict[str, Any]]:
+            return await list_user_configs_public(limit)
+
+        try:
+            rows = await _cached_read(key=cache_key, loader=_load, ttl_sec=1.0, stale_sec=20.0)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": rows, "meta": {"limit": limit}})
 
     @router.get(f"{x}/user-configs/{{user_id}}", include_in_schema=True)
     async def _user_config_one(
@@ -1835,9 +3199,9 @@ def register_extended_api(
         except HTTPException:
             raise
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas 控制台: 更新 User 配置失败")
+            logger.exception("Pallas-Bot 控制台: 更新 User 配置失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
-        _drop_read_cache(("db_overview",))
+        _drop_read_cache(("db_overview", "user_configs_list"))
         return JSONResponse({"ok": True, "data": data})
 
     @router.get(f"{x}/ai-extension/config", include_in_schema=True)
@@ -1920,7 +3284,6 @@ def register_extended_api(
         path: str,
         body: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        import json
         import urllib.error
         import urllib.request
 
@@ -2004,7 +3367,10 @@ def register_extended_api(
 
     @router.get(f"{x}/ai-extension/ncm/status", include_in_schema=True)
     async def _ai_extension_ncm_status() -> JSONResponse:
-        d = await _ai_extension_http_json(method="GET", path="/ncm/login/status")
+        async def _load() -> dict[str, Any]:
+            return await _ai_extension_http_json(method="GET", path="/ncm/login/status")
+
+        d = await _cached_read(key="ai_extension_ncm_status", loader=_load, ttl_sec=3.0, stale_sec=30.0)
         return JSONResponse({"ok": True, "data": d})
 
     @router.post(f"{x}/ai-extension/ncm/send-sms", include_in_schema=True)
@@ -2019,6 +3385,7 @@ def register_extended_api(
             path="/ncm/login/cellphone/send-sms",
             body=body.model_dump(),
         )
+        _drop_read_cache(("ai_extension_ncm_status",))
         return JSONResponse({"ok": True, "data": d})
 
     @router.post(f"{x}/ai-extension/ncm/verify-sms", include_in_schema=True)
@@ -2033,6 +3400,7 @@ def register_extended_api(
             path="/ncm/login/cellphone/verify-sms",
             body=body.model_dump(),
         )
+        _drop_read_cache(("ai_extension_ncm_status",))
         return JSONResponse({"ok": True, "data": d})
 
     @router.post(f"{x}/ai-extension/ncm/logout", include_in_schema=True)
@@ -2042,6 +3410,7 @@ def register_extended_api(
     ) -> JSONResponse:
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
         d = await _ai_extension_http_json(method="POST", path="/ncm/login/logout", body={})
+        _drop_read_cache(("ai_extension_ncm_status",))
         return JSONResponse({"ok": True, "data": d})
 
     @router.get(f"{x}/friend-requests", include_in_schema=True)
@@ -2063,7 +3432,7 @@ def register_extended_api(
                 stale_sec=12.0,
             )
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas 控制台: 读取好友申请概览失败")
+            logger.exception("Pallas-Bot 控制台: 读取好友申请概览失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": data})
 
@@ -2073,29 +3442,40 @@ def register_extended_api(
         limit: int = Query(default=800, ge=1, le=8000),
     ) -> JSONResponse:
         """只读：对在线 Bot 调用 OneBot `get_friend_list`（大列表时按 limit 截断并标记 truncated）。"""
-        target = str(int(self_id))
-        bot = None
-        conn_key = ""
-        for key, b in get_bots().items():
-            if str(getattr(b, "self_id", "") or "") == target:
-                bot = b
-                conn_key = str(key)
-                break
-        if bot is None:
-            raise HTTPException(status_code=404, detail="指定账号当前未连接")
-        if not _is_onebot_v11_bot(bot):
-            raise HTTPException(status_code=400, detail="当前连接不是 OneBot V11，无法拉取好友列表")
+        cache_key = f"friend_list:{int(self_id)}:{int(limit)}"
 
-        friends, err, truncated = await _call_get_friend_list(bot, limit=int(limit))
-        payload: dict[str, Any] = {
-            "self_id": target,
-            "connection_key": conn_key,
-            "adapter": _bot_adapter_label(bot),
-            "friends": friends,
-            "truncated": truncated,
-            "limit": int(limit),
-            "error": err,
-        }
+        async def _load() -> dict[str, Any]:
+            target = str(int(self_id))
+            bot = None
+            conn_key = ""
+            for key, b in get_bots().items():
+                if str(getattr(b, "self_id", "") or "") == target:
+                    bot = b
+                    conn_key = str(key)
+                    break
+            if bot is None:
+                raise HTTPException(status_code=404, detail="指定账号当前未连接")
+            if not _is_onebot_v11_bot(bot):
+                raise HTTPException(status_code=400, detail="当前连接不是 OneBot V11，无法拉取好友列表")
+
+            friends, err, truncated = await _call_get_friend_list(bot, limit=int(limit))
+            return {
+                "self_id": target,
+                "connection_key": conn_key,
+                "adapter": _bot_adapter_label(bot),
+                "friends": friends,
+                "truncated": truncated,
+                "limit": int(limit),
+                "error": err,
+            }
+
+        try:
+            payload = await _cached_read(key=cache_key, loader=_load, ttl_sec=2.5, stale_sec=25.0)
+        except HTTPException:
+            raise
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Pallas-Bot 控制台: 拉取好友列表失败")
+            raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": payload})
 
     @router.get(f"{x}/group-list", include_in_schema=True)
@@ -2104,70 +3484,89 @@ def register_extended_api(
         limit: int = Query(default=1000, ge=1, le=10000),
     ) -> JSONResponse:
         """只读：对在线 Bot 调用 OneBot `get_group_list`（大列表时按 limit 截断并标记 truncated）。"""
-        target = str(int(self_id))
-        bot = None
-        conn_key = ""
-        for key, b in get_bots().items():
-            if str(getattr(b, "self_id", "") or "") == target:
-                bot = b
-                conn_key = str(key)
-                break
-        if bot is None:
-            raise HTTPException(status_code=404, detail="指定账号当前未连接")
-        if not _is_onebot_v11_bot(bot):
-            raise HTTPException(status_code=400, detail="当前连接不是 OneBot V11，无法拉取群列表")
+        cache_key = f"group_list:{int(self_id)}:{int(limit)}"
 
-        groups, err, truncated = await _call_get_group_list(bot, limit=int(limit))
-        payload: dict[str, Any] = {
-            "self_id": target,
-            "connection_key": conn_key,
-            "adapter": _bot_adapter_label(bot),
-            "groups": groups,
-            "truncated": truncated,
-            "limit": int(limit),
-            "error": err,
-        }
+        async def _load() -> dict[str, Any]:
+            target = str(int(self_id))
+            bot = None
+            conn_key = ""
+            for key, b in get_bots().items():
+                if str(getattr(b, "self_id", "") or "") == target:
+                    bot = b
+                    conn_key = str(key)
+                    break
+            if bot is None:
+                raise HTTPException(status_code=404, detail="指定账号当前未连接")
+            if not _is_onebot_v11_bot(bot):
+                raise HTTPException(status_code=400, detail="当前连接不是 OneBot V11，无法拉取群列表")
+
+            groups, err, truncated = await _call_get_group_list(bot, limit=int(limit))
+            return {
+                "self_id": target,
+                "connection_key": conn_key,
+                "adapter": _bot_adapter_label(bot),
+                "groups": groups,
+                "truncated": truncated,
+                "limit": int(limit),
+                "error": err,
+            }
+
+        try:
+            payload = await _cached_read(key=cache_key, loader=_load, ttl_sec=2.5, stale_sec=25.0)
+        except HTTPException:
+            raise
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Pallas-Bot 控制台: 拉取群列表失败")
+            raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": payload})
 
     @router.get(f"{x}/request-overview", include_in_schema=True)
     async def _request_overview() -> JSONResponse:
-        friend = await _friend_requests_overview(self_id=None, include_doubt=True)
-        group = _read_pending_group_requests_disk()
-        by_self: dict[str, dict[str, Any]] = {}
-        for row in friend.get("bots", []):
-            sid = str(row.get("self_id") or "")
-            if not sid:
-                continue
-            by_self[sid] = {
-                "self_id": sid,
-                "online": bool(row.get("online")),
-                "adapter": str(row.get("adapter") or ""),
-                "connection_key": row.get("connection_key"),
-                "pending_friend_requests": row.get("pending_friend_requests") or [],
-                "doubt_friend_requests": row.get("doubt_friend_requests") or [],
-                "pending_group_requests": [],
-            }
-        for sid, mp in group.items():
-            row = by_self.setdefault(
-                str(sid),
-                {
-                    "self_id": str(sid),
-                    "online": False,
-                    "adapter": "",
-                    "connection_key": None,
-                    "pending_friend_requests": [],
-                    "doubt_friend_requests": [],
+        async def _load() -> dict[str, Any]:
+            friend = await _friend_requests_overview(self_id=None, include_doubt=True)
+            group = _read_pending_group_requests_disk()
+            by_self: dict[str, dict[str, Any]] = {}
+            for row in friend.get("bots", []):
+                sid = str(row.get("self_id") or "")
+                if not sid:
+                    continue
+                by_self[sid] = {
+                    "self_id": sid,
+                    "online": bool(row.get("online")),
+                    "adapter": str(row.get("adapter") or ""),
+                    "connection_key": row.get("connection_key"),
+                    "pending_friend_requests": row.get("pending_friend_requests") or [],
+                    "doubt_friend_requests": row.get("doubt_friend_requests") or [],
                     "pending_group_requests": [],
-                },
+                }
+            for sid, mp in group.items():
+                row = by_self.setdefault(
+                    str(sid),
+                    {
+                        "self_id": str(sid),
+                        "online": False,
+                        "adapter": "",
+                        "connection_key": None,
+                        "pending_friend_requests": [],
+                        "doubt_friend_requests": [],
+                        "pending_group_requests": [],
+                    },
+                )
+                vals = [v for v in mp.values() if isinstance(v, dict)]
+                vals.sort(key=lambda v: int(v.get("group_id") or 0))
+                row["pending_group_requests"] = vals
+            rows = sorted(
+                by_self.values(),
+                key=lambda r: int(str(r["self_id"])) if str(r["self_id"]).isdigit() else 10**18,
             )
-            vals = [v for v in mp.values() if isinstance(v, dict)]
-            vals.sort(key=lambda v: int(v.get("group_id") or 0))
-            row["pending_group_requests"] = vals
-        rows = sorted(
-            by_self.values(),
-            key=lambda r: int(str(r["self_id"])) if str(r["self_id"]).isdigit() else 10**18,
-        )
-        return JSONResponse({"ok": True, "data": {"bots": rows}})
+            return {"bots": rows}
+
+        try:
+            data = await _cached_read(key="request_overview", loader=_load, ttl_sec=1.2, stale_sec=15.0)
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Pallas-Bot 控制台: 读取审批总览失败")
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": data})
 
     @router.post(f"{x}/request-actions", include_in_schema=True)
     async def _request_actions(
@@ -2188,7 +3587,7 @@ def register_extended_api(
                 if not flag:
                     raise HTTPException(status_code=404, detail="未找到可疑好友申请")
                 await bot.call_api("set_doubt_friends_add_request", flag=flag, approve=approve)  # type: ignore[union-attr]
-                _drop_read_cache(("friend_requests",))
+                _drop_read_cache(_CONSOLE_APPROVAL_RELATED_CACHE_PREFIXES)
                 return JSONResponse({"ok": True, "data": {"handled": True}})
             pending = _read_pending_friend_requests_disk()
             by_bot = pending.get(str(body.self_id), {})
@@ -2199,7 +3598,7 @@ def register_extended_api(
             by_bot.pop(uid, None)
             pending[str(body.self_id)] = by_bot
             _save_pending_friend_requests_disk(pending)
-            _drop_read_cache(("friend_requests",))
+            _drop_read_cache(_CONSOLE_APPROVAL_RELATED_CACHE_PREFIXES)
             return JSONResponse({"ok": True, "data": {"handled": True}})
 
         if body.group_id is None:
@@ -2217,96 +3616,298 @@ def register_extended_api(
         by_bot_g.pop(str(int(body.group_id)), None)
         pending_g[str(body.self_id)] = by_bot_g
         _save_pending_group_requests_disk(pending_g)
-        _drop_read_cache(("friend_requests",))
+        _drop_read_cache(_CONSOLE_APPROVAL_RELATED_CACHE_PREFIXES)
         return JSONResponse({"ok": True, "data": {"handled": True}})
+
+    @router.post(f"{x}/request-actions/batch", include_in_schema=True)
+    async def _request_actions_batch(
+        body: _RequestActionsBatchBody,
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        """批量处理好友/入群审批；单次写盘与缓存失效，减少控制台往返。"""
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        if not body.friends and not body.groups:
+            raise HTTPException(status_code=400, detail="friends 与 groups 不能均为空")
+
+        approve = body.action == "approve"
+        friends_ok = 0
+        friends_fail = 0
+        friends_errors: list[dict[str, Any]] = []
+        groups_ok = 0
+        groups_fail = 0
+        groups_errors: list[dict[str, Any]] = []
+
+        pending_friend: dict[str, dict[str, str]] = {}
+        if body.friends:
+            pending_friend = _read_pending_friend_requests_disk()
+
+        friends_by_sid: dict[str, list[_RequestBatchFriendRow]] = defaultdict(list)
+        for it in body.friends:
+            friends_by_sid[str(int(it.self_id))].append(it)
+
+        for sid_str, items in friends_by_sid.items():
+            try:
+                _, bot = _find_online_onebot_v11_bot(sid_str)
+            except HTTPException as e:
+                detail = e.detail
+                msg = detail if isinstance(detail, str) else str(detail)
+                for it in items:
+                    friends_fail += 1
+                    friends_errors.append({
+                        "self_id": int(sid_str),
+                        "user_id": it.user_id,
+                        "source": it.source,
+                        "error": msg,
+                    })
+                continue
+
+            if sid_str not in pending_friend:
+                pending_friend[sid_str] = {}
+            bot_pending = pending_friend[sid_str]
+
+            for it in items:
+                uid = str(int(it.user_id))
+                try:
+                    if it.source == "doubt":
+                        doubt_rows = await _call_get_doubt_friends(bot)
+                        flag = ""
+                        for row in doubt_rows:
+                            if not isinstance(row, dict):
+                                continue
+                            if str(row.get("user_id") or "") != uid:
+                                continue
+                            flag = str(row.get("flag") or "")
+                            break
+                        if not flag:
+                            raise ValueError("未找到可疑好友申请")
+                        await bot.call_api("set_doubt_friends_add_request", flag=flag, approve=approve)  # type: ignore[union-attr]
+                    else:
+                        flag = str(bot_pending.get(uid) or "")
+                        if not flag:
+                            raise ValueError("未找到待处理好友申请")
+                        await bot.set_friend_add_request(flag=flag, approve=approve)  # type: ignore[union-attr]
+                        bot_pending.pop(uid, None)
+                    friends_ok += 1
+                except Exception as e:  # noqa: BLE001
+                    friends_fail += 1
+                    friends_errors.append({
+                        "self_id": int(sid_str),
+                        "user_id": it.user_id,
+                        "source": it.source,
+                        "error": str(e),
+                    })
+
+            pending_friend[sid_str] = bot_pending
+
+        if body.friends:
+            _save_pending_friend_requests_disk(pending_friend)
+
+        pending_group: dict[str, dict[str, dict[str, Any]]] = {}
+        if body.groups:
+            pending_group = _read_pending_group_requests_disk()
+
+        groups_by_sid: dict[str, list[_RequestBatchGroupRow]] = defaultdict(list)
+        for it in body.groups:
+            groups_by_sid[str(int(it.self_id))].append(it)
+
+        for sid_str, items in groups_by_sid.items():
+            try:
+                _, bot = _find_online_onebot_v11_bot(sid_str)
+            except HTTPException as e:
+                detail = e.detail
+                msg = detail if isinstance(detail, str) else str(detail)
+                for it in items:
+                    groups_fail += 1
+                    groups_errors.append({
+                        "self_id": int(sid_str),
+                        "user_id": it.user_id,
+                        "group_id": it.group_id,
+                        "error": msg,
+                    })
+                continue
+
+            if sid_str not in pending_group:
+                pending_group[sid_str] = {}
+            bot_grp = pending_group[sid_str]
+
+            for it in items:
+                gkey = str(int(it.group_id))
+                try:
+                    req = bot_grp.get(gkey)
+                    if not isinstance(req, dict):
+                        raise ValueError("未找到待处理群邀请")
+                    await bot.set_group_add_request(  # type: ignore[union-attr]
+                        flag=str(req.get("flag") or ""),
+                        sub_type=str(req.get("sub_type") or "invite"),
+                        approve=approve,
+                    )
+                    bot_grp.pop(gkey, None)
+                    groups_ok += 1
+                except Exception as e:  # noqa: BLE001
+                    groups_fail += 1
+                    groups_errors.append({
+                        "self_id": int(sid_str),
+                        "user_id": it.user_id,
+                        "group_id": it.group_id,
+                        "error": str(e),
+                    })
+
+            pending_group[sid_str] = bot_grp
+
+        if body.groups:
+            _save_pending_group_requests_disk(pending_group)
+        _drop_read_cache(_CONSOLE_APPROVAL_RELATED_CACHE_PREFIXES)
+
+        return JSONResponse({
+            "ok": True,
+            "data": {
+                "friends_ok": friends_ok,
+                "friends_fail": friends_fail,
+                "friends_errors": friends_errors,
+                "groups_ok": groups_ok,
+                "groups_fail": groups_fail,
+                "groups_errors": groups_errors,
+            },
+        })
 
     @router.get(f"{x}/update/check", include_in_schema=True)
     async def _update_check() -> JSONResponse:
         from src.common.utils.format_exception import format_exception_for_log
+        from src.common.utils.github_release import release_tags_equivalent
 
         from .manager import fetch_latest_webui_release, get_installed_webui_version
 
         repo = str(getattr(plugin_config, "pallas_webui_dist_zip_repo", "") or "PallasBot/Pallas-Bot-WebUI")
         asset = str(getattr(plugin_config, "pallas_webui_dist_zip_asset", "") or "dist.zip")
         github_token = str(getattr(plugin_config, "pallas_protocol_github_token", "") or "").strip()
-        installed = get_installed_webui_version()
-        current_tag = str(installed.get("tag", "") or "").strip()
-        try:
-            latest = await fetch_latest_webui_release(repo, token=github_token, asset_name=asset)
-            latest_tag = str(latest.get("tag", "") or "").strip()
-            release_url = str(latest.get("html_url", "") or "").strip()
-            asset_url = str(latest.get("asset_url", "") or "").strip()
-        except Exception as e:  # noqa: BLE001
-            err_msg = format_exception_for_log(e)
-            logger.warning("Pallas 控制台: WebUI 更新检查失败（GitHub），repo={} err={}", repo, err_msg)
-            return JSONResponse({
-                "ok": True,
-                "data": {
+        cache_key = f"update_check_webui:{repo}:{asset}:{bool(github_token)}"
+
+        async def _load() -> dict[str, Any]:
+            installed = get_installed_webui_version()
+            current_tag = str(installed.get("tag", "") or "").strip()
+            try:
+                latest = await fetch_latest_webui_release(repo, token=github_token, asset_name=asset)
+                latest_tag = str(latest.get("tag", "") or "").strip()
+                release_url = str(latest.get("html_url", "") or "").strip()
+                asset_url = str(latest.get("asset_url", "") or "").strip()
+            except Exception as e:  # noqa: BLE001
+                err_msg = format_exception_for_log(e)
+                logger.warning("Pallas-Bot 控制台: WebUI 更新检查失败（GitHub），repo={} err={}", repo, err_msg)
+                return {
                     "current_tag": current_tag,
                     "latest_tag": None,
                     "has_update": False,
                     "release_url": "",
                     "asset_url": "",
+                    "release_notes": "",
                     "error": err_msg,
                     "checked_at": time.time(),
-                },
-            })
-        has_update = bool(latest_tag and current_tag != latest_tag)
-        return JSONResponse({
-            "ok": True,
-            "data": {
+                }
+            has_update = bool(latest_tag and not release_tags_equivalent(current_tag, latest_tag))
+            notes_raw = str(latest.get("body", "") or "").strip()
+            notes_max = 40000
+            release_notes = (
+                notes_raw
+                if len(notes_raw) <= notes_max
+                else f"{notes_raw[:notes_max].rstrip()}\n\n…（已截断，完整内容见 Release 页面）"
+            )
+            return {
                 "current_tag": current_tag,
                 "latest_tag": latest_tag,
                 "has_update": has_update,
                 "release_url": release_url,
                 "asset_url": asset_url,
+                "release_notes": release_notes,
                 "error": None,
                 "checked_at": time.time(),
-            },
-        })
+            }
+
+        data = await _cached_read(key=cache_key, loader=_load, ttl_sec=120.0, stale_sec=900.0)
+        return JSONResponse({"ok": True, "data": data})
 
     @router.get(f"{x}/update/bot/check", include_in_schema=True)
     async def _bot_update_check() -> JSONResponse:
         from src.common.utils.format_exception import format_exception_for_log
+        from src.common.utils.github_release import release_tags_equivalent
 
         from .manager import fetch_latest_bot_release, get_bot_current_version
 
         github_token = str(getattr(plugin_config, "pallas_protocol_github_token", "") or "").strip()
-        current = get_bot_current_version()
-        current_tag = current.get("tag", "")
-        current_commit = current.get("commit", "")
-        try:
-            latest = await fetch_latest_bot_release("PallasBot/Pallas-Bot", token=github_token)
-            latest_tag = str(latest.get("tag", "") or "").strip()
-            release_url = str(latest.get("html_url", "") or "").strip()
-        except Exception as e:  # noqa: BLE001
-            err_msg = format_exception_for_log(e)
-            logger.warning("Pallas 控制台: Bot 版本更新检查失败（GitHub） err={}", err_msg)
-            return JSONResponse({
-                "ok": True,
-                "data": {
+        cache_key = f"update_check_bot:{bool(github_token)}"
+
+        async def _load() -> dict[str, Any]:
+            current = get_bot_current_version()
+            current_tag = current.get("tag", "")
+            current_commit = current.get("commit", "")
+            try:
+                latest = await fetch_latest_bot_release("PallasBot/Pallas-Bot", token=github_token)
+                latest_tag = str(latest.get("tag", "") or "").strip()
+                release_url = str(latest.get("html_url", "") or "").strip()
+            except Exception as e:  # noqa: BLE001
+                err_msg = format_exception_for_log(e)
+                logger.warning("Pallas-Bot 控制台: Bot 版本更新检查失败（GitHub） err={}", err_msg)
+                return {
                     "current_tag": current_tag,
                     "current_commit": current_commit,
                     "latest_tag": None,
                     "has_update": False,
                     "release_url": "",
+                    "release_notes": "",
                     "error": err_msg,
                     "checked_at": time.time(),
-                },
-            })
-        has_update = bool(latest_tag and current_tag and current_tag != latest_tag)
-        return JSONResponse({
-            "ok": True,
-            "data": {
+                }
+            has_update = bool(
+                latest_tag
+                and (not str(current_tag or "").strip() or not release_tags_equivalent(current_tag, latest_tag)),
+            )
+            notes_raw = str(latest.get("body", "") or "").strip()
+            notes_max = 40000
+            release_notes = (
+                notes_raw
+                if len(notes_raw) <= notes_max
+                else f"{notes_raw[:notes_max].rstrip()}\n\n…（已截断，完整内容见 Release 页面）"
+            )
+            return {
                 "current_tag": current_tag,
                 "current_commit": current_commit,
                 "latest_tag": latest_tag,
                 "has_update": has_update,
                 "release_url": release_url,
+                "release_notes": release_notes,
                 "error": None,
                 "checked_at": time.time(),
-            },
-        })
+            }
+
+        data = await _cached_read(key=cache_key, loader=_load, ttl_sec=120.0, stale_sec=900.0)
+        return JSONResponse({"ok": True, "data": data})
+
+    @router.post(f"{x}/update/bot/apply", include_in_schema=True)
+    async def _bot_update_apply(
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        from src.common.utils.format_exception import format_exception_for_log
+
+        from .manager import BotGitUpdateError, apply_bot_repository_update
+
+        github_token = str(getattr(plugin_config, "pallas_protocol_github_token", "") or "").strip()
+        try:
+            logger.info("Pallas-Bot 控制台: Bot 仓库在线更新（git）请求已接受")
+            data = await apply_bot_repository_update(
+                github_token=github_token,
+                repo="PallasBot/Pallas-Bot",
+            )
+            _drop_read_cache(("update_check_bot:",))
+            return JSONResponse({"ok": True, "data": data})
+        except BotGitUpdateError as e:
+            raise HTTPException(status_code=e.status_code, detail=e.detail) from e
+        except HTTPException:
+            raise
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Pallas-Bot 控制台: Bot 仓库更新失败")
+            raise HTTPException(status_code=500, detail=format_exception_for_log(e)) from e
 
     @router.post(f"{x}/update/apply", include_in_schema=True)
     async def _update_apply(
@@ -2332,21 +3933,21 @@ def register_extended_api(
         public = webui_public_path()
         try:
             logger.info(
-                "Pallas 控制台: WebUI 在线更新开始 repo={} asset={} tag={}",
+                "Pallas-Bot 控制台: WebUI 在线更新开始 repo={} asset={} tag={}",
                 repo,
                 asset,
                 tag or "(latest)",
             )
             url_candidates = await resolve_github_release_asset_urls(repo, asset, tag, token=github_token)
             if not url_candidates:
-                logger.warning("Pallas 控制台: WebUI 更新未得到任何下载 URL（resolve 为空）")
+                logger.warning("Pallas-Bot 控制台: WebUI 更新未得到任何下载 URL（resolve 为空）")
                 raise ValueError("未找到可用的下载地址")
-            logger.info("Pallas 控制台: WebUI 更新候选地址 {} 条", len(url_candidates))
+            logger.info("Pallas-Bot 控制台: WebUI 更新候选地址 {} 条", len(url_candidates))
             errors: list[str] = []
             succeeded_url = ""
             for i, candidate in enumerate(url_candidates, start=1):
                 short = candidate if len(candidate) <= 160 else candidate[:157] + "..."
-                logger.info("Pallas 控制台: WebUI 更新尝试 {}/{} {}", i, len(url_candidates), short)
+                logger.info("Pallas-Bot 控制台: WebUI 更新尝试 {}/{} {}", i, len(url_candidates), short)
                 try:
                     await download_and_extract_dist_zip(public, candidate)
                     succeeded_url = candidate
@@ -2355,7 +3956,7 @@ def register_extended_api(
                 except Exception as e:  # noqa: BLE001
                     err_msg = format_exception_for_log(e)
                     errors.append(f"{candidate} -> {err_msg}")
-                    logger.warning("Pallas 控制台: WebUI 下载/解压失败 {}", err_msg)
+                    logger.warning("Pallas-Bot 控制台: WebUI 下载/解压失败 {}", err_msg)
             if errors:
                 raise ValueError("下载失败: " + " | ".join(errors))
             try:
@@ -2363,7 +3964,7 @@ def register_extended_api(
                 new_tag = str(info.get("tag", "") or tag).strip()
             except Exception as e:  # noqa: BLE001
                 logger.warning(
-                    "Pallas 控制台: 获取 WebUI release 元数据失败，使用配置 tag={} err={}",
+                    "Pallas-Bot 控制台: 获取 WebUI release 元数据失败，使用配置 tag={} err={}",
                     tag or "(空)",
                     format_exception_for_log(e),
                 )
@@ -2376,7 +3977,8 @@ def register_extended_api(
                 dist_ver = ""
             effective_version = (dist_ver or "").strip() or new_tag or "unknown"
             set_console_meta({**_CONSOLE_EXTRA, "version": effective_version})
-            logger.info("Pallas 控制台: WebUI 已更新至 {}（发布 tag: {}）", effective_version, new_tag)
+            logger.info("Pallas-Bot 控制台: WebUI 已更新至 {}（发布 tag: {}）", effective_version, new_tag)
+            _drop_read_cache(("update_check_webui:",))
             return JSONResponse({
                 "ok": True,
                 "data": {
@@ -2388,7 +3990,57 @@ def register_extended_api(
         except HTTPException:
             raise
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas 控制台: WebUI 更新失败")
+            logger.exception("Pallas-Bot 控制台: WebUI 更新失败")
             raise HTTPException(status_code=500, detail=format_exception_for_log(e)) from e
 
+    @router.post(f"{x}/security/console-login", include_in_schema=False)
+    async def _security_console_login(
+        body: _ChangeConsoleLoginBody,
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        try:
+            set_shared_console_login_token(body.new_password)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": {"message": "已保存"}})
+
+    if not getattr(app.state, "_pallas_ext_read_cache_inv_hook", False):
+        register_console_session_invalidation_hook(clear_extended_read_cache)
+        app.state._pallas_ext_read_cache_inv_hook = True
+
+    app.include_router(router_pub)
     app.include_router(router)
+
+    try:
+        from nonebot_plugin_apscheduler import scheduler
+    except ImportError:
+        logger.warning("Pallas-Bot 控制台: 未安装 nonebot_plugin_apscheduler，跳过控制台异常记录定时清理")
+    else:
+        _matcher_cleanup_job_id = "pallas_webui_matcher_error_log_cleanup"
+        if scheduler.get_job(_matcher_cleanup_job_id):
+            scheduler.remove_job(_matcher_cleanup_job_id)
+        scheduler.add_job(
+            _scheduled_cleanup_matcher_error_logs,
+            trigger="cron",
+            hour=4,
+            minute=0,
+            id=_matcher_cleanup_job_id,
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=3600,
+        )
+        _daily_flush_id = "pallas_webui_console_daily_stats_flush"
+        if scheduler.get_job(_daily_flush_id):
+            scheduler.remove_job(_daily_flush_id)
+        scheduler.add_job(
+            _flush_today_console_daily_stats_disk,
+            trigger="interval",
+            minutes=2,
+            id=_daily_flush_id,
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+        )

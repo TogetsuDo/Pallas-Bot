@@ -10,10 +10,9 @@ from nonebot import (
     on_notice,
 )
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent, NoticeEvent
-from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 
-from src.common.config import BotConfig
+from src.common.cmd_perm import permission_for_command
 
 from .bot_monitor import (
     get_bot_status_info,
@@ -37,25 +36,33 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "version": "3.0.0",
+        "command_permissions": [
+            {"id": "bot_status.status", "label": "牛牛在吗", "default": "bot_moderator"},
+            {"id": "bot_status.test_mail", "label": "测试邮件", "default": "superuser"},
+            {"id": "bot_status.count", "label": "牛牛报数 / 牛牛出列", "default": "everyone"},
+        ],
         "menu_data": [
             {
                 "func": "查看牛牛在线状况",
-                "trigger_method": "on_message",
+                "trigger_method": "命令",
                 "trigger_condition": "牛牛在吗",
+                "command_permission": "bot_status.status",
                 "brief_des": "总计牛牛在线情况",
                 "detail_des": "当牛牛离线时发送离线通知邮件给号主与Superuser",
             },
             {
                 "func": "发送测试邮件",
-                "trigger_method": "on_message",
+                "trigger_method": "命令",
                 "trigger_condition": "测试邮件",
+                "command_permission": "bot_status.test_mail",
                 "brief_des": "发送测试邮件",
                 "detail_des": "给配置中的邮箱发送测试邮件",
             },
             {
                 "func": "牛牛依次报数",
-                "trigger_method": "on_message",
-                "trigger_condition": "牛牛报数",
+                "trigger_method": "命令",
+                "trigger_condition": "牛牛报数 / 牛牛出列",
+                "command_permission": "bot_status.count",
                 "brief_des": "在线牛牛依次报数",
                 "detail_des": "仅当前群内在线 Bot 参与，随机顺序在群内轮流报数",
             },
@@ -65,26 +72,23 @@ __plugin_meta__ = PluginMetadata(
 )
 
 
-async def _is_bot_admin(bot: Bot, event: MessageEvent) -> bool:
-    try:
-        return await BotConfig(int(bot.self_id)).is_admin_of_bot(int(event.get_user_id()))
-    except Exception:
-        return False
-
-
 STATUS_COOLDOWN_KEY: str = "bot_status"
 COUNT_COOLDOWN_KEY: str = "bot_count"
 offline_notice = on_notice(priority=5, block=False)
-bot_status_cmd = on_command("牛牛在吗", permission=_is_bot_admin, priority=5, block=True)
-bot_count_cmd = on_command("牛牛报数", aliases={"牛牛出列"}, priority=5, block=True)
-test_mail_cmd = on_command("测试邮件", permission=SUPERUSER, priority=5, block=True)
+bot_status_cmd = on_command("牛牛在吗", permission=permission_for_command("bot_status.status"), priority=5, block=True)
+bot_count_cmd = on_command(
+    "牛牛报数", aliases={"牛牛出列"}, priority=5, block=True, permission=permission_for_command("bot_status.count")
+)
+test_mail_cmd = on_command(
+    "测试邮件", permission=permission_for_command("bot_status.test_mail"), priority=5, block=True
+)
 
 driver = get_driver()
 
 
 @driver.on_startup
 async def startup() -> None:
-    logger.info("Bot_status is running")
+    logger.info("Bot_status plugin startup")
 
 
 @driver.on_bot_connect
@@ -108,13 +112,13 @@ async def handle_bot_offline_events(event: NoticeEvent):
         bot_id = event.user_id
         offline_message = getattr(event, "message", "")
         source = "napcat_event"
-        logger.warning(f"NapCat Bot {bot_id} offline: {offline_message}")
+        logger.warning(f"bot [{bot_id}] offline (napcat) message={offline_message!r}")
 
     elif hasattr(event, "sub_type") and event.sub_type == "BotOfflineEvent":  # Lagrange
         bot_id = getattr(event, "self_id", getattr(event, "user_id", 0))
         offline_message = "Bot Offline"
         source = "lagrange_event"
-        logger.warning(f"Lagrange Bot {bot_id} offline")
+        logger.warning(f"bot [{bot_id}] offline (lagrange)")
 
     if bot_id and source:
         from .bot_monitor import get_bot_nickname
@@ -229,7 +233,7 @@ async def handle_bot_count(bot: Bot, event: MessageEvent) -> None:
             await bot_instance.send_group_msg(group_id=event.group_id, message=str(f"牛牛{index}号报到！"))
             await asyncio.sleep(0.3)
         except Exception as e:
-            logger.warning(f"Bot {bot_id} failed to count in group {event.group_id}: {e}")
+            logger.warning(f"bot [{bot_id}] bot_count send_group_msg failed in group [{event.group_id}]: {e}")
             failed_bots.append(bot_id)
 
     if failed_bots:

@@ -15,6 +15,16 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Pallas-Bot version for image (/health pallas_bot)
+        id: pallas_ver
+        run: |
+          set -euo pipefail
+          LABEL="$(git describe --tags --always --dirty 2>/dev/null || true)"
+          if [ -z "${LABEL}" ]; then LABEL="sha-${GITHUB_SHA:0:7}"; fi
+          echo "label=${LABEL}" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -35,4 +45,6 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            PALLAS_BOT_VERSION=${{ steps.pallas_ver.outputs.label }}
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/pallas-bot:latest

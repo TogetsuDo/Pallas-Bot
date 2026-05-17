@@ -26,8 +26,10 @@ try:
 
     print("Using jieba_next for repeater")
 except ImportError:
+    import jieba
     import jieba.analyse as jieba_analyse
 
+    jieba.disable_parallel()
     print("Using jieba for repeater")
 
 
@@ -209,6 +211,10 @@ class Chat:
         expiration = cur_time - 15 * 24 * 3600  # 15 天前
 
         await context_repo.delete_expired(expiration, Chat.ANSWER_THRESHOLD)
+
+        from .context_exists_cache import invalidate_context_exists_cache
+
+        await invalidate_context_exists_cache(None)
 
         all_context = await context_repo.find_for_cleanup(100, expiration)
         for context in all_context:

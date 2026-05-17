@@ -1,17 +1,20 @@
 import re
 
 import httpx
-from nonebot import get_plugin_config, on_command
+from nonebot import on_command
 from nonebot.adapters.onebot.v11 import MessageEvent, PrivateMessageEvent
 from nonebot.exception import FinishedException
 from nonebot.log import logger
 from nonebot.params import ArgStr
-from nonebot.permission import SUPERUSER
+from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State
 from pydantic import BaseModel
 from pyncm_async import apis as ncm
 
+from src.common.cmd_perm import permission_for_command
 from src.common.utils import HTTPXClient
+
+from ..config import sing_server_url
 
 
 class NCMLoginConfig(BaseModel, extra="ignore"):
@@ -23,12 +26,10 @@ class NCMLoginConfig(BaseModel, extra="ignore"):
     ncm_logout_endpoint: str = "/api/ncm/login/logout"
 
 
-plugin_config = get_plugin_config(NCMLoginConfig)
+ncm_cfg = NCMLoginConfig()
 
-SERVER_URL = f"http://{plugin_config.ai_server_host}:{plugin_config.ai_server_port}"
-
-ncm_login_cmd = on_command("网易云登录", priority=10, block=True, permission=SUPERUSER)
-ncm_logout_cmd = on_command("网易云登出", priority=10, block=True, permission=SUPERUSER)
+ncm_login_cmd = on_command("网易云登录", priority=10, block=True, permission=permission_for_command("sing.ncm_login"))
+ncm_logout_cmd = on_command("网易云登出", priority=10, block=True, permission=permission_for_command("sing.ncm_logout"))
 
 
 @ncm_login_cmd.handle()
@@ -57,7 +58,7 @@ async def got_phone(event: MessageEvent, state: T_State, phone: str = ArgStr()):
     state["phone"] = phone
 
     try:
-        url = f"{SERVER_URL}{plugin_config.ncm_login_endpoint}"
+        url = f"{sing_server_url()}{ncm_cfg.ncm_login_endpoint}"
         response = await HTTPXClient.post(url, json={"phone": phone, "ctcode": 86})
 
         if response and response.json().get("code", 0) == 200:
@@ -82,7 +83,7 @@ async def got_captcha(event: MessageEvent, state: T_State, captcha: str = ArgStr
     phone = state["phone"]
 
     try:
-        url = f"{SERVER_URL}{plugin_config.ncm_verify_endpoint}"
+        url = f"{sing_server_url()}{ncm_cfg.ncm_verify_endpoint}"
         response = await HTTPXClient.post(
             url,
             json={"phone": phone, "captcha": captcha, "ctcode": 86},
@@ -103,7 +104,7 @@ async def handle_logout(event: MessageEvent):
         return
 
     try:
-        url = f"{SERVER_URL}{plugin_config.ncm_logout_endpoint}"
+        url = f"{sing_server_url()}{ncm_cfg.ncm_logout_endpoint}"
         response = await HTTPXClient.post(url)
         if response and response.json().get("success"):
             await ncm_logout_cmd.finish("已成功退出网易云音乐账号。")
@@ -116,13 +117,13 @@ async def handle_logout(event: MessageEvent):
     except httpx.ConnectError:
         await ncm_logout_cmd.finish("无法连接到服务器，请检查网络或服务器状态。")
     except Exception as e:
-        logger.error(f"网易云登出时发生未预期错误: {e}", exc_info=True)
+        logger.error(f"ncm logout unexpected error: {e}", exc_info=True)
         await ncm_logout_cmd.finish(f"登出过程中出现错误: {str(e)}，请稍后重试。")
 
 
 async def is_ncm_logged_in():
     try:
-        url = f"{SERVER_URL}{plugin_config.ncm_login_status_endpoint}"
+        url = f"{sing_server_url()}{ncm_cfg.ncm_login_status_endpoint}"
         response = await HTTPXClient.get(url)
         if response and response.json().get("success"):
             return True

@@ -1,16 +1,16 @@
 import asyncio
-import base64
 from datetime import datetime
 from pathlib import Path
 
 from nonebot import on_command
-from nonebot.adapters.onebot.v11 import Bot, Message, MessageEvent, PrivateMessageEvent
+from nonebot.adapters.onebot.v11 import Bot, Message, MessageEvent, MessageSegment, PrivateMessageEvent, permission
 from nonebot.params import ArgPlainText, CommandArg
 from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State
 
-from src.common.config import BotConfig
+from src.common.cmd_perm import private_message_permission_for_command
+from src.common.config import BotConfig, user_is_bot_admin
 from src.common.db import make_bot_config_repository
 from src.plugins.pallas_protocol import manager as protocol_manager
 
@@ -18,7 +18,7 @@ __all__ = ["relogin_cmd", "create_cmd"]
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛重新上号",
-    description="为指定 QQ 账号重启协议端并推送登录二维码，牛牛管理员可用；超管可创建新牛牛账号。",
+    description="为指定 QQ 账号重启协议端并推送登录二维码，号主可用；超管可创建新牛牛账号。",
     usage="""
 牛牛重新上号
 创建牛牛
@@ -28,36 +28,42 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "version": "3.0.0",
+        "command_permissions": [
+            {"id": "relogin.relogin", "label": "牛牛重新上号", "default": "bot_moderator"},
+            {"id": "relogin.create", "label": "创建牛牛", "default": "superuser"},
+        ],
         "menu_data": [
             {
                 "func": "重新上号",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "牛牛重新上号 [QQ号]",
-                "brief_des": "重启账号并回传二维码（牛牛管理员可用）",
+                "trigger_condition": "牛牛重新上号 [QQ号]（私聊）",
+                "command_permission": "relogin.relogin",
+                "brief_des": "重启账号并回传二维码（号主可用）",
                 "detail_des": "自动重启协议端账号，等待二维码文件生成并在私聊推送。",
             },
             {
                 "func": "创建牛牛",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "创建牛牛 [昵称 牛牛QQ 号主QQ ...]",
+                "trigger_condition": "创建牛牛 …（私聊）",
+                "command_permission": "relogin.create",
                 "brief_des": "创建并启动新牛牛账号（仅超管）",
-                "detail_des": "在协议端创建账号并启动。",
+                "detail_des": "在协议端创建账号并启动，私聊回传登录二维码",
             },
         ],
     },
 )
 
-relogin_cmd = on_command("牛牛重新上号", priority=5, block=True)
-create_cmd = on_command("创建牛牛", priority=5, block=True, permission=SUPERUSER)
+relogin_cmd = on_command(
+    "牛牛重新上号",
+    priority=5,
+    block=True,
+    permission=private_message_permission_for_command("relogin.relogin"),
+)
+create_cmd = on_command(
+    "创建牛牛", priority=5, block=True, permission=private_message_permission_for_command("relogin.create")
+)
 
 _CANCEL_WORDS = {"取消", "cancel", "退出", "quit"}
-
-
-async def _is_bot_admin(bot: Bot, event: MessageEvent) -> bool:
-    try:
-        return await BotConfig(int(bot.self_id)).is_admin_of_bot(int(event.get_user_id()))
-    except Exception:
-        return False
 
 
 async def _bot_id_exists_in_db(bot_id: int) -> bool:
@@ -110,7 +116,7 @@ async def _relogin_got_qq(bot: Bot, event: MessageEvent, state: T_State, qq_inpu
         await relogin_cmd.reject("QQ号格式不正确，请重新输入：")
 
     # 检查用户是否是目标 bot 的管理员（或超管）
-    is_target_admin = await BotConfig(int(qq)).is_admin_of_bot(int(event.get_user_id()))
+    is_target_admin = await user_is_bot_admin(int(qq), int(event.get_user_id()))
     if not (is_target_admin or await SUPERUSER(bot, event)):
         await relogin_cmd.finish(f"你不是 {qq} 的管理员，无法执行重新上号。")
 
@@ -162,12 +168,12 @@ async def _relogin_got_nickname(
 
     qr_path = await _wait_qrcode(account_data_dir, started_at)
     if qr_path is None:
-        await relogin_cmd.finish("已完成启动，但在 60 秒内未检测到新的二维码文件，请寻找牛牛管理员上报情况")
+        await relogin_cmd.finish("已完成启动，但在 60 秒内未检测到新的二维码文件，请寻找号主上报情况")
 
     try:
-        encoded = base64.b64encode(qr_path.read_bytes()).decode()
+        qr_bytes = qr_path.read_bytes()
         await bot.send(event, "启动完成，请使用下面二维码登录：")
-        await bot.send(event, Message(f"[CQ:image,file=base64://{encoded}]"))
+        await bot.send(event, MessageSegment.image(qr_bytes))
     except OSError as e:
         await relogin_cmd.finish(f"二维码读取失败：{e}")
 
@@ -221,6 +227,8 @@ async def _create_got_qq(state: T_State, qq_input: str = ArgPlainText("qq")):  #
 
 @create_cmd.got("owners")
 async def _create_got_owners(
+    bot: Bot,
+    event: MessageEvent,
     display_name_input: str = ArgPlainText("display_name"),  # noqa: B008
     qq_input: str = ArgPlainText("qq"),
     owners_input: str = ArgPlainText("owners"),
@@ -244,6 +252,13 @@ async def _create_got_owners(
     except Exception as e:
         await create_cmd.finish(f"创建账号失败：{e}")
 
+    account = protocol_manager.get_account(qq) or {}
+    account_data_dir = Path(str(account.get("account_data_dir", "")).strip())
+    if not account_data_dir:
+        await create_cmd.finish("账号已创建，但账号目录缺失，无法启动。")
+
+    await bot.send(event, "正在启动协议端...")
+    started_at = datetime.now().astimezone()
     try:
         await protocol_manager.start_account(qq)
     except Exception as e:
@@ -253,8 +268,21 @@ async def _create_got_owners(
     try:
         repo = make_bot_config_repository()
         await repo.upsert_field(int(qq), "admins", owner_ids)
+        from src.common.config.bot_admins_cache import invalidate_bot_admins_cache
+
+        await invalidate_bot_admins_cache(int(qq))
     except Exception as e:
         await create_cmd.finish(f"账号已创建并启动，但写入号主失败：{e}")
 
+    qr_path = await _wait_qrcode(account_data_dir, started_at)
+    if qr_path is not None:
+        try:
+            qr_bytes = qr_path.read_bytes()
+            await bot.send(event, "请使用下面二维码完成登录：")
+            await bot.send(event, MessageSegment.image(qr_bytes))
+        except OSError as e:
+            await bot.send(event, f"二维码读取失败：{e}")
+
     owners_str = "、".join(owner_qqs)
-    await create_cmd.finish(f"{display_name}：{qq} 已创建并启动。\n号主：{owners_str}")
+    timeout_hint = "\n但在 60 秒内未检测到新的二维码文件，请到协议端控制台查看或联系管理员。" if qr_path is None else ""
+    await create_cmd.finish(f"{display_name}：{qq} 已创建并启动。\n号主：{owners_str}{timeout_hint}")

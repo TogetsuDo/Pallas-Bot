@@ -48,9 +48,9 @@ async def send_mail(title: str, content: str, mail_config: MailConfig):
             await smtp.login(mail_config.user, mail_config.password)
             await smtp.send_message(message)
     except Exception as e:
-        err = f"邮件发送失败，错误信息如下{e}"
+        err = f"bot_status mail send failed: {e}"
         logger.error(err)
         return err
 
-    logger.info("通知邮件发送成功!")
+    logger.info("bot_status mail sent successfully")
     return None

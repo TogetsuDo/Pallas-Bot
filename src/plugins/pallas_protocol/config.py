@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from .contract import resolve_public_mount_path
 from .runtime.installer import default_release_asset_for_platform, default_release_repo_for_platform
@@ -13,139 +13,259 @@ from .runtime.installer import default_release_asset_for_platform, default_relea
 class Config(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    pallas_protocol_enabled: bool = True
-    pallas_protocol_webui_enabled: bool = True
+    pallas_protocol_enabled: bool = Field(
+        default=True,
+        description="是否启用协议端插件（账号工作区、NapCat/SnowLuma 实例管理等）。",
+    )
+    pallas_protocol_webui_enabled: bool = Field(
+        default=True,
+        description="是否挂载协议端内置网页控制台及相关路由。",
+    )
     pallas_protocol_web_implementation: str = Field(
         default="",
-        description="HTTP 第二路径段：挂载为 /protocol/<本字段>；空则使用 DEFAULT_PROTOCOL_BACKEND（见 contract）",
+        description="协议页实现标识，对应路径 /protocol/<slug>；留空为默认控制台。",
     )
     pallas_protocol_webui_path: str = Field(
         default="",
-        description="非空则覆盖整段挂载 URL；空则按 web_implementation 或默认实现自动拼 /protocol/<slug>",
+        description="非空时覆盖协议端 Web 的完整挂载路径（高级用法）。",
     )
-    pallas_protocol_token: str = Field(
+
+    pallas_protocol_bind_host: str = Field(
+        default="127.0.0.1",
+        description="本地子进程或辅助服务绑定的监听地址；对外暴露时可改为 0.0.0.0。",
+    )
+    pallas_protocol_default_command: str = Field(
+        default="node",
+        description="启动 NapCat 等使用的可执行文件名，一般为 node。",
+    )
+    pallas_protocol_default_args: list[str] = Field(
+        default_factory=lambda: ["napcat.mjs"],
+        description="传给默认启动命令的参数列表（如入口脚本 napcat.mjs）。",
+    )
+    pallas_protocol_program_dir: str = Field(
         default="",
-        description="与页内 token 一致时鉴权本插件 HTTP；非 NapCat 内置 WebUI 密码",
+        description="NapCat 程序根目录；留空则配合自动下载或内置资源解析。",
     )
-
-    @field_validator("pallas_protocol_token", mode="before")
-    @classmethod
-    def coerce_pallas_protocol_token(cls, value: object) -> str:
-        """env / 配置源可能把纯数字解析成 int/float，统一成字符串以免漏鉴权或校验失败。"""
-        if value is None:
-            return ""
-        if isinstance(value, str):
-            return value
-        return str(value)
-
-    pallas_protocol_bind_host: str = "127.0.0.1"
-    pallas_protocol_default_command: str = "node"
-    pallas_protocol_default_args: list[str] = ["napcat.mjs"]
-    pallas_protocol_program_dir: str = ""
-    pallas_protocol_default_working_dir: str = ""
-    pallas_protocol_shell_template_dir: str = ""
+    pallas_protocol_snowluma_program_dir: str = Field(
+        default="",
+        description="SnowLuma 发行版根目录；留空则使用资源包或账号级 program_dir。",
+    )
+    pallas_protocol_snowluma_github_repo: str = Field(
+        default="SnowLuma/SnowLuma",
+        description="SnowLuma 的 GitHub 仓库（Owner/Repo），用于在线拉取发行包。",
+    )
+    pallas_protocol_snowluma_release_tag: str = Field(
+        default="",
+        description="SnowLuma Release 标签；留空表示使用 latest。",
+    )
+    pallas_protocol_snowluma_release_asset: str = Field(
+        default="",
+        description="SnowLuma 资产文件名或直链；留空则按当前平台选择默认资产。",
+    )
+    pallas_protocol_default_working_dir: str = Field(
+        default="",
+        description="子进程默认工作目录；留空则使用实例或数据目录下的约定路径。",
+    )
+    pallas_protocol_shell_template_dir: str = Field(
+        default="",
+        description="自定义 shell 启动模板目录；留空使用插件内置模板。",
+    )
     pallas_protocol_instances_root: str = Field(
         default="",
-        description="账号数据根目录；空则使用 data/pallas_protocol/instances/",
+        description="所有协议账号实例的根目录；留空为 data/pallas_protocol/instances/。",
     )
-    pallas_protocol_max_log_lines: int = Field(default=500, ge=100, le=5000)
-    pallas_protocol_webui_port_min: int = Field(default=6099, ge=1024, le=65534)
-    pallas_protocol_webui_port_max: int = Field(default=7999, ge=1025, le=65535)
-    # 下载仓库配置
+    pallas_protocol_max_log_lines: int = Field(
+        default=500,
+        ge=100,
+        le=5000,
+        description="日志视图或下载接口单次返回的最大行数。",
+    )
+    pallas_protocol_webui_port_min: int = Field(
+        default=6099,
+        ge=1024,
+        le=65534,
+        description="为本机 NapCat WebUI 自动分配端口时的下限。",
+    )
+    pallas_protocol_webui_port_max: int = Field(
+        default=7999,
+        ge=1025,
+        le=65535,
+        description="为本机 NapCat WebUI 自动分配端口时的上限。",
+    )
     pallas_protocol_github_token: str = Field(
         default="",
-        description=(
-            "GitHub Personal Access Token（可选）；设置后 API 请求限额从 60/h 提升至 5000/h，适合频繁检查更新的场景"
-        ),
+        description="GitHub 个人访问令牌（可选），用于提高 API 速率限额与私有资源访问。",
     )
     pallas_protocol_github_repo: str = Field(
         default_factory=default_release_repo_for_platform,
-        description="空时按平台默认：Windows/非 Linux 使用 NapNeko/NapCatQQ，Linux 使用 NapNeko/NapCatAppImageBuild",
+        description="NapCat 的 GitHub 仓库；留空按当前操作系统使用默认仓库。",
     )
-    pallas_protocol_release_tag: str = ""
+    pallas_protocol_release_tag: str = Field(
+        default="",
+        description="NapCat Release 标签；留空表示使用 latest。",
+    )
     pallas_protocol_release_asset: str = Field(
         default_factory=default_release_asset_for_platform,
-        description="空则按平台：Windows 一键包；Linux/macOS 等为官方 NapCat.Shell.zip（与 Windows.* 区分）",
+        description="NapCat 下载资产文件名或 URL；留空按平台选择默认包。",
     )
     pallas_protocol_auto_download_runtime: bool = Field(
         default=False,
-        description="启动时若未检测到 manifest 中的 program_dir，则后台尝试下载（可能较慢）",
+        description="检测到本地缺少运行时是否在后台自动下载 NapCat 等依赖。",
     )
-    # OneBot WS 连接配置
     pallas_protocol_onebot_client_name: str = Field(
         default="",
-        description="onebot 连接名，空则读 PALLAS_PROTOCOL_ONEBOT_CLIENT_NAME，再读 ONEBOT_CLIENT_NAME 或 pallas",
+        description="上报给 NoneBot 的 OneBot 连接名称；留空读取环境变量或默认 pallas。",
     )
     pallas_protocol_onebot_ws_url: str = Field(
         default="",
-        description="完整 WS 直链，跳过自动探测",
+        description="Bot 连接 NapCat 的完整 WebSocket URL（若填写则不再拼接 host/port/path）。",
     )
     pallas_protocol_onebot_ws_host: str = Field(
         default="",
-        description="WS 目标主机",
+        description="未填完整 URL 时使用的 WebSocket 主机名或 IP。",
     )
     pallas_protocol_onebot_ws_port: int = Field(
         default=0,
         ge=0,
         le=65535,
-        description="WS 目标端口",
+        description="未填完整 URL 时使用的 WebSocket 端口；0 表示改用环境变量或 NoneBot 驱动端口。",
     )
     pallas_protocol_onebot_ws_path: str = Field(
         default="",
-        description="WS 路径；空则使用默认 /onebot/v11/ws",
+        description="WebSocket 路径；留空为 /onebot/v11/ws。",
     )
-    # Linux Docker 模式开关
     pallas_protocol_linux_use_docker: bool = Field(
         default=False,
-        description=(
-            "仅 Linux 为 true 时用 Docker 镜像；false 时本机 node+Shell 运行时，多账号=多进程+独立 data 与 webui_port"
-        ),
+        description="在 Linux 上是否通过 Docker 启动 NapCat 容器。",
+    )
+    pallas_protocol_snowluma_linux_use_docker: bool = Field(
+        default=False,
+        description="在 Linux 上是否通过 Docker 启动 SnowLuma（可与 NapCat 独立配置）。",
     )
     pallas_protocol_linux_use_xvfb: bool = Field(
         default=True,
-        description="仅 Linux 且非 Docker 时，是否用 xvfb-run 包裹本地启动（无头环境推荐开启）",
+        description="Linux 非 Docker 场景下是否用 xvfb-run 提供虚拟显示。",
     )
     pallas_protocol_linux_xvfb_command: str = Field(
         default="xvfb-run",
-        description="Linux 本地无头启动命令（通常为 xvfb-run）",
+        description="虚拟显示封装命令，一般为 xvfb-run。",
     )
     pallas_protocol_linux_xvfb_args: list[str] = Field(
         default_factory=lambda: ["--auto-servernum", "--server-args=-screen 0 1280x720x24"],
-        description="xvfb-run 默认参数；可按机器图形栈调整",
+        description="传给 xvfb-run 等的参数列表。",
     )
     pallas_protocol_linux_appimage_args: list[str] = Field(
         default_factory=lambda: ["--appimage-extract-and-run"],
-        description="Linux 本地运行 AppImage 时追加参数（默认规避 FUSE 依赖）",
+        description="运行 AppImage 时追加的参数（如解压再执行）。",
     )
     pallas_protocol_docker_image: str = Field(
         default="mlikiowa/napcat-docker:latest",
-        description="Docker Hub napcat-docker；可用版本 tag，如 mlikiowa/napcat-docker:v4.18.1",
+        description="拉取或启动 NapCat 时使用的 Docker 镜像名。",
     )
     pallas_protocol_docker_onebot_host: str = Field(
-        default="172.17.0.1",
-        description="容器内访问宿主机 NoneBot 的地址（常见为 docker0）；连不上时改为宿主机内网 IP 或 host 网络方案",
+        default="",
+        description="容器访问宿主机 Bot 的主机名或 IP；"
+        "空或 auto：Linux bridge 为 docker0 地址或 172.17.0.1，host 为 127.0.0.1，其它常为 host.docker.internal",
     )
     pallas_protocol_docker_internal_webui_port: int = Field(
         default=6099,
         ge=1,
         le=65535,
-        description="镜像内 WebUI 端口，与 -p 宿主机:该端口 映射",
+        description="容器内 NapCat WebUI 监听端口（与端口映射配合）。",
     )
     pallas_protocol_follow_bot_lifecycle: bool = Field(
         default=True,
-        description="实例是否跟随 Bot 生命周期自动启动/停止",
+        description="是否在 NoneBot 连接/断开时自动启停对应协议实例。",
     )
     pallas_protocol_docker_network_mode: str = Field(
         default="bridge",
-        description="Docker 网络模式：bridge 或 host",
+        description="Docker 网络模式：bridge（桥接）或 host（主机网络）。",
     )
     pallas_protocol_docker_uid: int | None = Field(
         default=None,
-        description="Docker 环境变量 NAPCAT_UID；为空时自动取当前用户 uid（Linux）",
+        description="映射到容器内用户的 UID（NAPCAT_UID）；留空由插件自动选择。",
     )
     pallas_protocol_docker_gid: int | None = Field(
         default=None,
-        description="Docker 环境变量 NAPCAT_GID；为空时自动取当前用户 gid（Linux）",
+        description="映射到容器内用户组的 GID（NAPCAT_GID）；留空由插件自动选择。",
+    )
+    pallas_protocol_snowluma_docker_image: str = Field(
+        default="motricseven7/snowluma:latest",
+        description="SnowLuma 容器使用的 Docker 镜像名。",
+    )
+    pallas_protocol_snowluma_docker_internal_webui_port: int = Field(
+        default=5099,
+        ge=1,
+        le=65535,
+        description="容器内 SnowLuma Web 控制台端口。",
+    )
+    pallas_protocol_snowluma_docker_internal_onebot_http_port: int = Field(
+        default=3000,
+        ge=1,
+        le=65535,
+        description="容器内 OneBot HTTP 服务端口。",
+    )
+    pallas_protocol_snowluma_docker_internal_onebot_ws_port: int = Field(
+        default=3001,
+        ge=1,
+        le=65535,
+        description="容器内 OneBot WebSocket 服务端口。",
+    )
+    pallas_protocol_snowluma_docker_shm_size: str = Field(
+        default="1g",
+        description="Docker --shm-size，增大可减少浏览器类组件崩溃。",
+    )
+    pallas_protocol_snowluma_docker_vnc_passwd: str = Field(
+        default="",
+        description="容器内 VNC 访问密码（VNC_PASSWD）；空则使用镜像默认或关闭认证策略依镜像而定。",
+    )
+    pallas_protocol_snowluma_docker_host_novnc_port: int = Field(
+        default=0,
+        ge=0,
+        le=65535,
+        description="映射到宿主机的 noVNC 端口；0 表示不映射。",
+    )
+    pallas_protocol_snowluma_docker_host_vnc_port: int = Field(
+        default=0,
+        ge=0,
+        le=65535,
+        description="映射到宿主机的原生 VNC 端口；0 表示不映射。",
+    )
+    pallas_protocol_snowluma_docker_internal_novnc_port: int = Field(
+        default=6081,
+        ge=1,
+        le=65535,
+        description="容器内 noVNC Web 端口。",
+    )
+    pallas_protocol_snowluma_docker_internal_vnc_port: int = Field(
+        default=5900,
+        ge=1,
+        le=65535,
+        description="容器内 VNC 服务端口。",
+    )
+    pallas_protocol_snowluma_docker_auto_bind_port_lo: int = Field(
+        default=17100,
+        ge=1024,
+        le=65533,
+        description="SnowLuma 多实例时，在宿主机上为 OneBot HTTP/WS 自动挑选端口的扫描下限。",
+    )
+    pallas_protocol_snowluma_docker_auto_bind_port_hi: int = Field(
+        default=19998,
+        ge=1026,
+        le=65535,
+        description="上述自动端口的扫描上限；HTTP 与 WS 成对占用相邻端口。",
+    )
+    pallas_protocol_snowluma_docker_auto_aux_bind_lo: int = Field(
+        default=23100,
+        ge=1024,
+        le=65534,
+        description="自动映射 noVNC/VNC 到宿主机时使用的端口区间下限。",
+    )
+    pallas_protocol_snowluma_docker_auto_aux_bind_hi: int = Field(
+        default=29998,
+        ge=1026,
+        le=65535,
+        description="自动映射 noVNC/VNC 到宿主机时使用的端口区间上限。",
     )
 
     def resolved_release_asset(self) -> str:
@@ -154,7 +274,6 @@ class Config(BaseModel):
 
 
 def resolve_protocol_webui_base_path(config: Any) -> str:
-    """管理页 HTTP 基路径（含 /protocol/<实现> 或用户整段覆盖）。"""
     return resolve_public_mount_path(
         path_override=str(getattr(config, "pallas_protocol_webui_path", "") or ""),
         implementation_slug=str(getattr(config, "pallas_protocol_web_implementation", "") or ""),
@@ -214,7 +333,6 @@ def _ob_parse_port(raw: object) -> int | None:
 
 
 def _ob_normalize_target_host(raw_host: str) -> str:
-    """将监听地址归一为客户端可连接地址。"""
     h = (raw_host or "").strip()
     if h in ("0.0.0.0", "::", "[::]"):
         return "127.0.0.1"
@@ -262,7 +380,6 @@ def resolve_onebot_ws_settings(config: Config) -> tuple[str, str, str]:
 
 def onebot_connection_hints(config: Config) -> dict[str, object]:
     url, name, tok = resolve_onebot_ws_settings(config)
-    # 用于前端展示的原始 host/port
     cfg_host = str(getattr(config, "pallas_protocol_onebot_ws_host", "") or "").strip()
     cfg_port = _ob_parse_port(getattr(config, "pallas_protocol_onebot_ws_port", 0) or 0)
     h = cfg_host or _ob_env_first("HOST", "ONEBOT_HOST") or _ob_driver_first("host", "onebot_host")

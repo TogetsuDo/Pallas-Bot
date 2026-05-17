@@ -1,6 +1,6 @@
 import time
 
-from nonebot import get_plugin_config, logger, on_message
+from nonebot import logger, on_message
 from nonebot.adapters import Bot, Event
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, permission
 from nonebot.plugin import PluginMetadata
@@ -12,7 +12,7 @@ from src.common.config import GroupConfig, TaskManager
 from src.common.db import SingProgress
 from src.common.utils import HTTPXClient
 
-from .config import Config
+from .config import get_sing_config, sing_server_url
 from .ncm_login import get_song_id, get_song_title
 
 __plugin_meta__ = PluginMetadata(
@@ -23,6 +23,7 @@ __plugin_meta__ = PluginMetadata(
 1. 唱歌：
     - 发送"[角色名]唱歌 [歌曲名]"让牛牛唱歌，例如"牛牛唱歌 富士山下"、"兔兔唱歌 虚拟"等
     - 可以指定音调："牛牛唱歌 富士山下 key=2" 或 "牛牛唱歌 富士山下 key=-2"
+    - 可以指定乐曲：在网易云歌曲链接中，有一个song_id，发送"牛牛唱歌 [song_id]"让牛牛演唱,例如"牛牛唱歌 3371305930"
 2. 继续唱：
     - 发送"[角色名]继续唱"或"[角色名]接着唱"可以继续上次未完成的歌曲
 3. 点歌：
@@ -39,6 +40,10 @@ __plugin_meta__ = PluginMetadata(
     supported_adapters={"~onebot.v11"},
     extra={
         "version": "3.0.0",
+        "command_permissions": [
+            {"id": "sing.ncm_login", "label": "网易云登录", "default": "superuser"},
+            {"id": "sing.ncm_logout", "label": "网易云登出", "default": "superuser"},
+        ],
         "menu_data": [
             {
                 "func": "牛牛唱歌",
@@ -69,22 +74,18 @@ __plugin_meta__ = PluginMetadata(
                 "detail_des": "查询牛牛当前正在演唱的歌曲名称。",
             },
             {
-                "func": "播放歌曲",
-                "trigger_method": "on_message",
-                "trigger_condition": "[角色名]唱歌",
-                "brief_des": "开始随机播放唱过的歌。",
-                "detail_des": "发送[角色名]唱歌，随机播放一首唱过的歌",
+                "func": "网易云登录/登出",
+                "trigger_method": "命令",
+                "trigger_condition": "网易云登录 / 网易云登出（私聊）",
+                "command_permissions": ["sing.ncm_login", "sing.ncm_logout"],
+                "brief_des": "绑定或解绑网易云账号",
+                "detail_des": "私聊向 AI 服务发起登录流程；需 AI 侧接口可用。",
             },
         ],
         "menu_template": "default",
     },
 )
 
-plugin_config = get_plugin_config(Config)
-
-SERVER_URL = f"http://{plugin_config.ai_server_host}:{plugin_config.ai_server_port}"
-
-SPEAKERS = plugin_config.sing_speakers.keys()
 SING_CMD = "唱歌"
 REQUEST_SONG_CMD = "点歌"
 SING_CONTINUE_CMDS = {"继续唱", "接着唱"}
@@ -96,6 +97,7 @@ WHAT_SONG_COOLDOWN_KEY = "song_title"
 
 
 async def is_to_sing(event: GroupMessageEvent, state: T_State) -> bool:
+    plugin_config = get_sing_config()
     if not plugin_config.sing_enable:
         return False
     text = event.get_plaintext()
@@ -144,7 +146,7 @@ async def is_to_sing(event: GroupMessageEvent, state: T_State) -> bool:
 
     if text in SING_CONTINUE_CMDS:
         progress = await GroupConfig(group_id=event.group_id).sing_progress()
-        logger.info(f"now progress: {progress}")
+        logger.info(f"bot [{event.self_id}] sing continue read progress in group [{event.group_id}]: {progress}")
         if not progress:
             return False
 
@@ -171,6 +173,7 @@ sing_msg = on_message(
 
 @sing_msg.handle()
 async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
+    plugin_config = get_sing_config()
     config = GroupConfig(event.group_id, cooldown=10)
     if not await config.is_cooldown(SING_COOLDOWN_KEY):
         return
@@ -192,7 +195,7 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
         },
     )
 
-    url = f"{SERVER_URL}{plugin_config.sing_endpoint}/{request_id}"
+    url = f"{sing_server_url(plugin_config)}{plugin_config.sing_endpoint}/{request_id}"
     response = await HTTPXClient.post(
         url,
         json={
@@ -221,6 +224,7 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
 
 
 async def is_play(bot: Bot, event: Event, state: T_State) -> bool:
+    plugin_config = get_sing_config()
     text = event.get_plaintext()
     if not text or not text.endswith(SING_CMD):
         return False
@@ -244,13 +248,14 @@ play_cmd = on_message(
 
 @play_cmd.handle()
 async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
+    plugin_config = get_sing_config()
     config = GroupConfig(event.group_id, cooldown=10)
     if not await config.is_cooldown(PLAY_COOLDOWN_KEY):
         return
     await config.refresh_cooldown(PLAY_COOLDOWN_KEY)
 
     speaker = state["speaker"]
-    url = f"{SERVER_URL}{plugin_config.play_endpoint}/{speaker}"
+    url = f"{sing_server_url(plugin_config)}{plugin_config.play_endpoint}/{speaker}"
     response = await HTTPXClient.get(url)
     if not response:
         await play_cmd.finish("我习惯了站着不动思考。有时候啊，也会被大家突然戳一戳，看看睡着了没有。")
@@ -271,6 +276,7 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
 
 
 async def is_to_request_song(event: GroupMessageEvent, state: T_State) -> bool:
+    plugin_config = get_sing_config()
     if not plugin_config.sing_enable:
         return False
     text = event.get_plaintext()
@@ -313,6 +319,7 @@ request_song_msg = on_message(
 
 @request_song_msg.handle()
 async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
+    plugin_config = get_sing_config()
     config = GroupConfig(event.group_id, cooldown=10)
     if not await config.is_cooldown(REQUEST_SONG_COOLDOWN_KEY):
         return
@@ -325,7 +332,7 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
         return False
 
     request_id = str(ULID())
-    url = f"{SERVER_URL}{plugin_config.request_endpoint}/{request_id}"
+    url = f"{sing_server_url(plugin_config)}{plugin_config.request_endpoint}/{request_id}"
 
     response = await HTTPXClient.post(
         url,
@@ -356,7 +363,8 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
 
 async def what_song(event: Event) -> bool:
     text = event.get_plaintext()
-    return any(text.startswith(spk) for spk in SPEAKERS) and any(key in text for key in WHAT_SONG_CMDS)
+    speakers = get_sing_config().sing_speakers.keys()
+    return any(text.startswith(spk) for spk in speakers) and any(key in text for key in WHAT_SONG_CMDS)
 
 
 song_title_cmd = on_message(
@@ -371,7 +379,7 @@ song_title_cmd = on_message(
 async def _(event: GroupMessageEvent):
     config = GroupConfig(event.group_id, cooldown=10)
     progress = await config.sing_progress()
-    logger.info(f"now progress: {progress}")
+    logger.info(f"bot [{event.self_id}] sing song title query in group [{event.group_id}]: {progress}")
 
     if not progress:
         return

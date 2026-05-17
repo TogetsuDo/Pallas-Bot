@@ -1,13 +1,13 @@
-from nonebot import get_driver, get_loaded_plugins, logger
+from nonebot import get_driver, logger
 from nonebot.adapters import Bot
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.exception import IgnoredException
 from nonebot.internal.matcher import Matcher
 from nonebot.message import event_preprocessor, run_preprocessor
 
-from .plugin_manager import is_plugin_disabled
+from .plugin_manager import collect_disabled_plugin_names
 
-_blocked_events: dict[str, set[str]] = {}
+_blocked_events: dict[str, frozenset[str]] = {}
 
 
 IGNORED_PLUGINS = ["help"]
@@ -37,28 +37,13 @@ async def block_disabled_plugins(bot: Bot, event: GroupMessageEvent):
 
     event_id = f"{bot.self_id}_{event.message_id}_{event.group_id}"
 
-    # 为每个新事件创建一个空集合
-    _blocked_events[event_id] = set()
-
     bot_id = int(bot.self_id)
     group_id = event.group_id
 
-    plugins = get_loaded_plugins()
-
-    for plugin in plugins:
-        if not plugin.name:
-            continue
-
-        plugin_name = plugin.name
-
-        if plugin_name.lower() in IGNORED_PLUGINS:
-            continue
-
-        is_disabled = await is_plugin_disabled(plugin_name, group_id, bot_id)
-
-        if is_disabled:
-            _blocked_events[event_id].add(plugin_name)
-            logger.debug(f"插件 {plugin_name} 在群 {group_id} 对Bot {bot_id} 处于禁用状态")
+    disabled_names = await collect_disabled_plugin_names(bot_id, group_id)
+    _blocked_events[event_id] = disabled_names
+    if disabled_names:
+        logger.debug(f"bot [{bot_id}] help disabled plugins in group [{group_id}]: {', '.join(sorted(disabled_names))}")
 
     if len(_blocked_events) > 10000:
         keys = list(_blocked_events.keys())
@@ -84,16 +69,14 @@ async def check_plugin_enabled(matcher: Matcher, bot: Bot, event: GroupMessageEv
     bot_id = int(bot.self_id)
     group_id = event.group_id
 
-    if event_id in _blocked_events and plugin_name in _blocked_events[event_id]:
-        logger.debug(f"{plugin_name} 已禁用")
-        raise IgnoredException(f"Plugin {plugin_name} is disabled")
+    disabled_names = _blocked_events.get(event_id)
+    if disabled_names is None:
+        disabled_names = await collect_disabled_plugin_names(bot_id, group_id)
+        _blocked_events[event_id] = disabled_names
 
-    # 如果事件ID不在缓存中，直接检查数据库（可能是预处理器没有运行）
-    if event_id not in _blocked_events:
-        is_disabled = await is_plugin_disabled(plugin_name, group_id, bot_id)
-        if is_disabled:
-            logger.debug(f"{plugin_name} 已禁用")
-            raise IgnoredException(f"Plugin {plugin_name} is disabled")
+    if plugin_name in disabled_names:
+        logger.debug(f"bot [{bot_id}] help plugin [{plugin_name}] blocked at matcher")
+        raise IgnoredException(f"Plugin {plugin_name} is disabled")
 
 
 driver = get_driver()
@@ -101,4 +84,4 @@ driver = get_driver()
 
 @driver.on_startup
 async def register_plugin_manager():
-    logger.info("Plugin manager registered")
+    logger.info("help plugin_manager event_preprocessors registered")

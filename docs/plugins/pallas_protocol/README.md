@@ -1,111 +1,51 @@
 # pallas_protocol
 
-`pallas_protocol` 用来在 Bot 内管理 NapCat 实例（创建、启动、停止、重启、看日志、改配置）。
+在 Bot 内管理 NapCat / SnowLuma：账号、启动方式、WebUI、OneBot 配置与 Linux Docker。
 
+## 架构（代码）
 
-- 运行模式：`Docker` / `AppImage` / `Shell`
-- Docker 镜像版本
-- 下载平台
-- 是否跟随 Bot 生命周期
+| 模块 | 职责 |
+|------|------|
+| `service.py` | 账号 CRUD、进程/Docker 启停、runtime profile、API 用例 |
+| `launch_manager.py` | 按平台与 runtime 填充 `command`/`args`/`program_dir` |
+| `linux_docker.py` / `snowluma_docker.py` | 各协议 `docker run` 参数；共用 `docker_cli.py`（inspect/rm/stop、镜像仓库解析） |
+| `docker_onebot_host.py` | 容器访问宿主机 Bot 时，反向 WebSocket 应写的主机名（`host.docker.internal` / `127.0.0.1` 等） |
+| `backends/` | 协议后端抽象（NapCat / SnowLuma） |
+| `config.py` | 环境变量与默认值（Pydantic） |
+| `web/` | 管理页与路由 |
 
-这些都可以直接在管理页的「更新/下载」页面里设置，然后点击「保存设置」。
+全局 Docker/AppImage 偏好写入 `data/pallas_protocol/runtime_profile.json`；多数项可在管理页「协议资产」保存，不必改 `.env`。
 
-## 推荐使用方式
+## `.env` 常用项
 
-推荐顺序如下：
+| 变量 | 说明 |
+|------|------|
+| `PALLAS_PROTOCOL_ENABLED` | 是否加载插件 |
+| `PALLAS_PROTOCOL_WEBUI_ENABLED` | 是否挂载管理页 |
+| `PALLAS_PROTOCOL_GITHUB_TOKEN` | 拉 Release 时限额（可选） |
+| `PALLAS_PROTOCOL_ONEBOT_WS_URL` | 完整反向 WebSocket 地址（最高优先级；常见为明文 `ws`，见下节） |
+| `PALLAS_PROTOCOL_ONEBOT_WS_HOST` / `_PORT` / `_PATH` | 未设 URL 时按主机、端口、路径拼接反向 WebSocket 地址 |
+| `PALLAS_PROTOCOL_DOCKER_ONEBOT_HOST` | NapCat/SnowLuma 容器访问宿主机 Bot；**留空或 `auto`**：`bridge` 在 **Linux** 下为 `docker0` 网卡 IPv4（ioctl）或回退 `172.17.0.1`（不用系统默认路由网关，避免写成局域网路由器）；**非 Linux** 常为 `host.docker.internal`；`host` 网络为 `127.0.0.1`；仍会在 `docker run` 加 `host.docker.internal:host-gateway`（Docker 20.10+）作辅助解析 |
+| `PALLAS_PROTOCOL_AUTO_DOWNLOAD_RUNTIME` | 无本地运行时是否后台下载 |
+| `PALLAS_PROTOCOL_PROGRAM_DIR` | 手动指定 NapCat 发行根 |
+| `PALLAS_PROTOCOL_DOCKER_IMAGE` | NapCat 镜像（可被 profile 覆盖） |
+| `PALLAS_PROTOCOL_SNOWLUMA_DOCKER_IMAGE` | SnowLuma 镜像（可被 profile 覆盖） |
 
-1. 启动 Bot
-2. 打开协议端管理页
-3. 进入「更新/下载」
-4. 选择运行模式、镜像版本等
-5. 点击「保存设置」
-6. 再去创建或启动实例
+鉴权与 Pallas-Bot 控制台共用会话（`data/pallas_console/auth_state.json`），不再从 `.env` 读控制台口令。
 
-这些页面设置会保存到：
+## Docker 与反向 WebSocket（OneBot）
 
-- `data/pallas_protocol/runtime_profile.json`
+OneBot v11 **反向 WebSocket** 在本项目文档与默认占位里多为 **明文 `ws` 方案**（与常见 NoneBot / NapCat 教程一致）；若你已在 Bot 与客户端两侧启用 TLS，再改用 **`wss://`** 并自行保证证书与端口。
 
-## 真正可能需要放进 `.env` 的，通常只有少数全局项
+Linux 上 NapCat 以 **bridge** 跑容器时，容器内往往解析不到 Compose 里的自定义主机名；写入 **`onebot*.json`** 时会把 **主机** 调整为解析后的 **`PALLAS_PROTOCOL_DOCKER_ONEBOT_HOST`**（默认可留空，Linux 一般为**宿主机网关 IP**），也可在 `.env` 里直接写完整 **`PALLAS_PROTOCOL_ONEBOT_WS_URL`** 覆盖。
 
-```env
-PALLAS_PROTOCOL_ENABLED=true
-PALLAS_PROTOCOL_WEBUI_ENABLED=true
-PALLAS_PROTOCOL_TOKEN=你的管理口令
-```
+## 数据路径
 
-说明：
+- 实例：`data/pallas_protocol/instances/<id>/`
+- 全局 profile：`data/pallas_protocol/runtime_profile.json`
+- NapCat 托管解压：`data/pallas_protocol/runtime_extract/napcat/`
+- SnowLuma 托管解压：`data/pallas_protocol/runtime_extract/snowluma/`
 
-- `PALLAS_PROTOCOL_ENABLED`：是否启用插件
-- `PALLAS_PROTOCOL_WEBUI_ENABLED`：是否启用管理页
-- `PALLAS_PROTOCOL_TOKEN`：必填，用于管理页/API 鉴权；插件加载时会将数字转为字符串，纯数字可不写引号（如 `1234`）
+完整字段见 [`src/plugins/pallas_protocol/config.py`](../../../src/plugins/pallas_protocol/config.py)。
 
-很多情况下，默认值就已经够用，连这几项都不一定需要额外改。
-
-## 常见场景怎么配
-
-### 场景 A：Linux + Docker（最省心）
-
-说明：
-
-- 镜像版本建议在管理页里选好并保存（会写入 `data/pallas_protocol/runtime_profile.json`）
-- 如果 Bot 不在宿主机本机，才可能需要设置 `PALLAS_PROTOCOL_DOCKER_ONEBOT_HOST`
-- 如果不设置，常见默认值是 `172.17.0.1`
-
-### 场景 B：Linux + AppImage（不用 Docker）
-
-说明：
-
-- 一般直接在管理页选择 `AppImage` 并保存即可
-- 不想自动下载时，可改为手动下载，然后设置 `PALLAS_PROTOCOL_PROGRAM_DIR`
-
-### 场景 C：Windows
-
-通常无需额外配置，按管理页下载并创建实例即可；如有自定义运行目录，再设置：
-
-```env
-PALLAS_PROTOCOL_PROGRAM_DIR=你的运行时目录
-```
-
-## WS 地址到底从哪来
-
-实例里的 WS 留空时，会按以下顺序解析：
-
-1. `PALLAS_PROTOCOL_ONEBOT_WS_URL`（完整地址，优先级最高）
-2. `PALLAS_PROTOCOL_ONEBOT_WS_HOST` + `PALLAS_PROTOCOL_ONEBOT_WS_PORT` + `PALLAS_PROTOCOL_ONEBOT_WS_PATH`
-3. 全局回退：`HOST` / `PORT` / `ACCESS_TOKEN`（以及驱动配置）
-
-## 哪些情况才更像需要手改 `.env`
-
-只有下面这些场景，更像是需要你手动配置：
-
-- 你想给管理页/API 单独加口令：`PALLAS_PROTOCOL_TOKEN`
-- 你想固定运行时目录：`PALLAS_PROTOCOL_PROGRAM_DIR`
-- 你想让启动时缺失运行时就自动下载：`PALLAS_PROTOCOL_AUTO_DOWNLOAD_RUNTIME`
-- 你是 Docker 部署，且容器访问 Bot 需要指定宿主机地址：`PALLAS_PROTOCOL_DOCKER_ONEBOT_HOST`
-- 你想手动写死完整 WS 地址：`PALLAS_PROTOCOL_ONEBOT_WS_URL`
-
-## 常见的进阶配置项
-
-- `PALLAS_PROTOCOL_TOKEN`：管理页/API 鉴权（纯数字可不写引号，加载时转为字符串）
-- `PALLAS_PROTOCOL_PROGRAM_DIR`：运行时目录（手动模式常用）
-- `PALLAS_PROTOCOL_AUTO_DOWNLOAD_RUNTIME`：无运行时时自动下载
-- `PALLAS_PROTOCOL_DOCKER_IMAGE`：Docker 模式镜像版本
-- `PALLAS_PROTOCOL_DOCKER_ONEBOT_HOST`：容器访问 Bot 的地址
-- `PALLAS_PROTOCOL_ONEBOT_WS_URL`：一条完整 WS 地址（最直接）
-
-## 排障速查
-
-- `PALLAS_PROTOCOL_TOKEN` 为纯数字时：`.env` 可不写引号（插件加载时会转为字符串）
-- 创建/启动时报 `program_dir 为空`：先在「更新/下载」页下载运行时，或设置 `PALLAS_PROTOCOL_PROGRAM_DIR`
-- Docker 启动失败并提示端口冲突：当前版本会自动换可用端口；若仍失败，检查是否有外部服务长期占用端口段
-- 重启后镜像版本变回 `latest`：确认你在「更新/下载」页点过「保存设置」，并检查 `data/pallas_protocol/runtime_profile.json`
-- 页面改了设置但没生效：确认右上角「保存设置」已点击（页面会显示“有未保存修改”提示）
-
-## 数据目录
-
-- 实例数据：`data/pallas_protocol/instances/<account_id>/`
-- 运行模式与镜像偏好：`data/pallas_protocol/runtime_profile.json`
-
----
-
-需要完整字段清单时，请查看 `src/plugins/pallas_protocol/config.py`。
+实现见 [`src/plugins/pallas_protocol/`](../../../src/plugins/pallas_protocol/)（上表所列模块均在目录内）。

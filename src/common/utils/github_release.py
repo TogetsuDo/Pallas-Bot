@@ -12,10 +12,42 @@
 
 from __future__ import annotations
 
-from typing import Any
+import contextlib
+import os
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 from urllib.parse import quote, unquote, urlparse
 
 import httpx
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+
+@contextlib.contextmanager
+def github_request_ssl_env() -> Iterator[None]:
+    """若 ``SSL_CERT_FILE`` / ``REQUESTS_CA_BUNDLE`` / ``CURL_CA_BUNDLE`` 指向不存在的路径，
+
+    OpenSSL 会在加载 CA 时抛 ``FileNotFoundError``，导致 GitHub 更新检查失败。临时移除无效项。
+    """
+    removed: dict[str, str] = {}
+    for key in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"):
+        raw = (os.environ.get(key) or "").strip()
+        if not raw:
+            continue
+        try:
+            ok = Path(raw).is_file()
+        except OSError:
+            ok = False
+        if not ok:
+            val = os.environ.pop(key, None)
+            if val is not None:
+                removed[key] = val
+    try:
+        yield
+    finally:
+        for k, v in removed.items():
+            os.environ[k] = v
 
 
 def github_release_api_url(repo: str, tag: str = "") -> str:
@@ -75,6 +107,19 @@ def github_release_asset_url_candidates(repo: str, asset_name: str, tag: str = "
     return dedup
 
 
+def normalize_release_tag(tag: str) -> str:
+    """用于比对：去空白、小写，并去掉常见 semver 前导 ``v``（如 ``v1.2.0`` 与 ``1.2.0`` 视为一致）。"""
+    t = (tag or "").strip().lower()
+    if len(t) > 1 and t.startswith("v") and t[1].isdigit():
+        return t[1:]
+    return t
+
+
+def release_tags_equivalent(a: str, b: str) -> bool:
+    """两枚发行标签是否视为同一版本（忽略大小写及前导 v）。"""
+    return normalize_release_tag(a) == normalize_release_tag(b)
+
+
 def release_tag_from_github_final_url(url: str) -> str:
     """从跳转后的 GitHub releases 页 URL 解析 tag（``…/releases/tag/{tag}``）。"""
     segments = [s for s in urlparse(url).path.split("/") if s]
@@ -100,10 +145,11 @@ async def fetch_latest_release_tag_via_github_web(
     eff_timeout = client_timeout or httpx.Timeout(15.0, connect=8.0)
     headers: dict[str, str] = {"User-Agent": user_agent}
     headers.update(github_auth_headers(token))
-    async with httpx.AsyncClient(follow_redirects=True, timeout=eff_timeout, headers=headers) as client:
-        resp = await client.get(page_url)
-        resp.raise_for_status()
-    final_url = str(resp.url)
+    with github_request_ssl_env():
+        async with httpx.AsyncClient(follow_redirects=True, timeout=eff_timeout, headers=headers) as client:
+            resp = await client.get(page_url)
+            resp.raise_for_status()
+            final_url = str(resp.url)
     tag = release_tag_from_github_final_url(final_url)
     if not tag:
         msg = f"无法从 GitHub 网页解析 release tag: {final_url!r}"
@@ -170,24 +216,27 @@ async def fetch_latest_release(
 ) -> dict[str, Any]:
     """获取指定仓库最新 release 的摘要信息。
 
-    返回 ``{tag, html_url, asset_url}``。``asset_url``：
+    返回 ``{tag, html_url, asset_url, body}``。
 
-    - ``include_asset_url=False`` 时恒为空（适合仅需对比 tag 的场景）。
-    - 否则优先匹配 ``preferred_asset_name``（忽略大小写），否则取第一个 ``.zip`` 资产。
+    - ``body``：Release 说明（Markdown），来自 API；可能为空串。
+    - ``asset_url``：``include_asset_url=False`` 时恒为空字符串；否则优先匹配
+      ``preferred_asset_name``（忽略大小写），否则取第一个 ``.zip`` 资产。
     """
     api_url = github_release_api_url(repo)
     headers: dict[str, str] = {"User-Agent": user_agent}
     headers.update(github_auth_headers(token))
-    async with httpx.AsyncClient(
-        follow_redirects=True,
-        timeout=httpx.Timeout(15.0, connect=8.0),
-        headers=headers,
-    ) as client:
-        resp = await client.get(api_url)
-        resp.raise_for_status()
-        data = resp.json()
+    with github_request_ssl_env():
+        async with httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=httpx.Timeout(15.0, connect=8.0),
+            headers=headers,
+        ) as client:
+            resp = await client.get(api_url)
+            resp.raise_for_status()
+            data = resp.json()
     tag = str(data.get("tag_name") or "").strip()
     html_url = str(data.get("html_url") or "").strip()
+    body = str(data.get("body") or "").strip()
     asset_url = ""
     if include_asset_url:
         assets = data.get("assets") or []
@@ -205,4 +254,4 @@ async def fetch_latest_release(
                 if isinstance(item, dict) and str(item.get("name", "")).lower().endswith(".zip"):
                     asset_url = str(item.get("browser_download_url", "") or "").strip()
                     break
-    return {"tag": tag, "html_url": html_url, "asset_url": asset_url}
+    return {"tag": tag, "html_url": html_url, "asset_url": asset_url, "body": body}

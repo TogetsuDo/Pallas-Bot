@@ -6,7 +6,7 @@ Tests learning logic, context insertion, and filtering (repeat/reply skipping).
 
 import asyncio
 from collections import defaultdict, deque
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -59,7 +59,9 @@ async def test_learn_basic_flow(beanie_fixture):
 
         with (
             patch(
-                "src.plugins.repeater.learner.context_repo.find_by_keywords", new_callable=AsyncMock, return_value=None
+                "src.plugins.repeater.learner.context_repo.context_exists_by_keywords",
+                new_callable=AsyncMock,
+                return_value=False,
             ),
             patch("src.plugins.repeater.learner.context_repo.insert", new_callable=AsyncMock) as mock_insert,
         ):
@@ -70,6 +72,73 @@ async def test_learn_basic_flow(beanie_fixture):
 
     finally:
         # Cleanup
+        MessageStore._message_dict.clear()
+        MessageStore._late_save_time = 0
+
+
+@pytest.mark.asyncio
+async def test_learn_skips_repeat_ignore_user_ids(beanie_fixture):
+    """repeat_ignore / 本进程 Bot QQ 不参与学习：不插库、不写上下文。"""
+    from src.common.db import Message as MessageModel
+    from src.plugins.repeater.learner import Learner
+    from src.plugins.repeater.message_store import MessageStore
+    from src.plugins.repeater.model import ChatData
+
+    MessageStore._message_lock = asyncio.Lock()
+    MessageStore._message_dict = defaultdict(list)
+    MessageStore._late_save_time = 0
+
+    topics_lock = asyncio.Lock()
+    recent_topics = defaultdict(lambda: deque(maxlen=10))
+
+    try:
+        group_id = 55501
+        ignored_uid = 888001
+        bot_id = 11111
+
+        prev_msg = MessageModel(
+            group_id=group_id,
+            user_id=99999,
+            bot_id=bot_id,
+            raw_message="before",
+            is_plain_text=True,
+            plain_text="before",
+            keywords="before",
+            time=1000,
+        )
+        MessageStore._message_dict[group_id].append(prev_msg)
+
+        chat_data = ChatData(
+            group_id=group_id,
+            user_id=ignored_uid,
+            raw_message="ignored user says",
+            plain_text="ignored user says",
+            time=2000,
+            bot_id=bot_id,
+        )
+
+        with (
+            patch(
+                "src.plugins.repeater.responder.Responder._repeat_ignore_user_ids",
+                return_value={ignored_uid},
+            ),
+            patch(
+                "src.plugins.repeater.learner.context_repo.context_exists_by_keywords", new_callable=AsyncMock
+            ) as mock_exists,
+            patch("src.plugins.repeater.learner.context_repo.insert", new_callable=AsyncMock) as mock_insert,
+            patch(
+                "src.plugins.repeater.message_store.MessageStore.message_insert",
+                new_callable=AsyncMock,
+            ) as mock_insert_msg,
+        ):
+            result = await Learner.learn(chat_data, topics_lock, recent_topics)
+
+            assert result is False
+            mock_exists.assert_not_called()
+            mock_insert.assert_not_called()
+            mock_insert_msg.assert_not_called()
+            assert len(MessageStore._message_dict[group_id]) == 1
+    finally:
         MessageStore._message_dict.clear()
         MessageStore._late_save_time = 0
 
@@ -146,9 +215,9 @@ async def test_topics_callback_filters_niuniu_keywords(beanie_fixture):
 
         with (
             patch(
-                "src.plugins.repeater.learner.context_repo.find_by_keywords",
+                "src.plugins.repeater.learner.context_repo.context_exists_by_keywords",
                 new_callable=AsyncMock,
-                return_value=None,
+                return_value=False,
             ),
             patch("src.plugins.repeater.learner.context_repo.insert", new_callable=AsyncMock),
         ):
@@ -197,11 +266,11 @@ async def test_context_insert_skip_repeat(beanie_fixture):
         time=1000,
     )
 
-    with patch("src.plugins.repeater.learner.context_repo.find_by_keywords") as mock_find:
+    with patch("src.plugins.repeater.learner.context_repo.context_exists_by_keywords") as mock_exists:
         # Call context_insert
         await Learner._context_insert(chat_data, pre_msg)
 
-        assert mock_find.call_count == 0, "Should skip repeats without querying Context"
+        assert mock_exists.call_count == 0, "Should skip repeats without querying Context"
 
 
 @pytest.mark.asyncio
@@ -234,11 +303,11 @@ async def test_context_insert_skip_reply(beanie_fixture):
         time=1000,
     )
 
-    with patch("src.plugins.repeater.learner.context_repo.find_by_keywords") as mock_find:
+    with patch("src.plugins.repeater.learner.context_repo.context_exists_by_keywords") as mock_exists:
         # Call context_insert
         await Learner._context_insert(chat_data, pre_msg)
 
-        assert mock_find.call_count == 0, "Should skip replies without querying Context"
+        assert mock_exists.call_count == 0, "Should skip replies without querying Context"
 
 
 @pytest.mark.asyncio
@@ -258,11 +327,11 @@ async def test_context_insert_skip_none(beanie_fixture):
         bot_id=11111,
     )
 
-    with patch("src.plugins.repeater.learner.context_repo.find_by_keywords") as mock_find:
+    with patch("src.plugins.repeater.learner.context_repo.context_exists_by_keywords") as mock_exists:
         # Call context_insert with None
         await Learner._context_insert(chat_data, None)
 
-        assert mock_find.call_count == 0, "Should skip None pre_msg without querying Context"
+        assert mock_exists.call_count == 0, "Should skip None pre_msg without querying Context"
 
 
 @pytest.mark.asyncio
@@ -295,14 +364,11 @@ async def test_context_insert_calls_upsert_answer_when_context_exists(beanie_fix
         time=1000,
     )
 
-    mock_context = MagicMock()
-    mock_context.keywords = "Trigger message"
-
     with (
         patch(
-            "src.plugins.repeater.learner.context_repo.find_by_keywords",
+            "src.plugins.repeater.learner.context_repo.context_exists_by_keywords",
             new_callable=AsyncMock,
-            return_value=mock_context,
+            return_value=True,
         ),
         patch("src.plugins.repeater.learner.context_repo.upsert_answer", new_callable=AsyncMock) as mock_upsert,
         patch("src.plugins.repeater.learner.context_repo.insert", new_callable=AsyncMock) as mock_insert,
@@ -355,13 +421,11 @@ async def test_context_insert_no_append_when_non_plain_text(beanie_fixture):
         time=1000,
     )
 
-    mock_context = MagicMock()
-
     with (
         patch(
-            "src.plugins.repeater.learner.context_repo.find_by_keywords",
+            "src.plugins.repeater.learner.context_repo.context_exists_by_keywords",
             new_callable=AsyncMock,
-            return_value=mock_context,
+            return_value=True,
         ),
         patch("src.plugins.repeater.learner.context_repo.upsert_answer", new_callable=AsyncMock) as mock_upsert,
     ):
@@ -400,9 +464,9 @@ async def test_context_insert_creates_new_context_when_missing(beanie_fixture):
 
     with (
         patch(
-            "src.plugins.repeater.learner.context_repo.find_by_keywords",
+            "src.plugins.repeater.learner.context_repo.context_exists_by_keywords",
             new_callable=AsyncMock,
-            return_value=None,
+            return_value=False,
         ),
         patch("src.plugins.repeater.learner.context_repo.insert", new_callable=AsyncMock) as mock_insert,
         patch("src.plugins.repeater.learner.context_repo.upsert_answer", new_callable=AsyncMock) as mock_upsert,
@@ -502,7 +566,9 @@ async def test_learn_user_backtracking(beanie_fixture):
 
         with (
             patch(
-                "src.plugins.repeater.learner.context_repo.find_by_keywords", new_callable=AsyncMock, return_value=None
+                "src.plugins.repeater.learner.context_repo.context_exists_by_keywords",
+                new_callable=AsyncMock,
+                return_value=False,
             ),
             patch("src.plugins.repeater.learner.context_repo.insert", new_callable=AsyncMock) as mock_insert,
         ):

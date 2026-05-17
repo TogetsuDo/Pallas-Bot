@@ -1,6 +1,8 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Config(BaseModel, extra="ignore"):
-    # 是否启用被踢自动拉黑功能
-    enable_kick_ban: bool = True
+    enable_kick_ban: bool = Field(
+        default=True,
+        description="牛牛被移出群后，是否自动将其加入黑名单。",
+    )
