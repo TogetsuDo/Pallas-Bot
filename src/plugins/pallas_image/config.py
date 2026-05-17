@@ -74,7 +74,7 @@ class Config(BaseModel, extra="ignore"):
     pallas_image_max_concurrency: int = Field(
         default=2,
         ge=1,
-        le=16,
+        le=32,
         description="全局并发生成请求上限，防止打爆上游或本机。",
     )
     pallas_image_http_transport: str = Field(
