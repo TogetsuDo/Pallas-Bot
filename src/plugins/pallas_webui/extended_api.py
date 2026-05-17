@@ -2927,7 +2927,9 @@ def register_extended_api(
         except Exception as e:  # noqa: BLE001
             logger.exception("Pallas-Bot 控制台: 写入表行失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
-        _drop_read_cache(("db_overview", "bot_configs_list", "group_configs_list", "instances"))
+        _drop_read_cache(
+            ("db_overview", "bot_configs_list", "group_configs_list", "user_configs_list", "instances"),
+        )
         return JSONResponse({"ok": True, "data": data})
 
     @router.delete(f"{x}/db/table-row", include_in_schema=True)
@@ -3154,6 +3156,23 @@ def register_extended_api(
         _drop_read_cache(("group_configs_list", "db_overview", "group_configs_bot:"))
         return JSONResponse({"ok": True, "data": data})
 
+    @router.get(f"{x}/user-configs", include_in_schema=True)
+    async def _user_configs_list(
+        limit: int = Query(default=1000, ge=1, le=10_000),
+    ) -> JSONResponse:
+        from src.common.db.pallas_console_data import list_user_configs_public
+
+        cache_key = f"user_configs_list:{int(limit)}"
+
+        async def _load() -> list[dict[str, Any]]:
+            return await list_user_configs_public(limit)
+
+        try:
+            rows = await _cached_read(key=cache_key, loader=_load, ttl_sec=1.0, stale_sec=20.0)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": rows, "meta": {"limit": limit}})
+
     @router.get(f"{x}/user-configs/{{user_id}}", include_in_schema=True)
     async def _user_config_one(
         user_id: int,
@@ -3182,7 +3201,7 @@ def register_extended_api(
         except Exception as e:  # noqa: BLE001
             logger.exception("Pallas-Bot 控制台: 更新 User 配置失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
-        _drop_read_cache(("db_overview",))
+        _drop_read_cache(("db_overview", "user_configs_list"))
         return JSONResponse({"ok": True, "data": data})
 
     @router.get(f"{x}/ai-extension/config", include_in_schema=True)
