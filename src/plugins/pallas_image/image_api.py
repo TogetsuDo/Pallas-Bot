@@ -66,12 +66,14 @@ def image_gen_auth_headers_multipart(backend: ImageApiBackend) -> dict[str, str]
     return h
 
 
-async def httpx_post_generations(url: str, headers: dict[str, str], payload: dict[str, object]) -> tuple[int, str]:
-    cfg = image_gen_config
-    timeout = httpx.Timeout(cfg.request_timeout)
-    async with httpx.AsyncClient(timeout=timeout, trust_env=True) as client:
-        r = await client.post(url, headers=headers, json=payload)
-        return r.status_code, r.text
+async def httpx_post_generations(
+    client: httpx.AsyncClient,
+    url: str,
+    headers: dict[str, str],
+    payload: dict[str, object],
+) -> tuple[int, str]:
+    r = await client.post(url, headers=headers, json=payload)
+    return r.status_code, r.text
 
 
 async def curl_cffi_post_generations(
@@ -148,6 +150,7 @@ async def curl_post_generations(url: str, headers: dict[str, str], payload: dict
 
 
 async def post_generations_with_transport(
+    client: httpx.AsyncClient,
     url: str,
     headers: dict[str, str],
     payload: dict[str, object],
@@ -157,7 +160,7 @@ async def post_generations_with_transport(
     if mode == "curl":
         return await curl_post_generations(url, headers, payload)
     if mode == "httpx":
-        return await httpx_post_generations(url, headers, payload)
+        return await httpx_post_generations(client, url, headers, payload)
     if mode == "cffi":
         return await curl_cffi_post_generations(url, headers, payload)
     if (cfg.tls_impersonate or "").strip():
@@ -166,7 +169,7 @@ async def post_generations_with_transport(
         except (CffiRequestsError, OSError, ValueError) as e:
             logger.warning(f"pallas_image generations curl_cffi failed, fallback httpx: {e}")
     try:
-        return await httpx_post_generations(url, headers, payload)
+        return await httpx_post_generations(client, url, headers, payload)
     except httpx.ConnectError as e:
         logger.warning(f"pallas_image generations httpx connect failed, fallback curl: {e}")
         return await curl_post_generations(url, headers, payload)
@@ -192,23 +195,21 @@ def edit_request_fields(
 
 
 async def httpx_post_edits(
+    client: httpx.AsyncClient,
     image_blobs: list[bytes],
     prompt: str,
     backend: ImageApiBackend,
     *,
     options: ImageGenRequestOptions | None = None,
 ) -> tuple[int, str]:
-    cfg = image_gen_config
     endpoint = image_edits_endpoint(backend)
     headers = image_gen_auth_headers_multipart(backend)
-    timeout = httpx.Timeout(cfg.request_timeout)
     files: list[tuple[str, tuple[str, bytes, str]]] = []
     for i, blob in enumerate(image_blobs):
         files.append(("image", (f"ref_{i}.png", blob, "image/png")))
     data = edit_request_fields(prompt, backend, options=options)
-    async with httpx.AsyncClient(timeout=timeout, trust_env=True) as client:
-        r = await client.post(endpoint, headers=headers, files=files, data=data)
-        return r.status_code, r.text
+    r = await client.post(endpoint, headers=headers, files=files, data=data)
+    return r.status_code, r.text
 
 
 async def curl_cffi_post_edits(
@@ -296,6 +297,7 @@ async def curl_post_edits(
 
 
 async def post_edits_with_transport(
+    client: httpx.AsyncClient,
     image_blobs: list[bytes],
     prompt: str,
     backend: ImageApiBackend,
@@ -307,7 +309,7 @@ async def post_edits_with_transport(
     if mode == "curl":
         return await curl_post_edits(image_blobs, prompt, backend, options=options)
     if mode == "httpx":
-        return await httpx_post_edits(image_blobs, prompt, backend, options=options)
+        return await httpx_post_edits(client, image_blobs, prompt, backend, options=options)
     if mode == "cffi":
         return await curl_cffi_post_edits(image_blobs, prompt, backend, options=options)
     if (cfg.tls_impersonate or "").strip():
@@ -316,7 +318,7 @@ async def post_edits_with_transport(
         except (CffiRequestsError, OSError, ValueError) as e:
             logger.warning(f"pallas_image edits curl_cffi failed, fallback httpx: {e}")
     try:
-        return await httpx_post_edits(image_blobs, prompt, backend, options=options)
+        return await httpx_post_edits(client, image_blobs, prompt, backend, options=options)
     except httpx.ConnectError as e:
         logger.warning(f"pallas_image edits httpx connect failed, fallback curl: {e}")
         return await curl_post_edits(image_blobs, prompt, backend, options=options)
@@ -357,7 +359,12 @@ def extract_image_from_generation_payload(data: object) -> tuple[str | None, byt
     return None, None
 
 
-async def bytes_from_image_reference(client: httpx.AsyncClient, url: str) -> bytes | None:
+async def bytes_from_image_reference(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    download_timeout: float | None = None,
+) -> bytes | None:
     u = (url or "").strip()
     if u.startswith("base64://"):
         try:
@@ -367,7 +374,7 @@ async def bytes_from_image_reference(client: httpx.AsyncClient, url: str) -> byt
     if not u.startswith(("http://", "https://")):
         return None
     try:
-        r = await client.get(u)
+        r = await client.get(u, timeout=download_timeout)
         if r.status_code == 200:
             return r.content
         logger.debug(
@@ -379,6 +386,21 @@ async def bytes_from_image_reference(client: httpx.AsyncClient, url: str) -> byt
     except Exception as exc:
         logger.debug(f"pallas_image download ref image error url={u[:160]!r} exc={exc!r}")
         return None
+
+
+async def download_reference_images(
+    client: httpx.AsyncClient,
+    ref_urls: list[str],
+) -> list[bytes]:
+    if not ref_urls:
+        return []
+    ref_timeout = image_gen_config.ref_download_timeout
+
+    async def one(url: str) -> bytes | None:
+        return await bytes_from_image_reference(client, url, download_timeout=ref_timeout)
+
+    results = await asyncio.gather(*(one(u) for u in ref_urls))
+    return [b for b in results if b]
 
 
 def generations_payload(

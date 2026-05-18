@@ -96,37 +96,71 @@ def dedupe_request_options(options: list[ImageGenRequestOptions]) -> list[ImageG
     return out
 
 
-def image_gen_request_attempts(*, with_ref_urls: bool) -> list[ImageGenRequestOptions]:
-    """按「先配置、再逐项放宽」生成请求参数尝试序列。"""
+def image_gen_fast_attempts(*, with_ref_urls: bool) -> list[ImageGenRequestOptions]:
+    """快档：配置原样、换 response_format、去 quality、去 image 字段。"""
     base = ImageGenRequestOptions.from_config()
     seq: list[ImageGenRequestOptions] = [base]
-
     seq.extend(
         replace(base, response_format=rf)
         for rf in response_format_attempts(base.response_format)
         if rf != base.response_format
     )
-
     if base.quality:
         seq.append(replace(base, quality=""))
-
-    seq.extend(replace(base, quality=q) for q in quality_attempts(base.quality) if q and q != base.quality)
-
-    seq.extend(
-        replace(base, size=sz, aspect_ratio=ar)
-        for sz, ar in dimension_attempts(base.size, base.aspect_ratio)
-        if sz != base.size or ar != base.aspect_ratio
-    )
-
-    relaxed = replace(base, size="", aspect_ratio="", quality="")
-    seq.append(relaxed)
-    seq.extend(replace(relaxed, response_format=rf) for rf in response_format_attempts(""))
-
     merge_refs = image_gen_config.merge_reference_urls_into_prompt
     if with_ref_urls and not merge_refs:
-        seq.extend((
-            replace(base, include_ref_images=False),
-            replace(relaxed, include_ref_images=False),
-        ))
-
+        seq.append(replace(base, include_ref_images=False))
     return dedupe_request_options(seq)
+
+
+def image_gen_slow_attempts(*, with_ref_urls: bool) -> list[ImageGenRequestOptions]:
+    """慢档：常见 quality / 尺寸 / 极简组合（快档全失败后再试）。"""
+    base = ImageGenRequestOptions.from_config()
+    fast_keys = {
+        (o.size, o.aspect_ratio, o.quality, o.response_format, o.include_ref_images)
+        for o in image_gen_fast_attempts(with_ref_urls=with_ref_urls)
+    }
+    seq: list[ImageGenRequestOptions] = []
+
+    def add(opt: ImageGenRequestOptions) -> None:
+        key = (opt.size, opt.aspect_ratio, opt.quality, opt.response_format, opt.include_ref_images)
+        if key not in fast_keys:
+            seq.append(opt)
+
+    for q in quality_attempts(base.quality):
+        if q and q != base.quality:
+            add(replace(base, quality=q))
+    for sz, ar in dimension_attempts(base.size, base.aspect_ratio):
+        if sz != base.size or ar != base.aspect_ratio:
+            add(replace(base, size=sz, aspect_ratio=ar))
+    relaxed = replace(base, size="", aspect_ratio="", quality="")
+    add(relaxed)
+    for rf in response_format_attempts(""):
+        add(replace(relaxed, response_format=rf))
+    merge_refs = image_gen_config.merge_reference_urls_into_prompt
+    if with_ref_urls and not merge_refs:
+        add(replace(relaxed, include_ref_images=False))
+    return dedupe_request_options(seq)
+
+
+def capped_param_attempts(*, with_ref_urls: bool) -> list[ImageGenRequestOptions]:
+    """快档 + 慢档，受 max_param_attempts 限制。"""
+    fast = image_gen_fast_attempts(with_ref_urls=with_ref_urls)
+    slow = image_gen_slow_attempts(with_ref_urls=with_ref_urls)
+    out = list(fast)
+    seen = {(o.size, o.aspect_ratio, o.quality, o.response_format, o.include_ref_images) for o in out}
+    for o in slow:
+        key = (o.size, o.aspect_ratio, o.quality, o.response_format, o.include_ref_images)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(o)
+    max_n = image_gen_config.max_param_attempts
+    if max_n > 0:
+        return out[:max_n]
+    return out
+
+
+def image_gen_request_attempts(*, with_ref_urls: bool) -> list[ImageGenRequestOptions]:
+    """兼容旧名：等同 capped_param_attempts。"""
+    return capped_param_attempts(with_ref_urls=with_ref_urls)

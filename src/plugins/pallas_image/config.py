@@ -113,6 +113,24 @@ class Config(BaseModel, extra="ignore"):
         le=3600,
         description="同一用户两次画画指令之间的最短间隔（秒）。",
     )
+    pallas_image_max_param_attempts: int = Field(
+        default=6,
+        ge=0,
+        le=32,
+        description="每个 backend 最多尝试的参数组合数；0 表示不限制。",
+    )
+    pallas_image_draw_total_timeout: float = Field(
+        default=300.0,
+        gt=30.0,
+        le=1800.0,
+        description="单次画画从排队到结束的总耗时上限（秒）。",
+    )
+    pallas_image_ref_download_timeout: float = Field(
+        default=30.0,
+        gt=1.0,
+        le=120.0,
+        description="下载单张参考图的超时（秒）。",
+    )
 
     @classmethod
     def from_env(cls) -> Self:
@@ -296,6 +314,18 @@ class ImageGenSettings:
     @property
     def draw_command_cooldown(self) -> int:
         return self._c.pallas_image_draw_command_cooldown
+
+    @property
+    def max_param_attempts(self) -> int:
+        return self._c.pallas_image_max_param_attempts
+
+    @property
+    def draw_total_timeout(self) -> float:
+        return self._c.pallas_image_draw_total_timeout
+
+    @property
+    def ref_download_timeout(self) -> float:
+        return self._c.pallas_image_ref_download_timeout
 
 
 def on_pallas_image_config_reload(cfg: Config) -> None:

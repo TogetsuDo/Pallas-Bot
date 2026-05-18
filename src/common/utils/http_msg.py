@@ -16,6 +16,13 @@ _INTERNAL_ERROR_CODES = frozenset({
     "account_deactivated",
 })
 
+_AUTH_ERROR_CODES = frozenset({
+    "invalid_api_key",
+    "authentication_error",
+    "invalid_auth",
+    "unauthorized",
+})
+
 _USER_VISIBLE_ERROR_CODES = frozenset({
     "content_policy_violation",
     "content_filter",
@@ -95,6 +102,28 @@ def upstream_error_is_user_visible(message: str, code: str | None, err_type: str
     if err_type and err_type in _USER_VISIBLE_ERROR_CODES:
         return True
     return bool(_USER_VISIBLE_MESSAGE_PATTERNS.search(message))
+
+
+def upstream_error_should_skip_backend(body_or_empty: str) -> bool:
+    """额度/鉴权类：换 backend，不再扫参数组合。"""
+    if not body_or_empty:
+        return False
+    msg, code, err_type = extract_upstream_error_fields(body_or_empty)
+    if not msg:
+        return False
+    clean = sanitize_user_visible_message(msg)
+    if code and code in _AUTH_ERROR_CODES:
+        return True
+    return upstream_error_is_internal(clean, code, err_type)
+
+
+def http_status_should_skip_backend(status: int) -> bool:
+    """非 200 且不宜同 backend 继续换参数。"""
+    return status in (401, 403, 429)
+
+
+def http_status_should_try_next_param(status: int) -> bool:
+    return status == 200
 
 
 def upstream_error_visible_to_user(body_or_empty: str) -> bool:
