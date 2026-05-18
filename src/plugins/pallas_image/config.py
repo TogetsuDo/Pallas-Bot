@@ -111,25 +111,30 @@ class Config(BaseModel, extra="ignore"):
         default=3,
         ge=0,
         le=3600,
-        description="同一用户两次画画指令之间的最短间隔（秒）。",
+        description="同一群两次「牛牛画画」的最短间隔（秒）；在真正开始调用上游时扣减，非发「欢呼吧」时。",
     )
+    # 画画重试与耗时：快档（换 response_format 等）优先，慢档（尺寸/quality 扫描）可关见下项
     pallas_image_max_param_attempts: int = Field(
         default=6,
         ge=0,
         le=32,
-        description="每个 backend 最多尝试的参数组合数；0 表示不限制。",
+        description="每个 API backend 内最多尝试的参数组合数（快档+慢档合计）；0 不限制。",
+    )
+    pallas_image_slow_param_fallback: bool = Field(
+        default=True,
+        description="快档失败后是否继续慢档（遍历常见 size/quality 等）；关闭可显著减少失败耗时。",
     )
     pallas_image_draw_total_timeout: float = Field(
         default=300.0,
         gt=30.0,
         le=1800.0,
-        description="单次画画从排队到结束的总耗时上限（秒）。",
+        description="单次画画从进入队列到结束的上限（秒），含排队、下载参考图与多轮重试。",
     )
     pallas_image_ref_download_timeout: float = Field(
         default=30.0,
         gt=1.0,
         le=120.0,
-        description="下载单张参考图的超时（秒）。",
+        description="并行下载每张参考图的单张超时（秒）。",
     )
 
     @classmethod
@@ -318,6 +323,10 @@ class ImageGenSettings:
     @property
     def max_param_attempts(self) -> int:
         return self._c.pallas_image_max_param_attempts
+
+    @property
+    def slow_param_fallback(self) -> bool:
+        return self._c.pallas_image_slow_param_fallback
 
     @property
     def draw_total_timeout(self) -> float:

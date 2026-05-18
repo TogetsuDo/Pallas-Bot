@@ -101,15 +101,22 @@ def draw_should_count_usage(group_id: int, user_id: int) -> bool:
     return True
 
 
-async def acquire_pallas_draw_group_cooldown(group_id: int) -> bool:
+async def draw_group_cooldown_ready(group_id: int) -> bool:
+    """仅检查群冷却是否已过，不扣减。"""
     seconds = image_gen_config.draw_command_cooldown
     if seconds <= 0:
         return True
     gconf = GroupConfig(group_id, cooldown=seconds)
-    if not await gconf.is_cooldown(PALLAS_DRAW_COOLDOWN_KEY):
-        return False
+    return await gconf.is_cooldown(PALLAS_DRAW_COOLDOWN_KEY)
+
+
+async def consume_draw_group_cooldown(group_id: int) -> None:
+    """真正开始画画时扣减群冷却。"""
+    seconds = image_gen_config.draw_command_cooldown
+    if seconds <= 0:
+        return
+    gconf = GroupConfig(group_id, cooldown=seconds)
     await gconf.refresh_cooldown(PALLAS_DRAW_COOLDOWN_KEY)
-    return True
 
 
 pallas_draw = on_command(
@@ -128,7 +135,7 @@ async def pallas_draw_handle(bot: Bot, event: GroupMessageEvent, args: Message =
     if not draw_group_allowed(group_id):
         return
 
-    if not await acquire_pallas_draw_group_cooldown(group_id):
+    if not await draw_group_cooldown_ready(group_id):
         return
 
     backends = image_gen_config.api_backends()
@@ -194,6 +201,7 @@ async def run_pallas_draw_queued(
             if count_usage and pallas_draw_usage_today(usage_key) >= limit_n:
                 await matcher.send(message_at_user(user_id, f"你在本群今日的画画次数已达上限（{limit_n}）。"))
                 return
+            await consume_draw_group_cooldown(group_id)
             await pallas_draw_execute(matcher, bot_id, usage_key, count_usage, user_id, text, ref_urls)
     except FinishedException:
         raise
@@ -257,6 +265,7 @@ async def pallas_draw_execute(
                         )
                     edit_prompt = text.strip() or default_prompt
                     edit_backends = image_backends_with_endpoint(backends, image_edits_endpoint)
+                    edits_abort = [False]
 
                     async def post_edits(backend: ImageApiBackend, req_opts: ImageGenRequestOptions) -> tuple[int, str]:
                         return await post_edits_with_transport(
@@ -282,9 +291,10 @@ async def pallas_draw_execute(
                         post_request=post_edits,
                         last_body_holder=last_body,
                         last_status_holder=last_status,
+                        edits_abort_holder=edits_abort,
                     ):
                         return
-                    if http_status_edits_unsupported(last_status[0]):
+                    if edits_abort[0] or http_status_edits_unsupported(last_status[0]):
                         logger.info(
                             f"bot [{bot_id}] pallas_image edits unsupported status={last_status[0]} "
                             f"in group [{group_id}], fallback to generations",

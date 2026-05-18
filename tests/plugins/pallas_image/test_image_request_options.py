@@ -35,6 +35,19 @@ def test_capped_param_attempts_ref_image_variant() -> None:
     assert any(not a.include_ref_images for a in attempts)
 
 
+def test_capped_without_slow_fallback_is_fast_only(monkeypatch) -> None:
+    from src.plugins.pallas_image import config as cfg_mod
+
+    cfg = cfg_mod.get_pallas_image_config()
+    cfg_mod.image_gen_config.reload(cfg.model_copy(update={"pallas_image_slow_param_fallback": False}))
+    try:
+        fast = image_gen_fast_attempts(with_ref_urls=False)
+        capped = capped_param_attempts(with_ref_urls=False)
+        assert capped == fast or len(capped) <= len(fast)
+    finally:
+        cfg_mod.image_gen_config.reload(cfg)
+
+
 def test_slow_attempts_not_in_fast_only() -> None:
     fast = image_gen_fast_attempts(with_ref_urls=False)
     slow = image_gen_slow_attempts(with_ref_urls=False)

@@ -86,6 +86,7 @@ async def run_backend_param_attempts(
     post_request: PostRequestFn,
     last_body_holder: list[str],
     last_status_holder: list[int],
+    edits_abort_holder: list[bool] | None = None,
 ) -> bool:
     """按 backend × 参数组合请求；成功发图返回 True。"""
     param_attempts = capped_param_attempts(with_ref_urls=with_ref_urls)
@@ -176,6 +177,8 @@ async def run_backend_param_attempts(
                 break
             if http_status_should_skip_backend(status):
                 skip_backend = True
+                if op == "edits" and http_status_edits_unsupported(status) and edits_abort_holder is not None:
+                    edits_abort_holder[0] = True
                 if still_retrying:
                     logger.info(
                         f"bot [{bot_id}] pallas_image {op} backend={backend.label} "
@@ -200,6 +203,8 @@ async def run_backend_param_attempts(
             break
         if skip_backend:
             continue
+        if edits_abort_holder is not None and edits_abort_holder[0]:
+            break
     return False
 
 

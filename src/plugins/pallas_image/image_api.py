@@ -19,6 +19,20 @@ from .config import ImageApiBackend, image_gen_config
 from .image_request_options import ImageGenRequestOptions
 
 
+def schedule_persist_generated_draw(data: bytes, group_id: int, user_id: int) -> None:
+    """后台归档，避免阻塞发图。"""
+
+    async def job() -> None:
+        try:
+            from .draw_archive import persist_generated_draw
+
+            await persist_generated_draw(data, group_id, user_id)
+        except Exception as e:
+            logger.warning(f"pallas_image persist archive failed group={group_id}: {e}")
+
+    asyncio.create_task(job(), name=f"pallas_draw_archive:{group_id}:{user_id}")
+
+
 def image_api_base(backend: ImageApiBackend) -> str:
     base = (backend.base_url or "").strip()
     if not base:
@@ -495,12 +509,7 @@ async def reply_from_image_api_json(
     if raw:
         await matcher.send(optional_message_at_user(at_user_id, MessageSegment.image(raw)))
         if persist_draw:
-            try:
-                from .draw_archive import persist_generated_draw
-
-                await persist_generated_draw(raw, persist_draw[0], persist_draw[1])
-            except Exception as e:
-                logger.warning(f"pallas_image persist archive failed group={persist_draw[0]}: {e}")
+            schedule_persist_generated_draw(raw, persist_draw[0], persist_draw[1])
         return True
     if remote_url:
         try:
@@ -509,12 +518,7 @@ async def reply_from_image_api_json(
                 content = img_resp.content
                 await matcher.send(optional_message_at_user(at_user_id, MessageSegment.image(content)))
                 if persist_draw:
-                    try:
-                        from .draw_archive import persist_generated_draw
-
-                        await persist_generated_draw(content, persist_draw[0], persist_draw[1])
-                    except Exception as e:
-                        logger.warning(f"pallas_image persist archive failed group={persist_draw[0]}: {e}")
+                    schedule_persist_generated_draw(content, persist_draw[0], persist_draw[1])
                 return True
         except httpx.HTTPError:
             pass

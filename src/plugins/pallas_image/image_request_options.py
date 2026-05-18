@@ -144,10 +144,13 @@ def image_gen_slow_attempts(*, with_ref_urls: bool) -> list[ImageGenRequestOptio
 
 
 def capped_param_attempts(*, with_ref_urls: bool) -> list[ImageGenRequestOptions]:
-    """快档 + 慢档，受 max_param_attempts 限制。"""
+    """快档 + 可选慢档，受 max_param_attempts 限制。"""
     fast = image_gen_fast_attempts(with_ref_urls=with_ref_urls)
-    slow = image_gen_slow_attempts(with_ref_urls=with_ref_urls)
     out = list(fast)
+    if not image_gen_config.slow_param_fallback:
+        max_n = image_gen_config.max_param_attempts
+        return out[:max_n] if max_n > 0 else out
+    slow = image_gen_slow_attempts(with_ref_urls=with_ref_urls)
     seen = {(o.size, o.aspect_ratio, o.quality, o.response_format, o.include_ref_images) for o in out}
     for o in slow:
         key = (o.size, o.aspect_ratio, o.quality, o.response_format, o.include_ref_images)

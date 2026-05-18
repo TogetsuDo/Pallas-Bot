@@ -119,7 +119,7 @@ def upstream_error_should_skip_backend(body_or_empty: str) -> bool:
 
 def http_status_should_skip_backend(status: int) -> bool:
     """非 200 且不宜同 backend 继续换参数。"""
-    return status in (401, 403, 429)
+    return status in (401, 403, 429, 502, 503, 504)
 
 
 def http_status_should_try_next_param(status: int) -> bool:
