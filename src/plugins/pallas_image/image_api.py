@@ -405,10 +405,12 @@ async def bytes_from_image_reference(
 async def download_reference_images(
     client: httpx.AsyncClient,
     ref_urls: list[str],
+    *,
+    download_timeout: float | None = None,
 ) -> list[bytes]:
     if not ref_urls:
         return []
-    ref_timeout = image_gen_config.ref_download_timeout
+    ref_timeout = download_timeout if download_timeout is not None else image_gen_config.ref_download_timeout
 
     async def one(url: str) -> bytes | None:
         return await bytes_from_image_reference(client, url, download_timeout=ref_timeout)

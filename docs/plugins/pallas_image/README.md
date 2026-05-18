@@ -5,113 +5,180 @@
 ## ✨ 功能特性
 
 - **文生图 (Text-to-Image)**：输入提示词，AI 根据描述生成图像。
-- **图生图/修图 (Image-to-Image/Edit)**：支持附带参考图或回复图片消息，基于参考图生成新图像。
-- **多传输层支持**：内置 `httpx`、`curl-cffi` (支持 TLS 指纹模拟) 和系统 `curl` 三种 HTTP 客户端，自动回退以确保连通性。
-- **用量限制与冷却**：
-  - 支持按群、按用户设置每日绘画次数上限。
-  - 支持群级命令冷却时间，防止刷屏。
-  - 支持白名单群组和无限制用户/群组配置。
-- **原子化存储**：每日使用次数持久化存储至 JSON 文件，重启不丢失，且保证数据写入安全。
+- **图生图/修图 (Image-to-Image/Edit)**：支持附带参考图或回复图片消息；默认优先走 `/images/edits`，不支持时自动回退 `/images/generations`。
+- **多 API 回退**：主配置 `base_url` + `api_key` 失败后，按 `pallas_image_api_backends` 顺序尝试；相同 URL/密钥/模型组合会自动去重。
+- **参数快/慢档回退**：上游不支持某组 `size` / `quality` / `response_format` 等时，自动换参数组合；慢档可关闭以缩短失败耗时。
+- **多传输层**：`httpx`、`curl-cffi`（TLS 指纹）、系统 `curl`，按配置与连通性自动回退。
+- **用量与冷却**：
+  - 按群、按用户每日次数上限；白名单群/用户可无限制。
+  - 群冷却在**真正开始调用上游**时扣减（已回复「欢呼吧」、进入执行后），排队失败不占冷却。
+  - 进程内并发与「进行中任务」上限，避免刷屏拖垮上游。
+- **失败回复策略**：额度/鉴权/未分类内部错误对用户显示统一兜底句；违规/审核类错误展示脱敏后的上游文案（去掉 `request id` 等）。
+- **原子化存储**：每日次数与可选画图归档写入 `data/pallas_image/`。
 
 ## 📋 前置要求
 
 1. **NoneBot2** 环境已搭建。
 2. **OneBot v11** 适配器已安装并运行。
-3. **AI 绘图 API 服务**：需要一个兼容 OpenAI Images API 格式的后端服务（如 Stable Diffusion WebUI with API, Midjourney Proxy, DALL-E 3 等）。
-4. (可选) **curl**：如果选择使用系统 curl 作为传输层，需确保服务器安装了 curl。
+3. **兼容 OpenAI Images API 的绘图服务**（如 DALL·E 兼容网关、自建代理等）。
+4. （可选）**curl**：传输层选 `curl` 时需系统已安装。
 
 ## ⚙️ 配置说明
 
-在 NoneBot 的配置文件（`.env` 或 `.env.prod`）中添加以下配置项：
-生成图片的参数可以全部交给服务接口
+在 `.env` / `.env.prod` 或 WebUI 插件配置中设置。字段说明以 [`config.py`](../../../src/plugins/pallas_image/config.py) 的 `Field(description=...)` 为准（WebUI 会显示）。
 
-### 基础配置
-
-| 配置项 | 类型 | 默认值 | 说明 |
-| :--- | :--- | :--- | :--- |
-| [pallas_image_min_priority](../../../src/plugins/pallas_image/config.py#L6) | `int` | `5` | 插件优先级 |
-| [pallas_image_base_url](../../../src/plugins/pallas_image/config.py#L7) | `str` | `""` | AI 绘图 API 的基础 URL (例如: `http://127.0.0.1:7860/`) |
-| [pallas_image_api_key](../../../src/plugins/pallas_image/config.py#L8) | `str` | `""` | API 认证密钥 (Bearer Token) |
-| [pallas_image_model](../../../src/plugins/pallas_image/config.py#L9) | `str` | `gpt-image-2` | 使用的模型名称 |
-| [pallas_image_request_timeout](../../../src/plugins/pallas_image/config.py#L21) | `float` | `180` | 请求超时时间 (秒) |
-| [pallas_image_max_concurrency](../../../src/plugins/pallas_image/config.py#L22) | `int` | `2` | 进程内并发生成请求上限 |
-
-### 高级配置
+### 基础与 API
 
 | 配置项 | 类型 | 默认值 | 说明 |
 | :--- | :--- | :--- | :--- |
-| [pallas_image_http_transport](../../../src/plugins/pallas_image/config.py#L23) | `str` | `"auto"` | HTTP 传输方式: `auto`, `httpx`, `cffi`, `curl` |
-| [pallas_image_tls_impersonate](../../../src/plugins/pallas_image/config.py#L24) | `str` | `chrome124` | 当使用 `cffi` 时，模拟的浏览器 TLS 指纹 |
-| [pallas_image_http_user_agent](../../../src/plugins/pallas_image/config.py#L25) | `str` | `curl/8.5.0` | 自定义 User-Agent |
-| [pallas_image_size](../../../src/plugins/pallas_image/config.py#L15) | `str` | `""` | 生成图片的尺寸 (例如: `1024x1024`) |
-| [pallas_image_aspect_ratio](../../../src/plugins/pallas_image/config.py#L11) | `str` | `""` | 宽高比 (如果 API 支持，例如: `16:9`) |
-| [pallas_image_quality](../../../src/plugins/pallas_image/config.py#L16) | `str` | `auto` | 图片质量 (例如: `standard`, `hd`, `auto`) |
-| [pallas_image_response_format](../../../src/plugins/pallas_image/config.py#L17) | `str` | `b64_json` | 响应格式 (例如: `url`, `b64_json`) |
-| [pallas_image_use_edits_for_reference_images](../../../src/plugins/pallas_image/config.py#L18) | `bool` | `True` | 当有参考图时，是否优先使用 `/edits` 接口而非 `/generations` |
-| [pallas_image_merge_reference_urls_into_prompt](../../../src/plugins/pallas_image/config.py#L19) | `bool` | `False` | 是否将参考图 URL 合并到提示词中发送 |
-| [pallas_image_default_edit_prompt](../../../src/plugins/pallas_image/config.py#L20) | `str` | `按参考图调整` | 图生图时的默认提示词（如果用户未提供） |
+| `pallas_image_min_priority` | `int` | `5` | 插件优先级 |
+| `pallas_image_base_url` | `str` | `""` | 主 API 根 URL |
+| `pallas_image_api_key` | `str` | `""` | 主 API 密钥 |
+| `pallas_image_model` | `str` | `gpt-image-2` | 默认模型名 |
+| `pallas_image_api_backends` | `JSON 数组` | `[]` | 备选 API，项含 `base_url`、`api_key`，`model` 可选 |
+| `pallas_image_request_timeout` | `float` | `180` | 单次 HTTP 生图请求超时（秒） |
+| `pallas_image_max_concurrency` | `int` | `2` | 全局同时向上游 POST 的上限 |
 
-### 权限与限制配置
+**备选 API 示例（环境变量 JSON 一行）：**
+
+```json
+[{"base_url":"https://api2.example.com/v1","api_key":"sk-xxx"},{"base_url":"https://api3.example.com/v1","api_key":"sk-yyy","model":"other-model"}]
+```
+
+### 生图参数（可全部交给上游默认）
 
 | 配置项 | 类型 | 默认值 | 说明 |
 | :--- | :--- | :--- | :--- |
-| [pallas_image_draw_group_whitelist](../../../src/plugins/pallas_image/config.py#L26) | `list[int]` | `[]` | 允许使用画图的群号列表，为空则所有群可用 |
-| [pallas_image_draw_per_user_limit](../../../src/plugins/pallas_image/config.py#L27) | `int` | `0` | 每人每天在每群可调用次数上限；`0` 表示不限制 |
-| [pallas_image_draw_unlimited_group_ids](../../../src/plugins/pallas_image/config.py#L33) | `list[int]` | `[]` | 不受次数限制的群号列表 |
-| [pallas_image_draw_unlimited_user_ids](../../../src/plugins/pallas_image/config.py#L34) | `list[int]` | `[]` | 不受次数限制的用户 QQ 号列表 |
-| [pallas_image_draw_command_cooldown](../../../src/plugins/pallas_image/config.py#L35) | `int` | `3` | 群内命令冷却时间 (秒) |
+| `pallas_image_size` | `str` | `""` | 如 `1024x1024` |
+| `pallas_image_aspect_ratio` | `str` | `""` | 如 `16:9`，与 `size` 二选一 |
+| `pallas_image_quality` | `str` | `auto` | 质量档位 |
+| `pallas_image_response_format` | `str` | `b64_json` | `b64_json` / `url` 等 |
+| `pallas_image_use_edits_for_reference_images` | `bool` | `true` | 有参考图时优先 `/edits` |
+| `pallas_image_merge_reference_urls_into_prompt` | `bool` | `false` | 是否把参考图 URL 写入 prompt |
+| `pallas_image_default_edit_prompt` | `str` | `按参考图调整` | 仅参考图、无文字时的默认提示 |
+
+### HTTP 传输
+
+| 配置项 | 类型 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `pallas_image_http_transport` | `str` | `auto` | `auto` / `httpx` / `cffi` / `curl` |
+| `pallas_image_tls_impersonate` | `str` | `chrome124` | `cffi` 时 TLS 指纹 |
+| `pallas_image_http_user_agent` | `str` | `curl/8.5.0` | 出站 User-Agent |
+
+### 权限与次数
+
+| 配置项 | 类型 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `pallas_image_draw_group_whitelist` | `list[int]` | `[]` | 非空时仅列出的群可用 |
+| `pallas_image_draw_per_user_limit` | `int` | `0` | 每人每群每日上限；`0` 不限 |
+| `pallas_image_draw_unlimited_group_ids` | `list[int]` | `[]` | 不受次数限制的群 |
+| `pallas_image_draw_unlimited_user_ids` | `list[int]` | `[]` | 不受次数限制的用户 |
+| `pallas_image_draw_command_cooldown` | `int` | `3` | 同群两次画画最短间隔（秒）；**开画时**扣减 |
+
+### 重试、超时与稳定性（推荐按需调优）
+
+| 配置项 | 类型 | 默认值 | 说明 |
+| :--- | :--- | :--- | :--- |
+| `pallas_image_max_param_attempts` | `int` | `6` | 每个 backend 最多尝试的参数组合数（快+慢）；`0` 不限制 |
+| `pallas_image_slow_param_fallback` | `bool` | `true` | 快档失败后是否继续慢档（扫常见 size/quality） |
+| `pallas_image_draw_total_timeout` | `float` | `300` | 单次画画总耗时上限（含排队、下参考图、重试） |
+| `pallas_image_ref_download_timeout` | `float` | `30` | 每张参考图下载超时；实际会受总超时剩余时间压缩 |
+| `pallas_image_draw_max_pending` | `int` | `8` | 进程内进行中画画任务上限；`0` 不限制 |
+
+**.env 示例片段：**
+
+```env
+PALLAS_IMAGE_BASE_URL=https://your-gateway/v1
+PALLAS_IMAGE_API_KEY=sk-...
+PALLAS_IMAGE_MODEL=gpt-image-2
+PALLAS_IMAGE_MAX_PARAM_ATTEMPTS=6
+PALLAS_IMAGE_SLOW_PARAM_FALLBACK=true
+PALLAS_IMAGE_DRAW_TOTAL_TIMEOUT=300
+PALLAS_IMAGE_DRAW_MAX_PENDING=8
+```
+
+## 🔄 请求流程（简图）
+
+```mermaid
+flowchart TD
+  A[群消息: 牛牛画画] --> B{群白名单/冷却/次数}
+  B -->|通过| C{进行中任务未满?}
+  C -->|否| D[提示稍后再试]
+  C -->|是| E[欢呼吧!]
+  E --> F[后台队列: 用户锁 + 扣冷却]
+  F --> G{有参考图且启用 edits?}
+  G -->|是| H[并行下载参考图]
+  H --> I[edits: backend × 参数快/慢档]
+  I -->|404/405/501| J[generations 回退]
+  G -->|否| J
+  I -->|成功| K[发图 + 计次 + 后台归档]
+  J --> L[generations: backend × 参数]
+  L -->|成功| K
+  L -->|失败| M[兜底句或违规文案]
+```
+
+**参数快档（约 2～4 组）**：配置原样 → 换 `response_format` → 去掉 `quality` →（有参考图）去掉请求体 `image` 字段。
+
+**参数慢档**（`pallas_image_slow_param_fallback=true`）：在快档之后追加常见 `quality` / `size` / `aspect_ratio` / 极简体。
+
+**换 backend 不重扫参数**：HTTP `401/403/429/502/503/504`，或 JSON 中额度/鉴权类 `error.code`（如 `insufficient_user_quota`）。
+
+**同 backend 换参数**：HTTP `400/415/422`（参数不兼容）。
 
 ## 🚀 使用方法
 
-在支持的群聊中发送以下指令：
-
 ### 1. 文生图
+
 ```text
 牛牛画画 一只穿着宇航服的柯基犬，在火星表面，赛博朋克风格
 ```
 
-### 2. 图生图 / 参考图生成
-**方式 A：附带图片**
-发送图片的同时，在消息中包含指令：
-> [图片] 牛牛画画 把这只猫变成油画风格
+### 2. 图生图
 
-**方式 B：回复图片**
-回复某条包含图片的消息，并发送：
-> 牛牛画画 背景换成海滩
+- 消息附带图片 + `牛牛画画 …`
+- 或回复带图消息后发 `牛牛画画 …`
 
 ### 3. 多图参考
-可以一次性发送多张图片作为参考，AI 将综合这些图像的特征进行生成。
+
+一次附带多张图，将综合参考（受上游与 edits/generations 能力限制）。
 
 ## 📂 数据存储
 
-插件会在 `data/pallas_image/` 目录下生成以下文件：
+`data/pallas_image/`：
 
-- `pallas_draw_daily_usage.json`: 记录每个用户在各群的每日使用次数。
-  - 结构示例：
-    ```json
-    {
-      "version": 1,
-      "entries": {
-        "123456789:987654321": {
-          "day": "2023-10-27",
-          "count": 3
-        }
-      }
-    }
-    ```
+| 文件/目录 | 说明 |
+| :--- | :--- |
+| `pallas_draw_daily_usage.json` | 每人每群每日次数 |
+| `draw_archive/`（若启用归档逻辑） | 生成图本地副本（后台写入，不阻塞发图） |
+
+## 🛡️ 错误与日志
+
+| 对用户 | 典型原因 |
+| :--- | :--- |
+| `呃......咳嗯，下次不能喝、喝这么多了......` | 额度、鉴权、超时、连接失败、未识别上游错误 |
+| 上游脱敏文案 | 违规/审核/敏感词等（`content_policy_violation` 等或文案含「违规」「审核」） |
+| `牛牛正在给其他小伙伴画画，请稍后再试。` | 超过 `pallas_image_draw_max_pending` |
+
+详细原因请看日志关键字：`pallas_image`、`backend=`、`status=`、`issue=`。内部错误会在 WARNING 中保留完整上游 body。
+
 ## 🛠️ 故障排查
 
-1. **连接失败**：
-   - 检查 [pallas_image_base_url](../../../src/plugins/pallas_image/config.py#L7) 是否正确。
-   - 尝试将 [pallas_image_http_transport](../../../src/plugins/pallas_image/config.py#L23) 设置为 `curl` 或 `cffi`，某些 API 服务可能对 TLS 指纹有严格要求。
-   - 查看日志中的 `image api connection failed` 或 `curl 退出码` 错误信息。
+1. **连接失败**
+   - 检查 `pallas_image_base_url`、网络与防火墙。
+   - 尝试 `pallas_image_http_transport=curl` 或 `cffi`。
+   - 日志：`api connect error`、`curl 退出码`。
 
-2. **生成失败/报错**：
-   - 检查 API Key 是否有效。
-   - 检查模型名称 [pallas_image_model](../../../src/plugins/pallas_image/config.py#L9) 是否受服务端支持。
-   - 查看日志中 `image generations failed` 的具体返回 body，通常包含 API 端的详细错误原因。
+2. **一直失败但无图**
+   - 核对 `api_key`、`model` 与网关是否支持 `/images/generations`、`/images/edits`。
+   - 参考图场景可设 `pallas_image_use_edits_for_reference_images=false` 强制走 generations。
+   - 上游不认参数时：减小 `pallas_image_max_param_attempts` 或关闭 `pallas_image_slow_param_fallback` 便于快速定位。
+   - 日志：`generations exhausted`、`edits unsupported`、`trying next params`。
 
-3. **次数未重置**：
-   - 插件基于本地日期 (`date.today()`) 判断。如果服务器跨天未重启，内存中的数据会在次日首次调用时自动清理过期条目并持久化。
+3. **太慢 / 占满上游**
+   - 降低 `pallas_image_max_concurrency`、`pallas_image_draw_max_pending`。
+   - 缩短 `pallas_image_draw_total_timeout` 或关闭慢档。
 
-实现见 [`src/plugins/pallas_image/`](../../../src/plugins/pallas_image/)（请求与绘制主逻辑见 `image_api.py`、`draw.py` 等）。
+4. **次数未重置**
+   - 按服务器本地自然日；跨天首次调用会清理过期条目。
+
+实现见 [`src/plugins/pallas_image/`](../../../src/plugins/pallas_image/)（`draw.py` 入口、`draw_attempts.py` 重试、`image_api.py` 请求、`image_request_options.py` 参数序列、`config.py` 配置）。

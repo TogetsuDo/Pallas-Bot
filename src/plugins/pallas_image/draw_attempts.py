@@ -11,6 +11,7 @@ from nonebot.exception import FinishedException
 
 from src.common.utils.http_msg import (
     http_status_should_skip_backend,
+    http_status_should_try_next_param,
     upstream_error_should_skip_backend,
     upstream_error_visible_to_user,
     user_failure_reply,
@@ -34,6 +35,9 @@ class DrawDeadline:
 
     def expired(self) -> bool:
         return time.monotonic() >= self.end
+
+    def remaining_seconds(self) -> float:
+        return max(0.0, self.end - time.monotonic())
 
 
 class DrawTotalTimeoutError(Exception):
@@ -190,6 +194,12 @@ async def run_backend_param_attempts(
                         f"backend={backend.label} status={status} body={body_text[:500]}",
                     )
                 break
+            if http_status_should_try_next_param(status) and has_more_opts:
+                logger.info(
+                    f"bot [{bot_id}] pallas_image {op} backend={backend.label} "
+                    f"status={status} in group [{group_id}], trying next params",
+                )
+                continue
             if still_retrying:
                 logger.info(
                     f"bot [{bot_id}] pallas_image {op} backend={backend.label} "

@@ -36,6 +36,7 @@ from .image_api import (
     post_generations_with_transport,
 )
 from .image_request_options import ImageGenRequestOptions
+from .runtime_state import acquire_draw_pending_slot, release_draw_pending_slot
 
 PALLAS_DRAW_COOLDOWN_KEY = "pallas_draw_command"
 
@@ -170,6 +171,11 @@ async def pallas_draw_handle(bot: Bot, event: GroupMessageEvent, args: Message =
             )
         )
 
+    if not await acquire_draw_pending_slot():
+        await pallas_draw.finish(
+            message_at_user(user_id, "牛牛正在给其他小伙伴画画，请稍后再试。"),
+        )
+
     await pallas_draw.send("欢呼吧！")
     asyncio.create_task(
         run_pallas_draw_queued(
@@ -221,6 +227,8 @@ async def run_pallas_draw_queued(
             raise
         except Exception as send_err:
             logger.warning(f"bot [{bot_id}] pallas_image draw failure reply failed: {send_err}")
+    finally:
+        await release_draw_pending_slot()
 
 
 async def pallas_draw_execute(
@@ -256,7 +264,15 @@ async def pallas_draw_execute(
     try:
         async with httpx.AsyncClient(timeout=client_timeout, trust_env=True, limits=limits) as http_client:
             if ref_urls and cfg.use_edits_for_reference_images:
-                blobs = await download_reference_images(http_client, ref_urls)
+                ref_dl_timeout = min(
+                    cfg.ref_download_timeout,
+                    max(1.0, deadline.remaining_seconds()),
+                )
+                blobs = await download_reference_images(
+                    http_client,
+                    ref_urls,
+                    download_timeout=ref_dl_timeout,
+                )
                 if blobs:
                     if len(ref_urls) > len(blobs):
                         logger.warning(

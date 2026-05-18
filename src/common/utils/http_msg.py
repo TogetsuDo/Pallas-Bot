@@ -123,7 +123,8 @@ def http_status_should_skip_backend(status: int) -> bool:
 
 
 def http_status_should_try_next_param(status: int) -> bool:
-    return status == 200
+    """请求体/参数不被接受时换下一组参数，不换 backend。"""
+    return status in (400, 415, 422)
 
 
 def upstream_error_visible_to_user(body_or_empty: str) -> bool:

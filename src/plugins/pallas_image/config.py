@@ -136,6 +136,12 @@ class Config(BaseModel, extra="ignore"):
         le=120.0,
         description="并行下载每张参考图的单张超时（秒）。",
     )
+    pallas_image_draw_max_pending: int = Field(
+        default=8,
+        ge=0,
+        le=64,
+        description="进程内同时进行中的画画任务上限（含已回复「欢呼吧」尚未结束的）；0 不限制。",
+    )
 
     @classmethod
     def from_env(cls) -> Self:
@@ -201,31 +207,26 @@ class ImageGenSettings:
     def api_backends(self) -> list[ImageApiBackend]:
         default_model = (self._c.pallas_image_model or "").strip()
         out: list[ImageApiBackend] = []
+        seen: set[tuple[str, str, str]] = set()
+
+        def append(url: str, key: str, model: str, label: str) -> None:
+            sig = (url, key, model)
+            if sig in seen:
+                return
+            seen.add(sig)
+            out.append(ImageApiBackend(base_url=url, api_key=key, model=model, label=label))
+
         primary_url = (self._c.pallas_image_base_url or "").strip()
         primary_key = (self._c.pallas_image_api_key or "").strip()
         if primary_url and primary_key:
-            out.append(
-                ImageApiBackend(
-                    base_url=primary_url,
-                    api_key=primary_key,
-                    model=default_model,
-                    label="primary",
-                )
-            )
+            append(primary_url, primary_key, default_model, "primary")
         for i, entry in enumerate(self._c.pallas_image_api_backends):
             url = (entry.base_url or "").strip()
             key = (entry.api_key or "").strip()
             if not url or not key:
                 continue
             model = (entry.model or "").strip() or default_model
-            out.append(
-                ImageApiBackend(
-                    base_url=url,
-                    api_key=key,
-                    model=model,
-                    label=f"fallback-{i}",
-                )
-            )
+            append(url, key, model, f"fallback-{i}")
         return out
 
     @property
@@ -335,6 +336,10 @@ class ImageGenSettings:
     @property
     def ref_download_timeout(self) -> float:
         return self._c.pallas_image_ref_download_timeout
+
+    @property
+    def draw_max_pending(self) -> int:
+        return self._c.pallas_image_draw_max_pending
 
 
 def on_pallas_image_config_reload(cfg: Config) -> None:
