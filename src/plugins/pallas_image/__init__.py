@@ -34,7 +34,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_condition": "「牛牛网关」（群内）",
                 "command_permission": "pallas_image.gateway",
                 "brief_des": "检测主网关与备选网关连通与延迟",
-                "detail_des": "按配置顺序探测各站点，返回类似「牛牛画画：站点1：120ms」的多行结果，不消耗画画次数。",
+                "detail_des": "按配置顺序探测各网关，返回类似「牛牛画画：备线1：120ms」的多行结果，不消耗画画次数。",
             },
         ],
         "menu_template": "default",

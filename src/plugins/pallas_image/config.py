@@ -12,6 +12,10 @@ from src.common.webui import config_from_env, install_hot_reload_config
 class ImageBackendEntry(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="ignore")
 
+    name: str = Field(
+        default="",
+        description="显示名称（网关检测、牛牛网关命令等）；留空则按顺序显示为备线 N。",
+    )
     base_url: str = Field(
         default="",
         description="备选 API 根 URL（建议以 / 结尾；插件会拼接 v1/images/...，勿写成 .../v1）。",
@@ -44,14 +48,16 @@ class Config(BaseModel, extra="ignore"):
         ),
     )
     pallas_image_api_key: str = Field(default="", description="调用图像 API 的密钥或 Token。")
+    pallas_image_primary_name: str = Field(
+        default="",
+        description="主网关显示名称；留空时 WebUI 与检测结果显示为「主网关」。",
+    )
     pallas_image_api_backends: list[ImageBackendEntry] = Field(
         default_factory=list,
         description=(
-            "备选 API 列表（JSON 数组）；主配置失败后按顺序尝试。"
-            "每项含 base_url、api_key；model 可选；omit_response_format 可选（见该项说明）。"
-            '示例：[{"base_url":"https://api2.example.com/","api_key":"sk-xxx","model":"gpt-image-2"},'
-            '{"base_url":"https://gateway.example.net/api/","api_key":"sk-yyy",'
-            '"model":"vendor/image-model","omit_response_format":true}]'
+            "备选 API 列表；主配置失败后按顺序尝试。"
+            "每项含 base_url、api_key；name、model、omit_response_format 可选。"
+            "WebUI 插件配置页提供列表编辑；环境变量仍为 JSON 数组。"
         ),
     )
     pallas_image_model: str = Field(default="gpt-image-2", description="默认使用的图像模型名。")
@@ -68,7 +74,7 @@ class Config(BaseModel, extra="ignore"):
         default="b64_json",
         description=(
             "主网关及未设 omit_response_format 的备选所请求的返回格式（如 b64_json、url）。"
-            "若某备选上游 OpenAPI 无 response_format 字段，请在该项 JSON 内设 omit_response_format=true。"
+            "若某备选上游无 response_format 字段，请在该备选网关条目勾选 omit_response_format。"
         ),
     )
     pallas_image_use_edits_for_reference_images: bool = Field(
@@ -163,7 +169,33 @@ class Config(BaseModel, extra="ignore"):
 
     @classmethod
     def from_env(cls) -> Self:
-        return config_from_env(cls, parse_env_value=parse_pallas_image_env_value)
+        return migrate_legacy_gateway_config(config_from_env(cls, parse_env_value=parse_pallas_image_env_value))
+
+
+def migrate_legacy_gateway_config(c: Config) -> Config:
+    """旧部署仅写 api_backends、主站 base_url/api_key 为空时，将首条有效备选提升为主网关。"""
+    if (c.pallas_image_base_url or "").strip() and (c.pallas_image_api_key or "").strip():
+        return c
+    backends = list(c.pallas_image_api_backends)
+    if not backends:
+        return c
+    first = backends[0]
+    first_url = (first.base_url or "").strip()
+    first_key = (first.api_key or "").strip()
+    if not first_url or not first_key:
+        return c
+    first_name = (first.name or "").strip()
+    first_model = (first.model or "").strip()
+    global_model = (c.pallas_image_model or "").strip()
+    updates: dict[str, Any] = {
+        "pallas_image_base_url": first_url,
+        "pallas_image_api_key": first_key,
+        "pallas_image_api_backends": backends[1:],
+        "pallas_image_model": first_model or global_model,
+    }
+    if not (c.pallas_image_primary_name or "").strip() and first_name:
+        updates["pallas_image_primary_name"] = first_name
+    return c.model_copy(update=updates)
 
 
 def parse_pallas_image_env_value(name: str, raw: str, ann: Any) -> Any:
@@ -191,6 +223,7 @@ class ImageApiBackend:
     api_key: str
     model: str
     label: str
+    name: str = ""
     omit_response_format: bool = False
 
 
@@ -198,7 +231,7 @@ class ImageGenSettings:
     __slots__ = ("_c", "_draw_unlimited_groups", "_draw_unlimited_users")
 
     def __init__(self, c: Config) -> None:
-        object.__setattr__(self, "_c", c)
+        object.__setattr__(self, "_c", migrate_legacy_gateway_config(c))
         object.__setattr__(
             self,
             "_draw_unlimited_groups",
@@ -211,7 +244,7 @@ class ImageGenSettings:
         )
 
     def reload(self, c: Config) -> None:
-        object.__setattr__(self, "_c", c)
+        object.__setattr__(self, "_c", migrate_legacy_gateway_config(c))
         object.__setattr__(
             self,
             "_draw_unlimited_groups",
@@ -234,6 +267,7 @@ class ImageGenSettings:
             model: str,
             label: str,
             *,
+            name: str = "",
             omit_response_format: bool = False,
         ) -> None:
             sig = (url, key, model)
@@ -246,14 +280,22 @@ class ImageGenSettings:
                     api_key=key,
                     model=model,
                     label=label,
+                    name=(name or "").strip(),
                     omit_response_format=omit_response_format,
                 )
             )
 
         primary_url = (self._c.pallas_image_base_url or "").strip()
         primary_key = (self._c.pallas_image_api_key or "").strip()
+        primary_name = (self._c.pallas_image_primary_name or "").strip()
         if primary_url and primary_key:
-            append(primary_url, primary_key, default_model, "primary")
+            append(
+                primary_url,
+                primary_key,
+                default_model,
+                "primary",
+                name=primary_name,
+            )
         for i, entry in enumerate(self._c.pallas_image_api_backends):
             url = (entry.base_url or "").strip()
             key = (entry.api_key or "").strip()
@@ -265,6 +307,7 @@ class ImageGenSettings:
                 key,
                 model,
                 f"fallback-{i}",
+                name=(entry.name or "").strip(),
                 omit_response_format=entry.omit_response_format,
             )
         return out

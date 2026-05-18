@@ -1,6 +1,7 @@
 from src.plugins.pallas_image.config import Config, ImageApiBackend, ImageGenSettings
 from src.plugins.pallas_image.gateway_probe import (
     GatewayProbeResult,
+    backend_display_site,
     backend_site_name,
     format_gateway_status_lines,
     format_gateway_status_text,
@@ -9,8 +10,19 @@ from src.plugins.pallas_image.gateway_probe import (
 
 
 def test_backend_site_name() -> None:
-    assert backend_site_name(1) == "站点1"
-    assert backend_site_name(2) == "站点2"
+    assert backend_site_name(1) == "备线1"
+    assert backend_site_name(2) == "备线2"
+
+
+def test_backend_display_site_uses_custom_name() -> None:
+    backend = ImageApiBackend(
+        base_url="https://a/",
+        api_key="k",
+        model="m",
+        label="primary",
+        name="我的主站",
+    )
+    assert backend_display_site(backend, 1) == "我的主站"
 
 
 def test_models_probe_urls() -> None:
@@ -26,14 +38,14 @@ def test_models_probe_urls() -> None:
 
 def test_format_gateway_status_lines() -> None:
     results = [
-        GatewayProbeResult("站点1", True, 120, 200, None, "primary"),
-        GatewayProbeResult("站点2", False, None, 401, None, "fallback-0"),
-        GatewayProbeResult("站点3", False, None, None, "超时", "fallback-1"),
+        GatewayProbeResult("主站", True, 120, 200, None, "primary"),
+        GatewayProbeResult("备线1", False, None, 401, None, "fallback-0"),
+        GatewayProbeResult("备线2", False, None, None, "超时", "fallback-1"),
     ]
     lines = format_gateway_status_lines(results)
-    assert lines[0] == "牛牛画画：站点1：120ms"
-    assert lines[1] == "牛牛画画：站点2：HTTP 401"
-    assert lines[2] == "牛牛画画：站点3：超时"
+    assert lines[0] == "牛牛画画：主站：120ms"
+    assert lines[1] == "牛牛画画：备线1：HTTP 401"
+    assert lines[2] == "牛牛画画：备线2：超时"
     assert format_gateway_status_text(results) == "\n".join(lines)
 
 

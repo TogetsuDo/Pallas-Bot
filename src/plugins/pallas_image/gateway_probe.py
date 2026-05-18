@@ -43,7 +43,16 @@ class GatewayProbeResult:
 
 
 def backend_site_name(index: int) -> str:
-    return f"站点{index}"
+    return f"备线{index}"
+
+
+def backend_display_site(backend: ImageApiBackend, index: int) -> str:
+    name = (backend.name or "").strip()
+    if name:
+        return name
+    if backend.label == "primary":
+        return "主网关"
+    return backend_site_name(index)
 
 
 def models_probe_urls(backend: ImageApiBackend) -> list[str]:
@@ -93,7 +102,9 @@ def image_gen_settings_from_draft(draft: dict[str, Any] | None) -> ImageGenSetti
         if key not in Config.model_fields:
             continue
         merged[key] = normalize_patch_value(Config.model_fields[key], value)
-    return ImageGenSettings(Config.model_validate(merged))
+    from .config import migrate_legacy_gateway_config
+
+    return ImageGenSettings(migrate_legacy_gateway_config(Config.model_validate(merged)))
 
 
 def probe_timeout_sec(settings: ImageGenSettings) -> float:
@@ -157,7 +168,7 @@ async def probe_single_backend(
     backend: ImageApiBackend,
     site_index: int,
 ) -> GatewayProbeResult:
-    site = backend_site_name(site_index)
+    site = backend_display_site(backend, site_index)
     urls = models_probe_urls(backend)
     if not urls:
         return GatewayProbeResult(
@@ -227,6 +238,17 @@ async def probe_all_backends(settings: ImageGenSettings | None = None) -> list[G
     backends = cfg.api_backends()
     if not backends:
         return []
+    fallback_idx = 0
+    site_indexes: list[int] = []
+    for backend in backends:
+        if backend.label == "primary":
+            site_indexes.append(0)
+        else:
+            fallback_idx += 1
+            site_indexes.append(fallback_idx)
     async with httpx.AsyncClient() as client:
-        tasks = [probe_single_backend(client, cfg, backend, index) for index, backend in enumerate(backends, start=1)]
+        tasks = [
+            probe_single_backend(client, cfg, backend, site_index)
+            for backend, site_index in zip(backends, site_indexes, strict=True)
+        ]
         return list(await asyncio.gather(*tasks))
