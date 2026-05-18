@@ -71,6 +71,23 @@ def image_backends_with_endpoint(
 
 _MAX_PALLAS_DRAW_USER_LOCKS = 8192
 pallas_draw_user_locks: dict[tuple[int, int], asyncio.Lock] = {}
+_pallas_draw_message_claim: dict[tuple[int, int], int] = {}
+_pallas_draw_claim_lock = asyncio.Lock()
+
+
+async def try_claim_pallas_draw_message(event: GroupMessageEvent) -> bool:
+    """同一条群消息仅一只牛处理「牛牛画画」（与 duel try_claim_duel_message 一致）。"""
+    key = (event.group_id, int(event.message_id))
+    bot_id = int(event.self_id)
+    async with _pallas_draw_claim_lock:
+        owner = _pallas_draw_message_claim.get(key)
+        if owner is None:
+            _pallas_draw_message_claim[key] = bot_id
+            if len(_pallas_draw_message_claim) > 400:
+                for k in list(_pallas_draw_message_claim.keys())[:200]:
+                    _pallas_draw_message_claim.pop(k, None)
+            return True
+        return owner == bot_id
 
 
 def get_pallas_draw_user_lock(group_id: int, user_id: int) -> asyncio.Lock:
@@ -138,6 +155,9 @@ async def pallas_draw_handle(bot: Bot, event: GroupMessageEvent, args: Message =
         return
 
     if not await draw_group_cooldown_ready(group_id):
+        return
+
+    if not await try_claim_pallas_draw_message(event):
         return
 
     backends = image_gen_config.api_backends()
