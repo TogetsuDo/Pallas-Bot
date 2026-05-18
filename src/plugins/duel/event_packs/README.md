@@ -166,7 +166,8 @@
 - 默认按 `duel_intrusion_race_chance` 掷为 **抢认**（@双方抢先咏名）或 **单方咏名**（`target` 指定 QQ）；`mode: "race"` / `"single"` 可强制其一。
 - 应答须发送**闯入者游戏内干员名**（与名册一致，整句完全一致）。
 - **辨认成功**（单方或抢认胜者）：按技能种类选用 `on_success_effects_*`，以胜者/应答方为 `actor` 结算；效果多指向对手。
-- **辨认失败**：仍落下本幕技能；攻击类打应答方（`<A>`/`<B>` 随本幕 `actor`）；治疗类 `heal_hp`/`add_dp` 改落在**另一方**（如 A 认错却治疗 B）；另结算 `on_fail_effects`。治疗文案用 `after_fail_describe_heal`。
+- **辨认失败**（单方咏名）：仍落下本幕技能；攻击类打应答方（`<A>`/`<B>` 随本幕 `actor`）；治疗类 `heal_hp`/`add_dp` 改落在**另一方**（如 A 认错却治疗 B）；另结算 `on_fail_effects`。治疗文案用 `after_fail_describe_heal`。
+- **抢认失败**（双方皆未咏名）：用 `after_fail_describe_race` / `after_fail_describe_heal_race`（帕拉斯：`pallas_after_fail_race` / `pallas_after_fail_heal_race`）；缺省由引擎生成「<A>与<B>」双败文案；攻击类损创对**双方**各结算一次。
 - `pallas_prelude` / `pallas_after_success` / `pallas_after_fail` 仅帕拉斯乱入事件使用，语义同 `intrusion_prelude` 等。
 - 可选 `profession_bonus` / `sub_profession_bonus`：按职阶/子职阶 ID 追加成功效果（群内不展示子职阶名，见 `public.json` 示例）。
 

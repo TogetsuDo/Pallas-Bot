@@ -405,6 +405,61 @@ def default_intrusion_fail_post(skill_kind: str, actor: str, *, is_pallas: bool)
     return f"<O> 似乎极为恼火，对 {punish} 释放「<SK>」：\n<SKD>\n头也不回地走了。"
 
 
+def default_intrusion_race_fail_post(skill_kind: str, *, is_pallas: bool) -> str:
+    """抢认超时：双方皆未能咏名时的默认收场文案。"""
+    if skill_kind == "heal":
+        if is_pallas:
+            return "<O> 久候无人咏名，漠然落下「<SK>」：\n<SKD>\n<A>与<B> 都没认对她，她已冷冷离去。"
+        return "<O> 等了片刻仍无人认得——索性施放「<SK>」：\n<SKD>\n<A>与<B> 面面相觑，她转身走了。"
+    if is_pallas:
+        return "<O> 冷眼扫过——<A>与<B> 竟无人认得她，对二人释出「<SK>」：\n<SKD>\n冷冷离去。"
+    return "<O> 似乎极为恼火——<A>与<B> 都没认出她是谁，当场对二人释放「<SK>」：\n<SKD>\n头也不回地走了。"
+
+
+def resolve_intrusion_race_fail_post(spec: dict[str, Any], skill_kind: str, *, is_pallas: bool) -> str:
+    if is_pallas:
+        key = "pallas_after_fail_heal_race" if skill_kind == "heal" else "pallas_after_fail_race"
+    else:
+        key = "after_fail_describe_heal_race" if skill_kind == "heal" else "after_fail_describe_race"
+    post = str(spec.get(key, "") or "").strip()
+    if post:
+        return post
+    return default_intrusion_race_fail_post(skill_kind, is_pallas=is_pallas)
+
+
+def duplicate_intrusion_damage_to_both(defs: list[Any]) -> list[dict[str, Any]]:
+    """抢认双败时，将单目标损创效果拆为挑战者、守方各结算一次。"""
+    out: list[dict[str, Any]] = []
+    for raw in defs:
+        if not isinstance(raw, dict):
+            continue
+        if raw.get("type") != "deal_damage":
+            out.append(dict(raw))
+            continue
+        out.extend({**raw, "target": side} for side in ("challenger", "defender"))
+    return out
+
+
+def apply_operator_intrusion_race_fail_outcomes(
+    stacks: Any,
+    spec: dict[str, Any],
+    kind: str,
+    actor: str,
+) -> None:
+    """抢认无人成功：按技能表对双方落效，并结算 on_fail_effects。"""
+    from src.plugins.duel.duel_round_engine import apply_effect_dicts
+
+    on_fail = spec.get("on_fail_effects", [])
+    if not isinstance(on_fail, list):
+        on_fail = []
+    skill_rows = select_operator_intrusion_success_effects(spec, kind)
+    if kind == "heal":
+        apply_effect_dicts(stacks, skill_rows, actor)
+    else:
+        apply_effect_dicts(stacks, duplicate_intrusion_damage_to_both(skill_rows), actor)
+    apply_effect_dicts(stacks, duplicate_intrusion_damage_to_both(on_fail), actor)
+
+
 async def _run_operator_intrusion_race_qte(
     matcher: Matcher,
     group_id: int,
@@ -430,7 +485,6 @@ async def _run_operator_intrusion_race_qte(
         append_combat_delta,
         apply_effect_dicts,
         format_describe,
-        qte_actor_from_target,
         snapshot_combat,
     )
     from src.plugins.duel.duel_send import (
@@ -645,25 +699,14 @@ async def _run_operator_intrusion_race_qte(
         return
 
     kind = str(intrusion_ctx.get("picked_skill_kind") or "neutral")
-    skill_fx = prepare_intrusion_fail_skill_effects(
-        select_operator_intrusion_success_effects(spec, kind),
-        kind,
-    )
-    fail_actor = qte_actor_from_target(spec, actor)
     snap = snapshot_combat(stacks)
-    if skill_fx:
-        apply_effect_dicts(stacks, skill_fx, fail_actor)
-    apply_effect_dicts(stacks, on_fail, fail_actor)
-    if is_pallas:
-        fail_key = "pallas_after_fail_heal" if kind == "heal" else "pallas_after_fail"
-    else:
-        fail_key = "after_fail_describe_heal" if kind == "heal" else "after_fail_describe"
-    post = str(spec.get(fail_key, "") or "").strip()
-    if not post:
-        post = default_intrusion_fail_post(kind, fail_actor, is_pallas=is_pallas)
-    tail = duel_text(QTE_INTRUSION_RACE_DRAW_TAIL)
+    apply_operator_intrusion_race_fail_outcomes(stacks, spec, kind, actor)
+    post = resolve_intrusion_race_fail_post(spec, kind, is_pallas=is_pallas)
     body = append_combat_delta(
-        append_duel_message(tail, format_describe(post, challenger_id, defender_id, intrusion_ctx)),
+        append_duel_message(
+            duel_text(QTE_INTRUSION_RACE_DRAW_TAIL),
+            format_describe(post, challenger_id, defender_id, intrusion_ctx),
+        ),
         challenger_id,
         defender_id,
         snap,
