@@ -29,7 +29,7 @@ def test_same_cross_bot_key_only_one_bot_claims(claim_plugin_data: Path) -> None
     from src.common.group_message_dedup import cross_bot_group_message_key
 
     gid, uid, raw, t = 12345, 999, "牛牛画画 测试", 100
-    key = cross_bot_group_message_key(gid, uid, raw, t)
+    key = cross_bot_group_message_key(gid, uid, raw, t, use_plaintext=True)
     assert claim_mod.try_claim_message_sync("pallas_image", gid, key, 111) is True
     assert claim_mod.try_claim_message_sync("pallas_image", gid, key, 222) is False
     assert claim_mod.try_claim_message_sync("pallas_image", gid, key, 111) is True

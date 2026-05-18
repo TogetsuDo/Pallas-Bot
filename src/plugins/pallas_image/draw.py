@@ -13,8 +13,10 @@ from nonebot.permission import SUPERUSER
 
 from src.common.cmd_perm import group_message_permission_for_command
 from src.common.config import GroupConfig
-from src.common.group_message_dedup import cross_bot_group_message_key
-from src.common.multi_bot_message_claim import try_claim_message
+from src.common.group_message_dedup import (
+    try_begin_group_draw_cheer,
+    try_claim_cross_bot_message,
+)
 from src.common.utils.http_msg import PALLAS_VAGUE_REPLY
 
 from .config import ImageApiBackend, image_gen_config
@@ -73,21 +75,6 @@ def image_backends_with_endpoint(
 
 _MAX_PALLAS_DRAW_USER_LOCKS = 8192
 pallas_draw_user_locks: dict[tuple[int, int], asyncio.Lock] = {}
-
-
-async def try_claim_pallas_draw_message(event: GroupMessageEvent) -> bool:
-    claim_key = cross_bot_group_message_key(
-        event.group_id,
-        event.user_id,
-        event.raw_message,
-        event.time,
-    )
-    return await try_claim_message(
-        "pallas_image",
-        event.group_id,
-        claim_key,
-        int(event.self_id),
-    )
 
 
 def get_pallas_draw_user_lock(group_id: int, user_id: int) -> asyncio.Lock:
@@ -154,7 +141,15 @@ async def pallas_draw_handle(bot: Bot, event: GroupMessageEvent, args: Message =
     if not draw_group_allowed(group_id):
         return
 
-    if not await try_claim_pallas_draw_message(event):
+    bot_id = int(event.self_id)
+    if not await try_claim_cross_bot_message(
+        "pallas_image",
+        group_id,
+        user_id,
+        event.get_plaintext(),
+        event.time,
+        bot_id,
+    ):
         return
 
     if not await draw_group_cooldown_ready(group_id):
@@ -197,6 +192,11 @@ async def pallas_draw_handle(bot: Bot, event: GroupMessageEvent, args: Message =
             message_at_user(user_id, "牛牛正在给其他小伙伴画画，请稍后再试。"),
         )
 
+    cheer_gate = image_gen_config.draw_command_cooldown
+    if not await try_begin_group_draw_cheer(group_id, bot_id, gate_sec=cheer_gate):
+        return
+    await consume_draw_group_cooldown(group_id)
+
     await pallas_draw.send("欢呼吧！")
     asyncio.create_task(
         run_pallas_draw_queued(
@@ -228,7 +228,6 @@ async def run_pallas_draw_queued(
             if count_usage and pallas_draw_usage_today(usage_key) >= limit_n:
                 await matcher.send(message_at_user(user_id, f"你在本群今日的画画次数已达上限（{limit_n}）。"))
                 return
-            await consume_draw_group_cooldown(group_id)
             await pallas_draw_execute(matcher, bot_id, usage_key, count_usage, user_id, text, ref_urls)
     except FinishedException:
         raise
