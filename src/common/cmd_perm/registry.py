@@ -51,6 +51,7 @@ DEFAULT_COMMAND_PERMISSIONS: dict[str, PermissionLevel] = {
     "sing.ncm_login": "superuser",
     "sing.ncm_logout": "superuser",
     "pallas_image.draw": "everyone",
+    "pallas_image.gateway": "everyone",
     "repeater.ban": "staff",
     "repeater.ban_latest": "staff",
     "dream.ban_cleanup": "staff",

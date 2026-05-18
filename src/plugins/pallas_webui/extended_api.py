@@ -2754,6 +2754,53 @@ def register_extended_api(
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": data})
 
+    @router.post(f"{x}/plugins/{{plugin_name}}/config-check", include_in_schema=True)
+    async def _plugin_config_check(
+        plugin_name: str,
+        body: _PluginConfigUpdateBody,
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        if plugin_name != "pallas_image":
+            raise HTTPException(status_code=400, detail="该插件暂不支持配置检测")
+        from src.plugins.pallas_image.gateway_probe import (
+            format_gateway_status_lines,
+            image_gen_settings_from_draft,
+            probe_all_backends,
+        )
+
+        draft = dict(body.values or {})
+        try:
+            settings = image_gen_settings_from_draft(draft)
+        except Exception as e:  # noqa: BLE001
+            from pydantic import ValidationError
+
+            if isinstance(e, ValidationError):
+                from src.common.webui.plugin_api import format_validation_error
+
+                raise HTTPException(status_code=400, detail=format_validation_error(e)) from e
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        results = await probe_all_backends(settings)
+        if not results:
+            lines = ["牛牛画画：尚未配置可用网关（需 base_url、api_key）"]
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "data": {"lines": lines, "results": []},
+                },
+            )
+        lines = format_gateway_status_lines(results)
+        return JSONResponse(
+            {
+                "ok": True,
+                "data": {
+                    "lines": lines,
+                    "results": [r.to_dict() for r in results],
+                },
+            },
+        )
+
     @router.get(f"{x}/common-config/sections", include_in_schema=True)
     async def _common_config_sections_list() -> JSONResponse:
         from src.common.webui.env_sections import list_webui_env_sections
