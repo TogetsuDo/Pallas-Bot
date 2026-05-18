@@ -2745,6 +2745,12 @@ def register_extended_api(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:  # noqa: BLE001
+            from pydantic import ValidationError
+
+            if isinstance(e, ValidationError):
+                from src.common.webui.plugin_api import format_validation_error
+
+                raise HTTPException(status_code=400, detail=format_validation_error(e)) from e
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": data})
 

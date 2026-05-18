@@ -67,7 +67,7 @@ class Config(BaseModel, extra="ignore"):
     )
     pallas_image_request_timeout: float = Field(
         default=180.0,
-        gt=10.0,
+        ge=10.0,
         le=600.0,
         description="单次图像请求超时时间（秒）。",
     )

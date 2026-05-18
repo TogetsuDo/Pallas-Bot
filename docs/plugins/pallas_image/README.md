@@ -25,7 +25,7 @@
 
 ## ⚙️ 配置说明
 
-在 `.env` / `.env.prod` 或 WebUI 插件配置中设置。字段说明以 [`config.py`](../../../src/plugins/pallas_image/config.py) 的 `Field(description=...)` 为准（WebUI 会显示）。
+在 `.env` / `.env.prod` 或 WebUI **插件配置**页（`/plugins/pallas_image`）中设置。字段由服务端 `Config` 自动生成，**无需单独改 WebUI 前端**；保存 400 时请看页面红色提示（如未知配置项、JSON 格式、数值越界）。修改后需 **重启 Bot** 或依赖热重载生效。字段说明以 [`config.py`](../../../src/plugins/pallas_image/config.py) 的 `Field(description=...)` 为准。
 
 ### 基础与 API
 
