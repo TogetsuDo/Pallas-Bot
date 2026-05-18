@@ -180,5 +180,21 @@
       "on_success_effects": [{ "type": "add_self_buff", "target": "actor", "value": 1 }],
       "on_fail_effects": [{ "type": "add_self_debuff", "target": "actor", "value": 1 }]
     }
+  },
+  {
+    "id": "ch_race_lunge",
+    "weight": 5,
+    "describe": "<A>身形前探，剑尖直指 <B> 咽喉——这一刺若成，便是定局。",
+    "effects": [
+      { "type": "deal_damage", "target": "defender", "value": 1 }
+    ],
+    "qte": {
+      "mode": "race",
+      "keys": ["突刺", "贯穿", "决胜"],
+      "window_sec": 9,
+      "prompt": "（决胜一刺！）",
+      "on_success_effects": [{ "type": "deal_damage", "target": "other", "value": 2 }],
+      "on_fail_effects": []
+    }
   }
 ]

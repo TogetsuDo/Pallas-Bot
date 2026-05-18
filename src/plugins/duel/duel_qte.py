@@ -23,10 +23,18 @@ from src.plugins.duel.duel_message import (
     message_has_content,
 )
 from src.plugins.duel.duel_terms import (
+    EXCHANGE_QTE_DEFAULT_PROMPT,
+    EXCHANGE_QTE_RACE_PROMPT,
     QTE_FAIL_TAIL,
     QTE_INTRUSION_FAIL_STUB,
+    QTE_INTRUSION_RACE_DRAW_TAIL,
+    QTE_INTRUSION_RACE_TITLE,
+    QTE_INTRUSION_RACE_WIN_TAIL,
     QTE_INTRUSION_TITLE,
     QTE_KEYWORD_TITLE,
+    QTE_RACE_DRAW_TAIL,
+    QTE_RACE_TITLE,
+    QTE_RACE_WIN_TAIL,
     QTE_SUCCESS_TAIL,
 )
 
@@ -42,6 +50,18 @@ class _DuelQteSession:
 
 
 _sessions: dict[tuple[str, str], _DuelQteSession] = {}
+
+
+@dataclass
+class _DuelRaceQteSession:
+    future: asyncio.Future[str | None]
+    required_key: str
+    deadline: float
+    challenger_id: str
+    defender_id: str
+
+
+_race_sessions: dict[str, _DuelRaceQteSession] = {}
 
 
 def qte_session_id(group_id: int, user_id: str | int) -> tuple[str, str]:
@@ -132,25 +152,175 @@ def schedule_bot_qte_auto_answer(
     asyncio.create_task(job())
 
 
+def schedule_bot_race_qte_auto_answer(
+    group_id: int,
+    challenger_id: str,
+    defender_id: str,
+    required_key: str,
+    fut: asyncio.Future[str | None],
+    window_sec: int,
+    *,
+    qte_kind: str = "keyword",
+    decoy_keys: list[str] | None = None,
+) -> None:
+    """双方均为牛时各自自动抢答，先成功者写入 future。"""
+    for responder in (challenger_id, defender_id):
+        if int(responder) not in block_plugin_config.bots:
+            continue
+
+        async def job(responder_id: str = responder) -> None:
+            from nonebot import get_bots
+
+            delay = random.uniform(1.0, min(5.5, max(1.8, window_sec - 1.0)))
+            success_roll = random.random() < bot_qte_success_rate(qte_kind)
+            if not success_roll:
+                delay += random.uniform(0.3, 1.5)
+            await asyncio.sleep(delay)
+            if fut.done():
+                return
+            outgoing = (
+                required_key
+                if success_roll
+                else pick_bot_wrong_qte_reply(required_key, qte_kind, decoy_keys=decoy_keys)
+            )
+            if outgoing:
+                try:
+                    inst = get_bots().get(str(responder_id))
+                    if inst is not None:
+                        await inst.send_group_msg(group_id=group_id, message=outgoing)
+                except Exception as err:
+                    logger.debug(f"duel bot race qte send failed: {err}")
+            if not fut.done() and success_roll and outgoing == required_key:
+                fut.set_result(responder_id)
+
+        asyncio.create_task(job())
+
+
+def qte_opponent_actor(actor: str) -> str:
+    return "defender" if actor == "challenger" else "challenger"
+
+
+def effect_harms_actor(eff: dict[str, Any], victim: str, actor: str) -> bool:
+    etype = eff.get("type")
+    if etype not in ("deal_damage", "add_self_debuff"):
+        return False
+    tgt = str(eff.get("target", "actor"))
+    if tgt in ("actor", "self"):
+        return victim == actor
+    if tgt == "other":
+        return victim == qte_opponent_actor(actor)
+    return tgt == victim
+
+
+def qte_success_attacks_opponent(effects: list[Any], actor: str) -> bool:
+    """成功效果是否对 actor 的对手造成伤害。"""
+    opponent = qte_opponent_actor(actor)
+    for raw in effects:
+        if isinstance(raw, dict) and effect_harms_actor(raw, opponent, actor):
+            if raw.get("type") == "deal_damage":
+                return True
+    return False
+
+
+_EXCHANGE_RACE_KEYS = ["突刺", "斩落", "贯索", "夺命"]
+_EXCHANGE_DEFENSE_KEYS = ["格挡", "盾反", "架开", "闪避"]
+
+
+def build_exchange_auto_qte(qte_actor: str) -> dict[str, Any]:
+    """兵刃幕无内置 QTE 时，按配置生成守方拆招或双方抢攻。"""
+    from src.plugins.duel.config import plugin_config
+
+    if random.random() < plugin_config.duel_exchange_qte_race_chance:
+        return {
+            "mode": "race",
+            "keys": list(_EXCHANGE_RACE_KEYS),
+            "window_sec": 10,
+            "prompt": EXCHANGE_QTE_RACE_PROMPT,
+            "on_success_effects": [{"type": "deal_damage", "target": "other", "value": 2}],
+            "on_fail_effects": [],
+        }
+    return {
+        "target": qte_actor,
+        "keys": list(_EXCHANGE_DEFENSE_KEYS),
+        "window_sec": 10,
+        "prompt": EXCHANGE_QTE_DEFAULT_PROMPT,
+        "on_success_effects": [{"type": "add_dp", "target": qte_actor, "value": 1}],
+        "on_fail_effects": [{"type": "deal_damage", "target": qte_actor, "value": 2}],
+    }
+
+
+def intrusion_should_race(spec: dict[str, Any]) -> bool:
+    mode = str(spec.get("mode", "")).strip().lower()
+    if mode == "race":
+        return True
+    if mode in ("single", "defend"):
+        return False
+    from src.plugins.duel.config import plugin_config
+
+    return random.random() < plugin_config.duel_intrusion_race_chance
+
+
+def qte_should_race(spec: dict[str, Any], actor: str) -> bool:
+    mode = str(spec.get("mode", "")).strip().lower()
+    if mode == "race":
+        return True
+    if mode in ("single", "defense", "defend"):
+        return False
+    on_ok = spec.get("on_success_effects", [])
+    if not isinstance(on_ok, list):
+        return False
+    return qte_success_attacks_opponent(on_ok, actor)
+
+
+def race_qte_damage_hint(effects: list[Any]) -> str:
+    for raw in effects:
+        if not isinstance(raw, dict) or raw.get("type") != "deal_damage":
+            continue
+        val = raw.get("value")
+        if isinstance(val, int) and val > 0:
+            return f"先声夺人者可再对对手造成{val}点伤害"
+        if raw.get("use_damage"):
+            return "先声夺人者可再痛击对手"
+    return "先声夺人者可再补一刀"
+
+
+def actor_from_user_id(user_id: str, challenger_id: str, defender_id: str) -> str:
+    return "challenger" if str(user_id) == str(challenger_id) else "defender"
+
+
 async def duel_qte_message_rule(bot: Bot, event: Event) -> bool:
     """仅当存在未过期且未完成的 QTE 会话、且文本与要求完全一致时放行。"""
     if not isinstance(event, GroupMessageEvent):
         return False
+    plain = event.get_plaintext().strip()
+    gid = str(event.group_id)
+    race = _race_sessions.get(gid)
+    if race is not None and not race.future.done() and time.time() <= race.deadline:
+        uid = event.get_user_id()
+        if uid in (race.challenger_id, race.defender_id):
+            return plain == race.required_key
     sid = qte_session_id(event.group_id, event.get_user_id())
     sess = _sessions.get(sid)
     if sess is None or sess.future.done():
         return False
     if time.time() > sess.deadline:
         return False
-    return event.get_plaintext().strip() == sess.required_key
+    return plain == sess.required_key
 
 
 duel_qte_exact_rule = Rule(duel_qte_message_rule)
 
 
 def complete_duel_qte(event: GroupMessageEvent) -> None:
-    """将当前群的 QTE 标记为成功。"""
-    sid = qte_session_id(event.group_id, event.get_user_id())
+    """将当前群的 QTE 标记为成功（单人应答或抢攻争先）。"""
+    gid = str(event.group_id)
+    uid = event.get_user_id()
+    race = _race_sessions.get(gid)
+    if race is not None and not race.future.done() and uid in (race.challenger_id, race.defender_id):
+        if event.get_plaintext().strip() == race.required_key:
+            race.future.set_result(uid)
+        return
+    sid = qte_session_id(event.group_id, uid)
     sess = _sessions.get(sid)
     if sess is None or sess.future.done():
         return
@@ -235,6 +405,285 @@ def default_intrusion_fail_post(skill_kind: str, actor: str, *, is_pallas: bool)
     return f"<O> 似乎极为恼火，对 {punish} 释放「<SK>」：\n<SKD>\n头也不回地走了。"
 
 
+async def _run_operator_intrusion_race_qte(
+    matcher: Matcher,
+    group_id: int,
+    challenger_id: str,
+    defender_id: str,
+    stacks: Any,
+    spec: dict[str, Any],
+    actor: str,
+    intrusion_ctx: dict[str, str],
+    *,
+    round_header: str,
+    scene_card: str,
+    narr_log: Any = None,
+    round_index: int = 0,
+    round_tag: str = "",
+    bot_mode: bool = False,
+    challenger_is_bot: bool = False,
+    defender_is_bot: bool = False,
+) -> None:
+    """乱入抢认：双方抢先咏名，成功者按技能表结算（相对胜者 actor）。"""
+    from src.plugins.duel.config import plugin_config
+    from src.plugins.duel.duel_round_engine import (
+        append_combat_delta,
+        apply_effect_dicts,
+        format_describe,
+        qte_actor_from_target,
+        snapshot_combat,
+    )
+    from src.plugins.duel.duel_send import (
+        release_round_line_buffer,
+        send_duel_line,
+        send_duel_line_merge_buffer,
+    )
+
+    on_fail = spec.get("on_fail_effects", [])
+    if not isinstance(on_fail, list):
+        on_fail = []
+
+    if not plugin_config.duel_compact_round:
+        await release_round_line_buffer()
+
+    window_sec = int(spec.get("window_sec", 12))
+    window_sec = max(5, min(window_sec, 45))
+    required_key = intrusion_ctx["name"]
+    prompt_extra = str(spec.get("prompt", "")).strip()
+    is_pallas = bool(intrusion_ctx.get("is_pallas"))
+    prelude = str(spec.get("pallas_prelude" if is_pallas else "intrusion_prelude", "") or "").strip()
+    if not prelude:
+        if is_pallas:
+            prelude = "<O>（<P>）落在场心，冷冷看着你们。"
+        else:
+            prelude = "一名 <P> 的干员闯入，止步场中。"
+    prelude_out = format_describe(prelude, challenger_id, defender_id, intrusion_ctx)
+    card = (
+        format_describe(scene_card.strip(), challenger_id, defender_id, intrusion_ctx)
+        if scene_card.strip()
+        else Message()
+    )
+    parts: list[Message] = []
+    if round_header.strip():
+        parts.append(duel_plain(round_header.strip()))
+    if message_has_content(card):
+        parts.append(card)
+    if message_has_content(prelude_out):
+        parts.append(prelude_out)
+
+    extra = duel_text(f"{prompt_extra}\n") if prompt_extra else Message()
+    op_hint = f"「{required_key}」"
+    if plugin_config.duel_compact_round:
+        prompt = (
+            extra
+            + duel_text(QTE_INTRUSION_RACE_TITLE)
+            + duel_at(challenger_id)
+            + duel_at(defender_id)
+            + duel_text(f" {window_sec}秒内抢先发送闯入者游戏内干员名{op_hint}。")
+        )
+    else:
+        prompt = (
+            extra
+            + duel_text(QTE_INTRUSION_RACE_TITLE)
+            + duel_at(challenger_id)
+            + duel_at(defender_id)
+            + duel_text(f"须在{window_sec}秒内抢先发送闯入者的游戏内干员名{op_hint}（须完全一致，勿夹他词）。")
+        )
+    prelude_block = duel_join_lines(*parts, sep="\n") if parts else Message()
+    body = append_duel_message(prelude_block, prompt, sep="\n") if message_has_content(prelude_block) else prompt
+    need_avatar = bool(spec.get("show_avatar"))
+    avatar_img: bytes | None = None
+    if need_avatar:
+        from src.plugins.duel.arknights_ops import resolve_operator_avatar_image
+
+        avatar_img = await resolve_operator_avatar_image(str(intrusion_ctx.get("op_id", "")))
+        if not avatar_img:
+            logger.error(
+                f"operator_intrusion race missing local avatar op_id={intrusion_ctx.get('op_id')} "
+                f"name={intrusion_ctx.get('name')}"
+            )
+    split_image = need_avatar and bool(avatar_img)
+    delivered = False
+    if need_avatar and not avatar_img:
+        pass
+    elif plugin_config.duel_compact_round:
+        delivered = await send_duel_line_merge_buffer(
+            group_id,
+            body,
+            matcher=matcher,
+            challenger_id=challenger_id,
+            defender_id=defender_id,
+            bot_mode=bot_mode,
+            challenger_is_bot=challenger_is_bot,
+            defender_is_bot=defender_is_bot,
+            image_bytes=avatar_img,
+            split_image_on_fail=split_image,
+        )
+    else:
+        delivered = await send_duel_line(
+            group_id,
+            body,
+            matcher=matcher,
+            challenger_id=challenger_id,
+            defender_id=defender_id,
+            bot_mode=bot_mode,
+            challenger_is_bot=challenger_is_bot,
+            defender_is_bot=defender_is_bot,
+            immediate=True,
+            image_bytes=avatar_img,
+            split_image_on_fail=split_image,
+        )
+    if not delivered:
+        logger.warning(f"operator_intrusion race prompt undelivered group={group_id}")
+        snap = snapshot_combat(stacks)
+        apply_effect_dicts(stacks, on_fail, actor)
+        await send_duel_line(
+            group_id,
+            append_combat_delta(
+                QTE_INTRUSION_FAIL_STUB,
+                challenger_id,
+                defender_id,
+                snap,
+                stacks,
+            ),
+            matcher=matcher,
+            challenger_id=challenger_id,
+            defender_id=defender_id,
+            bot_mode=bot_mode,
+            challenger_is_bot=challenger_is_bot,
+            defender_is_bot=defender_is_bot,
+            immediate=not plugin_config.duel_compact_round,
+        )
+        if narr_log is not None:
+            narr_log.add(f"第{round_index}幕·{round_tag} 抢认提示未发出")
+        return
+
+    loop = asyncio.get_running_loop()
+    fut: asyncio.Future[str | None] = loop.create_future()
+    gid = str(group_id)
+    deadline = time.time() + window_sec
+    _race_sessions[gid] = _DuelRaceQteSession(
+        future=fut,
+        required_key=required_key,
+        deadline=deadline,
+        challenger_id=challenger_id,
+        defender_id=defender_id,
+    )
+    schedule_bot_race_qte_auto_answer(
+        group_id,
+        challenger_id,
+        defender_id,
+        required_key,
+        fut,
+        window_sec,
+        qte_kind="intrusion",
+    )
+    winner_uid: str | None = None
+    try:
+        winner_uid = await asyncio.wait_for(fut, timeout=window_sec + 1.0)
+    except TimeoutError:
+        winner_uid = None
+    finally:
+        _race_sessions.pop(gid, None)
+
+    if winner_uid:
+        winner_actor = actor_from_user_id(winner_uid, challenger_id, defender_id)
+        kind = str(intrusion_ctx.get("picked_skill_kind") or "neutral")
+        ok_fx = select_operator_intrusion_success_effects(spec, kind)
+        snap = snapshot_combat(stacks)
+        apply_effect_dicts(stacks, ok_fx, winner_actor)
+        pb = spec.get("profession_bonus")
+        prof = intrusion_ctx.get("profession", "")
+        if isinstance(pb, dict) and prof in pb:
+            bonus = pb[prof]
+            if isinstance(bonus, list) and bonus:
+                apply_effect_dicts(stacks, bonus, winner_actor)
+        spb = spec.get("sub_profession_bonus")
+        sub_id = intrusion_ctx.get("sub_profession_id", "")
+        if isinstance(spb, dict) and sub_id and sub_id in spb:
+            sbonus = spb[sub_id]
+            if isinstance(sbonus, list) and sbonus:
+                apply_effect_dicts(stacks, sbonus, winner_actor)
+        post = str(spec.get("pallas_after_success" if is_pallas else "after_success_describe", "") or "").strip()
+        if not post:
+            if is_pallas:
+                post = "<O> 似乎颇为得意，对 <B> 释放「<SK>」：\n<SKD>\n随即离开。"
+            else:
+                post = "<O> 似乎松了口气，对 <B> 释放「<SK>」：\n<SKD>\n转身离去。"
+        body = append_duel_message(
+            duel_at(winner_uid) + duel_text(QTE_INTRUSION_RACE_WIN_TAIL),
+            format_describe(post, challenger_id, defender_id, intrusion_ctx),
+        )
+        if isinstance(pb, dict) and prof in pb and isinstance(pb.get(prof), list) and pb[prof]:
+            body = append_duel_message(
+                body,
+                format_describe(
+                    f"\n<O> 似乎还记着你认得{intrusion_ctx.get('profession_cn', prof)}。",
+                    challenger_id,
+                    defender_id,
+                    intrusion_ctx,
+                ),
+            )
+        if isinstance(spb, dict) and sub_id and sub_id in spb and isinstance(spb.get(sub_id), list) and spb[sub_id]:
+            body = append_duel_message(
+                body,
+                format_describe("\n<O> 离去前又多施了一分力。", challenger_id, defender_id, intrusion_ctx),
+            )
+        await send_duel_line(
+            group_id,
+            append_combat_delta(body, challenger_id, defender_id, snap, stacks),
+            matcher=matcher,
+            challenger_id=challenger_id,
+            defender_id=defender_id,
+            bot_mode=bot_mode,
+            challenger_is_bot=challenger_is_bot,
+            defender_is_bot=defender_is_bot,
+            immediate=not plugin_config.duel_compact_round,
+        )
+        if narr_log is not None:
+            narr_log.add(f"第{round_index}幕·{round_tag} 抢认成 {required_key}")
+        return
+
+    kind = str(intrusion_ctx.get("picked_skill_kind") or "neutral")
+    skill_fx = prepare_intrusion_fail_skill_effects(
+        select_operator_intrusion_success_effects(spec, kind),
+        kind,
+    )
+    fail_actor = qte_actor_from_target(spec, actor)
+    snap = snapshot_combat(stacks)
+    if skill_fx:
+        apply_effect_dicts(stacks, skill_fx, fail_actor)
+    apply_effect_dicts(stacks, on_fail, fail_actor)
+    if is_pallas:
+        fail_key = "pallas_after_fail_heal" if kind == "heal" else "pallas_after_fail"
+    else:
+        fail_key = "after_fail_describe_heal" if kind == "heal" else "after_fail_describe"
+    post = str(spec.get(fail_key, "") or "").strip()
+    if not post:
+        post = default_intrusion_fail_post(kind, fail_actor, is_pallas=is_pallas)
+    tail = duel_text(QTE_INTRUSION_RACE_DRAW_TAIL)
+    body = append_combat_delta(
+        append_duel_message(tail, format_describe(post, challenger_id, defender_id, intrusion_ctx)),
+        challenger_id,
+        defender_id,
+        snap,
+        stacks,
+    )
+    await send_duel_line(
+        group_id,
+        body,
+        matcher=matcher,
+        challenger_id=challenger_id,
+        defender_id=defender_id,
+        bot_mode=bot_mode,
+        challenger_is_bot=challenger_is_bot,
+        defender_is_bot=defender_is_bot,
+        immediate=not plugin_config.duel_compact_round,
+    )
+    if narr_log is not None:
+        narr_log.add(f"第{round_index}幕·{round_tag} 抢认败·{kind}")
+
+
 async def _run_operator_intrusion_qte(
     matcher: Matcher,
     group_id: int,
@@ -295,6 +744,27 @@ async def _run_operator_intrusion_qte(
         )
         if narr_log is not None:
             narr_log.add(f"第{round_index}幕·{round_tag} 使者无名")
+        return
+
+    if intrusion_should_race(spec):
+        await _run_operator_intrusion_race_qte(
+            matcher,
+            group_id,
+            challenger_id,
+            defender_id,
+            stacks,
+            spec,
+            actor,
+            intrusion_ctx,
+            round_header=round_header,
+            scene_card=scene_card,
+            narr_log=narr_log,
+            round_index=round_index,
+            round_tag=round_tag,
+            bot_mode=bot_mode,
+            challenger_is_bot=challenger_is_bot,
+            defender_is_bot=defender_is_bot,
+        )
         return
 
     if not plugin_config.duel_compact_round:
@@ -529,6 +999,195 @@ async def _run_operator_intrusion_qte(
             narr_log.add(f"第{round_index}幕·{round_tag} 辨认败·{kind}")
 
 
+async def _run_keyword_race_qte(
+    matcher: Matcher,
+    group_id: int,
+    challenger_id: str,
+    defender_id: str,
+    stacks: Any,
+    d_ev: LoadedEvent,
+    actor: str,
+    spec: dict[str, Any],
+    *,
+    round_header: str = "",
+    narr_log: Any = None,
+    round_index: int = 0,
+    round_tag: str = "",
+    bot_mode: bool = False,
+    challenger_is_bot: bool = False,
+    defender_is_bot: bool = False,
+) -> None:
+    """抢攻 QTE：双方抢先发送关键词，成功者结算 on_success（相对胜者 actor）。"""
+    from src.plugins.duel.config import plugin_config
+    from src.plugins.duel.duel_round_engine import (
+        append_combat_delta,
+        apply_effect_dicts,
+        qte_actor_from_target,
+        snapshot_combat,
+    )
+    from src.plugins.duel.duel_send import (
+        release_round_line_buffer,
+        send_duel_line,
+        send_duel_line_merge_buffer,
+    )
+
+    keys = spec.get("keys")
+    if not isinstance(keys, list) or not keys:
+        logger.warning(f"duel event {d_ev.event_id} race qte.keys invalid")
+        return
+    valid_keys = [str(k) for k in keys if str(k).strip()]
+    if not valid_keys:
+        return
+    window_sec = int(spec.get("window_sec", 8))
+    window_sec = max(3, min(window_sec, 30))
+    required_key = random.choice(valid_keys)
+    prompt_extra = str(spec.get("prompt", "")).strip()
+    on_ok = spec.get("on_success_effects", [])
+    on_fail = spec.get("on_fail_effects", [])
+    if not isinstance(on_ok, list):
+        on_ok = []
+    if not isinstance(on_fail, list):
+        on_fail = []
+
+    if not plugin_config.duel_compact_round:
+        await release_round_line_buffer()
+
+    loop = asyncio.get_running_loop()
+    fut: asyncio.Future[str | None] = loop.create_future()
+    gid = str(group_id)
+    deadline = time.time() + window_sec
+    damage_hint = race_qte_damage_hint(on_ok)
+
+    extra = duel_text(f"{prompt_extra}\n") if prompt_extra else Message()
+    head = duel_plain(round_header.strip()) if round_header.strip() else Message()
+    if plugin_config.duel_compact_round:
+        prompt = (
+            extra
+            + duel_text(QTE_RACE_TITLE)
+            + duel_at(challenger_id)
+            + duel_at(defender_id)
+            + duel_text(f" {window_sec}秒内抢先发送「{required_key}」——{damage_hint}。")
+        )
+        line = append_duel_message(head, prompt) if message_has_content(head) else prompt
+        delivered = await send_duel_line_merge_buffer(
+            group_id,
+            line,
+            matcher=matcher,
+            challenger_id=challenger_id,
+            defender_id=defender_id,
+            bot_mode=bot_mode,
+            challenger_is_bot=challenger_is_bot,
+            defender_is_bot=defender_is_bot,
+        )
+    else:
+        prompt = (
+            extra
+            + duel_text(QTE_RACE_TITLE)
+            + duel_at(challenger_id)
+            + duel_at(defender_id)
+            + duel_text(f"须在{window_sec}秒内抢先发送「{required_key}」（须完全一致）——{damage_hint}。")
+        )
+        line = append_duel_message(head, prompt) if message_has_content(head) else prompt
+        delivered = await send_duel_line(
+            group_id,
+            line,
+            matcher=matcher,
+            challenger_id=challenger_id,
+            defender_id=defender_id,
+            bot_mode=bot_mode,
+            challenger_is_bot=challenger_is_bot,
+            defender_is_bot=defender_is_bot,
+            immediate=True,
+        )
+    if not delivered:
+        logger.warning(f"race qte prompt undelivered group={group_id} event={d_ev.event_id}")
+        snap = snapshot_combat(stacks)
+        fail_actor = qte_actor_from_target(spec, actor)
+        apply_effect_dicts(stacks, on_fail, fail_actor)
+        await send_duel_line(
+            group_id,
+            append_combat_delta(
+                duel_text(QTE_RACE_DRAW_TAIL),
+                challenger_id,
+                defender_id,
+                snap,
+                stacks,
+            ),
+            matcher=matcher,
+            challenger_id=challenger_id,
+            defender_id=defender_id,
+            bot_mode=bot_mode,
+            challenger_is_bot=challenger_is_bot,
+            defender_is_bot=defender_is_bot,
+            immediate=not plugin_config.duel_compact_round,
+        )
+        if narr_log is not None and round_tag:
+            narr_log.add(f"第{round_index}幕·{round_tag} 抢攻提示未发出 {d_ev.event_id}")
+        return
+
+    _race_sessions[gid] = _DuelRaceQteSession(
+        future=fut,
+        required_key=required_key,
+        deadline=deadline,
+        challenger_id=challenger_id,
+        defender_id=defender_id,
+    )
+    schedule_bot_race_qte_auto_answer(
+        group_id,
+        challenger_id,
+        defender_id,
+        required_key,
+        fut,
+        window_sec,
+        decoy_keys=valid_keys,
+    )
+    winner_uid: str | None = None
+    try:
+        winner_uid = await asyncio.wait_for(fut, timeout=window_sec + 1.0)
+    except TimeoutError:
+        winner_uid = None
+    finally:
+        _race_sessions.pop(gid, None)
+
+    snap = snapshot_combat(stacks)
+    if winner_uid:
+        winner_actor = actor_from_user_id(winner_uid, challenger_id, defender_id)
+        apply_effect_dicts(stacks, on_ok, winner_actor)
+        line = append_combat_delta(
+            duel_at(winner_uid) + duel_text(QTE_RACE_WIN_TAIL),
+            challenger_id,
+            defender_id,
+            snap,
+            stacks,
+        )
+        narr_note = "抢攻成"
+    else:
+        fail_actor = qte_actor_from_target(spec, actor)
+        if on_fail:
+            apply_effect_dicts(stacks, on_fail, fail_actor)
+        line = append_combat_delta(
+            duel_text(QTE_RACE_DRAW_TAIL),
+            challenger_id,
+            defender_id,
+            snap,
+            stacks,
+        )
+        narr_note = "抢攻平"
+    await send_duel_line(
+        group_id,
+        line,
+        matcher=matcher,
+        challenger_id=challenger_id,
+        defender_id=defender_id,
+        bot_mode=bot_mode,
+        challenger_is_bot=challenger_is_bot,
+        defender_is_bot=defender_is_bot,
+        immediate=not plugin_config.duel_compact_round,
+    )
+    if narr_log is not None and round_tag:
+        narr_log.add(f"第{round_index}幕·{round_tag} {narr_note} {d_ev.event_id}")
+
+
 async def run_event_qte_if_any(
     matcher: Matcher,
     group_id: int,
@@ -548,7 +1207,7 @@ async def run_event_qte_if_any(
     challenger_is_bot: bool = False,
     defender_is_bot: bool = False,
 ) -> None:
-    """若事件带 QTE：乱入走专场（round_header/scene_card 拼首条），否则关键词 QTE。"""
+    """若事件带 QTE：乱入走专场（round_header/scene_card 拼首条），抢攻或单人关键词 QTE。"""
     from src.plugins.duel.config import plugin_config
     from src.plugins.duel.duel_round_engine import (
         append_combat_delta,
@@ -576,6 +1235,26 @@ async def run_event_qte_if_any(
             intrusion_ctx,
             round_header=round_header,
             scene_card=scene_card,
+            narr_log=narr_log,
+            round_index=round_index,
+            round_tag=round_tag,
+            bot_mode=bot_mode,
+            challenger_is_bot=challenger_is_bot,
+            defender_is_bot=defender_is_bot,
+        )
+        return
+
+    if qte_should_race(spec, actor):
+        await _run_keyword_race_qte(
+            matcher,
+            group_id,
+            challenger_id,
+            defender_id,
+            stacks,
+            d_ev,
+            actor,
+            spec,
+            round_header=round_header,
             narr_log=narr_log,
             round_index=round_index,
             round_tag=round_tag,
@@ -737,4 +1416,9 @@ def clear_all_duel_qte_sessions() -> int:
             sess.future.set_result(False)
             n += 1
         _sessions.pop(sid, None)
+    for gid, race in list(_race_sessions.items()):
+        if not race.future.done():
+            race.future.set_result(None)
+            n += 1
+        _race_sessions.pop(gid, None)
     return n

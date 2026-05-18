@@ -31,7 +31,6 @@ from src.plugins.duel.duel_message import (
 from src.plugins.duel.duel_terms import (
     CLASH_SILENT_ATTACKER,
     CLASH_SILENT_DEFENDER,
-    EXCHANGE_QTE_DEFAULT_PROMPT,
     PUBLIC_ROUND_EMPTY,
     ROUND_KIND_CLASH,
     ROUND_KIND_PUBLIC,
@@ -887,7 +886,7 @@ async def run_exchange_bout(
     defender_is_bot: bool,
 ) -> bool:
     """兵刃交锋：双方共用对击；可附带 QTE。若本段改动了 HP/DP 则返回 True。"""
-    from src.plugins.duel.duel_qte import run_event_qte_if_any
+    from src.plugins.duel.duel_qte import build_exchange_auto_qte, run_event_qte_if_any
     from src.plugins.duel.duel_send import send_duel_line
 
     ev = _pick_weighted(exchange_pool, qte_mult=plugin_config.duel_qte_event_weight_mult)
@@ -929,14 +928,7 @@ async def run_exchange_bout(
                 weight=ev.weight,
                 describe=ev.describe,
                 effects=[],
-                qte={
-                    "target": qte_actor,
-                    "keys": ["格挡", "盾反", "架开", "闪避"],
-                    "window_sec": 10,
-                    "prompt": EXCHANGE_QTE_DEFAULT_PROMPT,
-                    "on_success_effects": [{"type": "add_dp", "target": qte_actor, "value": 1}],
-                    "on_fail_effects": [{"type": "deal_damage", "target": qte_actor, "value": 2}],
-                },
+                qte=build_exchange_auto_qte(qte_actor),
             )
         else:
             qte_actor = qte_actor_from_target(qte_ev.qte, qte_actor)

@@ -49,7 +49,7 @@ class Config(BaseModel, extra="ignore"):
         default="有一点噪音产生了..",
         min_length=1,
         max_length=200,
-        description="人类局败者消息被撤回后，由处理决斗的牛代发的文案。",
+        description="人类局败者惩罚开始时由处理决斗的牛在群内代发一次的文案（不撤回消息）。",
     )
 
     # —— 流程与节奏 ——
@@ -124,6 +124,18 @@ class Config(BaseModel, extra="ignore"):
         ge=0.0,
         le=1.0,
         description="兵刃对击幕在无内置 QTE 时，额外触发关键词 QTE 的概率。",
+    )
+    duel_exchange_qte_race_chance: float = Field(
+        default=0.38,
+        ge=0.0,
+        le=1.0,
+        description="兵刃随机 QTE 中，生成双方抢攻（对对手造成伤害）而非受创方拆招的概率。",
+    )
+    duel_intrusion_race_chance: float = Field(
+        default=0.45,
+        ge=0.0,
+        le=1.0,
+        description="干员乱入 QTE 中，双方抢先咏名（抢认）而非仅 target 指定单方应答的概率。",
     )
 
     # —— 泰拉干员资源（resource/arknights） ——

@@ -26,11 +26,18 @@ TAG_EXCHANGE = "刃锋对撼"
 
 # —— QTE 提示 ——
 QTE_INTRUSION_TITLE = " 辨认闯入者 "
+QTE_INTRUSION_RACE_TITLE = " [抢认] "
+QTE_INTRUSION_RACE_WIN_TAIL = " 抢先认出了闯入者！"
+QTE_INTRUSION_RACE_DRAW_TAIL = " 二人皆未能认出闯入者。"
 QTE_KEYWORD_TITLE = " [QTE] "
 QTE_INTRUSION_FAIL_STUB = "（闯入者身份无法载入，这场乱入只能作罢。）"
 QTE_SUCCESS_TAIL = " QTE 成功 "
 QTE_FAIL_TAIL = " QTE 失败"
+QTE_RACE_TITLE = " [抢攻] "
+QTE_RACE_WIN_TAIL = " 争先得手！"
+QTE_RACE_DRAW_TAIL = " 二人皆迟，攻势消散。"
 EXCHANGE_QTE_DEFAULT_PROMPT = "刃势未绝！攻势仍在延续"
+EXCHANGE_QTE_RACE_PROMPT = "破绽仍在！"
 
 
 def round_finale_head(total_rounds: int) -> str:
