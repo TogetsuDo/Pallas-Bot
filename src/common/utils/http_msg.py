@@ -127,6 +127,27 @@ def http_status_should_try_next_param(status: int) -> bool:
     return status in (400, 415, 422)
 
 
+def http_body_rejects_response_format(body: str) -> bool:
+    """上游明确拒绝 response_format 参数时，不宜在同 backend 换 url/b64_json 重试。"""
+    try:
+        data = json.loads(body)
+    except Exception:
+        return False
+    if not isinstance(data, dict):
+        return False
+    err = data.get("error")
+    if not isinstance(err, dict):
+        return False
+    param = err.get("param")
+    if isinstance(param, str) and param.strip().lower() == "response_format":
+        return True
+    message = err.get("message")
+    if not isinstance(message, str):
+        return False
+    lower = message.lower()
+    return "response_format" in lower and ("unknown" in lower or "unsupported" in lower)
+
+
 def upstream_error_visible_to_user(body_or_empty: str) -> bool:
     """上游业务错误是否应对用户展示（非额度/账单类）。"""
     if not body_or_empty:

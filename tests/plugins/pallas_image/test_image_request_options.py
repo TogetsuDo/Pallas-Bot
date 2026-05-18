@@ -30,6 +30,12 @@ def test_capped_param_attempts_includes_alt_response_format() -> None:
     assert "url" in formats
 
 
+def test_capped_param_attempts_omit_response_format() -> None:
+    attempts = capped_param_attempts(with_ref_urls=False, omit_response_format=True)
+    assert attempts
+    assert all(not a.response_format for a in attempts)
+
+
 def test_capped_param_attempts_ref_image_variant() -> None:
     attempts = capped_param_attempts(with_ref_urls=True)
     assert any(not a.include_ref_images for a in attempts)
@@ -52,10 +58,7 @@ def test_slow_attempts_not_in_fast_only() -> None:
     fast = image_gen_fast_attempts(with_ref_urls=False)
     slow = image_gen_slow_attempts(with_ref_urls=False)
     assert slow
-    fast_keys = {
-        (o.size, o.aspect_ratio, o.quality, o.response_format, o.include_ref_images) for o in fast
-    }
+    fast_keys = {(o.size, o.aspect_ratio, o.quality, o.response_format, o.include_ref_images) for o in fast}
     assert any(
-        (o.size, o.aspect_ratio, o.quality, o.response_format, o.include_ref_images) not in fast_keys
-        for o in slow
+        (o.size, o.aspect_ratio, o.quality, o.response_format, o.include_ref_images) not in fast_keys for o in slow
     )

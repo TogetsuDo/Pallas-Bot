@@ -35,15 +35,22 @@
 | `pallas_image_base_url` | `str` | `""` | 主 API 根 URL |
 | `pallas_image_api_key` | `str` | `""` | 主 API 密钥 |
 | `pallas_image_model` | `str` | `gpt-image-2` | 默认模型名 |
-| `pallas_image_api_backends` | `JSON 数组` | `[]` | 备选 API，项含 `base_url`、`api_key`，`model` 可选 |
+| `pallas_image_api_backends` | `JSON 数组` | `[]` | 备选 API；每项含 `base_url`、`api_key`；`model`、`omit_response_format` 可选 |
 | `pallas_image_request_timeout` | `float` | `180` | 单次 HTTP 生图请求超时（秒） |
 | `pallas_image_max_concurrency` | `int` | `2` | 全局同时向上游 POST 的上限 |
+
+**`base_url` 写法**：填网关根地址并**建议以 `/` 结尾**（如 `https://api.example.com/`）。插件会拼接 `v1/images/generations`；若写成 `https://api.example.com/v1`，可能变成 `/v1/v1/...`。
 
 **备选 API 示例（环境变量 JSON 一行）：**
 
 ```json
-[{"base_url":"https://api2.example.com/v1","api_key":"sk-xxx"},{"base_url":"https://api3.example.com/v1","api_key":"sk-yyy","model":"other-model"}]
+[
+  {"base_url":"https://api2.example.com/","api_key":"sk-xxx","model":"gpt-image-2"},
+  {"base_url":"https://gateway.example.net/api/","api_key":"sk-yyy","model":"vendor/image-model","omit_response_format":true}
+]
 ```
+
+**`omit_response_format`（仅备选 JSON 内）**：为 `true` 时，向**该条**网关发请求**不带** OpenAI 风格的 `response_format` 字段；图片格式由上游按自家 OpenAPI 返回（常见为响应里的 `b64_json`）。主网关仍受全局 `pallas_image_response_format` 控制。与部分厂商文档中的 `output_format`（png/jpeg 等）**不是同一参数**。若备线报 `Unknown parameter: response_format` 或因此换参失败，请对该条设 `omit_response_format: true`。
 
 ### 生图参数（可全部交给上游默认）
 
@@ -52,7 +59,7 @@
 | `pallas_image_size` | `str` | `""` | 如 `1024x1024` |
 | `pallas_image_aspect_ratio` | `str` | `""` | 如 `16:9`，与 `size` 二选一 |
 | `pallas_image_quality` | `str` | `auto` | 质量档位 |
-| `pallas_image_response_format` | `str` | `b64_json` | `b64_json` / `url` 等 |
+| `pallas_image_response_format` | `str` | `b64_json` | 主网关请求的 `b64_json` / `url`；未设 omit 的备选同上 |
 | `pallas_image_use_edits_for_reference_images` | `bool` | `true` | 有参考图时优先 `/edits` |
 | `pallas_image_merge_reference_urls_into_prompt` | `bool` | `false` | 是否把参考图 URL 写入 prompt |
 | `pallas_image_default_edit_prompt` | `str` | `按参考图调整` | 仅参考图、无文字时的默认提示 |
@@ -88,7 +95,7 @@
 **.env 示例片段：**
 
 ```env
-PALLAS_IMAGE_BASE_URL=https://your-gateway/v1
+PALLAS_IMAGE_BASE_URL=https://your-gateway/
 PALLAS_IMAGE_API_KEY=sk-...
 PALLAS_IMAGE_MODEL=gpt-image-2
 PALLAS_IMAGE_MAX_PARAM_ATTEMPTS=6
@@ -114,7 +121,7 @@ PALLAS_IMAGE_DRAW_TOTAL_TIMEOUT=600
 PALLAS_IMAGE_REQUEST_TIMEOUT=240
 PALLAS_IMAGE_MAX_PARAM_ATTEMPTS=8
 PALLAS_IMAGE_SLOW_PARAM_FALLBACK=true
-PALLAS_IMAGE_API_BACKENDS=[{"base_url":"https://备用/v1","api_key":"sk-..."}]
+PALLAS_IMAGE_API_BACKENDS=[{"base_url":"https://backup.example.com/","api_key":"sk-...","omit_response_format":true}]
 ```
 
 上游很慢但稳定时，**不要**把 `draw_total_timeout` 设得比 `request_timeout × 预计尝试次数` 还小，否则会在快出图时被总超时掐掉。

@@ -10,6 +10,7 @@ from nonebot import logger
 from nonebot.exception import FinishedException
 
 from src.common.utils.http_msg import (
+    http_body_rejects_response_format,
     http_status_should_skip_backend,
     http_status_should_try_next_param,
     upstream_error_should_skip_backend,
@@ -71,6 +72,13 @@ def http_status_edits_unsupported(status: int) -> bool:
     return status in (404, 405, 501)
 
 
+def format_transport_error(exc: BaseException) -> str:
+    text = str(exc).strip()
+    if text:
+        return f"{type(exc).__name__}: {text}"
+    return f"{type(exc).__name__}: {exc!r}"
+
+
 PostRequestFn = Callable[[ImageApiBackend, ImageGenRequestOptions], Awaitable[tuple[int, str]]]
 
 
@@ -93,12 +101,15 @@ async def run_backend_param_attempts(
     edits_abort_holder: list[bool] | None = None,
 ) -> bool:
     """按 backend × 参数组合请求；成功发图返回 True。"""
-    param_attempts = capped_param_attempts(with_ref_urls=with_ref_urls)
     for idx, backend in enumerate(backends):
         if deadline.expired():
             raise DrawTotalTimeoutError
         has_more_backend = idx < len(backends) - 1
         skip_backend = False
+        param_attempts = capped_param_attempts(
+            with_ref_urls=with_ref_urls,
+            omit_response_format=backend.omit_response_format,
+        )
         for opt_idx, req_opts in enumerate(param_attempts):
             if deadline.expired():
                 raise DrawTotalTimeoutError
@@ -127,21 +138,22 @@ async def run_backend_param_attempts(
                 CffiRequestsError,
                 RuntimeError,
             ) as e:
+                err_text = format_transport_error(e)
                 if has_more_opts:
                     logger.info(
                         f"bot [{bot_id}] pallas_image {op} transport error "
-                        f"backend={backend.label} group=[{group_id}]: {e}, trying next params",
+                        f"backend={backend.label} group=[{group_id}]: {err_text}, trying next params",
                     )
                     continue
                 if has_more_backend:
                     logger.info(
                         f"bot [{bot_id}] pallas_image {op} transport error "
-                        f"backend={backend.label} group=[{group_id}]: {e}, trying next backend",
+                        f"backend={backend.label} group=[{group_id}]: {err_text}, trying next backend",
                     )
                 else:
                     logger.warning(
                         f"bot [{bot_id}] pallas_image {op} transport error "
-                        f"backend={backend.label} group=[{group_id}]: {e}",
+                        f"backend={backend.label} group=[{group_id}]: {err_text}",
                     )
                 break
             last_body_holder[:] = [body_text]
@@ -198,6 +210,14 @@ async def run_backend_param_attempts(
                     logger.warning(
                         f"bot [{bot_id}] pallas_image {op} failed in group [{group_id}]: "
                         f"backend={backend.label} status={status} body={body_text[:500]}",
+                    )
+                break
+            if status == 400 and http_body_rejects_response_format(body_text):
+                skip_backend = True
+                if still_retrying:
+                    logger.info(
+                        f"bot [{bot_id}] pallas_image {op} backend={backend.label} "
+                        f"rejects response_format in group [{group_id}], trying next backend",
                     )
                 break
             if http_status_should_try_next_param(status) and has_more_opts:

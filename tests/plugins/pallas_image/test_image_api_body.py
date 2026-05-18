@@ -1,9 +1,12 @@
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from src.common.utils.http_msg import PALLAS_VAGUE_REPLY, upstream_error_visible_to_user
+from src.plugins.pallas_image.config import ImageApiBackend
 from src.plugins.pallas_image.image_api import (
+    extract_image_from_generation_payload,
     generations_payload,
     image_api_body_issue_label,
     reply_from_image_api_json,
@@ -13,6 +16,13 @@ from src.plugins.pallas_image.image_request_options import ImageGenRequestOption
 
 def test_image_api_body_issue_label_ok_b64() -> None:
     assert image_api_body_issue_label('{"data":[{"b64_json":"aGVsbG8="}]}') is None
+
+
+def test_extract_image_from_data_url_in_url_field() -> None:
+    body = '{"data":[{"url":"data:image/png;base64,aGVsbG8="}]}'
+    remote, raw = extract_image_from_generation_payload(json.loads(body))
+    assert remote is None
+    assert raw == b"hello"
 
 
 def test_image_api_body_issue_label_upstream_error() -> None:
@@ -85,8 +95,27 @@ def test_generations_payload_uses_options() -> None:
         response_format="url",
         include_ref_images=False,
     )
-    payload = generations_payload("p", ["http://x/a.png"], model="m", options=opts)
+    backend = ImageApiBackend(
+        base_url="https://api.example.com/",
+        api_key="sk-test",
+        model="m",
+        label="primary",
+    )
+    payload = generations_payload("p", ["http://x/a.png"], model="m", backend=backend, options=opts)
     assert payload["size"] == "512x512"
     assert payload["quality"] == "high"
     assert payload["response_format"] == "url"
     assert "image" not in payload
+
+
+def test_generations_payload_omits_response_format_when_configured() -> None:
+    backend = ImageApiBackend(
+        base_url="https://gateway.example.net/api/",
+        api_key="sk-test",
+        model="m",
+        label="fallback-0",
+        omit_response_format=True,
+    )
+    opts = ImageGenRequestOptions(response_format="b64_json")
+    payload = generations_payload("p", [], model="m", backend=backend, options=opts)
+    assert "response_format" not in payload

@@ -352,6 +352,7 @@ async def pallas_draw_execute(
                     gen_prompt,
                     ref_urls,
                     model=backend.model or payload_model,
+                    backend=backend,
                     options=req_opts,
                 )
                 return await post_generations_with_transport(

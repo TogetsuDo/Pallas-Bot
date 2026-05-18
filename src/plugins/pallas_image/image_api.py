@@ -257,6 +257,12 @@ async def post_generations_with_transport(
         return await curl_post_generations(url, headers, payload, req_timeout_cap=req_timeout_cap)
 
 
+def should_send_response_format(backend: ImageApiBackend, opts: ImageGenRequestOptions) -> bool:
+    if backend.omit_response_format:
+        return False
+    return bool(opts.response_format)
+
+
 def edit_request_fields(
     prompt: str,
     backend: ImageApiBackend,
@@ -271,7 +277,7 @@ def edit_request_fields(
         data["aspect_ratio"] = opts.aspect_ratio
     if opts.quality:
         data["quality"] = opts.quality
-    if opts.response_format:
+    if should_send_response_format(backend, opts):
         data["response_format"] = opts.response_format
     return data
 
@@ -437,6 +443,34 @@ def strip_data_url_base64(value: str) -> str:
     return t
 
 
+def decode_inline_image_reference(value: str) -> bytes | None:
+    """解析 data:image/...;base64,... 或裸 base64 字段。"""
+    t = (value or "").strip()
+    if not t:
+        return None
+    if t.startswith("data:") and ";base64," in t:
+        try:
+            return base64.b64decode(strip_data_url_base64(t))
+        except Exception:
+            return None
+    return None
+
+
+def image_bytes_from_payload_field(url: str | None, b64: str | None) -> tuple[str | None, bytes | None]:
+    if isinstance(b64, str) and b64.strip():
+        try:
+            return None, base64.b64decode(strip_data_url_base64(b64))
+        except Exception:
+            return None, None
+    if isinstance(url, str) and url.strip():
+        u = url.strip()
+        inline = decode_inline_image_reference(u)
+        if inline is not None:
+            return None, inline
+        return u, None
+    return None, None
+
+
 def extract_image_from_generation_payload(data: object) -> tuple[str | None, bytes | None]:
     if not isinstance(data, dict):
         return None, None
@@ -444,24 +478,18 @@ def extract_image_from_generation_payload(data: object) -> tuple[str | None, byt
     if isinstance(items, list) and items:
         first = items[0]
         if isinstance(first, dict):
-            u = first.get("url")
-            if isinstance(u, str) and u.strip():
-                return u.strip(), None
-            b64 = first.get("b64_json")
-            if isinstance(b64, str) and b64.strip():
-                try:
-                    return None, base64.b64decode(strip_data_url_base64(b64))
-                except Exception:
-                    return None, None
+            remote, raw = image_bytes_from_payload_field(first.get("url"), first.get("b64_json"))
+            if raw or remote:
+                return remote, raw
     inner = data.get("data")
     if isinstance(inner, dict):
-        u = inner.get("url")
-        if isinstance(u, str) and u.strip():
-            return u.strip(), None
-    u = data.get("url")
-    if isinstance(u, str) and u.strip():
-        return u.strip(), None
-    return None, None
+        remote, raw = image_bytes_from_payload_field(inner.get("url"), inner.get("b64_json"))
+        if raw or remote:
+            return remote, raw
+    return image_bytes_from_payload_field(
+        data.get("url") if isinstance(data.get("url"), str) else None,
+        data.get("b64_json") if isinstance(data.get("b64_json"), str) else None,
+    )
 
 
 async def bytes_from_image_reference(
@@ -515,6 +543,7 @@ def generations_payload(
     ref_urls: list[str],
     *,
     model: str,
+    backend: ImageApiBackend,
     options: ImageGenRequestOptions | None = None,
 ) -> dict[str, object]:
     opts = options or ImageGenRequestOptions.from_config()
@@ -528,7 +557,7 @@ def generations_payload(
         body["aspect_ratio"] = opts.aspect_ratio
     if opts.quality:
         body["quality"] = opts.quality
-    if opts.response_format:
+    if should_send_response_format(backend, opts):
         body["response_format"] = opts.response_format
     merge = image_gen_config.merge_reference_urls_into_prompt
     if ref_urls and not merge and opts.include_ref_images:
@@ -605,6 +634,12 @@ async def reply_from_image_api_json(
             schedule_persist_generated_draw(raw, persist_draw[0], persist_draw[1])
         return True
     if remote_url:
+        inline = decode_inline_image_reference(remote_url)
+        if inline is not None:
+            await matcher.send(optional_message_at_user(at_user_id, MessageSegment.image(inline)))
+            if persist_draw:
+                schedule_persist_generated_draw(inline, persist_draw[0], persist_draw[1])
+            return True
         try:
             img_resp = await client.get(remote_url)
             if img_resp.status_code == 200:

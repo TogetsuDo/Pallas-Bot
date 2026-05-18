@@ -96,15 +96,26 @@ def dedupe_request_options(options: list[ImageGenRequestOptions]) -> list[ImageG
     return out
 
 
-def image_gen_fast_attempts(*, with_ref_urls: bool) -> list[ImageGenRequestOptions]:
+def without_response_format(opt: ImageGenRequestOptions) -> ImageGenRequestOptions:
+    return replace(opt, response_format="")
+
+
+def image_gen_fast_attempts(
+    *,
+    with_ref_urls: bool,
+    omit_response_format: bool = False,
+) -> list[ImageGenRequestOptions]:
     """快档：配置原样、换 response_format、去 quality、去 image 字段。"""
     base = ImageGenRequestOptions.from_config()
+    if omit_response_format:
+        base = without_response_format(base)
     seq: list[ImageGenRequestOptions] = [base]
-    seq.extend(
-        replace(base, response_format=rf)
-        for rf in response_format_attempts(base.response_format)
-        if rf != base.response_format
-    )
+    if not omit_response_format:
+        seq.extend(
+            replace(base, response_format=rf)
+            for rf in response_format_attempts(base.response_format)
+            if rf != base.response_format
+        )
     if base.quality:
         seq.append(replace(base, quality=""))
     merge_refs = image_gen_config.merge_reference_urls_into_prompt
@@ -113,12 +124,21 @@ def image_gen_fast_attempts(*, with_ref_urls: bool) -> list[ImageGenRequestOptio
     return dedupe_request_options(seq)
 
 
-def image_gen_slow_attempts(*, with_ref_urls: bool) -> list[ImageGenRequestOptions]:
+def image_gen_slow_attempts(
+    *,
+    with_ref_urls: bool,
+    omit_response_format: bool = False,
+) -> list[ImageGenRequestOptions]:
     """慢档：常见 quality / 尺寸 / 极简组合（快档全失败后再试）。"""
     base = ImageGenRequestOptions.from_config()
+    if omit_response_format:
+        base = without_response_format(base)
     fast_keys = {
         (o.size, o.aspect_ratio, o.quality, o.response_format, o.include_ref_images)
-        for o in image_gen_fast_attempts(with_ref_urls=with_ref_urls)
+        for o in image_gen_fast_attempts(
+            with_ref_urls=with_ref_urls,
+            omit_response_format=omit_response_format,
+        )
     }
     seq: list[ImageGenRequestOptions] = []
 
@@ -135,22 +155,33 @@ def image_gen_slow_attempts(*, with_ref_urls: bool) -> list[ImageGenRequestOptio
             add(replace(base, size=sz, aspect_ratio=ar))
     relaxed = replace(base, size="", aspect_ratio="", quality="")
     add(relaxed)
-    for rf in response_format_attempts(""):
-        add(replace(relaxed, response_format=rf))
+    if not omit_response_format:
+        for rf in response_format_attempts(""):
+            add(replace(relaxed, response_format=rf))
     merge_refs = image_gen_config.merge_reference_urls_into_prompt
     if with_ref_urls and not merge_refs:
         add(replace(relaxed, include_ref_images=False))
     return dedupe_request_options(seq)
 
 
-def capped_param_attempts(*, with_ref_urls: bool) -> list[ImageGenRequestOptions]:
+def capped_param_attempts(
+    *,
+    with_ref_urls: bool,
+    omit_response_format: bool = False,
+) -> list[ImageGenRequestOptions]:
     """快档 + 可选慢档，受 max_param_attempts 限制。"""
-    fast = image_gen_fast_attempts(with_ref_urls=with_ref_urls)
+    fast = image_gen_fast_attempts(
+        with_ref_urls=with_ref_urls,
+        omit_response_format=omit_response_format,
+    )
     out = list(fast)
     if not image_gen_config.slow_param_fallback:
         max_n = image_gen_config.max_param_attempts
         return out[:max_n] if max_n > 0 else out
-    slow = image_gen_slow_attempts(with_ref_urls=with_ref_urls)
+    slow = image_gen_slow_attempts(
+        with_ref_urls=with_ref_urls,
+        omit_response_format=omit_response_format,
+    )
     seen = {(o.size, o.aspect_ratio, o.quality, o.response_format, o.include_ref_images) for o in out}
     for o in slow:
         key = (o.size, o.aspect_ratio, o.quality, o.response_format, o.include_ref_images)
@@ -164,6 +195,13 @@ def capped_param_attempts(*, with_ref_urls: bool) -> list[ImageGenRequestOptions
     return out
 
 
-def image_gen_request_attempts(*, with_ref_urls: bool) -> list[ImageGenRequestOptions]:
+def image_gen_request_attempts(
+    *,
+    with_ref_urls: bool,
+    omit_response_format: bool = False,
+) -> list[ImageGenRequestOptions]:
     """兼容旧名：等同 capped_param_attempts。"""
-    return capped_param_attempts(with_ref_urls=with_ref_urls)
+    return capped_param_attempts(
+        with_ref_urls=with_ref_urls,
+        omit_response_format=omit_response_format,
+    )

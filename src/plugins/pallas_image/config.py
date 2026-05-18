@@ -12,11 +12,22 @@ from src.common.webui import config_from_env, install_hot_reload_config
 class ImageBackendEntry(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="ignore")
 
-    base_url: str = Field(default="", description="备选 API 根 URL。")
+    base_url: str = Field(
+        default="",
+        description="备选 API 根 URL（建议以 / 结尾；插件会拼接 v1/images/...，勿写成 .../v1）。",
+    )
     api_key: str = Field(default="", description="备选 API 密钥。")
     model: str = Field(
         default="",
         description="可选模型名；留空则使用主配置 pallas_image_model。",
+    )
+    omit_response_format: bool = Field(
+        default=False,
+        description=(
+            "仅作用于本条备选：为 true 时请求体不含 OpenAI 的 response_format；"
+            "由上游按自家文档返回图片（常见为 JSON 内 b64_json）。"
+            "与全局 pallas_image_response_format 及厂商文档中的 output_format 不是同一参数。"
+        ),
     )
 
 
@@ -27,16 +38,20 @@ class Config(BaseModel, extra="ignore"):
     )
     pallas_image_base_url: str = Field(
         default="",
-        description="图像生成 API 的根 URL（如 OpenAI 兼容网关），须含协议且不以 / 结尾以外的路径按厂商要求填写。",
+        description=(
+            "主 API 根 URL（如 OpenAI 兼容网关），须含协议；建议以 / 结尾。"
+            "插件会拼接 v1/images/generations，勿将 base 写成已含 /v1 的路径以免重复。"
+        ),
     )
     pallas_image_api_key: str = Field(default="", description="调用图像 API 的密钥或 Token。")
     pallas_image_api_backends: list[ImageBackendEntry] = Field(
         default_factory=list,
         description=(
             "备选 API 列表（JSON 数组）；主配置失败后按顺序尝试。"
-            "每项含 base_url、api_key，model 可选（省略则用 pallas_image_model）。"
-            '示例：[{"base_url":"https://api2.example.com/v1","api_key":"sk-xxx","model":"gpt-image-2"},'
-            '{"base_url":"https://api3.example.com/v1","api_key":"sk-yyy"}]'
+            "每项含 base_url、api_key；model 可选；omit_response_format 可选（见该项说明）。"
+            '示例：[{"base_url":"https://api2.example.com/","api_key":"sk-xxx","model":"gpt-image-2"},'
+            '{"base_url":"https://gateway.example.net/api/","api_key":"sk-yyy",'
+            '"model":"vendor/image-model","omit_response_format":true}]'
         ),
     )
     pallas_image_model: str = Field(default="gpt-image-2", description="默认使用的图像模型名。")
@@ -51,7 +66,10 @@ class Config(BaseModel, extra="ignore"):
     pallas_image_quality: str = Field(default="auto", description="生成质量档位，取值依上游 API 文档。")
     pallas_image_response_format: str = Field(
         default="b64_json",
-        description="期望的返回格式（如 b64_json、url），依上游 API。",
+        description=(
+            "主网关及未设 omit_response_format 的备选所请求的返回格式（如 b64_json、url）。"
+            "若某备选上游 OpenAPI 无 response_format 字段，请在该项 JSON 内设 omit_response_format=true。"
+        ),
     )
     pallas_image_use_edits_for_reference_images: bool = Field(
         default=True,
@@ -173,6 +191,7 @@ class ImageApiBackend:
     api_key: str
     model: str
     label: str
+    omit_response_format: bool = False
 
 
 class ImageGenSettings:
@@ -209,12 +228,27 @@ class ImageGenSettings:
         out: list[ImageApiBackend] = []
         seen: set[tuple[str, str, str]] = set()
 
-        def append(url: str, key: str, model: str, label: str) -> None:
+        def append(
+            url: str,
+            key: str,
+            model: str,
+            label: str,
+            *,
+            omit_response_format: bool = False,
+        ) -> None:
             sig = (url, key, model)
             if sig in seen:
                 return
             seen.add(sig)
-            out.append(ImageApiBackend(base_url=url, api_key=key, model=model, label=label))
+            out.append(
+                ImageApiBackend(
+                    base_url=url,
+                    api_key=key,
+                    model=model,
+                    label=label,
+                    omit_response_format=omit_response_format,
+                )
+            )
 
         primary_url = (self._c.pallas_image_base_url or "").strip()
         primary_key = (self._c.pallas_image_api_key or "").strip()
@@ -226,7 +260,13 @@ class ImageGenSettings:
             if not url or not key:
                 continue
             model = (entry.model or "").strip() or default_model
-            append(url, key, model, f"fallback-{i}")
+            append(
+                url,
+                key,
+                model,
+                f"fallback-{i}",
+                omit_response_format=entry.omit_response_format,
+            )
         return out
 
     @property
