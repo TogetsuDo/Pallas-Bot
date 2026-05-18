@@ -13,6 +13,7 @@ from nonebot.permission import SUPERUSER
 
 from src.common.cmd_perm import group_message_permission_for_command
 from src.common.config import GroupConfig
+from src.common.group_message_dedup import cross_bot_group_message_key
 from src.common.multi_bot_message_claim import try_claim_message
 from src.common.utils.http_msg import PALLAS_VAGUE_REPLY
 
@@ -75,10 +76,16 @@ pallas_draw_user_locks: dict[tuple[int, int], asyncio.Lock] = {}
 
 
 async def try_claim_pallas_draw_message(event: GroupMessageEvent) -> bool:
+    claim_key = cross_bot_group_message_key(
+        event.group_id,
+        event.user_id,
+        event.raw_message,
+        event.time,
+    )
     return await try_claim_message(
         "pallas_image",
         event.group_id,
-        int(event.message_id),
+        claim_key,
         int(event.self_id),
     )
 

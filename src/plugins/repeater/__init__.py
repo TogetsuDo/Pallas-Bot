@@ -15,6 +15,12 @@ from nonebot_plugin_apscheduler import scheduler
 
 from src.common.cmd_perm import group_message_permission_for_command
 from src.common.config import BotConfig
+from src.common.group_message_dedup import (
+    normalize_group_raw_message as _normalize_group_raw_message,
+)
+from src.common.group_message_dedup import (
+    should_skip_duplicate_group_event as _should_skip_duplicate_group_event,
+)
 from src.common.message_scrub import is_message_scrub_blocked_async
 from src.common.message_scrub.log_preview import scrub_intercept_log_preview
 from src.common.utils.array2cqcode import try_convert_to_cqcode
@@ -116,32 +122,6 @@ __plugin_meta__ = PluginMetadata(
 )
 message_id_lock = asyncio.Lock()
 message_id_dict = defaultdict(lambda: deque(maxlen=100))
-
-# 多 Bot 同群时，协议可能对同一条群消息向每个连接各上报一次
-# 不合并会在 MessageStore 里堆出多条「连续相同句」，误触复读。
-_GROUP_EVENT_DEDUP_MAX = 4000
-_group_event_dedup_lock = asyncio.Lock()
-_group_event_sigs: deque[tuple[int, int, str, int]] = deque()
-_group_event_sig_set: set[tuple[int, int, str, int]] = set()
-
-
-def _normalize_group_raw_message(raw_message: str) -> str:
-    # 与 ChatData / learn 侧一致，避免图片子类型差异导致去重失败
-    return re.sub(r"\.image,.+?\]", ".image]", raw_message)
-
-
-async def _should_skip_duplicate_group_event(group_id: int, user_id: int, norm_raw: str, time: int) -> bool:
-    sig = (group_id, user_id, norm_raw, time)
-    async with _group_event_dedup_lock:
-        if sig in _group_event_sig_set:
-            return True
-        while len(_group_event_sigs) >= _GROUP_EVENT_DEDUP_MAX:
-            old = _group_event_sigs.popleft()
-            _group_event_sig_set.discard(old)
-        _group_event_sigs.append(sig)
-        _group_event_sig_set.add(sig)
-        return False
-
 
 driver = get_driver()
 
