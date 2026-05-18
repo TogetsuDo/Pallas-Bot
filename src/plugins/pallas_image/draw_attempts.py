@@ -127,10 +127,16 @@ async def run_backend_param_attempts(
                 CffiRequestsError,
                 RuntimeError,
             ) as e:
-                if still_retrying:
+                if has_more_opts:
                     logger.info(
                         f"bot [{bot_id}] pallas_image {op} transport error "
-                        f"backend={backend.label} group=[{group_id}]: {e}, trying next",
+                        f"backend={backend.label} group=[{group_id}]: {e}, trying next params",
+                    )
+                    continue
+                if has_more_backend:
+                    logger.info(
+                        f"bot [{bot_id}] pallas_image {op} transport error "
+                        f"backend={backend.label} group=[{group_id}]: {e}, trying next backend",
                     )
                 else:
                     logger.warning(

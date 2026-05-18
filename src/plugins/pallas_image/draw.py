@@ -34,6 +34,7 @@ from .image_api import (
     message_at_user,
     post_edits_with_transport,
     post_generations_with_transport,
+    request_timeout_for_deadline,
 )
 from .image_request_options import ImageGenRequestOptions
 from .runtime_state import acquire_draw_pending_slot, release_draw_pending_slot
@@ -290,6 +291,7 @@ async def pallas_draw_execute(
                             edit_prompt,
                             backend,
                             options=req_opts,
+                            req_timeout_cap=request_timeout_for_deadline(deadline.remaining_seconds()),
                         )
 
                     if await run_backend_param_attempts(
@@ -333,7 +335,13 @@ async def pallas_draw_execute(
                     model=backend.model or payload_model,
                     options=req_opts,
                 )
-                return await post_generations_with_transport(http_client, gen_ep, headers, payload)
+                return await post_generations_with_transport(
+                    http_client,
+                    gen_ep,
+                    headers,
+                    payload,
+                    req_timeout_cap=request_timeout_for_deadline(deadline.remaining_seconds()),
+                )
 
             if await run_backend_param_attempts(
                 matcher,

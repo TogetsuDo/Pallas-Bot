@@ -81,7 +81,7 @@
 | :--- | :--- | :--- | :--- |
 | `pallas_image_max_param_attempts` | `int` | `6` | 每个 backend 最多尝试的参数组合数（快+慢）；`0` 不限制 |
 | `pallas_image_slow_param_fallback` | `bool` | `true` | 快档失败后是否继续慢档（扫常见 size/quality） |
-| `pallas_image_draw_total_timeout` | `float` | `300` | 单次画画总耗时上限（含排队、下参考图、重试） |
+| `pallas_image_draw_total_timeout` | `float` | `480` | 单次画画总耗时上限（含排队、下参考图、重试） |
 | `pallas_image_ref_download_timeout` | `float` | `30` | 每张参考图下载超时；实际会受总超时剩余时间压缩 |
 | `pallas_image_draw_max_pending` | `int` | `8` | 进程内进行中画画任务上限；`0` 不限制 |
 
@@ -93,9 +93,31 @@ PALLAS_IMAGE_API_KEY=sk-...
 PALLAS_IMAGE_MODEL=gpt-image-2
 PALLAS_IMAGE_MAX_PARAM_ATTEMPTS=6
 PALLAS_IMAGE_SLOW_PARAM_FALLBACK=true
-PALLAS_IMAGE_DRAW_TOTAL_TIMEOUT=300
+PALLAS_IMAGE_DRAW_TOTAL_TIMEOUT=480
 PALLAS_IMAGE_DRAW_MAX_PENDING=8
 ```
+
+## 🎯 优先确保出图（推荐配置取向）
+
+插件默认策略是：**尽量多发图，其次才是少等、少打日志**。实现上包括：
+
+- 主 API → `api_backends` 顺序回退；edits 不行再 generations。
+- 每个 backend 内 **快档 + 慢档** 参数扫描（勿轻易关 `slow_param_fallback`）。
+- 传输失败时 **先换参数组合，再换 backend**（避免一次超时就放弃整条线路）。
+- `auto` 传输下 cffi 读超时且时间仍够时，会用 **httpx 再试一次**（预算约为当次剩余的约 55%，至少 45s）。
+- **仅成功发图后**才计每日次数；失败不占额度。
+
+偏「一定要出图」时可适当放宽（按上游实测调整）：
+
+```env
+PALLAS_IMAGE_DRAW_TOTAL_TIMEOUT=600
+PALLAS_IMAGE_REQUEST_TIMEOUT=240
+PALLAS_IMAGE_MAX_PARAM_ATTEMPTS=8
+PALLAS_IMAGE_SLOW_PARAM_FALLBACK=true
+PALLAS_IMAGE_API_BACKENDS=[{"base_url":"https://备用/v1","api_key":"sk-..."}]
+```
+
+上游很慢但稳定时，**不要**把 `draw_total_timeout` 设得比 `request_timeout × 预计尝试次数` 还小，否则会在快出图时被总超时掐掉。
 
 ## 🔄 请求流程（简图）
 
@@ -163,10 +185,11 @@ flowchart TD
 
 ## 🛠️ 故障排查
 
-1. **连接失败**
+1. **连接失败 / `curl_cffi` 读超时 (28)**
    - 检查 `pallas_image_base_url`、网络与防火墙。
-   - 尝试 `pallas_image_http_transport=curl` 或 `cffi`。
-   - 日志：`api connect error`、`curl 退出码`。
+   - 网关**不需要** TLS 指纹时，建议 `pallas_image_http_transport=httpx`，或清空 `pallas_image_tls_impersonate`（`auto` 将不再先试 curl_cffi）。
+   - `auto` 下 curl_cffi **读超时**且剩余预算 ≥约 50s 时，会用 httpx 再试一次；预算不足则换参数/backend。
+   - 日志：`api connect error`、`curl 退出码`、`cffi read timeout, retry httpx`。
 
 2. **一直失败但无图**
    - 核对 `api_key`、`model` 与网关是否支持 `/images/generations`、`/images/edits`。

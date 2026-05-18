@@ -65,6 +65,46 @@ def effective_http_transport() -> str:
     return "auto"
 
 
+def effective_request_timeout(override: float | None = None) -> float:
+    """单次 POST 超时；override 通常为画画总超时剩余秒数。"""
+    base = image_gen_config.request_timeout
+    if override is None:
+        return base
+    return max(1.0, min(base, override))
+
+
+def request_timeout_for_deadline(remaining_seconds: float) -> float:
+    return effective_request_timeout(remaining_seconds)
+
+
+def cffi_error_is_timeout(exc: BaseException) -> bool:
+    msg = str(exc).lower()
+    return "(28)" in msg or "timed out" in msg or "timeout" in msg
+
+
+def httpx_cap_after_cffi_timeout(req_timeout_cap: float | None) -> float | None:
+    """cffi 读超时后若预算仍够，给 httpx 一段独立时间再试（优先出图）。"""
+    budget = effective_request_timeout(req_timeout_cap)
+    if budget < 50:
+        return None
+    fallback = max(45.0, min(image_gen_config.request_timeout, budget * 0.55))
+    return fallback if fallback >= 45 else None
+
+
+async def try_httpx_after_cffi_timeout(
+    exc: BaseException,
+    req_timeout_cap: float | None,
+    httpx_call,
+) -> tuple[int, str] | None:
+    if not cffi_error_is_timeout(exc):
+        return None
+    cap = httpx_cap_after_cffi_timeout(req_timeout_cap)
+    if cap is None:
+        return None
+    logger.info(f"pallas_image cffi read timeout, retry httpx cap={cap:.0f}s (prioritize image)")
+    return await httpx_call(cap)
+
+
 def image_gen_auth_headers_json(backend: ImageApiBackend) -> dict[str, str]:
     h = {
         "Authorization": f"Bearer {backend.api_key}",
@@ -85,8 +125,16 @@ async def httpx_post_generations(
     url: str,
     headers: dict[str, str],
     payload: dict[str, object],
+    *,
+    req_timeout_cap: float | None = None,
 ) -> tuple[int, str]:
-    r = await client.post(url, headers=headers, json=payload)
+    req_timeout = effective_request_timeout(req_timeout_cap)
+    r = await client.post(
+        url,
+        headers=headers,
+        json=payload,
+        timeout=httpx.Timeout(req_timeout, connect=min(30.0, req_timeout)),
+    )
     return r.status_code, r.text
 
 
@@ -94,27 +142,35 @@ async def curl_cffi_post_generations(
     url: str,
     headers: dict[str, str],
     payload: dict[str, object],
+    *,
+    req_timeout_cap: float | None = None,
 ) -> tuple[int, str]:
     cfg = image_gen_config
     impersonate = (cfg.tls_impersonate or "").strip()
     if not impersonate:
         raise ValueError("tls_impersonate 为空")
+    req_timeout = effective_request_timeout(req_timeout_cap)
     async with CffiAsyncSession() as session:
         r = await session.post(
             url,
             headers=headers,
             json=payload,
             impersonate=impersonate,
-            timeout=cfg.request_timeout,
+            timeout=req_timeout,
         )
         return r.status_code, r.text
 
 
-async def curl_post_generations(url: str, headers: dict[str, str], payload: dict[str, object]) -> tuple[int, str]:
+async def curl_post_generations(
+    url: str,
+    headers: dict[str, str],
+    payload: dict[str, object],
+    *,
+    req_timeout_cap: float | None = None,
+) -> tuple[int, str]:
     if not shutil.which("curl"):
         raise RuntimeError("未找到 curl 可执行文件，请安装 curl 或将 pallas_image_http_transport 设为 httpx")
-    cfg = image_gen_config
-    timeout_s = int(max(10, min(cfg.request_timeout, 600)))
+    timeout_s = int(max(10, min(effective_request_timeout(req_timeout_cap), 600)))
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".json", delete=False) as tf:
         json.dump(payload, tf, ensure_ascii=False)
         body_path = tf.name
@@ -168,25 +224,37 @@ async def post_generations_with_transport(
     url: str,
     headers: dict[str, str],
     payload: dict[str, object],
+    *,
+    req_timeout_cap: float | None = None,
 ) -> tuple[int, str]:
     mode = effective_http_transport()
     cfg = image_gen_config
     if mode == "curl":
-        return await curl_post_generations(url, headers, payload)
+        return await curl_post_generations(url, headers, payload, req_timeout_cap=req_timeout_cap)
     if mode == "httpx":
-        return await httpx_post_generations(client, url, headers, payload)
+        return await httpx_post_generations(client, url, headers, payload, req_timeout_cap=req_timeout_cap)
     if mode == "cffi":
-        return await curl_cffi_post_generations(url, headers, payload)
+        return await curl_cffi_post_generations(url, headers, payload, req_timeout_cap=req_timeout_cap)
+    tcap = req_timeout_cap
     if (cfg.tls_impersonate or "").strip():
         try:
-            return await curl_cffi_post_generations(url, headers, payload)
+            return await curl_cffi_post_generations(url, headers, payload, req_timeout_cap=tcap)
         except (CffiRequestsError, OSError, ValueError) as e:
+            ret = await try_httpx_after_cffi_timeout(
+                e,
+                tcap,
+                lambda cap: httpx_post_generations(client, url, headers, payload, req_timeout_cap=cap),
+            )
+            if ret is not None:
+                return ret
+            if cffi_error_is_timeout(e):
+                raise
             logger.warning(f"pallas_image generations curl_cffi failed, fallback httpx: {e}")
     try:
-        return await httpx_post_generations(client, url, headers, payload)
+        return await httpx_post_generations(client, url, headers, payload, req_timeout_cap=tcap)
     except httpx.ConnectError as e:
         logger.warning(f"pallas_image generations httpx connect failed, fallback curl: {e}")
-        return await curl_post_generations(url, headers, payload)
+        return await curl_post_generations(url, headers, payload, req_timeout_cap=req_timeout_cap)
 
 
 def edit_request_fields(
@@ -215,6 +283,7 @@ async def httpx_post_edits(
     backend: ImageApiBackend,
     *,
     options: ImageGenRequestOptions | None = None,
+    req_timeout_cap: float | None = None,
 ) -> tuple[int, str]:
     endpoint = image_edits_endpoint(backend)
     headers = image_gen_auth_headers_multipart(backend)
@@ -222,7 +291,14 @@ async def httpx_post_edits(
     for i, blob in enumerate(image_blobs):
         files.append(("image", (f"ref_{i}.png", blob, "image/png")))
     data = edit_request_fields(prompt, backend, options=options)
-    r = await client.post(endpoint, headers=headers, files=files, data=data)
+    req_timeout = effective_request_timeout(req_timeout_cap)
+    r = await client.post(
+        endpoint,
+        headers=headers,
+        files=files,
+        data=data,
+        timeout=httpx.Timeout(req_timeout, connect=min(30.0, req_timeout)),
+    )
     return r.status_code, r.text
 
 
@@ -232,6 +308,7 @@ async def curl_cffi_post_edits(
     backend: ImageApiBackend,
     *,
     options: ImageGenRequestOptions | None = None,
+    req_timeout_cap: float | None = None,
 ) -> tuple[int, str]:
     cfg = image_gen_config
     impersonate = (cfg.tls_impersonate or "").strip()
@@ -243,6 +320,7 @@ async def curl_cffi_post_edits(
     for i, blob in enumerate(image_blobs):
         mp.addpart("image", data=blob, filename=f"ref_{i}.png", content_type="image/png")
     data = edit_request_fields(prompt, backend, options=options)
+    req_timeout = effective_request_timeout(req_timeout_cap)
     async with CffiAsyncSession() as session:
         r = await session.post(
             endpoint,
@@ -250,7 +328,7 @@ async def curl_cffi_post_edits(
             multipart=mp,
             data=data,
             impersonate=impersonate,
-            timeout=cfg.request_timeout,
+            timeout=req_timeout,
         )
         return r.status_code, r.text
 
@@ -261,13 +339,13 @@ async def curl_post_edits(
     backend: ImageApiBackend,
     *,
     options: ImageGenRequestOptions | None = None,
+    req_timeout_cap: float | None = None,
 ) -> tuple[int, str]:
     if not shutil.which("curl"):
         raise RuntimeError("未找到 curl 可执行文件")
-    cfg = image_gen_config
     endpoint = image_edits_endpoint(backend)
     headers = image_gen_auth_headers_multipart(backend)
-    timeout_s = int(max(10, min(cfg.request_timeout, 600)))
+    timeout_s = int(max(10, min(effective_request_timeout(req_timeout_cap), 600)))
     with tempfile.TemporaryDirectory() as td:
         args: list[str] = [
             "curl",
@@ -317,25 +395,38 @@ async def post_edits_with_transport(
     backend: ImageApiBackend,
     *,
     options: ImageGenRequestOptions | None = None,
+    req_timeout_cap: float | None = None,
 ) -> tuple[int, str]:
     mode = effective_http_transport()
     cfg = image_gen_config
+    tcap = req_timeout_cap
     if mode == "curl":
-        return await curl_post_edits(image_blobs, prompt, backend, options=options)
+        return await curl_post_edits(image_blobs, prompt, backend, options=options, req_timeout_cap=tcap)
     if mode == "httpx":
-        return await httpx_post_edits(client, image_blobs, prompt, backend, options=options)
+        return await httpx_post_edits(client, image_blobs, prompt, backend, options=options, req_timeout_cap=tcap)
     if mode == "cffi":
-        return await curl_cffi_post_edits(image_blobs, prompt, backend, options=options)
+        return await curl_cffi_post_edits(image_blobs, prompt, backend, options=options, req_timeout_cap=tcap)
     if (cfg.tls_impersonate or "").strip():
         try:
-            return await curl_cffi_post_edits(image_blobs, prompt, backend, options=options)
+            return await curl_cffi_post_edits(image_blobs, prompt, backend, options=options, req_timeout_cap=tcap)
         except (CffiRequestsError, OSError, ValueError) as e:
+            ret = await try_httpx_after_cffi_timeout(
+                e,
+                tcap,
+                lambda cap: httpx_post_edits(
+                    client, image_blobs, prompt, backend, options=options, req_timeout_cap=cap
+                ),
+            )
+            if ret is not None:
+                return ret
+            if cffi_error_is_timeout(e):
+                raise
             logger.warning(f"pallas_image edits curl_cffi failed, fallback httpx: {e}")
     try:
-        return await httpx_post_edits(client, image_blobs, prompt, backend, options=options)
+        return await httpx_post_edits(client, image_blobs, prompt, backend, options=options, req_timeout_cap=tcap)
     except httpx.ConnectError as e:
         logger.warning(f"pallas_image edits httpx connect failed, fallback curl: {e}")
-        return await curl_post_edits(image_blobs, prompt, backend, options=options)
+        return await curl_post_edits(image_blobs, prompt, backend, options=options, req_timeout_cap=tcap)
 
 
 def strip_data_url_base64(value: str) -> str:

@@ -125,10 +125,10 @@ class Config(BaseModel, extra="ignore"):
         description="快档失败后是否继续慢档（遍历常见 size/quality 等）；关闭可显著减少失败耗时。",
     )
     pallas_image_draw_total_timeout: float = Field(
-        default=300.0,
+        default=480.0,
         gt=30.0,
         le=1800.0,
-        description="单次画画从进入队列到结束的上限（秒），含排队、下载参考图与多轮重试。",
+        description="单次画画从进入队列到结束的上限（秒），含排队、下载参考图与多轮重试；偏慢上游宜加大。",
     )
     pallas_image_ref_download_timeout: float = Field(
         default=30.0,
