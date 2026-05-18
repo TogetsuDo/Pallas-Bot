@@ -3,42 +3,125 @@
 import json
 import re
 
+from nonebot import logger
+
 PALLAS_VAGUE_REPLY = "呃......咳嗯，下次不能喝、喝这么多了......"
+
+_INTERNAL_ERROR_CODES = frozenset({
+    "insufficient_user_quota",
+    "insufficient_quota",
+    "billing_not_active",
+    "billing_hard_limit_reached",
+    "payment_required",
+    "account_deactivated",
+})
+
+_USER_VISIBLE_ERROR_CODES = frozenset({
+    "content_policy_violation",
+    "content_filter",
+    "content_policy",
+    "moderation_blocked",
+    "safety_system",
+    "image_generation_user_error",
+    "invalid_prompt",
+    "prompt_blocked",
+})
+
+_INTERNAL_MESSAGE_PATTERNS = re.compile(
+    r"预扣费|剩余额度|需要预扣费|insufficient[_\s-]?quota|billing|"
+    r"用户\[\d+\].*(\$|usd|余额|额度)",
+    re.IGNORECASE,
+)
+
+_USER_VISIBLE_MESSAGE_PATTERNS = re.compile(
+    r"违规|敏感|审核|不合规|涉黄|涉政|违法|屏蔽|禁止生成|内容政策|"
+    r"content\s*policy|moderation|safety|blocked|violat|inappropriate|"
+    r"not allowed|cannot generate",
+    re.IGNORECASE,
+)
 
 
 def extract_upstream_error_message(body: str) -> str | None:
     """解析 HTTP 响应体中的上游错误文案"""
+    msg, _, _ = extract_upstream_error_fields(body)
+    return msg
+
+
+def extract_upstream_error_fields(body: str) -> tuple[str | None, str | None, str | None]:
+    """解析 error.message / error.code / error.type（OpenAI 兼容 JSON）。"""
     try:
         data = json.loads(body)
     except Exception:
-        return None
+        return None, None, None
     if not isinstance(data, dict):
-        return None
+        return None, None, None
     err = data.get("error")
     if isinstance(err, str) and err.strip():
-        return err.strip()
-    if isinstance(err, dict):
-        m = err.get("message")
-        if isinstance(m, str) and m.strip():
-            return m.strip()
-    return None
+        return err.strip(), None, None
+    if not isinstance(err, dict):
+        return None, None, None
+    message = err.get("message")
+    code = err.get("code")
+    err_type = err.get("type")
+    msg = message.strip() if isinstance(message, str) and message.strip() else None
+    code_s = code.strip().lower() if isinstance(code, str) and code.strip() else None
+    type_s = err_type.strip().lower() if isinstance(err_type, str) and err_type.strip() else None
+    return msg, code_s, type_s
 
 
 def sanitize_user_visible_message(text: str) -> str:
-    """去掉上游 message 末尾 traceid 括号段及尾部空白。"""
+    """去掉 traceid、request id 等调试尾巴。"""
     if not text:
         return text
     s = text.strip()
     parts = re.split(r"\s*[（(]\s*traceid\s*:", s, maxsplit=1, flags=re.IGNORECASE)
-    out = parts[0].strip() if parts else s
-    return out or s
+    s = parts[0].strip() if parts else s
+    s = re.sub(r"\s*[（(]\s*request\s*id\s*:\s*[^）)]+[）)]", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"\s*,?\s*request\s+id\s*:\s*\S+", "", s, flags=re.IGNORECASE)
+    return s.strip() or text.strip()
+
+
+def upstream_error_is_internal(message: str, code: str | None, err_type: str | None) -> bool:
+    if code and code in _INTERNAL_ERROR_CODES:
+        return True
+    if err_type and err_type in _INTERNAL_ERROR_CODES:
+        return True
+    return bool(_INTERNAL_MESSAGE_PATTERNS.search(message))
+
+
+def upstream_error_is_user_visible(message: str, code: str | None, err_type: str | None) -> bool:
+    if code and code in _USER_VISIBLE_ERROR_CODES:
+        return True
+    if err_type and err_type in _USER_VISIBLE_ERROR_CODES:
+        return True
+    return bool(_USER_VISIBLE_MESSAGE_PATTERNS.search(message))
+
+
+def upstream_error_visible_to_user(body_or_empty: str) -> bool:
+    """上游业务错误是否应对用户展示（非额度/账单类）。"""
+    if not body_or_empty:
+        return False
+    msg, code, err_type = extract_upstream_error_fields(body_or_empty)
+    if not msg:
+        return False
+    clean = sanitize_user_visible_message(msg)
+    if upstream_error_is_internal(clean, code, err_type):
+        return False
+    return upstream_error_is_user_visible(clean, code, err_type)
 
 
 def user_failure_reply(body_or_empty: str) -> str:
-    """失败时：能解析上游 msg 则返回该文案，否则兜底句。"""
+    """失败回复：可展示类返回脱敏上游文案，内部/未识别类返回兜底句。"""
     if not body_or_empty:
         return PALLAS_VAGUE_REPLY
-    msg = extract_upstream_error_message(body_or_empty)
+    msg, code, err_type = extract_upstream_error_fields(body_or_empty)
     if not msg:
         return PALLAS_VAGUE_REPLY
-    return sanitize_user_visible_message(msg) or PALLAS_VAGUE_REPLY
+    clean = sanitize_user_visible_message(msg)
+    if upstream_error_is_internal(clean, code, err_type):
+        logger.warning(f"upstream failure (user sees vague reply): {clean} code={code!r}")
+        return PALLAS_VAGUE_REPLY
+    if upstream_error_is_user_visible(clean, code, err_type):
+        return clean or PALLAS_VAGUE_REPLY
+    logger.warning(f"upstream failure (unclassified, vague reply): {clean} code={code!r}")
+    return PALLAS_VAGUE_REPLY

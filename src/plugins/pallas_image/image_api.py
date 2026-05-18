@@ -16,6 +16,7 @@ from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from src.common.utils.http_msg import PALLAS_VAGUE_REPLY, user_failure_reply
 
 from .config import ImageApiBackend, image_gen_config
+from .image_request_options import ImageGenRequestOptions
 
 
 def image_api_base(backend: ImageApiBackend) -> str:
@@ -171,10 +172,31 @@ async def post_generations_with_transport(
         return await curl_post_generations(url, headers, payload)
 
 
+def edit_request_fields(
+    prompt: str,
+    backend: ImageApiBackend,
+    *,
+    options: ImageGenRequestOptions | None = None,
+) -> dict[str, str]:
+    opts = options or ImageGenRequestOptions.from_config()
+    data: dict[str, str] = {"prompt": prompt, "model": backend.model}
+    if opts.size:
+        data["size"] = opts.size
+    elif opts.aspect_ratio:
+        data["aspect_ratio"] = opts.aspect_ratio
+    if opts.quality:
+        data["quality"] = opts.quality
+    if opts.response_format:
+        data["response_format"] = opts.response_format
+    return data
+
+
 async def httpx_post_edits(
     image_blobs: list[bytes],
     prompt: str,
     backend: ImageApiBackend,
+    *,
+    options: ImageGenRequestOptions | None = None,
 ) -> tuple[int, str]:
     cfg = image_gen_config
     endpoint = image_edits_endpoint(backend)
@@ -183,16 +205,7 @@ async def httpx_post_edits(
     files: list[tuple[str, tuple[str, bytes, str]]] = []
     for i, blob in enumerate(image_blobs):
         files.append(("image", (f"ref_{i}.png", blob, "image/png")))
-    data: dict[str, str] = {"prompt": prompt, "model": backend.model}
-    sz = (cfg.size or "").strip()
-    if sz:
-        data["size"] = sz
-    q = (cfg.quality or "").strip()
-    if q:
-        data["quality"] = q
-    rf = (cfg.response_format or "").strip()
-    if rf:
-        data["response_format"] = rf
+    data = edit_request_fields(prompt, backend, options=options)
     async with httpx.AsyncClient(timeout=timeout, trust_env=True) as client:
         r = await client.post(endpoint, headers=headers, files=files, data=data)
         return r.status_code, r.text
@@ -202,6 +215,8 @@ async def curl_cffi_post_edits(
     image_blobs: list[bytes],
     prompt: str,
     backend: ImageApiBackend,
+    *,
+    options: ImageGenRequestOptions | None = None,
 ) -> tuple[int, str]:
     cfg = image_gen_config
     impersonate = (cfg.tls_impersonate or "").strip()
@@ -212,16 +227,7 @@ async def curl_cffi_post_edits(
     mp = CurlMime()
     for i, blob in enumerate(image_blobs):
         mp.addpart("image", data=blob, filename=f"ref_{i}.png", content_type="image/png")
-    data: dict[str, str] = {"prompt": prompt, "model": backend.model}
-    sz = (cfg.size or "").strip()
-    if sz:
-        data["size"] = sz
-    q = (cfg.quality or "").strip()
-    if q:
-        data["quality"] = q
-    rf = (cfg.response_format or "").strip()
-    if rf:
-        data["response_format"] = rf
+    data = edit_request_fields(prompt, backend, options=options)
     async with CffiAsyncSession() as session:
         r = await session.post(
             endpoint,
@@ -238,6 +244,8 @@ async def curl_post_edits(
     image_blobs: list[bytes],
     prompt: str,
     backend: ImageApiBackend,
+    *,
+    options: ImageGenRequestOptions | None = None,
 ) -> tuple[int, str]:
     if not shutil.which("curl"):
         raise RuntimeError("未找到 curl 可执行文件")
@@ -265,16 +273,9 @@ async def curl_post_edits(
             p = Path(td) / f"ref_{i}.png"
             await asyncio.to_thread(p.write_bytes, blob)
             args.extend(["-F", f"image=@{p};type=image/png"])
-        args.extend(["--form-string", f"prompt={prompt}", "--form-string", f"model={backend.model}"])
-        sz = (cfg.size or "").strip()
-        if sz:
-            args.extend(["--form-string", f"size={sz}"])
-        q = (cfg.quality or "").strip()
-        if q:
-            args.extend(["--form-string", f"quality={q}"])
-        rf = (cfg.response_format or "").strip()
-        if rf:
-            args.extend(["--form-string", f"response_format={rf}"])
+        form = edit_request_fields(prompt, backend, options=options)
+        for key, value in form.items():
+            args.extend(["--form-string", f"{key}={value}"])
         proc = await asyncio.create_subprocess_exec(
             *args,
             stdout=asyncio.subprocess.PIPE,
@@ -298,25 +299,27 @@ async def post_edits_with_transport(
     image_blobs: list[bytes],
     prompt: str,
     backend: ImageApiBackend,
+    *,
+    options: ImageGenRequestOptions | None = None,
 ) -> tuple[int, str]:
     mode = effective_http_transport()
     cfg = image_gen_config
     if mode == "curl":
-        return await curl_post_edits(image_blobs, prompt, backend)
+        return await curl_post_edits(image_blobs, prompt, backend, options=options)
     if mode == "httpx":
-        return await httpx_post_edits(image_blobs, prompt, backend)
+        return await httpx_post_edits(image_blobs, prompt, backend, options=options)
     if mode == "cffi":
-        return await curl_cffi_post_edits(image_blobs, prompt, backend)
+        return await curl_cffi_post_edits(image_blobs, prompt, backend, options=options)
     if (cfg.tls_impersonate or "").strip():
         try:
-            return await curl_cffi_post_edits(image_blobs, prompt, backend)
+            return await curl_cffi_post_edits(image_blobs, prompt, backend, options=options)
         except (CffiRequestsError, OSError, ValueError) as e:
             logger.warning(f"pallas_image edits curl_cffi failed, fallback httpx: {e}")
     try:
-        return await httpx_post_edits(image_blobs, prompt, backend)
+        return await httpx_post_edits(image_blobs, prompt, backend, options=options)
     except httpx.ConnectError as e:
         logger.warning(f"pallas_image edits httpx connect failed, fallback curl: {e}")
-        return await curl_post_edits(image_blobs, prompt, backend)
+        return await curl_post_edits(image_blobs, prompt, backend, options=options)
 
 
 def strip_data_url_base64(value: str) -> str:
@@ -378,26 +381,28 @@ async def bytes_from_image_reference(client: httpx.AsyncClient, url: str) -> byt
         return None
 
 
-def generations_payload(prompt: str, ref_urls: list[str], *, model: str) -> dict[str, object]:
-    cfg = image_gen_config
+def generations_payload(
+    prompt: str,
+    ref_urls: list[str],
+    *,
+    model: str,
+    options: ImageGenRequestOptions | None = None,
+) -> dict[str, object]:
+    opts = options or ImageGenRequestOptions.from_config()
     body: dict[str, object] = {
         "model": model,
         "prompt": prompt,
     }
-    sz = (cfg.size or "").strip()
-    ar = (cfg.aspect_ratio or "").strip()
-    if sz:
-        body["size"] = sz
-    elif ar:
-        body["aspect_ratio"] = ar
-    q = (cfg.quality or "").strip()
-    if q:
-        body["quality"] = q
-    rf = (cfg.response_format or "").strip()
-    if rf:
-        body["response_format"] = rf
-    merge = cfg.merge_reference_urls_into_prompt
-    if ref_urls and not merge:
+    if opts.size:
+        body["size"] = opts.size
+    elif opts.aspect_ratio:
+        body["aspect_ratio"] = opts.aspect_ratio
+    if opts.quality:
+        body["quality"] = opts.quality
+    if opts.response_format:
+        body["response_format"] = opts.response_format
+    merge = image_gen_config.merge_reference_urls_into_prompt
+    if ref_urls and not merge and opts.include_ref_images:
         body["image"] = ref_urls
     return body
 

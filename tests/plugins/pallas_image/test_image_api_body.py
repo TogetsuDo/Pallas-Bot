@@ -2,10 +2,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from src.common.utils.http_msg import PALLAS_VAGUE_REPLY, upstream_error_visible_to_user
 from src.plugins.pallas_image.image_api import (
+    generations_payload,
     image_api_body_issue_label,
     reply_from_image_api_json,
 )
+from src.plugins.pallas_image.image_request_options import ImageGenRequestOptions
 
 
 def test_image_api_body_issue_label_ok_b64() -> None:
@@ -43,10 +46,10 @@ async def test_reply_finish_on_error_false_on_upstream_error() -> None:
 
 
 @pytest.mark.asyncio
-async def test_reply_finish_on_error_true_on_upstream_error() -> None:
+async def test_reply_finish_on_error_true_on_internal_upstream_error() -> None:
     matcher = MagicMock()
     matcher.finish = AsyncMock()
-    body = '{"error":{"message":"quota"}}'
+    body = '{"error":{"message":"预扣费额度失败","code":"insufficient_user_quota"}}'
     ok = await reply_from_image_api_json(
         matcher,
         AsyncMock(),
@@ -55,3 +58,35 @@ async def test_reply_finish_on_error_true_on_upstream_error() -> None:
     )
     assert ok is False
     matcher.finish.assert_awaited_once()
+    assert matcher.finish.await_args.args[0] == PALLAS_VAGUE_REPLY
+
+
+@pytest.mark.asyncio
+async def test_reply_finish_on_error_true_on_visible_upstream_error() -> None:
+    matcher = MagicMock()
+    matcher.finish = AsyncMock()
+    body = '{"error":{"message":"内容违规，请修改提示词","code":"content_policy_violation"}}'
+    ok = await reply_from_image_api_json(
+        matcher,
+        AsyncMock(),
+        body,
+        finish_on_error=True,
+    )
+    assert ok is False
+    matcher.finish.assert_awaited_once()
+    assert matcher.finish.await_args.args[0] == "内容违规，请修改提示词"
+    assert upstream_error_visible_to_user(body)
+
+
+def test_generations_payload_uses_options() -> None:
+    opts = ImageGenRequestOptions(
+        size="512x512",
+        quality="high",
+        response_format="url",
+        include_ref_images=False,
+    )
+    payload = generations_payload("p", ["http://x/a.png"], model="m", options=opts)
+    assert payload["size"] == "512x512"
+    assert payload["quality"] == "high"
+    assert payload["response_format"] == "url"
+    assert "image" not in payload

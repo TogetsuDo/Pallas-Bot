@@ -14,7 +14,11 @@ from nonebot.permission import SUPERUSER
 
 from src.common.cmd_perm import group_message_permission_for_command
 from src.common.config import GroupConfig
-from src.common.utils.http_msg import PALLAS_VAGUE_REPLY, user_failure_reply
+from src.common.utils.http_msg import (
+    PALLAS_VAGUE_REPLY,
+    upstream_error_visible_to_user,
+    user_failure_reply,
+)
 
 from .config import ImageApiBackend, image_gen_config
 from .draw_usage_store import bump_pallas_draw_usage, pallas_draw_usage_today
@@ -31,6 +35,7 @@ from .image_api import (
     post_generations_with_transport,
     reply_from_image_api_json,
 )
+from .image_request_options import image_gen_request_attempts
 from .runtime_state import image_gen_semaphore
 
 PALLAS_DRAW_COOLDOWN_KEY = "pallas_draw_command"
@@ -260,158 +265,212 @@ async def pallas_draw_execute(
                                 f"requested {len(ref_urls)} refs, got {len(blobs)} blobs",
                             )
                         last_body = ""
+                        edit_param_attempts = image_gen_request_attempts(with_ref_urls=False)
                         edit_backends = image_backends_with_endpoint(backends, image_edits_endpoint)
                         for idx, backend in enumerate(edit_backends):
-                            has_more = idx < len(edit_backends) - 1
+                            has_more_backend = idx < len(edit_backends) - 1
                             edits_ep = image_edits_endpoint(backend)
-                            logger.info(
-                                f"bot [{bot_id}] pallas_image edits request in group [{group_id}] "
-                                f"backend={backend.label} url={edits_ep} images={len(blobs)}",
-                            )
-                            req_started = time.perf_counter()
-                            try:
-                                status, body_text = await post_edits_with_transport(blobs, edit_prompt, backend)
-                            except (
-                                FinishedException,
-                                httpx.TimeoutException,
-                                httpx.ConnectError,
-                                httpx.HTTPError,
-                                CffiRequestsError,
-                                RuntimeError,
-                            ) as e:
-                                if has_more:
+                            skip_backend = False
+                            for opt_idx, req_opts in enumerate(edit_param_attempts):
+                                has_more_opts = opt_idx < len(edit_param_attempts) - 1
+                                still_retrying = has_more_backend or has_more_opts
+                                if opt_idx > 0:
                                     logger.info(
-                                        f"bot [{bot_id}] pallas_image edits transport error "
-                                        f"backend={backend.label} group=[{group_id}]: {e}, trying next",
+                                        f"bot [{bot_id}] pallas_image edits retry params "
+                                        f"({req_opts.log_label()}) backend={backend.label} "
+                                        f"group=[{group_id}]",
+                                    )
+                                logger.info(
+                                    f"bot [{bot_id}] pallas_image edits request in group [{group_id}] "
+                                    f"backend={backend.label} params=({req_opts.log_label()}) "
+                                    f"url={edits_ep} images={len(blobs)}",
+                                )
+                                req_started = time.perf_counter()
+                                try:
+                                    status, body_text = await post_edits_with_transport(
+                                        blobs,
+                                        edit_prompt,
+                                        backend,
+                                        options=req_opts,
+                                    )
+                                except (
+                                    FinishedException,
+                                    httpx.TimeoutException,
+                                    httpx.ConnectError,
+                                    httpx.HTTPError,
+                                    CffiRequestsError,
+                                    RuntimeError,
+                                ) as e:
+                                    if still_retrying:
+                                        logger.info(
+                                            f"bot [{bot_id}] pallas_image edits transport error "
+                                            f"backend={backend.label} group=[{group_id}]: {e}, trying next",
+                                        )
+                                    else:
+                                        logger.warning(
+                                            f"bot [{bot_id}] pallas_image edits transport error "
+                                            f"backend={backend.label} group=[{group_id}]: {e}",
+                                        )
+                                    break
+                                last_body = body_text
+                                logger.info(
+                                    f"bot [{bot_id}] pallas_image edits response in group [{group_id}]: "
+                                    f"backend={backend.label} status={status} "
+                                    f"elapsed_ms={(time.perf_counter() - req_started) * 1000:.0f} "
+                                    f"body_len={len(body_text)} url={edits_ep}",
+                                )
+                                if status == 200:
+                                    if await reply_from_image_api_json(
+                                        matcher,
+                                        http_client,
+                                        body_text,
+                                        at_user_id=user_id,
+                                        persist_draw=(usage_key[0], usage_key[1]),
+                                        finish_on_error=not still_retrying,
+                                    ):
+                                        bump_pallas_draw_usage(usage_key, count_usage)
+                                        return
+                                    issue = image_api_body_issue_label(body_text) or "image_send_failed"
+                                    log_image_backend_unusable(
+                                        bot_id,
+                                        "edits",
+                                        backend.label,
+                                        group_id,
+                                        body_text,
+                                        has_more=still_retrying,
+                                    )
+                                    if issue == "upstream_error":
+                                        if upstream_error_visible_to_user(body_text):
+                                            await matcher.finish(
+                                                message_at_user(user_id, user_failure_reply(body_text))
+                                            )
+                                            return
+                                        skip_backend = True
+                                        break
+                                    if has_more_opts:
+                                        continue
+                                    break
+                                if still_retrying:
+                                    logger.info(
+                                        f"bot [{bot_id}] pallas_image edits backend={backend.label} "
+                                        f"status={status} in group [{group_id}], trying next",
                                     )
                                 else:
                                     logger.warning(
-                                        f"bot [{bot_id}] pallas_image edits transport error "
-                                        f"backend={backend.label} group=[{group_id}]: {e}",
+                                        f"bot [{bot_id}] pallas_image edits failed in group [{group_id}]: "
+                                        f"backend={backend.label} status={status} body={body_text[:500]}",
                                     )
+                                break
+                            if skip_backend:
                                 continue
-                            last_body = body_text
-                            logger.info(
-                                f"bot [{bot_id}] pallas_image edits response in group [{group_id}]: "
-                                f"backend={backend.label} status={status} "
-                                f"elapsed_ms={(time.perf_counter() - req_started) * 1000:.0f} "
-                                f"body_len={len(body_text)} url={edits_ep}",
-                            )
-                            if status == 200:
-                                if await reply_from_image_api_json(
-                                    matcher,
-                                    http_client,
-                                    body_text,
-                                    at_user_id=user_id,
-                                    persist_draw=(usage_key[0], usage_key[1]),
-                                    finish_on_error=not has_more,
-                                ):
-                                    bump_pallas_draw_usage(usage_key, count_usage)
-                                    return
-                                log_image_backend_unusable(
-                                    bot_id,
-                                    "edits",
-                                    backend.label,
-                                    group_id,
-                                    body_text,
-                                    has_more=has_more,
-                                )
-                                if has_more:
-                                    continue
-                                return
-                            if has_more:
-                                logger.info(
-                                    f"bot [{bot_id}] pallas_image edits backend={backend.label} "
-                                    f"status={status} in group [{group_id}], trying next",
-                                )
-                            else:
-                                logger.warning(
-                                    f"bot [{bot_id}] pallas_image edits failed in group [{group_id}]: "
-                                    f"backend={backend.label} status={status} body={body_text[:500]}",
-                                )
-                        logger.error(
-                            f"bot [{bot_id}] pallas_image edits exhausted backends in group [{group_id}]",
+                        logger.warning(
+                            f"bot [{bot_id}] pallas_image edits exhausted in group [{group_id}], "
+                            f"fallback to generations",
                         )
-                        await matcher.finish(message_at_user(user_id, user_failure_reply(last_body)))
-                        return
 
                 payload_model = backends[0].model if backends else cfg.model
                 last_body = ""
+                gen_param_attempts = image_gen_request_attempts(with_ref_urls=bool(ref_urls))
                 gen_backends = image_backends_with_endpoint(backends, image_gen_endpoint)
                 for idx, backend in enumerate(gen_backends):
-                    has_more = idx < len(gen_backends) - 1
+                    has_more_backend = idx < len(gen_backends) - 1
                     gen_ep = image_gen_endpoint(backend)
-                    payload = generations_payload(gen_prompt, ref_urls, model=backend.model or payload_model)
                     auth_json_headers = image_gen_auth_headers_json(backend)
-                    logger.info(
-                        f"bot [{bot_id}] pallas_image generations request in group [{group_id}] "
-                        f"backend={backend.label} url={gen_ep}",
-                    )
-                    request_started = time.perf_counter()
-                    try:
-                        status, body_text = await post_generations_with_transport(
-                            gen_ep,
-                            auth_json_headers,
-                            payload,
-                        )
-                    except (
-                        FinishedException,
-                        httpx.TimeoutException,
-                        httpx.ConnectError,
-                        httpx.HTTPError,
-                        CffiRequestsError,
-                        RuntimeError,
-                    ) as e:
-                        if has_more:
+                    skip_backend = False
+                    for opt_idx, req_opts in enumerate(gen_param_attempts):
+                        has_more_opts = opt_idx < len(gen_param_attempts) - 1
+                        still_retrying = has_more_backend or has_more_opts
+                        if opt_idx > 0:
                             logger.info(
-                                f"bot [{bot_id}] pallas_image generations transport error "
-                                f"backend={backend.label} group=[{group_id}]: {e}, trying next",
+                                f"bot [{bot_id}] pallas_image generations retry params "
+                                f"({req_opts.log_label()}) backend={backend.label} "
+                                f"group=[{group_id}]",
+                            )
+                        payload = generations_payload(
+                            gen_prompt,
+                            ref_urls,
+                            model=backend.model or payload_model,
+                            options=req_opts,
+                        )
+                        logger.info(
+                            f"bot [{bot_id}] pallas_image generations request in group [{group_id}] "
+                            f"backend={backend.label} params=({req_opts.log_label()}) url={gen_ep}",
+                        )
+                        request_started = time.perf_counter()
+                        try:
+                            status, body_text = await post_generations_with_transport(
+                                gen_ep,
+                                auth_json_headers,
+                                payload,
+                            )
+                        except (
+                            FinishedException,
+                            httpx.TimeoutException,
+                            httpx.ConnectError,
+                            httpx.HTTPError,
+                            CffiRequestsError,
+                            RuntimeError,
+                        ) as e:
+                            if still_retrying:
+                                logger.info(
+                                    f"bot [{bot_id}] pallas_image generations transport error "
+                                    f"backend={backend.label} group=[{group_id}]: {e}, trying next",
+                                )
+                            else:
+                                logger.warning(
+                                    f"bot [{bot_id}] pallas_image generations transport error "
+                                    f"backend={backend.label} group=[{group_id}]: {e}",
+                                )
+                            break
+                        last_body = body_text
+                        logger.info(
+                            f"bot [{bot_id}] pallas_image generations response in group [{group_id}]: "
+                            f"backend={backend.label} status={status} "
+                            f"elapsed_ms={(time.perf_counter() - request_started) * 1000:.0f} "
+                            f"body_len={len(body_text)} url={gen_ep}",
+                        )
+                        if status == 200:
+                            if await reply_from_image_api_json(
+                                matcher,
+                                http_client,
+                                body_text,
+                                at_user_id=user_id,
+                                persist_draw=(usage_key[0], usage_key[1]),
+                                finish_on_error=not still_retrying,
+                            ):
+                                bump_pallas_draw_usage(usage_key, count_usage)
+                                return
+                            issue = image_api_body_issue_label(body_text) or "image_send_failed"
+                            log_image_backend_unusable(
+                                bot_id,
+                                "generations",
+                                backend.label,
+                                group_id,
+                                body_text,
+                                has_more=still_retrying,
+                            )
+                            if issue == "upstream_error":
+                                if upstream_error_visible_to_user(body_text):
+                                    await matcher.finish(message_at_user(user_id, user_failure_reply(body_text)))
+                                    return
+                                skip_backend = True
+                                break
+                            if has_more_opts:
+                                continue
+                            break
+                        if still_retrying:
+                            logger.info(
+                                f"bot [{bot_id}] pallas_image generations backend={backend.label} "
+                                f"status={status} in group [{group_id}], trying next",
                             )
                         else:
                             logger.warning(
-                                f"bot [{bot_id}] pallas_image generations transport error "
-                                f"backend={backend.label} group=[{group_id}]: {e}",
+                                f"bot [{bot_id}] pallas_image generations failed in group [{group_id}]: "
+                                f"backend={backend.label} status={status} body={body_text[:500]}",
                             )
+                        break
+                    if skip_backend:
                         continue
-                    last_body = body_text
-                    logger.info(
-                        f"bot [{bot_id}] pallas_image generations response in group [{group_id}]: "
-                        f"backend={backend.label} status={status} "
-                        f"elapsed_ms={(time.perf_counter() - request_started) * 1000:.0f} "
-                        f"body_len={len(body_text)} url={gen_ep}",
-                    )
-                    if status == 200:
-                        if await reply_from_image_api_json(
-                            matcher,
-                            http_client,
-                            body_text,
-                            at_user_id=user_id,
-                            persist_draw=(usage_key[0], usage_key[1]),
-                            finish_on_error=not has_more,
-                        ):
-                            bump_pallas_draw_usage(usage_key, count_usage)
-                            return
-                        log_image_backend_unusable(
-                            bot_id,
-                            "generations",
-                            backend.label,
-                            group_id,
-                            body_text,
-                            has_more=has_more,
-                        )
-                        if has_more:
-                            continue
-                        return
-                    if has_more:
-                        logger.info(
-                            f"bot [{bot_id}] pallas_image generations backend={backend.label} "
-                            f"status={status} in group [{group_id}], trying next",
-                        )
-                    else:
-                        logger.warning(
-                            f"bot [{bot_id}] pallas_image generations failed in group [{group_id}]: "
-                            f"backend={backend.label} status={status} body={body_text[:500]}",
-                        )
                 logger.error(
                     f"bot [{bot_id}] pallas_image generations exhausted backends in group [{group_id}]",
                 )
