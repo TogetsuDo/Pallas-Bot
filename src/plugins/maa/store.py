@@ -210,3 +210,6 @@ class MaaStore:
                 last_seen=float(meta.get("last_seen") or 0),
             )
         return out
+
+
+maa_store = MaaStore()

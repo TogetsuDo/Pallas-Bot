@@ -1,8 +1,24 @@
-from nonebot import get_plugin_config
 from pydantic import BaseModel, Field
 
+from src.common.webui import install_hot_reload_config
 
-class Config(BaseModel):
+
+class Config(BaseModel, extra="ignore"):
+    maa_public_base_url: str = Field(
+        default="",
+        description=(
+            "MAA 客户端可访问的对外基址（含 http/https，末尾勿加斜杠），"
+            "与 maa_get_task_path / maa_report_status_path 拼成完整 URL 供帮助与绑定提示展示。"
+        ),
+    )
+    maa_get_task_endpoint: str = Field(
+        default="",
+        description="获取任务完整 URL；填写后优先于「基址 + 路径」。",
+    )
+    maa_report_status_endpoint: str = Field(
+        default="",
+        description="汇报任务完整 URL；填写后优先于「基址 + 路径」。",
+    )
     maa_get_task_path: str = Field(
         default="/maa/getTask",
         description="MAA 轮询获取任务的 HTTP 路径（POST JSON）。",
@@ -21,4 +37,25 @@ class Config(BaseModel):
     )
 
 
-plugin_config = get_plugin_config(Config)
+def on_maa_config_reload(cfg: Config) -> None:  # noqa: ARG001
+    from nonebot import get_app
+
+    from .http_routes import remount_maa_http_routes
+
+    remount_maa_http_routes(get_app())
+    try:
+        from src.plugins.help.plugin_manager import clear_help_cache
+
+        clear_help_cache()
+    except Exception:
+        pass
+
+
+plugin_webui = install_hot_reload_config(
+    Config,
+    config_module=__name__,
+    on_reload=on_maa_config_reload,
+)
+get_maa_config = plugin_webui.get
+reload_maa_config = plugin_webui.reload
+clear_maa_config_cache = plugin_webui.clear_cache
