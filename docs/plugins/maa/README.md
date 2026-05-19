@@ -4,41 +4,59 @@
 
 ## 配置 MAA
 
-1. 在 MAA「设置 → 远程控制」填写：
+1. 在 MAA「设置 → 远程控制」填写（**完整 URL** 以游戏内「牛牛帮助 → MAA 远控」中 **MAA 对接地址** 为准，由部署方在插件配置中生成）：
    - **用户标识符**：你的 QQ 号（与绑定命令使用的账号一致）
-   - **获取任务端点**：`http(s)://<牛牛可访问地址>/maa/getTask`（POST JSON）
-   - **汇报任务端点**：`http(s)://<牛牛可访问地址>/maa/reportStatus`（POST JSON）
+   - **获取任务端点**、**汇报任务端点**：见帮助页或私聊绑定成功后的回复
 2. 保存后 MAA 会每秒轮询；此时设备尚未绑定，接口返回空 `tasks`。
 3. 私聊牛牛：`牛牛绑定MAA <设备标识符>`（复制 MAA「设备标识符（只读）」整段，一般为 **32 位十六进制**，不是 QQ 号）。
 
+游戏内可发 **「牛牛帮助」** → 打开 **MAA 远控** 插件，二级页「插件内用法」与三级功能详情含完整口令表（与下文同步）。
+
 ## 常用口令
 
-| 口令 | MAA 任务 type |
-|------|----------------|
-| 牛牛长草 / 牛牛一键长草 | LinkStart |
-| 牛牛唤醒 | LinkStart-WakeUp |
-| 牛牛作战 | LinkStart-Combat |
-| 牛牛公招 | LinkStart-Recruiting |
-| 牛牛换班 / 牛牛基建 | LinkStart-Base |
-| 牛牛信用商店 / 牛牛信用商店领取 | LinkStart-Mall |
-| 牛牛任务 | LinkStart-Mission |
-| 牛牛肉鸽 | LinkStart-AutoRoguelike |
-| 牛牛盐酸 | LinkStart-Reclamation |
-| 牛牛截图 / 牛牛立刻截图 | CaptureImage / CaptureImageNow |
-| 牛牛停止 / 牛牛停止任务 | StopTask |
-| 牛牛心跳 | HeartBeat |
-| 牛牛单抽 / 牛牛十连 | Toolbox-GachaOnce / Toolbox-GachaTenTimes |
-| 牛牛设置连接 \<值\> | Settings-ConnectionAddress |
-| 牛牛设置关卡 \<值\> | Settings-Stage1 |
+游戏内 **牛牛帮助 → MAA 远控** 含每条口令的用途说明；下表为 type 对照（维护者与 `tasks.py` 同步）。
+
+| 口令 | type | 用途摘要 |
+|------|------|----------|
+| 牛牛长草 | LinkStart | 完整一键长草 |
+| 牛牛唤醒 | LinkStart-WakeUp | 仅唤醒子项 |
+| 牛牛作战 | LinkStart-Combat | 仅作战刷图 |
+| 牛牛公招 | LinkStart-Recruiting | 仅公招 |
+| 牛牛基建 | LinkStart-Base | 仅基建子项（含换班等，依 MAA 配置） |
+| 牛牛信用商店 | LinkStart-Mall | 仅信用商店 |
+| 牛牛任务 | LinkStart-Mission | 仅任务领取 |
+| 牛牛肉鸽 | LinkStart-AutoRoguelike | 仅自动肉鸽 |
+| 牛牛盐酸 | LinkStart-Reclamation | 仅生息演算 |
+| 牛牛截图 / 牛牛立刻截图 | CaptureImage / CaptureImageNow | 排队截图 / 立即截图 |
+| 牛牛停止 | StopTask | 结束当前任务 |
+| 牛牛心跳 | HeartBeat | 查询当前执行任务 id |
+| 牛牛单抽 / 牛牛十连 | Toolbox-Gacha* | 工具箱公招单抽/十连 |
+| 牛牛设置连接 \<值\> | Settings-ConnectionAddress | 改连接地址 |
+| 牛牛设置关卡 \<值\> | Settings-Stage1 | 改作战关卡 |
+
+### 原始 type（远控协议）
+
+发送 **`牛牛MAA任务 <type> [params]`**，在协议白名单内直接下发，效果等同向 `getTask` 返回对应任务。例如：
+
+- `牛牛MAA任务 Settings-Stage1 1-7`
+- `牛牛MAA任务 LinkStart-Recruiting`
+- `牛牛MAA任务 CaptureImage`
+
+`Settings-*` 类必须带 `params`；其余 type 不要多余参数。可用 type 与[远程控制协议](https://docs.maa.plus/zh-cn/protocol/remote-control-schema.html)一致。
 
 默认在指令执行后会再排队一张截图（可在插件配置 `maa_attach_screenshot` 关闭）。
 
 ## 插件配置项
 
+支持 **WebUI「插件」页保存后立即生效**（`install_hot_reload_config`）；修改 `maa_get_task_path` / `maa_report_status_path` 会重新挂载 HTTP 路由，并清理帮助图缓存。MAA 客户端若已填写旧 URL，须同步改为帮助页展示的新地址。
+
 | 键 | 默认 | 说明 |
 |----|------|------|
-| `maa_get_task_path` | `/maa/getTask` | 获取任务路径 |
-| `maa_report_status_path` | `/maa/reportStatus` | 汇报路径 |
+| `maa_public_base_url` | （空） | 对外基址，如 `https://nb.example.com`；与路径拼成帮助/绑定中展示的完整 URL |
+| `maa_get_task_endpoint` | （空） | 获取任务完整 URL；填写后优先于基址+路径 |
+| `maa_report_status_endpoint` | （空） | 汇报任务完整 URL；填写后优先于基址+路径 |
+| `maa_get_task_path` | `/maa/getTask` | 获取任务路径（相对基址） |
+| `maa_report_status_path` | `/maa/reportStatus` | 汇报路径（相对基址） |
 | `maa_attach_screenshot` | `true` | 指令后附加截图任务 |
 | `maa_seen_ttl_seconds` | `86400` | 未绑定设备登记保留时间 |
 

@@ -1,39 +1,51 @@
 from __future__ import annotations
 
-from fastapi import FastAPI  # noqa: TC002
-from nonebot import get_app, get_bot, logger, on_command, on_message
+from nonebot import get_app, get_bot, on_command, on_message
 from nonebot.adapters.onebot.v11 import (
     Bot,
     GroupMessageEvent,
     Message,
     MessageEvent,
-    MessageSegment,
     PrivateMessageEvent,
 )
 from nonebot.params import CommandArg
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
-from pydantic import BaseModel, Field
 
 from src.common.cmd_perm import permission_for_command, private_message_permission_for_command
 
-from .config import plugin_config
-from .store import MaaStore, NotifyTarget
-from .tasks import IMMEDIATE_TYPES, bind_device_id_error, normalize_device_id, parse_command_line
+from .config import get_maa_config
+from .endpoints import resolve_maa_http_endpoints
+from .http_routes import remount_maa_http_routes
+from .store import NotifyTarget, maa_store
+from .tasks import (
+    COMMAND_TASK_MAP,
+    IMMEDIATE_TYPES,
+    MAA_RAW_TASK_PREFIX,
+    MaaTaskSpec,
+    bind_device_id_error,
+    format_maa_control_commands_help,
+    format_maa_raw_task_types_help,
+    maa_raw_task_validate,
+    normalize_device_id,
+    parse_command_line,
+)
 
-app: FastAPI = get_app()
-store = MaaStore()
+app = get_app()
+store = maa_store
 
 __plugin_meta__ = PluginMetadata(
     name="MAA 远控",
     description="通过 MAA 远程控制协议绑定设备并下发任务。",
-    usage="""
-在 MAA「远程控制」中填写用户标识符（你的 QQ 号）与下方 HTTP 端点，保存后私聊：
-牛牛绑定MAA <设备标识符>
-牛牛长草 / 牛牛公招 / 牛牛截图 等 — 向已绑定设备排队任务
-牛牛MAA状态 — 查看绑定与队列
-所需权限以「牛牛帮助」本插件功能详情为准（可由 WebUI「命令权限」覆盖）。
-协议说明：https://docs.maa.plus/zh-cn/protocol/remote-control-schema.html
+    usage=f"""
+1. 绑定（私聊）
+牛牛绑定MAA <设备标识符>（MAA「设备标识符（只读）」32 位 hex，不是 QQ 号）
+2. MAA 对接地址
+发「牛牛帮助 MAA远控」见当前 getTask / reportStatus 完整 URL（由部署配置生成）。
+3. 远控口令（群聊或私聊，向已绑定设备排队）
+{format_maa_control_commands_help()}
+4. 其它
+牛牛MAA状态 — 查看绑定设备与待拉取任务数
     """.strip(),
     type="application",
     homepage="https://github.com/PallasBot/Pallas-Bot",
@@ -53,16 +65,26 @@ __plugin_meta__ = PluginMetadata(
                 "command_permission": "maa.bind",
                 "brief_des": "将 MAA 设备与 QQ 绑定",
                 "detail_des": (
-                    "MAA 用户标识符须为 QQ 号；设备标识符在 MAA 设置中复制。须先让 MAA 连上牛牛并轮询后再绑定。"
+                    "MAA 用户标识符须为 QQ 号；设备标识符在 MAA 设置中复制。"
+                    "须先让 MAA 连上牛牛并轮询后再绑定。"
+                    "对接 URL 见「牛牛帮助 MAA远控」中的「MAA 对接地址」。"
                 ),
             },
             {
                 "func": "MAA 远控",
                 "trigger_method": "on_message",
-                "trigger_condition": "牛牛长草/牛牛截图/牛牛公招等",
+                "trigger_condition": "牛牛长草、牛牛公招、牛牛截图等口令",
                 "command_permission": "maa.control",
                 "brief_des": "向已绑定 MAA 下发任务",
-                "detail_des": "支持一键长草及子项、截图、停止、心跳、工具箱抽卡等；详见插件 usage。",
+                "detail_des": format_maa_control_commands_help(),
+            },
+            {
+                "func": "MAA 远控（原始 type）",
+                "trigger_method": "on_cmd",
+                "trigger_condition": "牛牛MAA任务 <type> [params]",
+                "command_permission": "maa.control",
+                "brief_des": "按协议 type 下发远控任务",
+                "detail_des": format_maa_raw_task_types_help(),
             },
             {
                 "func": "MAA 状态",
@@ -77,84 +99,17 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_method": "http",
                 "trigger_condition": "POST /maa/getTask、/maa/reportStatus",
                 "brief_des": "MAA 轮询与汇报端点",
-                "detail_des": "实现 MAA 远程控制协议；路径可在插件配置中修改。",
+                "detail_des": (
+                    "实现 MAA 远程控制协议。"
+                    "完整 URL 见「牛牛帮助 MAA远控」中的「MAA 对接地址」（由 maa_public_base_url 等配置生成）。"
+                ),
             },
         ],
     },
 )
 
 
-class GetTaskRequest(BaseModel):
-    user: str = ""
-    device: str = ""
-
-
-class GetTaskResponse(BaseModel):
-    tasks: list[dict] = Field(default_factory=list)
-
-
-class ReportStatusRequest(BaseModel):
-    user: str = ""
-    device: str = ""
-    task: str = ""
-    status: str = ""
-    payload: str = ""
-
-
-def _normalize_path(path: str) -> str:
-    p = (path or "").strip()
-    if not p.startswith("/"):
-        p = f"/{p}"
-    return p
-
-
-GET_TASK_PATH = _normalize_path(plugin_config.maa_get_task_path)
-REPORT_PATH = _normalize_path(plugin_config.maa_report_status_path)
-
-
-@app.post(GET_TASK_PATH, response_model=GetTaskResponse)
-async def maa_get_task(body: GetTaskRequest) -> GetTaskResponse:
-    await store.touch_seen(body.user, body.device, plugin_config.maa_seen_ttl_seconds)
-    if not await store.is_device_verified(body.user, body.device):
-        return GetTaskResponse(tasks=[])
-    tasks = await store.pending_tasks_for(body.user, body.device)
-    return GetTaskResponse(tasks=tasks)
-
-
-@app.post(REPORT_PATH)
-async def maa_report_status(body: ReportStatusRequest) -> dict[str, str]:
-    task = await store.mark_reported(body.task)
-    if not task:
-        return {"message": "ok"}
-
-    notify = task.notify
-    try:
-        bot = get_bot(str(notify.bot_id))
-    except Exception:
-        logger.warning("maa reportStatus: bot {} offline, task={}", notify.bot_id, body.task)
-        return {"message": "ok"}
-
-    lines = [f"MAA 任务 {body.task} 已结束：{body.status}"]
-    if task.task_type == "HeartBeat":
-        running = body.payload or "（当前无顺序任务）"
-        lines.append(f"正在执行的任务：{running or '无'}")
-    elif task.task_type in {"CaptureImage", "CaptureImageNow"} and body.payload:
-        lines.append("截图如下：")
-        msg_text = "\n".join(lines)
-        segments = [MessageSegment.text(msg_text), MessageSegment.image(f"base64://{body.payload}")]
-    else:
-        if body.payload:
-            lines.append(body.payload[:500])
-        segments = [MessageSegment.text("\n".join(lines))]
-
-    try:
-        if notify.group_id:
-            await bot.send_group_msg(group_id=notify.group_id, message=segments)
-        else:
-            await bot.send_private_msg(user_id=notify.user_id, message=segments)
-    except Exception as exc:
-        logger.warning("maa reportStatus notify failed task={}: {}", body.task, exc)
-    return {"message": "ok"}
+remount_maa_http_routes(app)
 
 
 def _notify_from_event(event: MessageEvent, bot: Bot) -> NotifyTarget:
@@ -179,28 +134,20 @@ status_cmd = on_command(
 
 async def is_maa_control_msg(event: MessageEvent) -> bool:
     text = event.get_plaintext().strip()
-    if text in {"牛牛长草", "牛牛一键长草", "牛牛截图", "牛牛立刻截图", "牛牛停止", "牛牛停止任务", "牛牛心跳"}:
-        return True
-    if text in {
-        "牛牛唤醒",
-        "牛牛作战",
-        "牛牛公招",
-        "牛牛换班",
-        "牛牛基建",
-        "牛牛信用商店",
-        "牛牛信用商店领取",
-        "牛牛任务",
-        "牛牛肉鸽",
-        "牛牛盐酸",
-        "牛牛单抽",
-        "牛牛十连",
-    }:
+    if text in COMMAND_TASK_MAP:
         return True
     return text.startswith(("牛牛设置连接 ", "牛牛设置关卡 "))
 
 
 maa_control_msg = on_message(
     Rule(is_maa_control_msg),
+    priority=5,
+    block=True,
+    permission=permission_for_command("maa.control"),
+)
+
+maa_raw_task_cmd = on_command(
+    "牛牛MAA任务",
     priority=5,
     block=True,
     permission=permission_for_command("maa.control"),
@@ -222,16 +169,20 @@ async def handle_bind(event: PrivateMessageEvent, args: Message = CommandArg()):
         int(event.get_user_id()),
         qq,
         device,
-        plugin_config.maa_seen_ttl_seconds,
+        get_maa_config().maa_seen_ttl_seconds,
     )
     if err:
         await bind_cmd.finish(err)
+    ep = resolve_maa_http_endpoints()
+    hint = ""
+    if ep.inferred_base:
+        hint = "\n（地址由本机 host/port 推断，对外请让管理员配置 maa_public_base_url）"
     await bind_cmd.finish(
         f"已绑定设备 {device}。\n"
-        f"请在 MAA 中配置：\n"
-        f"获取任务：POST {GET_TASK_PATH}\n"
-        f"汇报任务：POST {REPORT_PATH}\n"
-        f"用户标识符：{event.get_user_id()}"
+        f"请在 MAA「远程控制」中配置：\n"
+        f"获取任务端点：{ep.get_task_url}\n"
+        f"汇报任务端点：{ep.report_status_url}\n"
+        f"用户标识符：{event.get_user_id()}{hint}"
     )
 
 
@@ -253,14 +204,9 @@ async def handle_status(event: MessageEvent):
     await status_cmd.finish("\n".join(lines))
 
 
-@maa_control_msg.handle()
-async def handle_control(bot: Bot, event: MessageEvent):
-    spec = parse_command_line(event.get_plaintext())
-    if not spec:
-        return
-
+async def enqueue_and_reply(bot: Bot, event: MessageEvent, spec: MaaTaskSpec, matcher) -> None:
     notify = _notify_from_event(event, bot)
-    attach = plugin_config.maa_attach_screenshot and spec.task_type not in IMMEDIATE_TYPES | {
+    attach = get_maa_config().maa_attach_screenshot and spec.task_type not in IMMEDIATE_TYPES | {
         "CaptureImage",
         "CaptureImageNow",
     }
@@ -271,6 +217,28 @@ async def handle_control(bot: Bot, event: MessageEvent):
         attach_screenshot=attach,
     )
     if err:
-        await maa_control_msg.finish(err)
-    label = spec.task_type
-    await maa_control_msg.finish(f"已向 MAA 排队任务 {label}（{len(task_ids)} 项），稍后会推送执行结果。")
+        await matcher.finish(err)
+    msg = f"已向 MAA 排队任务 {spec.task_type}"
+    if spec.params is not None:
+        msg += f"（params={spec.params}）"
+    await matcher.finish(f"{msg}（共 {len(task_ids)} 项），稍后会推送执行结果。")
+
+
+@maa_control_msg.handle()
+async def handle_control(bot: Bot, event: MessageEvent):
+    spec = parse_command_line(event.get_plaintext())
+    if not spec:
+        return
+    await enqueue_and_reply(bot, event, spec, maa_control_msg)
+
+
+@maa_raw_task_cmd.handle()
+async def handle_raw_task(bot: Bot, event: MessageEvent, args: Message = CommandArg()):  # noqa: B008
+    arg_text = args.extract_plain_text().strip()
+    line = f"{MAA_RAW_TASK_PREFIX} {arg_text}".strip() if arg_text else MAA_RAW_TASK_PREFIX
+    spec, err = maa_raw_task_validate(line)
+    if err:
+        await maa_raw_task_cmd.finish(err)
+    if spec is None:
+        await maa_raw_task_cmd.finish("用法：牛牛MAA任务 <type> [params]")
+    await enqueue_and_reply(bot, event, spec, maa_raw_task_cmd)
