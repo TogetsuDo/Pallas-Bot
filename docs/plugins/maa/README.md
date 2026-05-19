@@ -61,13 +61,24 @@
 
 支持 **WebUI「插件」页保存后立即生效**（`install_hot_reload_config`）；修改 `maa_get_task_path` / `maa_report_status_path` 会重新挂载 HTTP 路由，并清理帮助图缓存。MAA 客户端若已填写旧 URL，须同步改为帮助页展示的新地址。
 
+### 一般部署：只配基址即可
+
+对外暴露 NoneBot HTTP 且使用插件默认路由时，**只需设置 `maa_public_base_url`**（如 `https://nb.example.com`，末尾勿加斜杠）。牛牛会自动拼出：
+
+- `https://nb.example.com/maa/getTask`
+- `https://nb.example.com/maa/reportStatus`
+
+`maa_get_task_endpoint` / `maa_report_status_endpoint` 留空即可；`maa_get_task_path` / `maa_report_status_path` 保持默认。仅在反代路径与默认不一致、或 get/report 必须指向不同主机时，再单独填完整 URL 或改路径。
+
+也可在 WebUI **通用配置 → 服务网关 / 连通性** 中编辑 `maa_public_base_url` 并做连通检测。
+
 | 键 | 默认 | 说明 |
 |----|------|------|
-| `maa_public_base_url` | （空） | 对外基址，如 `https://nb.example.com`；与路径拼成帮助/绑定中展示的完整 URL |
-| `maa_get_task_endpoint` | （空） | 获取任务完整 URL；填写后优先于基址+路径 |
-| `maa_report_status_endpoint` | （空） | 汇报任务完整 URL；填写后优先于基址+路径 |
-| `maa_get_task_path` | `/maa/getTask` | 获取任务路径（相对基址） |
-| `maa_report_status_path` | `/maa/reportStatus` | 汇报路径（相对基址） |
+| `maa_public_base_url` | （空） | **通常只需此项**：对外基址；与默认路径拼成帮助/绑定中的完整 URL |
+| `maa_get_task_endpoint` | （空） | （可选）获取任务完整 URL；优先于基址+路径 |
+| `maa_report_status_endpoint` | （空） | （可选）汇报任务完整 URL；优先于基址+路径 |
+| `maa_get_task_path` | `/maa/getTask` | 相对路径；默认路由下一般不改 |
+| `maa_report_status_path` | `/maa/reportStatus` | 相对路径；默认路由下一般不改 |
 | `maa_attach_screenshot` | `true` | 指令后附加截图任务 |
 | `maa_seen_ttl_seconds` | `86400` | 未绑定设备登记保留时间 |
 

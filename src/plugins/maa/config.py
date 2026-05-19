@@ -7,25 +7,36 @@ class Config(BaseModel, extra="ignore"):
     maa_public_base_url: str = Field(
         default="",
         description=(
-            "MAA 客户端可访问的对外基址（含 http/https，末尾勿加斜杠），"
-            "与 maa_get_task_path / maa_report_status_path 拼成完整 URL 供帮助与绑定提示展示。"
+            "MAA 客户端可访问的对外基址（含 http/https，末尾勿加斜杠），如 https://nb.example.com。"
+            "一般仅配置此项即可：会与默认路径拼成 getTask / reportStatus 完整 URL（见帮助与绑定提示）。"
+            "未填时回退为 NoneBot 的 host/port 推断，仅适合本机调试。"
         ),
     )
     maa_get_task_endpoint: str = Field(
         default="",
-        description="获取任务完整 URL；填写后优先于「基址 + 路径」。",
+        description=(
+            "（可选）获取任务完整 URL；留空则使用 maa_public_base_url + maa_get_task_path。"
+            "仅当基址+路径无法满足（反代路径特殊等）时再填。"
+        ),
     )
     maa_report_status_endpoint: str = Field(
         default="",
-        description="汇报任务完整 URL；填写后优先于「基址 + 路径」。",
+        description=(
+            "（可选）汇报任务完整 URL；留空则使用 maa_public_base_url + maa_report_status_path。"
+            "仅当基址+路径无法满足时再填。"
+        ),
     )
     maa_get_task_path: str = Field(
         default="/maa/getTask",
-        description="MAA 轮询获取任务的 HTTP 路径（POST JSON）。",
+        description=(
+            "获取任务相对路径（POST JSON）；与 maa_public_base_url 拼接。使用默认路由时无需修改，仅配置基址即可。"
+        ),
     )
     maa_report_status_path: str = Field(
         default="/maa/reportStatus",
-        description="MAA 汇报任务结果的 HTTP 路径（POST JSON）。",
+        description=(
+            "汇报任务相对路径（POST JSON）；与 maa_public_base_url 拼接。使用默认路由时无需修改，仅配置基址即可。"
+        ),
     )
     maa_attach_screenshot: bool = Field(
         default=True,
