@@ -59,6 +59,9 @@ DEFAULT_COMMAND_PERMISSIONS: dict[str, PermissionLevel] = {
     "duel.duel": "everyone",
     "duel.cage": "everyone",
     "duel.reload_events": "group_moderator",
+    "maa.bind": "everyone",
+    "maa.control": "everyone",
+    "maa.status": "everyone",
 }
 
 
