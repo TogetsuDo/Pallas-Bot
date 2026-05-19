@@ -18,11 +18,22 @@ def normalize_device_id(raw: str) -> str | None:
     return None
 
 
+def parse_bind_command_args(text: str) -> tuple[str, str]:
+    """解析「牛牛绑定MAA <设备标识符> [别名]」，返回 (设备参数, 别名)。"""
+    line = (text or "").strip()
+    if not line:
+        return "", ""
+    parts = line.split(maxsplit=1)
+    device_part = parts[0].strip()
+    alias_part = parts[1].strip() if len(parts) > 1 else ""
+    return device_part, alias_part
+
+
 def bind_device_id_error(raw: str, qq: str) -> str | None:
     """校验绑定参数；通过则返回 None。"""
     text = (raw or "").strip()
     if not text:
-        return "用法：牛牛绑定MAA <设备标识符>\n请复制 MAA「远程控制」中的「设备标识符（只读）」。"
+        return "用法：牛牛绑定MAA <设备标识符> [别名]\n请复制 MAA「远程控制」中的「设备标识符（只读）」。"
     if text == (qq or "").strip():
         return "你填写的是用户标识符（QQ 号）。请填写 MAA 设置里「设备标识符（只读）」那一项（32 位十六进制）。"
     if normalize_device_id(text) is None:

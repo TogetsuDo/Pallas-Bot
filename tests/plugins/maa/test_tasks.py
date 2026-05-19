@@ -5,6 +5,7 @@ from src.plugins.maa.tasks import (
     format_maa_control_commands_help,
     maa_raw_task_validate,
     normalize_device_id,
+    parse_bind_command_args,
     parse_command_line,
 )
 
@@ -28,6 +29,12 @@ def test_normalize_device_hex32() -> None:
 
 def test_bind_rejects_qq_as_device() -> None:
     assert bind_device_id_error("3023094357", "3023094357") is not None
+
+
+def test_parse_bind_with_alias() -> None:
+    device, alias = parse_bind_command_args("42cfa6e9dfa147d8a7c1d9a6d658b06d 家里电脑")
+    assert device == "42cfa6e9dfa147d8a7c1d9a6d658b06d"
+    assert alias == "家里电脑"
 
 
 def test_parse_link_start() -> None:
