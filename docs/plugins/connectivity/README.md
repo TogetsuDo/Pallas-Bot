@@ -38,7 +38,7 @@ MAA远控：汇报任务：38ms
 
 - **画画**：对各网关 GET `models` / `v1/models`（与插件内 `gateway_probe` 一致，支持 httpx / curl-cffi）。
 - **MAA**：对解析后的完整 URL 发 POST JSON（空 `user` / `device`）；HTTP 2xx 视为可达。
-- **唱歌**：`sing_enable=false` 时仅提示未启用；启用后 GET 服务根路径与 `request_endpoint`。
+- **唱歌**：`sing_enable=false` 时仅提示未启用；启用后 GET AI 服务的 `/health`（Pallas-Bot-AI 默认可用）。不对 `request_endpoint` / `play_endpoint` 做探测：前者仅 POST `…/request/{id}`，后者 GET 会真实触发播放任务。
 
 ## 相关文档
 

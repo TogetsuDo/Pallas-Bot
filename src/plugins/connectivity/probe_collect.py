@@ -54,19 +54,11 @@ async def probe_maa_endpoints(
     return [get_r, report_r]
 
 
-def sing_probe_urls(base: str, request_endpoint: str) -> list[tuple[str, str]]:
+def sing_probe_urls(base: str, cfg: SingConfig | None = None) -> list[tuple[str, str]]:
+    """与 Pallas-Bot-AI 对齐：GET /health（勿 GET /api/request，该路径仅 POST …/request/{id}）。"""
+    _ = cfg
     root = base.rstrip("/")
-    req_path = (request_endpoint or "").strip()
-    if not req_path.startswith("/"):
-        req_path = f"/{req_path}" if req_path else "/"
-    seen: set[str] = set()
-    out: list[tuple[str, str]] = []
-    for site, path in (("根路径", ""), ("请求接口", req_path)):
-        url = urljoin(f"{root}/", path.lstrip("/")) if path else root
-        if url not in seen:
-            seen.add(url)
-            out.append((site, url))
-    return out
+    return [("健康检查", urljoin(f"{root}/", "health"))]
 
 
 async def probe_sing_server(
@@ -87,39 +79,18 @@ async def probe_sing_server(
             ),
         ]
     base = sing_server_url(cfg)
-    urls = sing_probe_urls(base, cfg.request_endpoint)
+    urls = sing_probe_urls(base, cfg)
     async with httpx.AsyncClient() as client:
-        for site, url in urls:
-            result = await probe_http_get(
+        return [
+            await probe_http_get(
                 client,
                 category=SING_CATEGORY,
                 site=site,
                 url=url,
                 timeout_sec=timeout_sec,
             )
-            if result.ok:
-                return [result]
-        if urls:
-            site, url = urls[-1]
-            return [
-                await probe_http_get(
-                    client,
-                    category=SING_CATEGORY,
-                    site=site,
-                    url=url,
-                    timeout_sec=timeout_sec,
-                ),
-            ]
-    return [
-        ServiceProbeResult(
-            category=SING_CATEGORY,
-            site="服务",
-            ok=False,
-            latency_ms=None,
-            status_code=None,
-            error="未配置",
-        ),
-    ]
+            for site, url in urls
+        ]
 
 
 async def probe_all_connectivity(*, timeout_sec: float = 15.0) -> list[ServiceProbeResult]:

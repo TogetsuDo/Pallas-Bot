@@ -5,9 +5,8 @@ from src.plugins.sing.config import Config
 
 
 def test_sing_probe_urls() -> None:
-    urls = sing_probe_urls("http://127.0.0.1:9099", "/api/request")
-    assert urls[0] == ("根路径", "http://127.0.0.1:9099")
-    assert urls[1] == ("请求接口", "http://127.0.0.1:9099/api/request")
+    urls = sing_probe_urls("http://127.0.0.1:9099")
+    assert urls == [("健康检查", "http://127.0.0.1:9099/health")]
 
 
 def test_probe_sing_disabled(monkeypatch) -> None:
