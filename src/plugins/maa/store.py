@@ -36,6 +36,37 @@ class DeviceRecord:
     device: str
     verified: bool = False
     last_seen: float = field(default_factory=time.time)
+    alias: str = ""
+
+
+def match_device_ref(ref: str, devices: dict[str, DeviceRecord]) -> tuple[str | None, str | None]:
+    """按完整 id、别名或 id 前缀（至少 8 位 hex）匹配已绑定设备。"""
+    text = (ref or "").strip()
+    if not text:
+        return None, "请提供设备标识符、别名或 id 前缀。"
+    verified = {k: v for k, v in devices.items() if v.verified}
+    if not verified:
+        return None, "尚未绑定 MAA 设备。"
+
+    norm = normalize_device_id(text)
+    if norm and norm in verified:
+        return norm, None
+
+    by_alias = [d.device for d in verified.values() if d.alias and d.alias == text]
+    if len(by_alias) == 1:
+        return by_alias[0], None
+    if len(by_alias) > 1:
+        return None, "别名重复，请改用设备标识符。"
+
+    prefix = text.lower()
+    if len(prefix) < 8 or not all(c in "0123456789abcdef" for c in prefix):
+        return None, "未找到该设备；可发「牛牛MAA状态」查看列表，或用完整 32 位标识符。"
+    by_prefix = [did for did in verified if did.startswith(prefix)]
+    if len(by_prefix) == 1:
+        return by_prefix[0], None
+    if len(by_prefix) > 1:
+        return None, "前缀匹配到多台设备，请写更长的标识符或使用别名。"
+    return None, "未找到该设备；可发「牛牛MAA状态」查看已绑定列表。"
 
 
 class MaaStore:
@@ -70,7 +101,26 @@ class MaaStore:
             ts = self._seen.get(key)
             return ts is not None and now - ts <= ttl
 
-    async def bind_device(self, qq_id: int, user: str, device: str, ttl: int) -> str | None:
+    def validate_new_alias(self, devices: dict[str, DeviceRecord], device: str, alias: str) -> str | None:
+        name = (alias or "").strip()
+        if not name:
+            return None
+        if len(name) > 32:
+            return "别名最长 32 个字符。"
+        for d in devices.values():
+            if d.device != device and d.alias and d.alias == name:
+                return f"别名「{name}」已被其他设备使用。"
+        return None
+
+    async def bind_device(
+        self,
+        qq_id: int,
+        user: str,
+        device: str,
+        ttl: int,
+        *,
+        alias: str = "",
+    ) -> str | None:
         user_key = str(qq_id)
         norm_device = normalize_device_id(device)
         if not norm_device:
@@ -81,11 +131,21 @@ class MaaStore:
             return "未检测到该设备向牛牛轮询，请先在 MAA 中配置远控端点并保存后再试。"
         cfg = UserConfig(qq_id)
         devices = await self._load_devices(cfg)
-        devices[norm_device] = DeviceRecord(device=norm_device, verified=True, last_seen=time.time())
-        payload = {k: {"verified": v.verified, "last_seen": v.last_seen} for k, v in devices.items()}
-        await cfg._update("maa_devices", payload)
-        async with self._lock:
-            self._active_device[user_key] = norm_device
+        name = (alias or "").strip()
+        if not name:
+            prev = devices.get(norm_device)
+            name = prev.alias if prev else ""
+        alias_err = self.validate_new_alias(devices, norm_device, name)
+        if alias_err:
+            return alias_err
+        devices[norm_device] = DeviceRecord(
+            device=norm_device,
+            verified=True,
+            last_seen=time.time(),
+            alias=name,
+        )
+        await self._save_devices(cfg, devices)
+        await self._set_active_device(qq_id, norm_device)
         return None
 
     async def list_devices(self, qq_id: int) -> list[DeviceRecord]:
@@ -98,20 +158,86 @@ class MaaStore:
             active = self._active_device.get(user_key)
         if active:
             return active
+        cfg = UserConfig(qq_id)
+        persisted = await self._load_active_device(cfg)
+        if persisted:
+            async with self._lock:
+                self._active_device[user_key] = persisted
+            return persisted
         devices = await self.list_devices(qq_id)
         verified = [d for d in devices if d.verified]
         if len(verified) == 1:
+            await self._set_active_device(qq_id, verified[0].device)
             return verified[0].device
         return None
 
-    async def set_active_device(self, qq_id: int, device: str) -> str | None:
-        devices = await self.list_devices(qq_id)
-        matched = next((d for d in devices if d.device == device and d.verified), None)
-        if not matched:
-            return "未找到已绑定的该设备，请先使用「牛牛绑定MAA」完成绑定。"
-        async with self._lock:
-            self._active_device[str(qq_id)] = device
+    async def resolve_bound_device(self, qq_id: int, ref: str) -> tuple[str | None, str | None]:
+        devices = await self._load_devices(UserConfig(qq_id))
+        return match_device_ref(ref, devices)
+
+    async def set_active_device(self, qq_id: int, ref: str) -> str | None:
+        device, err = await self.resolve_bound_device(qq_id, ref)
+        if err:
+            return err
+        if device is None:
+            return "未找到该设备。"
+        await self._set_active_device(qq_id, device)
         return None
+
+    async def set_device_alias(self, qq_id: int, ref: str, alias: str) -> str | None:
+        device, err = await self.resolve_bound_device(qq_id, ref)
+        if err:
+            return err
+        if device is None:
+            return "未找到该设备。"
+        name = (alias or "").strip()
+        cfg = UserConfig(qq_id)
+        devices = await self._load_devices(cfg)
+        alias_err = self.validate_new_alias(devices, device, name)
+        if alias_err:
+            return alias_err
+        rec = devices.get(device)
+        if rec is None or not rec.verified:
+            return "未找到已绑定的该设备。"
+        devices[device] = DeviceRecord(
+            device=rec.device,
+            verified=rec.verified,
+            last_seen=rec.last_seen,
+            alias=name,
+        )
+        await self._save_devices(cfg, devices)
+        return None
+
+    def format_device_line(self, record: DeviceRecord, *, active: bool) -> str:
+        mark = "（当前）" if active else ""
+        if record.alias:
+            short = record.device if len(record.device) <= 12 else f"{record.device[:8]}…"
+            return f"- {record.alias} [{short}]{mark}"
+        return f"- {record.device}{mark}"
+
+    async def _set_active_device(self, qq_id: int, device: str) -> None:
+        norm = normalize_device_id(device) or device
+        user_key = str(qq_id)
+        async with self._lock:
+            self._active_device[user_key] = norm
+        await UserConfig(qq_id)._update("maa_active_device", norm)
+
+    async def _load_active_device(self, cfg: UserConfig) -> str | None:
+        raw = await cfg._find("maa_active_device")
+        if not isinstance(raw, str) or not raw.strip():
+            return None
+        return normalize_device_id(raw.strip()) or raw.strip()
+
+    async def _save_devices(self, cfg: UserConfig, devices: dict[str, DeviceRecord]) -> None:
+        payload = {
+            k: {
+                "verified": v.verified,
+                "last_seen": v.last_seen,
+                "alias": v.alias or "",
+            }
+            for k, v in devices.items()
+        }
+        await cfg._update("maa_devices", payload)
 
     async def enqueue(
         self,
@@ -124,6 +250,13 @@ class MaaStore:
         user_key = str(qq_id)
         device = await self.get_active_device(qq_id)
         if not device:
+            devices = await self.list_devices(qq_id)
+            verified = [d for d in devices if d.verified]
+            if len(verified) > 1:
+                return [], (
+                    "已绑定多台 MAA 设备，请先「牛牛切换MAA设备 <标识符或别名>」指定当前设备，"
+                    "或发「牛牛MAA状态」查看列表。"
+                )
             return [], "尚未绑定 MAA 设备，请私聊发送「牛牛绑定MAA <设备标识符>」。"
         devices = await self.list_devices(qq_id)
         if not any(d.device == device and d.verified for d in devices):
@@ -201,10 +334,13 @@ class MaaStore:
         for device_id, meta in raw.items():
             if not isinstance(device_id, str) or not isinstance(meta, dict):
                 continue
+            alias_raw = meta.get("alias")
+            alias = alias_raw.strip() if isinstance(alias_raw, str) else ""
             out[device_id] = DeviceRecord(
                 device=device_id,
                 verified=bool(meta.get("verified")),
                 last_seen=float(meta.get("last_seen") or 0),
+                alias=alias,
             )
         return out
 

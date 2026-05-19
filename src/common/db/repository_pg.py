@@ -186,6 +186,7 @@ class UserConfigRow(Base):
     user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     banned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     maa_devices: Mapped[Any] = mapped_column(_JsonB, nullable=False, default=dict)
+    maa_active_device: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
 
 class ImageCacheRow(Base):
@@ -224,9 +225,10 @@ def _ensure_pg_user_config_maa_devices(connection) -> None:
     if not insp.has_table("user_config"):
         return
     names = {c["name"] for c in insp.get_columns("user_config")}
-    if "maa_devices" in names:
-        return
-    connection.execute(text("ALTER TABLE user_config ADD COLUMN maa_devices JSONB NOT NULL DEFAULT '{}'::jsonb"))
+    if "maa_devices" not in names:
+        connection.execute(text("ALTER TABLE user_config ADD COLUMN maa_devices JSONB NOT NULL DEFAULT '{}'::jsonb"))
+    if "maa_active_device" not in names:
+        connection.execute(text("ALTER TABLE user_config ADD COLUMN maa_active_device TEXT NOT NULL DEFAULT ''"))
 
 
 @asynccontextmanager
