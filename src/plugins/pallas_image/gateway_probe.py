@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from dataclasses import asdict, dataclass
 from typing import Any
 from urllib.parse import urljoin
 
@@ -10,6 +9,8 @@ import httpx
 from curl_cffi.requests import AsyncSession as CffiAsyncSession
 from curl_cffi.requests import RequestsError as CffiRequestsError
 from nonebot import logger
+
+from src.common.service_probe import ServiceProbeResult, format_probe_lines, format_probe_text
 
 from .config import Config, ImageApiBackend, ImageGenSettings, get_pallas_image_config
 from .image_api import (
@@ -29,17 +30,7 @@ def transport_mode_for_settings(settings: ImageGenSettings) -> str:
     return "auto"
 
 
-@dataclass(frozen=True)
-class GatewayProbeResult:
-    site: str
-    ok: bool
-    latency_ms: int | None
-    status_code: int | None
-    error: str | None
-    label: str
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+IMAGE_PROBE_CATEGORY = "牛牛画画"
 
 
 def backend_site_name(index: int) -> str:
@@ -73,22 +64,12 @@ def models_probe_urls(backend: ImageApiBackend) -> list[str]:
     return out
 
 
-def format_gateway_status_lines(results: list[GatewayProbeResult]) -> list[str]:
-    lines: list[str] = []
-    for r in results:
-        if r.ok and r.latency_ms is not None:
-            lines.append(f"牛牛画画：{r.site}：{r.latency_ms}ms")
-        elif r.status_code is not None:
-            lines.append(f"牛牛画画：{r.site}：HTTP {r.status_code}")
-        elif r.error:
-            lines.append(f"牛牛画画：{r.site}：{r.error}")
-        else:
-            lines.append(f"牛牛画画：{r.site}：不可用")
-    return lines
+def format_gateway_status_lines(results: list[ServiceProbeResult]) -> list[str]:
+    return format_probe_lines(results)
 
 
-def format_gateway_status_text(results: list[GatewayProbeResult]) -> str:
-    return "\n".join(format_gateway_status_lines(results))
+def format_gateway_status_text(results: list[ServiceProbeResult]) -> str:
+    return format_probe_text(results)
 
 
 def image_gen_settings_from_draft(draft: dict[str, Any] | None) -> ImageGenSettings:
@@ -167,17 +148,17 @@ async def probe_single_backend(
     settings: ImageGenSettings,
     backend: ImageApiBackend,
     site_index: int,
-) -> GatewayProbeResult:
+) -> ServiceProbeResult:
     site = backend_display_site(backend, site_index)
     urls = models_probe_urls(backend)
     if not urls:
-        return GatewayProbeResult(
+        return ServiceProbeResult(
+            category=IMAGE_PROBE_CATEGORY,
             site=site,
             ok=False,
             latency_ms=None,
             status_code=None,
             error="未配置",
-            label=backend.label,
         )
     headers = image_gen_auth_headers_json(backend)
     started = time.perf_counter()
@@ -189,22 +170,22 @@ async def probe_single_backend(
             elapsed_ms = int((time.perf_counter() - started) * 1000)
             last_status = status
             if 200 <= status < 300:
-                return GatewayProbeResult(
+                return ServiceProbeResult(
+                    category=IMAGE_PROBE_CATEGORY,
                     site=site,
                     ok=True,
                     latency_ms=elapsed_ms,
                     status_code=status,
                     error=None,
-                    label=backend.label,
                 )
         except httpx.TimeoutException:
-            return GatewayProbeResult(
+            return ServiceProbeResult(
+                category=IMAGE_PROBE_CATEGORY,
                 site=site,
                 ok=False,
                 latency_ms=None,
                 status_code=None,
                 error="超时",
-                label=backend.label,
             )
         except httpx.ConnectError:
             last_error = "连接失败"
@@ -215,25 +196,25 @@ async def probe_single_backend(
             logger.debug(f"pallas_image gateway probe {backend.label} {url}: {e}")
     elapsed_ms = int((time.perf_counter() - started) * 1000)
     if last_status is not None:
-        return GatewayProbeResult(
+        return ServiceProbeResult(
+            category=IMAGE_PROBE_CATEGORY,
             site=site,
             ok=False,
             latency_ms=elapsed_ms,
             status_code=last_status,
             error=None,
-            label=backend.label,
         )
-    return GatewayProbeResult(
+    return ServiceProbeResult(
+        category=IMAGE_PROBE_CATEGORY,
         site=site,
         ok=False,
         latency_ms=None,
         status_code=None,
         error=last_error or "不可用",
-        label=backend.label,
     )
 
 
-async def probe_all_backends(settings: ImageGenSettings | None = None) -> list[GatewayProbeResult]:
+async def probe_all_backends(settings: ImageGenSettings | None = None) -> list[ServiceProbeResult]:
     cfg = settings or image_gen_config
     backends = cfg.api_backends()
     if not backends:

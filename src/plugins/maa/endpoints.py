@@ -6,7 +6,7 @@ from nonebot import get_driver
 
 from src.common.web import public_base_url as nonebot_public_base_url
 
-from .config import get_maa_config
+from .config import Config, get_maa_config
 
 
 def normalize_http_path(path: str) -> str:
@@ -41,8 +41,8 @@ class MaaHttpEndpoints:
     inferred_base: bool
 
 
-def resolve_maa_http_endpoints() -> MaaHttpEndpoints:
-    cfg = get_maa_config()
+def resolve_maa_http_endpoints(cfg: Config | None = None) -> MaaHttpEndpoints:
+    cfg = cfg if cfg is not None else get_maa_config()
     get_path = normalize_http_path(cfg.maa_get_task_path)
     report_path = normalize_http_path(cfg.maa_report_status_path)
 
@@ -82,7 +82,7 @@ def format_maa_http_setup_help() -> str:
     if ep.inferred_base:
         lines.append(
             "当前地址由 NoneBot 的 host/port 推断，仅适合本机调试；"
-            "对外部署请配置 maa_public_base_url，"
-            "或分别配置 maa_get_task_endpoint、maa_report_status_endpoint。"
+            "对外部署一般只需配置 maa_public_base_url（与默认路径自动拼接）。"
+            "仅在特殊反代场景再单独填写 maa_get_task_endpoint、maa_report_status_endpoint。"
         )
     return "\n\n".join(lines)
