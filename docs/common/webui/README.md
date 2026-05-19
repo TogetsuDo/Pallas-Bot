@@ -9,7 +9,9 @@
 | `plugin_config.py` | `install_hot_reload_config`：缓存 + 从 `.env` 重读 + 注册热重载钩子 |
 | `registry.py` | 按插件模块名查找 `get` / `reload` |
 | `plugin_api.py` | `GET/PUT /plugins/{name}/config` 的合并、落盘与 reload |
-| `env_sections.py` | 「通用配置」分段（`message_scrub`、`cmd_perm`、部分插件） |
+| `env_sections.py` | 「通用配置」分段（`message_scrub`、`cmd_perm`、部分插件、`service_gateways`） |
+| `service_gateways_section.py` | 画画 / MAA / 唱歌网关集中编辑与连通检测 API |
+| `gateway_fields.py` | 服务网关段字段名常量 |
 
 命令权限声明见 [`cmd_perm`](../cmd_perm/README.md) 与 `src/common/cmd_perm/declare.py`。
 
@@ -104,6 +106,10 @@ my_cmd = on_command("某命令", permission=permission_for_command("my_plugin.ac
 ## 出现在「通用配置」页
 
 若希望插件配置出现在「通用配置」列表（而非仅「插件」页），在 [`env_sections.py`](../../../src/common/webui/env_sections.py) 的 `_registered_sections()` 中增加 `_plugin_env_section_from_module(...)`。已 `install_hot_reload_config` 的插件会通过注册表读取当前值；保存段配置时会尝试 `reload_plugin_config`。
+
+### 服务网关 / 连通性（`service_gateways`）
+
+[`service_gateways_section.py`](../../../src/common/webui/service_gateways_section.py) 聚合 **牛牛画画** 网关字段、**MAA** 对外端点、**点歌** 主机与开关，对应键仍写入各插件 `.env` 项。WebUI 提供网关列表编辑器与 `POST /common-config/service_gateways/connectivity-check`（可按表单草稿探测，无需先保存）。各插件 **插件配置** 页保留完整参数与专用入口（如画布仅测画画网关）。
 
 ## 实现参考
 
