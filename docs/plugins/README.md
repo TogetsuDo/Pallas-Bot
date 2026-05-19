@@ -21,6 +21,7 @@
 - [`take_name`](./take_name/README.md)：自动夺舍（群名片）
 - [`sing`](./sing/README.md)：牛牛唱歌（依赖 AI 服务与 callback）
 - [`callback`](./callback/README.md)：异步任务 HTTP 回调
+- [`maa`](./maa/README.md)：MAA 远程控制（getTask / reportStatus）
 - [`chat`](./chat/README.md)：酒后聊天（依赖 AI 服务与 callback）
 - [`roulette`](./roulette/README.md)：牛牛轮盘
 - [`drink`](./drink/README.md)：牛牛喝酒
