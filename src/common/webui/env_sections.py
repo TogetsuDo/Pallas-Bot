@@ -212,7 +212,14 @@ def _registered_sections() -> tuple[WebuiEnvSection, ...]:
 
 
 def list_webui_env_sections() -> list[dict[str, str]]:
-    return [{"id": s.id, "title": s.title} for s in _registered_sections()]
+    from .service_gateways_section import (
+        SERVICE_GATEWAYS_SECTION_ID,
+        SERVICE_GATEWAYS_TITLE,
+    )
+
+    rows = [{"id": s.id, "title": s.title} for s in _registered_sections()]
+    rows.append({"id": SERVICE_GATEWAYS_SECTION_ID, "title": SERVICE_GATEWAYS_TITLE})
+    return rows
 
 
 def get_webui_env_section(section_id: str) -> WebuiEnvSection:
@@ -229,6 +236,10 @@ def webui_env_section_payload(
     current_values: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """GET 默认读进程内配置；PUT 后应传 ``validated``，与刚写入 ``.env`` 的值一致。"""
+    from .service_gateways_section import SERVICE_GATEWAYS_SECTION_ID, service_gateways_payload
+
+    if section_id == SERVICE_GATEWAYS_SECTION_ID:
+        return service_gateways_payload(current_values=current_values)
     s = get_webui_env_section(section_id)
     cfg_obj = s.read_current()
     fields: list[dict[str, Any]] = []
@@ -273,6 +284,13 @@ def _cmd_perm_payload_extras(cfg_obj: Any) -> dict[str, Any]:
 
 
 def apply_webui_env_section_patch(section_id: str, patch: dict[str, Any]) -> dict[str, Any]:
+    from .service_gateways_section import (
+        SERVICE_GATEWAYS_SECTION_ID,
+        apply_service_gateways_patch,
+    )
+
+    if section_id == SERVICE_GATEWAYS_SECTION_ID:
+        return apply_service_gateways_patch(patch)
     s = get_webui_env_section(section_id)
     current = s.read_current().model_dump(mode="python")
     allowed = set(s.field_to_env.keys()) - set(s.skip_fields)
