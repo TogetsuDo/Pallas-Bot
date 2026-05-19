@@ -8,7 +8,6 @@ from typing import Any
 from ulid import ULID
 
 from src.common.config import UserConfig
-from src.common.db.modules import UserConfigModule
 
 from .tasks import MaaTaskSpec, build_task_payload, normalize_device_id
 
@@ -195,9 +194,7 @@ class MaaStore:
         return any(d.device == norm and d.verified for d in devices)
 
     async def _load_devices(self, cfg: UserConfig) -> dict[str, DeviceRecord]:
-        coll = UserConfigModule.get_pymongo_collection()
-        doc = await coll.find_one({"user_id": cfg.user_id}, projection={"maa_devices": 1})
-        raw = (doc or {}).get("maa_devices")
+        raw: Any = await cfg._find("maa_devices")
         if not isinstance(raw, dict):
             return {}
         out: dict[str, DeviceRecord] = {}

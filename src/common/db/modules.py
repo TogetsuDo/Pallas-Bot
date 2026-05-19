@@ -56,6 +56,7 @@ class GroupConfigModule(Document):
 class UserConfigModule(Document):
     user_id: int = Field(...)
     banned: bool = False
+    maa_devices: dict = Field(default_factory=dict)
 
     class Settings:
         name = "user_config"
