@@ -46,6 +46,10 @@ class Config(BaseModel, extra="ignore"):
         default=86400,
         description="未绑定设备在内存中的保留时长（秒），超时需重新让 MAA 连一次再绑定。",
     )
+    maa_combat_auto_prepare: bool = Field(
+        default=True,
+        description="牛牛作战前是否自动排队作战准备（启用作战、写入已保存的关卡候选）。",
+    )
 
 
 def on_maa_config_reload(cfg: Config) -> None:  # noqa: ARG001

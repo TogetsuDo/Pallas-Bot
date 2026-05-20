@@ -20,16 +20,18 @@ from .http_routes import remount_maa_http_routes
 from .store import NotifyTarget, maa_store
 from .tasks import (
     COMMAND_TASK_MAP,
-    IMMEDIATE_TYPES,
     MAA_RAW_TASK_PREFIX,
+    TASK_TYPES_WITHOUT_AUTO_SCREENSHOT,
     MaaTaskSpec,
     bind_device_id_error,
+    expand_command_specs,
     format_maa_control_commands_help,
     format_maa_raw_task_types_help,
     maa_raw_task_validate,
     normalize_device_id,
     parse_bind_command_args,
-    parse_command_line,
+    parse_command_specs,
+    parse_stage_setting_values,
 )
 
 app = get_app()
@@ -348,26 +350,31 @@ async def handle_device_alias(event: PrivateMessageEvent, args: Message = Comman
     await device_alias_cmd.finish(f"已清除设备 {device} 的别名。")
 
 
-async def enqueue_and_reply(bot: Bot, event: MessageEvent, spec: MaaTaskSpec, matcher) -> None:
+async def enqueue_and_reply(bot: Bot, event: MessageEvent, specs: list[MaaTaskSpec], matcher) -> None:
+    if not specs:
+        return
     notify = _notify_from_event(event, bot)
-    attach = get_maa_config().maa_attach_screenshot and spec.task_type not in IMMEDIATE_TYPES | {
-        "CaptureImage",
-        "CaptureImageNow",
-    }
-    task_ids, err = await store.enqueue(
-        int(event.get_user_id()),
-        [spec],
-        notify,
-        attach_screenshot=attach,
-    )
-    if err:
-        await matcher.finish(err)
     qq = int(event.get_user_id())
     cfg = get_maa_config()
+    stage_plan = await store.get_stage_plan(qq)
+    specs = expand_command_specs(
+        specs,
+        stage_plan=stage_plan,
+        combat_auto_prepare=cfg.maa_combat_auto_prepare,
+    )
+    last = specs[-1]
+    attach = cfg.maa_attach_screenshot and last.task_type not in TASK_TYPES_WITHOUT_AUTO_SCREENSHOT
+    task_ids, err = await store.enqueue(qq, specs, notify, attach_screenshot=attach)
+    if err:
+        await matcher.finish(err)
     active = await store.get_active_device(qq)
-    msg = f"已向 MAA 排队任务 {spec.task_type}"
-    if spec.params is not None:
-        msg += f"（params={spec.params}）"
+    if len(specs) == 1:
+        msg = f"已向 MAA 排队任务 {specs[0].task_type}"
+        if specs[0].params is not None:
+            msg += f"（params={specs[0].params}）"
+    else:
+        types = "、".join(s.task_type for s in specs)
+        msg = f"已向 MAA 排队 {len(specs)} 项任务：{types}"
     msg += f"（共 {len(task_ids)} 项），稍后会推送执行结果。"
     if active and not await store.was_seen(str(qq), active, cfg.maa_seen_ttl_seconds):
         msg += (
@@ -379,10 +386,15 @@ async def enqueue_and_reply(bot: Bot, event: MessageEvent, spec: MaaTaskSpec, ma
 
 @maa_control_msg.handle()
 async def handle_control(bot: Bot, event: MessageEvent):
-    spec = parse_command_line(event.get_plaintext())
-    if not spec:
+    text = event.get_plaintext().strip()
+    specs = parse_command_specs(text)
+    if not specs:
         return
-    await enqueue_and_reply(bot, event, spec, maa_control_msg)
+    if text.startswith("牛牛设置关卡 "):
+        stages = parse_stage_setting_values(text.removeprefix("牛牛设置关卡 "))
+        if stages:
+            await store.set_stage_plan(int(event.get_user_id()), stages)
+    await enqueue_and_reply(bot, event, specs, maa_control_msg)
 
 
 @maa_raw_task_cmd.handle()
@@ -394,4 +406,4 @@ async def handle_raw_task(bot: Bot, event: MessageEvent, args: Message = Command
         await maa_raw_task_cmd.finish(err)
     if spec is None:
         await maa_raw_task_cmd.finish("用法：牛牛MAA任务 <type> [params]")
-    await enqueue_and_reply(bot, event, spec, maa_raw_task_cmd)
+    await enqueue_and_reply(bot, event, [spec], maa_raw_task_cmd)

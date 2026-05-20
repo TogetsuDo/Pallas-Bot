@@ -1,12 +1,16 @@
 from src.plugins.maa.tasks import (
     COMMAND_TASK_MAP,
     MAA_CONTROL_COMMAND_HELPS,
+    MaaTaskSpec,
     bind_device_id_error,
+    expand_command_specs,
     format_maa_control_commands_help,
     maa_raw_task_validate,
     normalize_device_id,
     parse_bind_command_args,
     parse_command_line,
+    parse_command_specs,
+    parse_stage_setting_values,
 )
 
 
@@ -55,6 +59,36 @@ def test_parse_settings() -> None:
     assert spec is not None
     assert spec.task_type == "Settings-ConnectionAddress"
     assert spec.params == "127.0.0.1:5555"
+
+
+def test_parse_stage_candidates() -> None:
+    stages = parse_stage_setting_values("12-17-HARD CE-6 -")
+    assert stages == ["12-17-HARD", "CE-6", ""]
+    specs = parse_command_specs("牛牛设置关卡 12-17-HARD,CE-6")
+    assert specs is not None
+    assert len(specs) == 4
+    assert specs[0].task_type == "Settings-Stage1"
+    assert specs[0].params == "12-17-HARD"
+    assert specs[1].params == "CE-6"
+    assert specs[2].params == ""
+
+
+def test_rename_award_command() -> None:
+    assert "牛牛领取奖励" in COMMAND_TASK_MAP
+    assert COMMAND_TASK_MAP["牛牛领取奖励"] == "LinkStart-Mission"
+    assert "牛牛任务" not in COMMAND_TASK_MAP
+
+
+def test_combat_auto_prepare() -> None:
+    specs = expand_command_specs(
+        [MaaTaskSpec("LinkStart-Combat")],
+        stage_plan=["1-7", "CE-6"],
+        combat_auto_prepare=True,
+    )
+    assert specs[0].task_type == "Settings-FightEnable"
+    assert specs[1].task_type == "Settings-Stage1"
+    assert specs[1].params == "1-7"
+    assert specs[-1].task_type == "LinkStart-Combat"
 
 
 def test_maa_raw_task_stage() -> None:

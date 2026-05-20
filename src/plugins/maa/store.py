@@ -70,7 +70,10 @@ def match_device_ref(ref: str, devices: dict[str, DeviceRecord]) -> tuple[str | 
 
 
 class MaaStore:
-    """MAA 设备登记、任务队列（内存）；已绑定设备列表持久化到 UserConfig。"""
+    """MAA 设备登记、任务队列（内存）；已绑定设备列表持久化到 UserConfig。
+
+    队列仅按 user+device 过滤后交给 getTask，不替 MAA 做唤醒或子项前置。见 docs/plugins/maa/README.md「维护者说明」。
+    """
 
     def __init__(self) -> None:
         self._lock = asyncio.Lock()
@@ -221,6 +224,18 @@ class MaaStore:
         async with self._lock:
             self._active_device[user_key] = norm
         await UserConfig(qq_id)._update("maa_active_device", norm)
+
+    async def get_stage_plan(self, qq_id: int) -> list[str]:
+        cfg = UserConfig(qq_id)
+        raw = await cfg._find("maa_stage_plan")
+        if not isinstance(raw, list):
+            return []
+        return [item.strip() for item in raw[:4] if isinstance(item, str)]
+
+    async def set_stage_plan(self, qq_id: int, stages: list[str]) -> None:
+        cfg = UserConfig(qq_id)
+        padded = (stages + [""] * 4)[:4]
+        await cfg._update("maa_stage_plan", padded)
 
     async def _load_active_device(self, cfg: UserConfig) -> str | None:
         raw = await cfg._find("maa_active_device")

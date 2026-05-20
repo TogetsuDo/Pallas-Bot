@@ -57,10 +57,22 @@ LINK_START_SUBTYPES = frozenset({
     "LinkStart-Reclamation",
 })
 
-SETTINGS_TYPES = frozenset({
-    "Settings-ConnectionAddress",
-    "Settings-Stage1",
-})
+STAGE_SETTING_MAX = 4
+
+SETTINGS_STAGE_TYPES = frozenset(f"Settings-Stage{i}" for i in range(1, STAGE_SETTING_MAX + 1))
+
+# 较新 MAA 可能支持；旧版会忽略未知 Settings type
+SETTINGS_FIGHT_ENABLE = "Settings-FightEnable"
+
+SETTINGS_TYPES = (
+    frozenset({
+        "Settings-ConnectionAddress",
+        SETTINGS_FIGHT_ENABLE,
+    })
+    | SETTINGS_STAGE_TYPES
+)
+
+COMBAT_PREP_TASK_TYPES = frozenset({"LinkStart-Combat"})
 
 TOOLBOX_TYPES = frozenset({
     "Toolbox-GachaOnce",
@@ -72,6 +84,12 @@ IMMEDIATE_TYPES = frozenset({
     "StopTask",
     "HeartBeat",
 })
+
+# 下发这些 type 时不再自动追加截图任务（CaptureImageNow 已在 IMMEDIATE_TYPES）
+TASK_TYPES_WITHOUT_AUTO_SCREENSHOT = IMMEDIATE_TYPES | frozenset({"CaptureImage"})
+
+# 维护者：LinkStart-* 子项（除 WakeUp/完整 LinkStart）不含唤醒；游戏未在主界面时 MAA 易 TaskChainError。
+# 牛牛不自动前置 LinkStart-WakeUp。截图/心跳/停止见 IMMEDIATE_TYPES。详见 docs/plugins/maa/README.md「维护者说明」。
 
 # 远程控制协议允许下发的 type（不含 params 的项不得带多余参数）
 ALLOWED_REMOTE_TASK_TYPES: frozenset[str] = (
@@ -125,9 +143,9 @@ MAA_CONTROL_COMMAND_HELPS: tuple[MaaControlCommandHelp, ...] = (
         "仅执行「信用商店」子项。",
     ),
     MaaControlCommandHelp(
-        "牛牛任务",
+        "牛牛领取奖励",
         "LinkStart-Mission",
-        "仅执行「任务」子项（日常/周常领取等，依 MAA 配置）。",
+        "仅执行「领取报酬」子项（日常/周常奖励等，依 MAA 配置）。",
     ),
     MaaControlCommandHelp(
         "牛牛肉鸽",
@@ -180,9 +198,9 @@ _MAA_SETTINGS_COMMAND_HELPS: tuple[MaaControlCommandHelp, ...] = (
         "修改 MAA 连接地址（如模拟器 adb 地址）。",
     ),
     MaaControlCommandHelp(
-        "牛牛设置关卡 <值>",
+        "牛牛设置关卡 <关卡…>",
         "Settings-Stage1",
-        "修改作战关卡代号（如 1-7）。",
+        "设置作战关卡与候选（最多 4 个，空格或逗号分隔；用 - 表示空候选）。",
     ),
 )
 
@@ -194,7 +212,9 @@ def format_maa_control_commands_help() -> str:
     body = "\n".join(bullet_lines)
     return "\n\n".join([
         "发送下列完整一行口令（须先私聊「牛牛绑定MAA」）。",
-        "子项类口令会单独跑对应一键长草模块，不受主界面勾选框影响，具体行为以 MAA 本地配置为准：",
+        "子项类口令会单独跑对应一键长草模块；"
+        "牛牛作战前可自动写入已保存的关卡候选（见「牛牛设置关卡」）。"
+        "具体行为以 MAA 本地配置为准：",
         body,
         "协议 type 写法：牛牛MAA任务 <type> [params]（见本插件「MAA 远控（原始 type）」详情）。",
     ])
@@ -204,7 +224,7 @@ def format_maa_raw_task_types_help() -> str:
     allowed = "、".join(sorted(ALLOWED_REMOTE_TASK_TYPES))
     return (
         "用法：牛牛MAA任务 <type> [params]。"
-        "Settings-ConnectionAddress、Settings-Stage1 须带 params；其余 type 勿多余参数。"
+        "Settings-* 须带 params；其余 type 勿多余参数。"
         f"可用 type：{allowed}。"
         "示例：牛牛MAA任务 Settings-Stage1 1-7；牛牛MAA任务 LinkStart-Recruiting。"
     )
@@ -216,6 +236,55 @@ class MaaTaskSpec:
     params: str | None = None
 
 
+def parse_stage_setting_values(raw: str) -> list[str] | None:
+    """解析关卡候选，最多 4 项；`-` 表示留空。"""
+    text = (raw or "").strip()
+    if not text:
+        return None
+    parts = re.split(r"[,，\s]+", text)
+    stages: list[str] = []
+    for part in parts:
+        if len(stages) >= STAGE_SETTING_MAX:
+            break
+        token = part.strip()
+        if token in ("-", "—", "空"):
+            stages.append("")
+        elif token:
+            stages.append(token)
+    if not stages or not any(stages):
+        return None
+    return stages
+
+
+def build_stage_setting_specs(stages: list[str]) -> list[MaaTaskSpec]:
+    padded = (stages + [""] * STAGE_SETTING_MAX)[:STAGE_SETTING_MAX]
+    return [MaaTaskSpec(f"Settings-Stage{i + 1}", stage) for i, stage in enumerate(padded)]
+
+
+def build_combat_prep_specs(stage_plan: list[str], *, auto_enable_fight: bool) -> list[MaaTaskSpec]:
+    """作战前准备：启用作战（若 MAA 支持）并写入关卡候选。"""
+    specs: list[MaaTaskSpec] = []
+    if auto_enable_fight:
+        specs.append(MaaTaskSpec(SETTINGS_FIGHT_ENABLE, "true"))
+    if stage_plan:
+        specs.extend(build_stage_setting_specs(stage_plan))
+    return specs
+
+
+def expand_command_specs(
+    specs: list[MaaTaskSpec],
+    *,
+    stage_plan: list[str],
+    combat_auto_prepare: bool,
+) -> list[MaaTaskSpec]:
+    if not combat_auto_prepare or not any(s.task_type in COMBAT_PREP_TASK_TYPES for s in specs):
+        return specs
+    prep = build_combat_prep_specs(stage_plan, auto_enable_fight=True)
+    if not prep:
+        return specs
+    return prep + specs
+
+
 def build_task_payload(task_id: str, spec: MaaTaskSpec) -> dict[str, Any]:
     payload: dict[str, Any] = {"id": task_id, "type": spec.task_type}
     if spec.params is not None:
@@ -224,7 +293,14 @@ def build_task_payload(task_id: str, spec: MaaTaskSpec) -> dict[str, Any]:
 
 
 def parse_command_line(text: str) -> MaaTaskSpec | None:
-    """解析「牛牛长草」或「牛牛设置连接 xxx」类口令。"""
+    specs = parse_command_specs(text)
+    if not specs:
+        return None
+    return specs[0]
+
+
+def parse_command_specs(text: str) -> list[MaaTaskSpec] | None:
+    """解析「牛牛长草」或「牛牛设置连接 xxx」类口令，可能返回多项（如关卡候选）。"""
     line = (text or "").strip()
     if not line:
         return None
@@ -232,19 +308,20 @@ def parse_command_line(text: str) -> MaaTaskSpec | None:
     if line.startswith("牛牛设置连接 "):
         value = line.removeprefix("牛牛设置连接 ").strip()
         if value:
-            return MaaTaskSpec("Settings-ConnectionAddress", value)
+            return [MaaTaskSpec("Settings-ConnectionAddress", value)]
         return None
 
     if line.startswith("牛牛设置关卡 "):
-        value = line.removeprefix("牛牛设置关卡 ").strip()
-        if value:
-            return MaaTaskSpec("Settings-Stage1", value)
+        stages = parse_stage_setting_values(line.removeprefix("牛牛设置关卡 "))
+        if stages:
+            return build_stage_setting_specs(stages)
         return None
 
     task_type = COMMAND_TASK_MAP.get(line)
     if task_type:
-        return MaaTaskSpec(task_type)
-    return parse_maa_raw_task(line)
+        return [MaaTaskSpec(task_type)]
+    raw = parse_maa_raw_task(line)
+    return [raw] if raw else None
 
 
 def parse_maa_raw_task(text: str) -> MaaTaskSpec | None:
