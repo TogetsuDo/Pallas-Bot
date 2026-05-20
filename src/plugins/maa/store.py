@@ -337,6 +337,19 @@ class MaaStore:
                 del self._pending[tid]
         return len(remove_ids)
 
+    async def pending_type_counts(self, qq_id: int, *, device: str | None = None) -> dict[str, int]:
+        user_key = str(qq_id)
+        norm = normalize_device_id(device) if device else None
+        counts: dict[str, int] = {}
+        async with self._lock:
+            for t in self._pending.values():
+                if t.user != user_key or t.reported:
+                    continue
+                if norm is not None and t.device != norm:
+                    continue
+                counts[t.task_type] = counts.get(t.task_type, 0) + 1
+        return counts
+
     async def is_device_verified(self, user: str, device: str) -> bool:
         try:
             qq_id = int(user.strip())

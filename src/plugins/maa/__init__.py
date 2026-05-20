@@ -148,6 +148,13 @@ def _notify_from_event(event: MessageEvent, bot: Bot) -> NotifyTarget:
     return NotifyTarget(bot_id=int(bot.self_id), user_id=int(event.get_user_id()), group_id=group_id)
 
 
+def format_pending_type_counts(counts: dict[str, int]) -> str:
+    if not counts:
+        return ""
+    parts = [f"{name}×{n}" for name, n in sorted(counts.items())]
+    return "待拉取明细：" + "、".join(parts)
+
+
 bind_cmd = on_command(
     "牛牛绑定MAA",
     priority=5,
@@ -257,12 +264,25 @@ async def handle_status(event: MessageEvent):
     lines = ["已绑定设备：", *[store.format_device_line(d, active=(d.device == active)) for d in verified]]
     if len(verified) > 1 and not active:
         lines.append("（未选定当前设备，请「牛牛切换MAA设备 <标识符或别名>」）")
+    cfg = get_maa_config()
     pending = await store.pending_count_for_user(qq)
     lines.append(f"待 MAA 拉取任务数：{pending}")
+    all_types = format_pending_type_counts(await store.pending_type_counts(qq))
+    if all_types:
+        lines.append(all_types)
     if active:
         on_device = await store.pending_count_for_device(qq, active)
         short = active if len(active) <= 16 else f"{active[:8]}…{active[-4:]}"
         lines.append(f"其中当前选用设备（{short}）队列：{on_device}")
+        dev_types = format_pending_type_counts(await store.pending_type_counts(qq, device=active))
+        if dev_types and on_device > 0:
+            lines.append(dev_types.replace("待拉取明细：", "当前设备明细：", 1))
+        polling = await store.was_seen(str(qq), active, cfg.maa_seen_ttl_seconds)
+        lines.append(
+            "MAA 轮询：最近已连上牛牛（getTask 正常）"
+            if polling
+            else "MAA 轮询：未检测到（请核对用户标识符=QQ、端点 URL、设备 id 与绑定一致）"
+        )
         if pending > 0 and on_device == 0:
             lines.append(
                 "提示：任务只发给「当前选用」设备；若 MAA 里填的设备 id 与该项不一致，"
@@ -287,9 +307,10 @@ async def handle_clear_queue(event: MessageEvent, args: Message = CommandArg()):
         if not device:
             await clear_queue_cmd.finish("尚未选定当前 MAA 设备，请先发「牛牛切换MAA设备」或绑定设备。")
     removed = await store.clear_pending(qq, device=device)
+    left = await store.pending_count_for_user(qq)
     if device:
-        await clear_queue_cmd.finish(f"已清空当前选用设备上 {removed} 条待拉取任务。")
-    await clear_queue_cmd.finish(f"已清空 {removed} 条待拉取任务。")
+        await clear_queue_cmd.finish(f"已清空当前选用设备上 {removed} 条待拉取任务。本账号剩余待拉取：{left}。")
+    await clear_queue_cmd.finish(f"已清空 {removed} 条待拉取任务。当前待拉取：{left}。")
 
 
 @switch_device_cmd.handle()
@@ -341,10 +362,19 @@ async def enqueue_and_reply(bot: Bot, event: MessageEvent, spec: MaaTaskSpec, ma
     )
     if err:
         await matcher.finish(err)
+    qq = int(event.get_user_id())
+    cfg = get_maa_config()
+    active = await store.get_active_device(qq)
     msg = f"已向 MAA 排队任务 {spec.task_type}"
     if spec.params is not None:
         msg += f"（params={spec.params}）"
-    await matcher.finish(f"{msg}（共 {len(task_ids)} 项），稍后会推送执行结果。")
+    msg += f"（共 {len(task_ids)} 项），稍后会推送执行结果。"
+    if active and not await store.was_seen(str(qq), active, cfg.maa_seen_ttl_seconds):
+        msg += (
+            "\n注意：最近未检测到当前设备向牛牛轮询 getTask，"
+            "任务会一直处于「待拉取」直至 MAA 连上；请核对远程控制里的用户标识符、端点与设备 id。"
+        )
+    await matcher.finish(msg)
 
 
 @maa_control_msg.handle()
