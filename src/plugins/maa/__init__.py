@@ -24,7 +24,6 @@ from .tasks import (
     TASK_TYPES_WITHOUT_AUTO_SCREENSHOT,
     MaaTaskSpec,
     bind_device_id_error,
-    combat_enqueue_hints,
     expand_command_specs,
     format_maa_control_commands_help,
     format_maa_raw_task_types_help,
@@ -367,7 +366,6 @@ async def enqueue_and_reply(
     qq = int(event.get_user_id())
     cfg = get_maa_config()
     stage_plan = await store.get_stage_plan(qq)
-    combat_cmd = is_combat_control_command(command_line, specs)
     specs = expand_command_specs(
         specs,
         stage_plan=stage_plan,
@@ -393,8 +391,6 @@ async def enqueue_and_reply(
             "\n注意：最近未检测到当前设备向牛牛轮询 getTask，"
             "任务会一直处于「待拉取」直至 MAA 连上；请核对远程控制里的用户标识符、端点与设备 id。"
         )
-    if combat_cmd:
-        msg += "\n" + combat_enqueue_hints(stage_plan)
     await matcher.finish(msg)
 
 

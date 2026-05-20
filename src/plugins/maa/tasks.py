@@ -80,6 +80,8 @@ SETTINGS_TYPES = frozenset({
 })
 
 COMBAT_COMMAND_PHRASE = "牛牛作战"
+# 维护者：MAA 远控 LinkStart-Combat 在含「剩余理智」等辅助 FightTask 时失败；官方合并 PR 后改回 LinkStart-Combat
+COMBAT_COMMAND_TASK_TYPE = "LinkStart"
 COMBAT_PREP_TASK_TYPES = frozenset({"LinkStart-Combat"})
 
 TOOLBOX_TYPES = frozenset({
@@ -132,8 +134,8 @@ MAA_CONTROL_COMMAND_HELPS: tuple[MaaControlCommandHelp, ...] = (
     ),
     MaaControlCommandHelp(
         "牛牛作战",
-        "LinkStart-Combat",
-        "仅执行「作战」子项（刷理智关卡；可先「牛牛设置关卡」）。",
+        COMBAT_COMMAND_TASK_TYPE,
+        "按 MAA 当前勾选执行作战相关任务（可先「牛牛设置关卡」）。",
     ),
     MaaControlCommandHelp(
         "牛牛公招",
@@ -287,17 +289,6 @@ def is_combat_control_command(command_line: str, specs: list[MaaTaskSpec]) -> bo
     if (command_line or "").strip() == COMBAT_COMMAND_PHRASE:
         return True
     return any(s.task_type in COMBAT_PREP_TASK_TYPES for s in specs)
-
-
-def combat_enqueue_hints(stage_plan: list[str]) -> str:
-    """作战排队成功后的简要说明。"""
-    lines = [
-        "仅跑作战子项（不含唤醒）；游戏宜在主界面。",
-        "若 MAA 报 CombatError：官方版在含「剩余理智」任务项时常失败，需带补丁的 MAA 或删该项后再试。",
-    ]
-    if not primary_stage_from_plan(stage_plan):
-        lines.append("你尚未在牛牛保存关卡，可先：牛牛设置关卡 <关卡名>")
-    return "\n".join(lines)
 
 
 def expand_command_specs(
