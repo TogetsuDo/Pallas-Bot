@@ -11,6 +11,7 @@ from PIL import Image
 from src.common.paths import plugin_data_dir, project_path
 
 from .config import Config
+from .status_dots import apply_help_status_dots, should_paint_help_status_dots
 from .styles import get_default_style
 
 
@@ -20,7 +21,13 @@ def _help_style_files_revision() -> str:
     parts: list[str] = []
     for style_cfg in cfg.default_styles or []:
         style_dir = project_path(style_cfg.path)
-        for filename in ("setting.yml", "setting.json", "elements.yml", "elements.json"):
+        for filename in (
+            "setting.yml",
+            "setting.json",
+            "elements.yml",
+            "elements.json",
+            "style.py",
+        ):
             path = style_dir / filename
             if not path.is_file():
                 continue
@@ -40,6 +47,7 @@ def _help_image_cache_suffix() -> str:
         f"|ap={int(cfg.side_paint_auto_page)}"
         f"|enc=v2"
         f"|sty={_help_style_files_revision()}"
+        f"|stag=v3"
     )
     if not cfg.side_paint_enabled:
         return base
@@ -192,6 +200,9 @@ async def _render_markdown(
         autoPage=auto_page,
     )
     image = render_result.image
+
+    if should_paint_help_status_dots(markdown_content):
+        image = apply_help_status_dots(image, markdown_content)
 
     image = resize_image_if_needed(image)
 

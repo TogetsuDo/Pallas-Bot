@@ -65,7 +65,8 @@ async def handle_help_command(
 
     plugin_identifier = args[0]
     plugin_name, error_message = await find_plugin_by_identifier(
-        plugin_identifier, [] if show_ignored else (plugin_config.ignored_plugins if plugin_config else [])
+        plugin_identifier,
+        None if show_ignored else (plugin_config.ignored_plugins if plugin_config else []),
     )
 
     if error_message:
@@ -78,8 +79,7 @@ async def handle_help_command(
 
     if len(args) == 1:
         is_disabled = await is_plugin_disabled(plugin_name, group_id, bot_id)
-        plugin_status = "⛔ 禁用" if is_disabled else "✅ 启用"
-        markdown_content, issue = generate_plugin_functions_markdown(plugin_name, plugin_status)
+        markdown_content, issue = generate_plugin_functions_markdown(plugin_name, plugin_enabled=not is_disabled)
         if issue is HelpMarkdownIssue.PLUGIN_NOT_FOUND:
             await matcher.finish(f"博士，你说的'{resolved_plugin_display(plugin_name)}'是什么呀？")
             return
@@ -123,7 +123,13 @@ async def handle_plugin_operation(
         await matcher.finish(f"博士，即使身为大祭司，你不说想要{action}什么，我也帮不了你呀")
         return
 
-    plugin_name, error_message = await find_plugin_by_identifier(plugin_identifier, [] if show_ignored else None)
+    from .styles import load_config
+
+    plugin_config = load_config()
+    plugin_name, error_message = await find_plugin_by_identifier(
+        plugin_identifier,
+        None if show_ignored else (plugin_config.ignored_plugins if plugin_config else []),
+    )
     if error_message or plugin_name is None:
         await matcher.finish(error_message or f"博士，你说的'{plugin_identifier}'是什么呀？")
         return

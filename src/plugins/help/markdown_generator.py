@@ -2,8 +2,6 @@ import re
 import textwrap
 from enum import StrEnum
 
-from nonebot import get_loaded_plugins
-
 from src.common.cmd_perm import (
     effective_permission_avail_text,
     help_say_phrase,
@@ -12,12 +10,24 @@ from src.common.cmd_perm import (
 )
 
 from .config import Config
-from .plugin_manager import find_plugin, plugin_display_name
-from .visibility import load_help_hidden_plugins
+from .help_constants import HELP_STATUS_OFF, HELP_STATUS_ON, HELP_STATUS_PLACEHOLDER
+from .plugin_manager import find_plugin, get_help_menu_plugins, plugin_display_name
 
 # 成图宽度与 pillowmd 默认版心大致对齐；总表「简介」列更窄
 _HELP_DETAIL_WRAP = 44
 _HELP_LIST_INTRO_WRAP = 22
+
+
+def help_list_status_mark(enabled: bool) -> str:
+    """一级列表表格「状态」列。"""
+    return HELP_STATUS_ON if enabled else HELP_STATUS_OFF
+
+
+def _plugin_page_status_banner(plugin_name_display: str, enabled: bool) -> str:
+    """二级页标题下状态与开关口令。"""
+    if enabled:
+        return f"> **状态** 已启用 · 发送 **牛牛关闭 {plugin_name_display}** 可停用本插件\n\n"
+    return f"> **状态** 已停用 · 发送 **牛牛开启 {plugin_name_display}** 可启用本插件\n\n"
 
 
 def _sanitize_pipe(cell: str) -> str:
@@ -59,6 +69,39 @@ def _is_bullet_block(block: str) -> bool:
     return all(ln.startswith(("·", "•", "- ", "* ")) for ln in lines)
 
 
+_NUMBERED_LINE_RE = re.compile(r"^\d+\.\s+")
+
+
+def _is_numbered_list_block(block: str) -> bool:
+    lines = [ln.strip() for ln in block.strip().splitlines() if ln.strip()]
+    if len(lines) < 2:
+        return False
+    return all(_NUMBERED_LINE_RE.match(ln) for ln in lines)
+
+
+def _format_numbered_list_block(block: str, width: int) -> str:
+    """保留有序列表行结构，超长行在序号后折行并对齐续行。"""
+    lines = [ln.strip() for ln in block.strip().splitlines() if ln.strip()]
+    formatted: list[str] = []
+    for ln in lines:
+        m = re.match(r"^(\d+\.\s+)(.+)$", ln)
+        if not m:
+            formatted.append(ln)
+            continue
+        prefix, body = m.group(1), m.group(2)
+        hang = " " * len(prefix)
+        wrapped = textwrap.fill(
+            body,
+            width=max(12, width),
+            initial_indent=prefix,
+            subsequent_indent=hang,
+            break_long_words=True,
+            break_on_hyphens=True,
+        )
+        formatted.append(wrapped)
+    return "\n".join(formatted)
+
+
 def _wrap_paragraphs_for_help_page(text: str, width: int = _HELP_DETAIL_WRAP) -> str:
     """详情页「说明」「用法」等：按空行分段后对每段 soft-wrap；表格与条目列表保持原样。"""
     if not (text or "").strip():
@@ -70,6 +113,9 @@ def _wrap_paragraphs_for_help_page(text: str, width: int = _HELP_DETAIL_WRAP) ->
             continue
         if _is_markdown_table_block(b) or _is_bullet_block(b):
             chunks.append(b)
+            continue
+        if _is_numbered_list_block(b):
+            chunks.append(_format_numbered_list_block(b, width))
             continue
         line = re.sub(r"[ \t\r\f\v]+", " ", b.replace("\n", " ")).strip()
         if not line:
@@ -98,36 +144,33 @@ def generate_plugins_markdown(
     plugin_config: Config, show_ignored: bool = False, ignored_plugins: list | None = None
 ) -> str:
     """生成一级菜单。"""
-    plugins = get_loaded_plugins()
-
-    if show_ignored:
-        filtered_plugins = [plugin for plugin in plugins if plugin.name]
-    else:
-        ignored_plugins = ignored_plugins or (plugin_config.ignored_plugins if plugin_config else [])
-        hidden_plugins = set(load_help_hidden_plugins())
-        filtered_plugins = [
-            plugin
-            for plugin in plugins
-            if plugin.name and plugin.name not in ignored_plugins and plugin.name not in hidden_plugins
-        ]
+    filtered_plugins = get_help_menu_plugins(
+        show_ignored=show_ignored,
+        ignored_plugins=(
+            None if show_ignored else (ignored_plugins or (plugin_config.ignored_plugins if plugin_config else []))
+        ),
+    )
 
     n = len(filtered_plugins)
     title = "# 牛牛帮助" if not show_ignored else "# 牛牛帮助（超级用户）"
     markdown_content = f"{title}\n\n"
 
-    intro = f"共 **{n}** 个插件；下表「状态」为本群/私聊是否启用（✅/⛔），「简介」仅作概括。"
+    intro = f"共 **{n}** 个插件。"
     markdown_content += f"{_wrap_paragraphs_for_help_page(intro)}\n\n"
     markdown_content += (
-        "> **① 本页** 总览 → **②**「牛牛帮助 序号或插件名」功能表 → "
-        "**③** 再加功能序号/名称看**详情**（完整口令与用法）\n\n"
+        "> **导航** ① 本页总览 → ② **牛牛帮助** + 序号或插件名（功能表） → ③ 再加功能序号或名称（详情与完整口令）\n\n"
     )
-    markdown_content += "| 命令 | 说明 |\n|------|------|\n"
-    markdown_content += "| 「牛牛帮助 1」 | 第 1 个插件的功能表 |\n"
-    markdown_content += "| 「牛牛帮助 MAA远控」 | 按中文名打开插件 |\n"
-    markdown_content += "| 「牛牛帮助 1 2」 | 第 1 个插件第 2 条详情 |\n\n"
-    markdown_content += "> 开关：「牛牛开启/关闭 插件名」；全开/全关见「牛牛帮助 帮助系统」。\n\n"
+    markdown_content += "| 示例 | 说明 |\n|------|------|\n"
+    markdown_content += "| **牛牛帮助 1** | 第 1 个插件的功能表 |\n"
+    markdown_content += "| **牛牛帮助 MAA远控** | 按展示名打开 |\n"
+    markdown_content += "| **牛牛帮助 1 2** | 第 1 个插件第 2 条详情 |\n\n"
+    markdown_content += (
+        "> **单个开关** **牛牛开启** / **牛牛关闭** + 插件名\n"
+        "> **批量开关** **牛牛开启全部功能** / **牛牛关闭全部功能**\n\n"
+    )
 
     markdown_content += "## 插件列表\n\n"
+    markdown_content += "「状态」列：绿点 已启用、红点 已停用（本群/私聊）。\n\n"
     markdown_content += "| 序号 | 插件名称 | 状态 | 简介 |\n"
     markdown_content += "|------|----------|------|------|\n"
 
@@ -143,19 +186,17 @@ def generate_plugins_markdown(
             description = "暂无描述"
         description = _markdown_table_cell_linebreaks(description, _HELP_LIST_INTRO_WRAP)
 
-        status_placeholder = "{status}"
-
-        markdown_content += f"| {index} | {plugin_name} | {status_placeholder} | {description} |\n"
+        markdown_content += f"| {index} | {plugin_name} | {HELP_STATUS_PLACEHOLDER} | {description} |\n"
 
     if show_ignored:
         markdown_content += "\n> 本视图包含通常不在普通帮助里显示的插件，仅超级用户在私聊下可见。\n"
 
-    markdown_content += "\n> 发「牛牛帮助」可回到本页。\n"
+    markdown_content += "\n> 任意层级发 **牛牛帮助** 可回到本页。\n"
     return markdown_content
 
 
 def generate_plugin_functions_markdown(
-    plugin_name: str, plugin_status: str | None = None
+    plugin_name: str, plugin_enabled: bool | None = None
 ) -> tuple[str, HelpMarkdownIssue]:
     """生成二级菜单。"""
     target_plugin = find_plugin(plugin_name)
@@ -168,17 +209,10 @@ def generate_plugin_functions_markdown(
         return text, HelpMarkdownIssue.PLUGIN_NOT_FOUND
 
     plugin_name_display = plugin_display_name(target_plugin)
-    markdown_content = f"# {plugin_name_display}"
+    markdown_content = f"# {plugin_name_display}\n\n"
 
-    if plugin_status:
-        status_display = "✅ 已启用" if plugin_status == "✅ 启用" else "⛔ 已禁用"
-        markdown_content += f"（{status_display}）\n\n"
-
-        action_hint = "关闭" if plugin_status == "✅ 启用" else "开启"
-        verb = "停用" if plugin_status == "✅ 启用" else "启用"
-        markdown_content += f"要{verb}本插件，可发：「牛牛{action_hint} {plugin_name_display}」\n\n"
-    else:
-        markdown_content += "\n\n"
+    if plugin_enabled is not None:
+        markdown_content += _plugin_page_status_banner(plugin_name_display, plugin_enabled)
 
     if target_plugin.metadata:
         metadata = target_plugin.metadata
@@ -229,7 +263,7 @@ def generate_plugin_functions_markdown(
     else:
         markdown_content += "本插件没有可用的元数据说明。\n\n"
 
-    markdown_content += "---\n\n> 返回总列表：「牛牛帮助」\n"
+    markdown_content += "---\n\n> 返回总览：**牛牛帮助**\n"
     return markdown_content, HelpMarkdownIssue.OK
 
 
