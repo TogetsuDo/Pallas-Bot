@@ -41,6 +41,15 @@ async def test_get_task_flow(beanie_fixture) -> None:
 
 
 @pytest.mark.asyncio
+async def test_stage_plan_persist(beanie_fixture) -> None:
+    store = MaaStore()
+    qq = 12345
+    await store.set_stage_plan(qq, ["12-17-HARD", "CE-6", ""])
+    loaded = await store.get_stage_plan(qq)
+    assert loaded == ["12-17-HARD", "CE-6", ""]
+
+
+@pytest.mark.asyncio
 async def test_bind_requires_seen() -> None:
     store = MaaStore()
     err = await store.bind_device(99, "99", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ttl=3600)

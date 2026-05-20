@@ -234,8 +234,7 @@ class MaaStore:
 
     async def set_stage_plan(self, qq_id: int, stages: list[str]) -> None:
         cfg = UserConfig(qq_id)
-        padded = (stages + [""] * 4)[:4]
-        await cfg._update("maa_stage_plan", padded)
+        await cfg._update("maa_stage_plan", stages[:4])
 
     async def _load_active_device(self, cfg: UserConfig) -> str | None:
         raw = await cfg._find("maa_active_device")

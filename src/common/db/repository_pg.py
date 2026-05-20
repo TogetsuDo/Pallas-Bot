@@ -187,6 +187,7 @@ class UserConfigRow(Base):
     banned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     maa_devices: Mapped[Any] = mapped_column(_JsonB, nullable=False, default=dict)
     maa_active_device: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    maa_stage_plan: Mapped[Any] = mapped_column(_JsonB, nullable=False, default=list)
 
 
 class ImageCacheRow(Base):
@@ -229,6 +230,8 @@ def _ensure_pg_user_config_maa_devices(connection) -> None:
         connection.execute(text("ALTER TABLE user_config ADD COLUMN maa_devices JSONB NOT NULL DEFAULT '{}'::jsonb"))
     if "maa_active_device" not in names:
         connection.execute(text("ALTER TABLE user_config ADD COLUMN maa_active_device TEXT NOT NULL DEFAULT ''"))
+    if "maa_stage_plan" not in names:
+        connection.execute(text("ALTER TABLE user_config ADD COLUMN maa_stage_plan JSONB NOT NULL DEFAULT '[]'::jsonb"))
 
 
 @asynccontextmanager

@@ -66,11 +66,11 @@ def test_parse_stage_candidates() -> None:
     assert stages == ["12-17-HARD", "CE-6", ""]
     specs = parse_command_specs("牛牛设置关卡 12-17-HARD,CE-6")
     assert specs is not None
-    assert len(specs) == 4
+    assert len(specs) == 2
     assert specs[0].task_type == "Settings-Stage1"
     assert specs[0].params == "12-17-HARD"
+    assert specs[1].task_type == "Settings-Stage2"
     assert specs[1].params == "CE-6"
-    assert specs[2].params == ""
 
 
 def test_rename_award_command() -> None:

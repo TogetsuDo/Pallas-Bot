@@ -257,8 +257,9 @@ def parse_stage_setting_values(raw: str) -> list[str] | None:
 
 
 def build_stage_setting_specs(stages: list[str]) -> list[MaaTaskSpec]:
+    """按候选位下发出 Settings-StageN；空位不排队（避免无意义覆盖）。"""
     padded = (stages + [""] * STAGE_SETTING_MAX)[:STAGE_SETTING_MAX]
-    return [MaaTaskSpec(f"Settings-Stage{i + 1}", stage) for i, stage in enumerate(padded)]
+    return [MaaTaskSpec(f"Settings-Stage{i + 1}", stage) for i, stage in enumerate(padded) if stage]
 
 
 def build_combat_prep_specs(stage_plan: list[str], *, auto_enable_fight: bool) -> list[MaaTaskSpec]:
