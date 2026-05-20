@@ -158,10 +158,12 @@ def generate_plugins_markdown(
     intro = f"共 **{n}** 个插件。"
     markdown_content += f"{_wrap_paragraphs_for_help_page(intro)}\n\n"
     markdown_content += "> **导航** ① 本页总览 → ② **牛牛帮助** + 序号或插件名 → ③ 再加功能序号或名称\n\n"
-    markdown_content += "| 示例 | 说明 |\n|------|------|\n"
-    markdown_content += "| **牛牛帮助 1** | 第 1 个插件的功能表 |\n"
-    markdown_content += "| **牛牛帮助 MAA远控** | 按展示名打开 |\n"
-    markdown_content += "| **牛牛帮助 1 2** | 第 1 个插件第 2 条详情 |\n\n"
+    markdown_content += (
+        "> **示例**\n"
+        "> **牛牛帮助 1** — 第 1 个插件的功能表\n"
+        "> **牛牛帮助 MAA远控** — 按展示名打开\n"
+        "> **牛牛帮助 1 2** — 第 1 个插件第 2 条详情\n\n"
+    )
     markdown_content += (
         "> **单个开关** **牛牛开启** / **牛牛关闭** + 插件名\n"
         "> **批量开关** **牛牛开启全部功能** / **牛牛关闭全部功能**\n\n"

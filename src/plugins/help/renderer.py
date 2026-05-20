@@ -11,7 +11,10 @@ from PIL import Image
 from src.common.paths import plugin_data_dir, project_path
 
 from .config import Config
+from .pillowmd_bold import apply_help_light_bold_patch
 from .styles import get_default_style
+
+apply_help_light_bold_patch()
 
 
 def _help_style_files_revision() -> str:
@@ -44,7 +47,7 @@ def _help_image_cache_suffix() -> str:
         f"|fn={cfg.side_paint_filename}"
         f"|sc={cfg.side_paint_scale:.4f}"
         f"|ap={int(cfg.side_paint_auto_page)}"
-        f"|enc=v2"
+        f"|enc=v3"
         f"|sty={_help_style_files_revision()}"
     )
     if not cfg.side_paint_enabled:
