@@ -14,6 +14,23 @@ from .config import Config
 from .styles import get_default_style
 
 
+def _help_style_files_revision() -> str:
+    """样式目录内 setting/elements 变更时使帮助图缓存失效。"""
+    cfg = get_plugin_config(Config)
+    parts: list[str] = []
+    for style_cfg in cfg.default_styles or []:
+        style_dir = project_path(style_cfg.path)
+        for filename in ("setting.yml", "setting.json", "elements.yml", "elements.json"):
+            path = style_dir / filename
+            if not path.is_file():
+                continue
+            try:
+                parts.append(f"{filename}:{int(path.stat().st_mtime)}")
+            except OSError:
+                parts.append(f"{filename}:0")
+    return ";".join(parts) if parts else "none"
+
+
 def _help_image_cache_suffix() -> str:
     cfg = get_plugin_config(Config)
     base = (
@@ -22,6 +39,7 @@ def _help_image_cache_suffix() -> str:
         f"|sc={cfg.side_paint_scale:.4f}"
         f"|ap={int(cfg.side_paint_auto_page)}"
         f"|enc=v2"
+        f"|sty={_help_style_files_revision()}"
     )
     if not cfg.side_paint_enabled:
         return base
@@ -209,6 +227,5 @@ async def render_markdown_to_image(
 async def send_markdown_as_image(
     markdown_content: str, style_name: str, available_styles: dict, matcher: Matcher, group_id: int | None = None
 ) -> None:
-    # 获取缓存的图片或渲染新图片
     image_data = await render_markdown_to_image(markdown_content, style_name, available_styles, group_id)
     await matcher.finish(MessageSegment.image(image_data))

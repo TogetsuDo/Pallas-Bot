@@ -227,7 +227,7 @@ def _maa_help_table_section(title: str, items: tuple[MaaControlCommandHelp, ...]
 def format_maa_plugin_usage_brief() -> str:
     """二级帮助页「插件内用法」简报（完整口令表见功能详情「MAA 远控」）。"""
     return "\n\n".join([
-        "1. **私聊绑定**：牛牛绑定MAA <设备标识符> [别名]（MAA 设置里复制 32 位设备 id）",
+        "1. **私聊绑定**：牛牛绑定MAA <设备标识符> [别名]（设备 id 见 MAA「远程控制」）",
         "2. **MAA 配置**：「远程控制」填写上方对接地址；用户标识符填 QQ 号",
         "3. **远控口令**：牛牛长草、牛牛作战、牛牛公招等（须已绑定；**完整表**见下表第 2 条 → 功能详情）",
         "4. **多设备**（私聊）：牛牛MAA状态、牛牛切换MAA设备、牛牛MAA设备名、牛牛清空MAA队列",

@@ -88,7 +88,7 @@ if not await satisfies_command_permission(bot, event, "my_plugin.do_something"):
 
 ### 写法约定
 
-1. **`PluginMetadata.usage`**：分步说明**怎么用**；不写部署配置、环境变量、URL 生成方式。权限统一写：`所需权限以「牛牛帮助」本插件功能详情为准（可由 WebUI「命令权限」覆盖）。`
+1. **`PluginMetadata.usage`**：分步说明**怎么用**；不写部署配置、环境变量、URL 生成方式。帮助图为图片，**勿写**「复制」「粘贴」等（用户无法从图里取字）。权限统一写：`所需权限以「牛牛帮助」本插件功能详情为准（可由 WebUI「命令权限」覆盖）。`
 2. **`trigger_condition`**：用户口令原文；自动功能写用户能感知的行为（如「新人入群时」），`trigger_scene` 填 `自动`。
 3. **`command_permission`** / **`command_permissions`**：与 `permission_for_command` 的 ID 一致。
 

@@ -47,10 +47,10 @@
 # codeBlockUnderpainting: [40,40,40] # 代码块底色
 # codeBlockTitleColor: [0,255,0] # 代码块标题颜色
 
-# formLineColor: [0,0,0] # 表格分割线颜色
-# formTextColor: [0,0,0] # 表格文本颜色
-# formUnderpainting: [0,0,0,0] # 表格底色
-# formTitleUnderpainting: [0,0,0,0] # 表格标题底色
+# formLineColor: [198,188,212] # 表格分割线（淡藕紫）
+# formTextColor: [54,48,72] # 表格正文（深紫灰）
+# formUnderpainting: [255,253,251,255] # 表体（暖白）
+# formTitleUnderpainting: [216,192,210,255] # 表头（雾玫瑰，比正文略深一度）
 
 # textColor: [0, 0, 0] # 文本基础颜色
 # textGradientEndColor: [0, 0, 0] # 由普通字体到一级标题时颜色变化的最终色
@@ -95,7 +95,7 @@
     "codeFont": "smSans.ttf",
     "codeBlockLRDistance": 20,
     "codeBlockUDDistance": 20,
-    "formLineDistance": 20,
+    "formLineDistance": 22,
     "lineDistance": 10,
     "citeDistance": 30,
     "pageLineColor": [253,205,207,150],
@@ -107,7 +107,7 @@
     "citeSplitLineColor": [74,72,114,200],
     "codeBlockUnderpainting": [253,205,207,180],
     "codeBlockTitleColor": [227,95,130],
-    "formLineColor": [105,83,118],
+    "formLineColor": [198, 188, 212],
     "textColor": [98,79,137],
     "textGradientEndColor": [186,99,133],
     "linkColor": [132,162,240],
@@ -118,7 +118,7 @@
     "insertCodeTextColor": [77,84,139],
     "codeBlockTextColor": [80,89,162],
     "remarkColor": [212,234,151],
-    "formTextColor":[105,83,118],
-    "formUnderpainting":[212,227,205,255],
-    "formTitleUnderpainting":[245,213,100,90]
+    "formTextColor": [54, 48, 72],
+    "formUnderpainting": [255, 253, 251, 255],
+    "formTitleUnderpainting": [216, 192, 210, 255]
 }

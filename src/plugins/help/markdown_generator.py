@@ -114,10 +114,20 @@ def generate_plugins_markdown(
     n = len(filtered_plugins)
     title = "# 牛牛帮助" if not show_ignored else "# 牛牛帮助（超级用户）"
     markdown_content = f"{title}\n\n"
-    markdown_content += (
-        f"下面是当前已加载的 **{n}** 个插件，按展示名称排序。表格里「状态」表示在本群（或私聊）下是否可用。\n\n"
-    )
 
+    intro = f"共 **{n}** 个插件；下表「状态」为本群/私聊是否启用（✅/⛔），「简介」仅作概括。"
+    markdown_content += f"{_wrap_paragraphs_for_help_page(intro)}\n\n"
+    markdown_content += (
+        "> **① 本页** 总览 → **②**「牛牛帮助 序号或插件名」功能表 → "
+        "**③** 再加功能序号/名称看**详情**（完整口令与用法）\n\n"
+    )
+    markdown_content += "| 命令 | 说明 |\n|------|------|\n"
+    markdown_content += "| 「牛牛帮助 1」 | 第 1 个插件的功能表 |\n"
+    markdown_content += "| 「牛牛帮助 MAA远控」 | 按中文名打开插件 |\n"
+    markdown_content += "| 「牛牛帮助 1 2」 | 第 1 个插件第 2 条详情 |\n\n"
+    markdown_content += "> 开关：「牛牛开启/关闭 插件名」；全开/全关见「牛牛帮助 帮助系统」。\n\n"
+
+    markdown_content += "## 插件列表\n\n"
     markdown_content += "| 序号 | 插件名称 | 状态 | 简介 |\n"
     markdown_content += "|------|----------|------|------|\n"
 
@@ -138,23 +148,9 @@ def generate_plugins_markdown(
         markdown_content += f"| {index} | {plugin_name} | {status_placeholder} | {description} |\n"
 
     if show_ignored:
-        markdown_content += "\n> 本视图包含通常被隐藏的插件，仅超级用户在私聊下可见。\n"
+        markdown_content += "\n> 本视图包含通常不在普通帮助里显示的插件，仅超级用户在私聊下可见。\n"
 
-    # 一律用「」表示命令，避免 pillowmd 行内代码与正文混排导致基线错位
-    markdown_content += "\n## 下一步怎么做\n\n"
-    markdown_content += (
-        "1. **看某个插件的详情**：发「牛牛帮助」，空一格后接 **序号** 或 **插件名**。\n"
-        "   （插件名可用中文展示名，或与包名一致的英文名。）\n"
-    )
-    markdown_content += (
-        "2. **开 / 关插件**：「牛牛开启 〈插件名或序号〉」「牛牛关闭 〈插件名或序号〉」"
-        "（所需权限见「牛牛帮助 帮助系统」功能详情中的「何人可用」列）。\n"
-    )
-    markdown_content += "3. **一次开关全部插件**：「牛牛开启全部功能」「牛牛关闭全部功能」"
-    markdown_content += "（同上，见帮助系统功能详情）。\n\n"
-    markdown_content += "**示例**（数字表示上表序号，换成你的目标即可）\n\n"
-    markdown_content += "- 打开上表第 1 个插件：「牛牛帮助 1」\n"
-    markdown_content += "- 按中文名打开：「牛牛帮助 帮助系统」\n"
+    markdown_content += "\n> 发「牛牛帮助」可回到本页。\n"
     return markdown_content
 
 
@@ -188,6 +184,33 @@ def generate_plugin_functions_markdown(
         metadata = target_plugin.metadata
         description = _wrap_paragraphs_for_help_page(metadata.description or "暂无描述")
         usage = _wrap_paragraphs_for_help_page(metadata.usage or "暂无说明")
+
+        user_menu: list[dict] = []
+        if hasattr(metadata, "extra") and metadata.extra:
+            menu_data = metadata.extra.get("menu_data", [])
+            user_menu = list(iter_user_help_menu(menu_data))
+
+        if user_menu:
+            first_func = _sanitize_pipe(str(user_menu[0].get("func", "1") or "1"))
+            markdown_content += "## 功能一览\n\n"
+            detail_hint = (
+                f"需要某一条的完整口令与步骤时，发「牛牛帮助 {plugin_name_display}」+ **序号**"
+                f"（如「牛牛帮助 {plugin_name_display} 2」），"
+                f"或 + **功能名**（如「牛牛帮助 {plugin_name_display} {first_func}」）。"
+            )
+            markdown_content += f"{_wrap_paragraphs_for_help_page(detail_hint)}\n\n"
+            markdown_content += "| # | 功能 | 怎么说 | 场景 | 何人可用 |\n"
+            markdown_content += "|---|------|--------|------|----------|\n"
+            say_wrap = 28 if target_plugin.name == "maa" else 24
+            for i, item in enumerate(user_menu, 1):
+                func_name = _sanitize_pipe(str(item.get("func", f"未命名功能 {i}") or ""))
+                say_cell = _markdown_table_cell_truncate(help_say_phrase(item), say_wrap)
+                scene_cell = _markdown_table_cell_truncate(help_scene_text(item), 6)
+                perm_raw = effective_permission_avail_text(item)
+                perm_cell = _markdown_table_cell_truncate(perm_raw, 12) if perm_raw else "—"
+                markdown_content += f"| {i} | {func_name} | {say_cell} | {scene_cell} | {perm_cell} |\n"
+            markdown_content += "\n"
+
         markdown_content += "## 说明\n\n"
         markdown_content += f"{description}\n\n"
 
@@ -201,41 +224,12 @@ def generate_plugin_functions_markdown(
         markdown_content += "## 插件内用法\n\n"
         markdown_content += f"{usage}\n\n"
 
-        if hasattr(metadata, "extra") and metadata.extra:
-            menu_data = metadata.extra.get("menu_data", [])
-            user_menu = list(iter_user_help_menu(menu_data))
-            if user_menu:
-                markdown_content += "## 本插件功能一览\n\n"
-                markdown_content += "「怎么说」= 你要发的口令或操作；「场景」= 私聊 / 群内 / 自动。\n\n"
-                markdown_content += "| 序号 | 功能 | 怎么说 | 场景 | 何人可用 | 简介 |\n"
-                markdown_content += "|------|------|--------|------|----------|------|\n"
-                say_wrap = 36 if target_plugin.name == "maa" else 30
-                list_brief_wrap = 18 if target_plugin.name == "maa" else 16
-                for i, item in enumerate(user_menu, 1):
-                    func_name = _sanitize_pipe(str(item.get("func", f"未命名功能 {i}") or ""))
-                    say_cell = _markdown_table_cell_truncate(help_say_phrase(item), say_wrap)
-                    scene_cell = _markdown_table_cell_truncate(help_scene_text(item), 6)
-                    perm_raw = effective_permission_avail_text(item)
-                    perm_cell = _markdown_table_cell_truncate(perm_raw, 14) if perm_raw else "—"
-                    brief_raw = item.get("brief_des", "暂无简介") or "暂无简介"
-                    brief_des = _markdown_table_cell_truncate(str(brief_raw), list_brief_wrap)
-                    markdown_content += (
-                        f"| {i} | {func_name} | {say_cell} | {scene_cell} | {perm_cell} | {brief_des} |\n"
-                    )
-                markdown_content += "\n### 查看功能详情\n\n"
-                markdown_content += f"**示例**（当前插件为「{plugin_name_display}」）\n\n"
-                markdown_content += f"- 「牛牛帮助 {plugin_name_display} 1」→ 表中第 1 条详情\n"
-                if len(user_menu) > 1:
-                    markdown_content += f"- 「牛牛帮助 {plugin_name_display} 2」→ 第 2 条\n"
-
-            else:
-                markdown_content += "本插件未在元数据里登记「功能列表」，只有上面的总说明。\n\n"
-        else:
-            markdown_content += "本插件未在元数据里登记「功能列表」，只有上面的总说明。\n\n"
+        if not user_menu and hasattr(metadata, "extra"):
+            markdown_content += "本插件未登记功能列表，仅见上文说明。\n\n"
     else:
         markdown_content += "本插件没有可用的元数据说明。\n\n"
 
-    markdown_content += "---\n\n**返回总列表**：发「牛牛帮助」即可。\n"
+    markdown_content += "---\n\n> 返回总列表：「牛牛帮助」\n"
     return markdown_content, HelpMarkdownIssue.OK
 
 
@@ -291,37 +285,33 @@ def generate_function_detail_markdown(plugin_name: str, function_name: str) -> t
     func_name = target_function.get("func", "未命名功能")
     plugin_name_display = plugin_display_name(target_plugin)
     markdown_content = f"# {plugin_name_display} · {func_name}\n\n"
-
-    markdown_content += "| 项 | 内容 |\n"
-    markdown_content += "|----|------|\n"
-
-    markdown_content += f"| 功能序号 | {target_index} |\n"
-    markdown_content += f"| 功能名称 | {_sanitize_pipe(str(func_name))} |\n"
-    brief_cell = target_function.get("brief_des", "暂无简介") or "暂无简介"
-    markdown_content += f"| 简介 | {_markdown_table_cell_truncate(str(brief_cell), 28)} |\n"
+    nav_bits = [f"「牛牛帮助 {plugin_name_display}」列表"]
+    if target_index > 1:
+        nav_bits.append(f"「牛牛帮助 {plugin_name_display} {target_index - 1}」上一条")
+    if target_index < len(user_menu):
+        nav_bits.append(f"「牛牛帮助 {plugin_name_display} {target_index + 1}」下一条")
+    nav_bits.append("「牛牛帮助」总览")
+    markdown_content += f"> 功能详情 · 第 **{target_index}/{len(user_menu)}** 条 · {' · '.join(nav_bits)}\n\n"
 
     say_plain = help_say_phrase(target_function)
     scene_plain = help_scene_text(target_function)
     perm_avail = effective_permission_avail_text(target_function)
-    markdown_content += f"| 怎么说 | {_markdown_table_cell_truncate(say_plain, 40)} |\n"
-    markdown_content += f"| 场景 | {_markdown_table_cell_truncate(scene_plain, 12)} |\n"
-    perm_row = perm_avail or "—"
-    markdown_content += f"| 何人可用 | {_markdown_table_cell_truncate(perm_row, 28)} |\n"
+    brief_cell = target_function.get("brief_des", "暂无简介") or "暂无简介"
 
-    markdown_content += "\n"
+    markdown_content += "| 项 | 内容 |\n|----|------|\n"
+    markdown_content += f"| 怎么说 | {_sanitize_pipe(say_plain)} |\n"
+    markdown_content += f"| 场景 | {_sanitize_pipe(scene_plain)} |\n"
+    markdown_content += f"| 何人可用 | {_sanitize_pipe(perm_avail or '—')} |\n"
+    markdown_content += f"| 简介 | {_sanitize_pipe(str(brief_cell).strip())} |\n\n"
 
     detail_des = target_function.get("detail_des", "")
     if detail_des:
         markdown_content += f"## 怎么用\n\n{_wrap_paragraphs_for_help_page(str(detail_des))}\n\n"
 
-    if target_plugin.name == "maa" and func_name in {"绑定 MAA 设备", "MAA HTTP"}:
+    if target_plugin.name == "maa" and func_name in {"绑定设备", "绑定 MAA 设备", "MAA HTTP"}:
         from src.plugins.maa.endpoints import format_maa_http_setup_help
 
         maa_http = _wrap_paragraphs_for_help_page(format_maa_http_setup_help())
         markdown_content += f"## MAA 对接地址\n\n{maa_http}\n\n"
-
-    markdown_content += "---\n\n"
-    markdown_content += f"- **回到本插件功能列表**：「牛牛帮助 {plugin_name_display}」\n"
-    markdown_content += "- **回到全部插件总列表**：「牛牛帮助」\n"
 
     return markdown_content, HelpMarkdownIssue.OK
