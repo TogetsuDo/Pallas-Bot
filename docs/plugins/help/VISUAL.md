@@ -66,6 +66,6 @@ resource/styles/default/
 
 换行宽度常量见 `markdown_generator.py` 顶部 `_HELP_*_WRAP`。
 
-启用/停用：首页表状态列为「已启用/已停用」文案，成图后由 `status_dots.py` 在状态列叠绘**绿点/红点**（`smSans` 无 🟢🔴 字形，勿直接写 emoji）；占位符 `__HELP_ROW_STATUS__` 按行填入。
+启用/停用：首页表状态列为 **● 已启用** / **○ 已停用**（几何符号，help 字体可显示；勿用 🟢🔴）；占位符 `__HELP_ROW_STATUS__` 按行填入。
 
 帮助文案里的口令用 **加粗** 标出，不用反引号行内代码（避免 pillowmd 缩小字号、浅灰字导致难读）。若插件 `usage` 等仍含 `` ` ``，由 `insertCodeTextColor` 与 `expressionFontSizeRate` 保证可读。

@@ -157,9 +157,7 @@ def generate_plugins_markdown(
 
     intro = f"共 **{n}** 个插件。"
     markdown_content += f"{_wrap_paragraphs_for_help_page(intro)}\n\n"
-    markdown_content += (
-        "> **导航** ① 本页总览 → ② **牛牛帮助** + 序号或插件名（功能表） → ③ 再加功能序号或名称（详情与完整口令）\n\n"
-    )
+    markdown_content += "> **导航** ① 本页总览 → ② **牛牛帮助** + 序号或插件名 → ③ 再加功能序号或名称\n\n"
     markdown_content += "| 示例 | 说明 |\n|------|------|\n"
     markdown_content += "| **牛牛帮助 1** | 第 1 个插件的功能表 |\n"
     markdown_content += "| **牛牛帮助 MAA远控** | 按展示名打开 |\n"
@@ -170,7 +168,7 @@ def generate_plugins_markdown(
     )
 
     markdown_content += "## 插件列表\n\n"
-    markdown_content += "「状态」列：绿点 已启用、红点 已停用（本群/私聊）。\n\n"
+    markdown_content += f"「状态」列：**{HELP_STATUS_ON}**、**{HELP_STATUS_OFF}**（本群/私聊）。\n\n"
     markdown_content += "| 序号 | 插件名称 | 状态 | 简介 |\n"
     markdown_content += "|------|----------|------|------|\n"
 
