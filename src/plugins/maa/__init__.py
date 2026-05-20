@@ -98,7 +98,16 @@ __plugin_meta__ = PluginMetadata(
                 "detail_des": (
                     "展示已绑定设备、当前选用设备及待拉取任务数。"
                     "多台设备时需先「牛牛切换MAA设备」或绑定后自动选用最近绑定的一台。"
+                    "积压时可发「牛牛清空MAA队列」丢弃未拉取任务。"
                 ),
+            },
+            {
+                "func": "清空 MAA 队列",
+                "trigger_method": "on_cmd",
+                "trigger_condition": "牛牛清空MAA队列",
+                "command_permission": "maa.control",
+                "brief_des": "丢弃尚未被 MAA 拉取的任务",
+                "detail_des": ("仅清除牛牛内存中的待拉取队列，不影响 MAA 本地正在执行的任务。重启牛牛也会清空队列。"),
             },
             {
                 "func": "切换 MAA 设备",
@@ -151,6 +160,13 @@ status_cmd = on_command(
     priority=5,
     block=True,
     permission=permission_for_command("maa.status"),
+)
+
+clear_queue_cmd = on_command(
+    "牛牛清空MAA队列",
+    priority=5,
+    block=True,
+    permission=permission_for_command("maa.control"),
 )
 
 switch_device_cmd = on_command(
@@ -243,7 +259,37 @@ async def handle_status(event: MessageEvent):
         lines.append("（未选定当前设备，请「牛牛切换MAA设备 <标识符或别名>」）")
     pending = await store.pending_count_for_user(qq)
     lines.append(f"待 MAA 拉取任务数：{pending}")
+    if active:
+        on_device = await store.pending_count_for_device(qq, active)
+        short = active if len(active) <= 16 else f"{active[:8]}…{active[-4:]}"
+        lines.append(f"其中当前选用设备（{short}）队列：{on_device}")
+        if pending > 0 and on_device == 0:
+            lines.append(
+                "提示：任务只发给「当前选用」设备；若 MAA 里填的设备 id 与该项不一致，"
+                "客户端 getTask 会一直为空（MAA 界面通常也不显示任务列表）。"
+            )
+    if pending > 0:
+        lines.append("积压过多可发「牛牛清空MAA队列」丢弃未拉取任务。")
     await status_cmd.finish("\n".join(lines))
+
+
+@clear_queue_cmd.handle()
+async def handle_clear_queue(event: MessageEvent, args: Message = CommandArg()):  # noqa: B008
+    qq = int(event.get_user_id())
+    scope = args.extract_plain_text().strip()
+    device: str | None = None
+    if scope:
+        if scope not in ("当前", "当前设备", "current"):
+            await clear_queue_cmd.finish(
+                "用法：牛牛清空MAA队列（清空本账号全部待拉取）；或 牛牛清空MAA队列 当前（仅当前选用设备）"
+            )
+        device = await store.get_active_device(qq)
+        if not device:
+            await clear_queue_cmd.finish("尚未选定当前 MAA 设备，请先发「牛牛切换MAA设备」或绑定设备。")
+    removed = await store.clear_pending(qq, device=device)
+    if device:
+        await clear_queue_cmd.finish(f"已清空当前选用设备上 {removed} 条待拉取任务。")
+    await clear_queue_cmd.finish(f"已清空 {removed} 条待拉取任务。")
 
 
 @switch_device_cmd.handle()

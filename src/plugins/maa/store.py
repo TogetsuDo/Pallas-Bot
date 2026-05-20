@@ -315,6 +315,28 @@ class MaaStore:
         async with self._lock:
             return sum(1 for t in self._pending.values() if t.user == user_key and not t.reported)
 
+    async def pending_count_for_device(self, qq_id: int, device: str) -> int:
+        norm = normalize_device_id(device)
+        if not norm:
+            return 0
+        user_key = str(qq_id)
+        async with self._lock:
+            return sum(1 for t in self._pending.values() if t.user == user_key and t.device == norm and not t.reported)
+
+    async def clear_pending(self, qq_id: int, *, device: str | None = None) -> int:
+        """移除未汇报任务；device 为 None 时清空该 QQ 全部待拉取任务。"""
+        user_key = str(qq_id)
+        norm = normalize_device_id(device) if device else None
+        async with self._lock:
+            remove_ids = [
+                tid
+                for tid, t in self._pending.items()
+                if t.user == user_key and not t.reported and (norm is None or t.device == norm)
+            ]
+            for tid in remove_ids:
+                del self._pending[tid]
+        return len(remove_ids)
+
     async def is_device_verified(self, user: str, device: str) -> bool:
         try:
             qq_id = int(user.strip())
@@ -334,10 +356,13 @@ class MaaStore:
         for device_id, meta in raw.items():
             if not isinstance(device_id, str) or not isinstance(meta, dict):
                 continue
+            canon = normalize_device_id(device_id)
+            if not canon:
+                continue
             alias_raw = meta.get("alias")
             alias = alias_raw.strip() if isinstance(alias_raw, str) else ""
-            out[device_id] = DeviceRecord(
-                device=device_id,
+            out[canon] = DeviceRecord(
+                device=canon,
                 verified=bool(meta.get("verified")),
                 last_seen=float(meta.get("last_seen") or 0),
                 alias=alias,

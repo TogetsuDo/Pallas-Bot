@@ -31,6 +31,14 @@ async def test_get_task_flow(beanie_fixture) -> None:
     unverified = await store.pending_tasks_for(user, "00000000-0000-0000-0000-000000000099")
     assert unverified == []
 
+    # MAA 轮询常带 UUID 连字符，应与绑定时的 32 位 hex 对齐
+    tasks_uuid = await store.pending_tasks_for(user, "42cfa6e9-dfa1-47d8-a7c1-d9a6d658b06d")
+    assert len(tasks_uuid) == 1
+
+    removed = await store.clear_pending(12345)
+    assert removed == 1
+    assert await store.pending_count_for_user(12345) == 0
+
 
 @pytest.mark.asyncio
 async def test_bind_requires_seen() -> None:

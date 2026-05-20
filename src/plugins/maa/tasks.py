@@ -10,11 +10,15 @@ _DEVICE_UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-
 
 
 def normalize_device_id(raw: str) -> str | None:
+    """统一为 32 位小写 hex（去掉 UUID 连字符），便于与 MAA 轮询体对齐。"""
     s = (raw or "").strip()
     if not s:
         return None
-    if _DEVICE_HEX32_RE.fullmatch(s) or _DEVICE_UUID_RE.fullmatch(s):
-        return s.lower()
+    compact = s.lower().replace("-", "")
+    if _DEVICE_HEX32_RE.fullmatch(compact):
+        return compact
+    if _DEVICE_UUID_RE.fullmatch(s.lower()):
+        return compact
     return None
 
 
