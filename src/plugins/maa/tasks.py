@@ -59,18 +59,13 @@ LINK_START_SUBTYPES = frozenset({
 
 STAGE_SETTING_MAX = 4
 
-SETTINGS_STAGE_TYPES = frozenset(f"Settings-Stage{i}" for i in range(1, STAGE_SETTING_MAX + 1))
+# 远控仅文档化 Settings-Stage1；勿下发 Stage2~4 / FightEnable（6.10+ 易污染 StagePlan）
+SETTINGS_STAGE_REMOTE = "Settings-Stage1"
 
-# 较新 MAA 可能支持；旧版会忽略未知 Settings type
-SETTINGS_FIGHT_ENABLE = "Settings-FightEnable"
-
-SETTINGS_TYPES = (
-    frozenset({
-        "Settings-ConnectionAddress",
-        SETTINGS_FIGHT_ENABLE,
-    })
-    | SETTINGS_STAGE_TYPES
-)
+SETTINGS_TYPES = frozenset({
+    "Settings-ConnectionAddress",
+    SETTINGS_STAGE_REMOTE,
+})
 
 COMBAT_PREP_TASK_TYPES = frozenset({"LinkStart-Combat"})
 
@@ -200,7 +195,7 @@ _MAA_SETTINGS_COMMAND_HELPS: tuple[MaaControlCommandHelp, ...] = (
     MaaControlCommandHelp(
         "牛牛设置关卡 <关卡…>",
         "Settings-Stage1",
-        "设置作战关卡与候选（最多 4 个，空格或逗号分隔；用 - 表示空候选）。",
+        "设置作战主关卡并保存候选（最多 4 个；远控仅写入第 1 候选到 MAA，其余供「牛牛作战」前自动同步）。",
     ),
 )
 
@@ -256,20 +251,23 @@ def parse_stage_setting_values(raw: str) -> list[str] | None:
     return stages
 
 
+def primary_stage_from_plan(stages: list[str]) -> str | None:
+    for stage in stages:
+        if stage:
+            return stage
+    return None
+
+
 def build_stage_setting_specs(stages: list[str]) -> list[MaaTaskSpec]:
-    """按候选位下发出 Settings-StageN；空位不排队（避免无意义覆盖）。"""
-    padded = (stages + [""] * STAGE_SETTING_MAX)[:STAGE_SETTING_MAX]
-    return [MaaTaskSpec(f"Settings-Stage{i + 1}", stage) for i, stage in enumerate(padded) if stage]
+    """远控仅下发 Settings-Stage1（协议支持的主关卡位）。"""
+    primary = primary_stage_from_plan(stages)
+    if not primary:
+        return []
+    return [MaaTaskSpec(SETTINGS_STAGE_REMOTE, primary)]
 
 
-def build_combat_prep_specs(stage_plan: list[str], *, auto_enable_fight: bool) -> list[MaaTaskSpec]:
-    """作战前准备：启用作战（若 MAA 支持）并写入关卡候选。"""
-    specs: list[MaaTaskSpec] = []
-    if auto_enable_fight:
-        specs.append(MaaTaskSpec(SETTINGS_FIGHT_ENABLE, "true"))
-    if stage_plan:
-        specs.extend(build_stage_setting_specs(stage_plan))
-    return specs
+def build_combat_prep_specs(stage_plan: list[str]) -> list[MaaTaskSpec]:
+    return build_stage_setting_specs(stage_plan)
 
 
 def expand_command_specs(
@@ -280,7 +278,9 @@ def expand_command_specs(
 ) -> list[MaaTaskSpec]:
     if not combat_auto_prepare or not any(s.task_type in COMBAT_PREP_TASK_TYPES for s in specs):
         return specs
-    prep = build_combat_prep_specs(stage_plan, auto_enable_fight=True)
+    if any(s.task_type == SETTINGS_STAGE_REMOTE for s in specs):
+        return specs
+    prep = build_combat_prep_specs(stage_plan)
     if not prep:
         return specs
     return prep + specs

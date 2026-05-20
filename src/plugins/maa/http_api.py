@@ -37,6 +37,11 @@ async def maa_get_task(body: GetTaskRequest) -> GetTaskResponse:
 async def maa_report_status(body: ReportStatusRequest) -> dict[str, str]:
     task = await maa_store.mark_reported(body.task)
     if not task:
+        if body.task:
+            logger.debug(
+                "maa reportStatus: 未知或已汇报任务 id={}（多为牛牛重启后 MAA 重试汇报，可忽略）",
+                body.task,
+            )
         return {"message": "ok"}
 
     notify = task.notify

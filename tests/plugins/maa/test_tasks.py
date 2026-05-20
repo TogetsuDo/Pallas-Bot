@@ -66,11 +66,9 @@ def test_parse_stage_candidates() -> None:
     assert stages == ["12-17-HARD", "CE-6", ""]
     specs = parse_command_specs("牛牛设置关卡 12-17-HARD,CE-6")
     assert specs is not None
-    assert len(specs) == 2
+    assert len(specs) == 1
     assert specs[0].task_type == "Settings-Stage1"
     assert specs[0].params == "12-17-HARD"
-    assert specs[1].task_type == "Settings-Stage2"
-    assert specs[1].params == "CE-6"
 
 
 def test_rename_award_command() -> None:
@@ -85,10 +83,19 @@ def test_combat_auto_prepare() -> None:
         stage_plan=["1-7", "CE-6"],
         combat_auto_prepare=True,
     )
-    assert specs[0].task_type == "Settings-FightEnable"
-    assert specs[1].task_type == "Settings-Stage1"
-    assert specs[1].params == "1-7"
+    assert specs[0].task_type == "Settings-Stage1"
+    assert specs[0].params == "1-7"
     assert specs[-1].task_type == "LinkStart-Combat"
+
+
+def test_combat_auto_prepare_skips_duplicate_stage() -> None:
+    specs = expand_command_specs(
+        [MaaTaskSpec("Settings-Stage1", "CE-6"), MaaTaskSpec("LinkStart-Combat")],
+        stage_plan=["1-7"],
+        combat_auto_prepare=True,
+    )
+    assert len(specs) == 2
+    assert specs[0].params == "CE-6"
 
 
 def test_maa_raw_task_stage() -> None:

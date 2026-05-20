@@ -44,7 +44,7 @@
 | 牛牛心跳 | HeartBeat | 查询当前执行任务 id |
 | 牛牛单抽 / 牛牛十连 | Toolbox-Gacha* | 工具箱公招单抽/十连 |
 | 牛牛设置连接 \<值\> | Settings-ConnectionAddress | 改连接地址 |
-| 牛牛设置关卡 \<关卡…\> | Settings-Stage1~4 | 设置作战关卡与候选（最多 4 个） |
+| 牛牛设置关卡 \<关卡…\> | Settings-Stage1 | 设置主关卡并保存候选（远控仅写入第 1 候选） |
 
 ### 原始 type（远控协议）
 
@@ -130,9 +130,9 @@
 
 ### 作战准备与关卡候选
 
-- **`牛牛设置关卡`**：解析最多 4 个关卡候选（空格/逗号分隔，`-` 表示空位），依次排队 `Settings-Stage1`～`Settings-Stage4`，并写入用户配置 `maa_stage_plan`。
-- **`maa_combat_auto_prepare`**（默认开）：发「牛牛作战」时，在 `LinkStart-Combat` 前自动排队 `Settings-FightEnable`（若 MAA 支持）及已保存的关卡候选。
-- MAA 官方远控文档目前仅列出 `Settings-Stage1`；`Stage2`～`Stage4`、`FightEnable` 在较新客户端可能已支持，旧版会忽略未知 Settings。另：**`LinkStart-Combat` 要求 MAA 任务队列中仅有一个「作战」任务**，且 `StagePlan` 须能解析出有效关卡，否则易出现 CombatError / 未选择任务。
+- **`牛牛设置关卡`**：解析最多 4 个关卡候选（空格/逗号分隔，`-` 表示空位），写入 `maa_stage_plan`；向 MAA **仅下发 `Settings-Stage1`（第 1 个非空候选）**，勿下发 `Stage2`～`Stage4` 或 `FightEnable`，否则 MAA 6.10+ 可能把 `StagePlan` 撑满空位并提示「调用了不存在的任务 id」。
+- **`maa_combat_auto_prepare`**（默认开）：发「牛牛作战」时，若本批未含 `Settings-Stage1`，会在 `LinkStart-Combat` 前自动再写一次已保存的主关卡。
+- **`LinkStart-Combat` 要求 MAA 任务队列中仅有一个「作战」任务**，且 `StagePlan` 须能解析出有效关卡，否则易出现 CombatError / 未选择任务。
 
 维护者排障：看 `debug/asst.log` 中 `taskchain`（如 `Combat`、`Mall`）与 `first` 字段（如 `CombatBegin`、`MallBegin`）的重试耗尽后的 `SubTaskError`。
 
