@@ -8,6 +8,12 @@ from nonebot.exception import ActionFailed
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
+from src.common.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.common.cmd_perm.metadata_text import SCENE_AUTO, SCENE_GROUP, join_usage, usage_line
 from src.common.config import BotConfig, GroupConfig
 from src.common.message_scrub import is_message_scrub_blocked_async
 from src.common.message_scrub.log_preview import scrub_intercept_log_preview
@@ -26,18 +32,18 @@ from .runtime import (
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛做梦",
-    description=("牛牛的梦话：多群同时做梦时同 Bot 漂流互通，随机间隔推送与复读共用管理员的「不可以」触发梦库删除。"),
-    usage="""
-牛牛做梦 — 进入做梦（约 5～15 分钟，期间会发梦话并可收到他群漂流）
-牛牛醒梦 / 牛牛别做梦 — 结束本群做梦（「牛牛醒一醒」醒酒时也会一并醒梦）
-
-做梦中群聊会被采集；醉酒时梦话更密。管理：@牛牛 回复「不可以」可清理梦库（权限见功能详情）。
-    """.strip(),
+    description="跨群梦话漂流与历史梦推送，醉酒时更密。",
+    usage=join_usage(
+        usage_line("牛牛做梦", "进入做梦约 5～15 分钟，可收他群漂流"),
+        usage_line("牛牛醒梦 / 牛牛别做梦", "结束本群做梦"),
+        usage_line("牛牛醒一醒", "醒酒时亦会醒梦"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "command_permissions": [
             {"id": "dream.ban_cleanup", "label": "梦库清理（不可以）", "default": "staff"},
         ],
@@ -45,7 +51,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "牛牛做梦",
                 "trigger_method": "on_message",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛做梦",
                 "brief_des": "进入做梦漂流",
                 "detail_des": (
@@ -56,7 +62,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "牛牛醒梦",
                 "trigger_method": "on_message",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛醒梦 / 牛牛别做梦",
                 "brief_des": "结束做梦",
                 "detail_des": "立即停止梦话；也可通过「牛牛醒一醒」醒酒时一并结束。",
@@ -64,7 +70,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "梦话与漂流",
                 "trigger_method": "on_message",
-                "trigger_scene": "自动",
+                "trigger_scene": SCENE_AUTO,
                 "trigger_condition": "本群做梦中",
                 "brief_des": "采集群聊并跨群漂流",
                 "detail_des": "做梦中群友文字与图片会进入梦库，并可能漂到其它正在做梦的群。",
@@ -72,14 +78,13 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "梦库清理",
                 "trigger_method": "on_message",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "@牛牛 回复某条消息：不可以",
                 "command_permission": "dream.ban_cleanup",
                 "brief_des": "删除梦库中匹配内容",
                 "detail_des": "与复读「不可以」相同：回复目标消息后 @牛牛 说「不可以」。",
             },
         ],
-        "menu_template": "default",
     },
 )
 

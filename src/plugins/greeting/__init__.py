@@ -26,6 +26,12 @@ from src.common.cmd_perm import (
     group_message_permission_for_command,
     private_message_permission_for_command,
 )
+from src.common.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.common.cmd_perm.metadata_text import SCENE_AUTO, SCENE_GROUP, SCENE_PRIVATE, join_usage, usage_line
 from src.common.config import BotConfig, GroupConfig, UserConfig
 from src.common.paths import plugin_data_dir
 from src.common.utils import HTTPXClient, is_bot_admin
@@ -37,17 +43,17 @@ from .voice import get_random_voice, get_voice_filepath
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛欢迎",
-    description="处理群变动信息以及支持自定义好友欢迎消息",
-    usage="""
-设置好友欢迎 / 清除好友欢迎 — 私聊自定义新好友欢迎
-设置群欢迎 / 清除群欢迎 — 群内自定义入群欢迎（新人入群时优先发送）
-所需权限以「牛牛帮助」本插件功能详情为准（可由 WebUI「命令权限」覆盖）。
-    """.strip(),
+    description="入群/好友欢迎与自定义欢迎图文。",
+    usage=join_usage(
+        usage_line("设置好友欢迎 / 清除好友欢迎", "私聊维护新好友欢迎"),
+        usage_line("设置群欢迎 / 清除群欢迎", "群内维护入群欢迎"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot/Pallas-Bot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "command_permissions": [
             {
                 "id": "greeting.set_friend_welcome",
@@ -74,7 +80,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "入群欢迎",
                 "trigger_method": "on_notice",
-                "trigger_scene": "自动",
+                "trigger_scene": SCENE_AUTO,
                 "trigger_condition": "新人入群",
                 "brief_des": "发送入群欢迎",
                 "detail_des": "若本群已「设置群欢迎」则优先发自定义内容，否则发默认欢迎。",
@@ -82,7 +88,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "好友欢迎",
                 "trigger_method": "on_notice",
-                "trigger_scene": "自动",
+                "trigger_scene": SCENE_AUTO,
                 "trigger_condition": "新好友添加",
                 "brief_des": "发送好友欢迎",
                 "detail_des": "若已「设置好友欢迎」则发送你保存的图文内容。",
@@ -90,7 +96,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "设置好友欢迎",
                 "trigger_method": "on_cmd",
-                "trigger_scene": "私聊",
+                "trigger_scene": SCENE_PRIVATE,
                 "trigger_condition": "设置好友欢迎",
                 "command_permission": "greeting.set_friend_welcome",
                 "brief_des": "自定义新好友欢迎",
@@ -99,7 +105,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "清除好友欢迎",
                 "trigger_method": "on_cmd",
-                "trigger_scene": "私聊",
+                "trigger_scene": SCENE_PRIVATE,
                 "trigger_condition": "清除好友欢迎",
                 "command_permission": "greeting.clear_friend_welcome",
                 "brief_des": "恢复默认好友欢迎",
@@ -108,7 +114,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "设置群欢迎",
                 "trigger_method": "on_cmd",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "设置群欢迎",
                 "command_permission": "greeting.set_group_welcome",
                 "brief_des": "自定义本群入群欢迎",
@@ -117,14 +123,13 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "清除群欢迎",
                 "trigger_method": "on_cmd",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "清除群欢迎",
                 "command_permission": "greeting.clear_group_welcome",
                 "brief_des": "恢复默认入群欢迎",
                 "detail_des": "清除本群已保存的入群欢迎素材。",
             },
         ],
-        "menu_template": "default",
     },
 )
 

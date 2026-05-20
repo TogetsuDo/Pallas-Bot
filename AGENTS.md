@@ -121,10 +121,9 @@ uv run ruff format --check src/
 接入可配置命令权限的插件时：
 
 - **默认等级**写在 `extra["command_permissions"]` 与/或 `registry.DEFAULT_COMMAND_PERMISSIONS`；运行中可由 WebUI「命令权限」或环境变量覆盖。
-- **不要在面向用户的文案里写死权限角色**：`PluginMetadata.usage`、`menu_data.trigger_condition` 中避免「仅群管」「默认群主」「群管理员可…」等静态描述；实际「何人可用」由帮助图根据 `command_permission(s)` 与覆盖配置**动态生成**。
-- **`usage` 末行**（有独立命令权限时推荐，参考 `greeting` / `duel`）：
-  `所需权限以「牛牛帮助」本插件功能详情为准（可由 WebUI「命令权限」覆盖）。`
+- **不要在面向用户的文案里写死权限角色**：`PluginMetadata.usage`、`menu_data.trigger_condition` 中避免「仅群管」「默认群主」「群管理员可…」等静态描述；**勿在 `usage` 末尾重复写权限说明**——帮助图会根据 `command_permission(s)` 与 WebUI 覆盖**自动展示**「何人可用」。
 - **`menu_data`**：`trigger_condition` 只写触发方式；权限绑定 `command_permission` / `command_permissions`。
+- **文案格式**：`usage` 用 `usage_line` + `join_usage`（≥2 条自动编号）；`description` 一句句号结尾；`brief_des` / `detail_des` 与 `trigger_scene` 见 [cmd_perm · 写法约定](docs/common/cmd_perm/README.md)。
 - **与 cmd_perm 无关的额外条件**（例如须**处理消息的牛牛账号**为 QQ 群管）：写在 `detail_des` 或 `docs/plugins/<name>/README.md`，不要塞进 `usage` / `trigger_condition`。
 - 开发者向 `docs/plugins/*/README.md` 可用表格列出**代码默认等级**（如「群管/群主」），并注明以 WebUI / cmd_perm 为准。
 

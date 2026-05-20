@@ -13,6 +13,18 @@ from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent, No
 from nonebot.plugin import PluginMetadata
 
 from src.common.cmd_perm import permission_for_command
+from src.common.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.common.cmd_perm.metadata_text import (
+    SCENE_BOTH,
+    SCENE_GROUP,
+    SCENE_PRIVATE,
+    join_usage,
+    usage_line,
+)
 
 from .bot_monitor import (
     get_bot_status_info,
@@ -24,18 +36,19 @@ from .config import plugin_config
 from .mail_notifier import handle_test_mail_command, notify_bot_offline
 
 __plugin_meta__ = PluginMetadata(
-    name="牛牛状态查询",
-    description="查询当前连接的Bot状态，检测Bot离线并发送通知",
-    usage="""
-牛牛在吗 - 查询当前连接的Bot列表
-牛牛报数 - 让当前群内在线牛牛随机报数
-测试邮件 - 测试邮件发送功能
-""",
+    name="牛牛状态",
+    description="查询牛牛在线状态、群内报数与离线邮件通知。",
+    usage=join_usage(
+        usage_line("牛牛在吗", "号主查看在线/离线牛牛"),
+        usage_line("牛牛报数 / 牛牛出列", "群内在线牛牛依次报到"),
+        usage_line("测试邮件", "超管测试 SMTP"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "command_permissions": [
             {"id": "bot_status.status", "label": "牛牛在吗", "default": "bot_moderator"},
             {"id": "bot_status.test_mail", "label": "测试邮件", "default": "superuser"},
@@ -43,18 +56,18 @@ __plugin_meta__ = PluginMetadata(
         ],
         "menu_data": [
             {
-                "func": "查看牛牛在线状况",
+                "func": "牛牛在吗",
                 "trigger_method": "on_cmd",
-                "trigger_scene": "私聊",
+                "trigger_scene": SCENE_BOTH,
                 "trigger_condition": "牛牛在吗",
                 "command_permission": "bot_status.status",
-                "brief_des": "总计牛牛在线情况",
-                "detail_des": "当牛牛离线时发送离线通知邮件给号主与Superuser",
+                "brief_des": "查看在线情况",
+                "detail_des": "列出当前进程内在线牛牛；离线超宽限期后向号主与配置邮箱发邮件。",
             },
             {
                 "func": "发送测试邮件",
                 "trigger_method": "on_cmd",
-                "trigger_scene": "私聊",
+                "trigger_scene": SCENE_PRIVATE,
                 "trigger_condition": "测试邮件",
                 "command_permission": "bot_status.test_mail",
                 "brief_des": "发送测试邮件",
@@ -63,14 +76,13 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "牛牛依次报数",
                 "trigger_method": "on_cmd",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛报数 / 牛牛出列",
                 "command_permission": "bot_status.count",
                 "brief_des": "在线牛牛依次报数",
                 "detail_des": "仅当前群内在线 Bot 参与，随机顺序在群内轮流报数",
             },
         ],
-        "menu_template": "default",
     },
 )
 

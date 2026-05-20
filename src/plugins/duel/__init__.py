@@ -8,6 +8,12 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State
 
 from src.common.cmd_perm import group_message_permission_for_command
+from src.common.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.common.cmd_perm.metadata_text import SCENE_GROUP, join_usage, usage_line
 from src.plugins.duel import duel_penalty  # noqa: F401 — 注册惩罚消息 matcher
 from src.plugins.duel.config import plugin_config
 from src.plugins.duel.duel_bots import (
@@ -45,29 +51,19 @@ async def _ensure_duel_arknights_resources() -> None:
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛决斗",
-    description=("泰拉风味多幕擂台，与群友或牛牛对决"),
-    usage="""
-1. 发起对决
-    · 发送「牛牛决斗」并 @ 一名群友或牛牛；可选在末尾写「N幕」或「N回合」指定本局幕数（不写则用默认）
-    · 双牛：「牛牛决斗」@ 两只牛牛，同样可加幕数；或发送「八角笼牛」随机抽两只在线牛牛（可加 N幕/N回合）
-2. 对战过程
-    · 双方各有生机（HP）与护幕（DP），战意/蚀势层影响交锋
-    · 部分幕面限时抢答：按提示发送干员全名或关键词；答对、答错、超时或乱入认错都会改血
-    · 干员乱入时需辨认并喊出名字；认对可助战，认错会挨对方技能
-    · 同一群同时只能进行一场决斗
-3. 胜负
-    · 全部幕数演完或一方血量归零即分胜负；
-4. 维护
-    · 「决斗事件重载」热更新剧情包与干员表
-
-所需权限以「牛牛帮助」本插件功能详情为准（可由 WebUI「命令权限」覆盖）。
-    """.strip(),
+    description="泰拉风味多幕决斗，支持群友、双牛与八角笼。",
+    usage=join_usage(
+        usage_line("牛牛决斗 @对手 [N幕|N回合]", "与一名对手对决"),
+        usage_line("牛牛决斗 @牛A @牛B", "指定两只牛牛对决"),
+        usage_line("八角笼牛 [N幕|N回合]", "随机两只在线牛牛"),
+        usage_line("决斗事件重载", "热更新剧情包与干员表"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot/Pallas-Bot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
-        "menu_template": "default",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "command_permissions": [
             {"id": "duel.duel", "label": "牛牛决斗", "default": "everyone"},
             {"id": "duel.cage", "label": "八角笼牛", "default": "everyone"},
@@ -81,10 +77,10 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "牛牛决斗",
                 "trigger_method": "on_message",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛决斗 @一名对手 [N幕|N回合]",
                 "command_permission": "duel.duel",
-                "brief_des": "泰拉风味多幕擂台，与群友或牛牛对决",
+                "brief_des": "发起多幕决斗",
                 "detail_des": (
                     "挑战者 @ 一名决斗者即可开战；可在指令中带「N幕」或「N回合」（如 牛牛决斗 @对手 7幕），"
                     "不写幕数则使用插件默认场数；按终局血量判胜负，一方可先被 KO。"
@@ -93,7 +89,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "双牛决斗",
                 "trigger_method": "on_message",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛决斗 @牛A @牛B [N幕|N回合]",
                 "command_permission": "duel.duel",
                 "brief_des": "指定两只牛牛同台对决",
@@ -104,7 +100,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "八角笼牛",
                 "trigger_method": "on_message",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "八角笼牛 [N幕|N回合]",
                 "command_permission": "duel.cage",
                 "brief_des": "随机抽两只在线牛牛对决",
@@ -116,7 +112,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "决斗抢答",
                 "trigger_method": "on_message",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "按幕面提示发干员名或关键词",
                 "brief_des": "限时抢答影响血量",
                 "detail_des": (
@@ -128,7 +124,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "决斗事件重载",
                 "trigger_method": "on_message",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "决斗事件重载",
                 "command_permission": "duel.reload_events",
                 "brief_des": "热更新泰拉剧情包与干员名单",

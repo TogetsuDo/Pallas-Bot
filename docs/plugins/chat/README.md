@@ -1,21 +1,29 @@
 # chat（酒后聊天）
 
-仅在牛牛 **醉酒**（群内发送`牛牛喝酒`）时生效：群内 **@牛牛** 或消息以 **「牛牛」开头** 时，将短文本发往本机 **AI 聊天服务**，通过任务系统异步回复（可与 TTS 联动）。
+牛牛**醉酒**时可用 ChatRWKV 对话；需部署 [Pallas-Bot-AI](https://github.com/PallasBot/Pallas-Bot-AI)。
 
-## 前置条件
+## 用户命令
 
-1. `chat_enable=true`（默认关闭）。
-2. AI 服务地址与 [`callback`](../callback/README.md) 可互通，逻辑与 `sing` 类似依赖 HTTP 与任务 ID。
+| 口令 / 触发 | 场景 | 说明 |
+| --- | --- | --- |
+| @牛牛 | 群内 | 醉酒时 AI 回复 |
+| 牛牛 + 文本 | 群内 | 同上 |
+
+## 命令权限
+
+无独立命令 ID（依赖醉酒状态，非 cmd_perm 口令）。
 
 ## 配置
 
-见 [`src/plugins/chat/config.py`](../../../src/plugins/chat/config.py)：`ai_server_host`、`ai_server_port`、`chat_endpoint`、`del_session_endpoint`、`tts_enable`。
+[`config.py`](../../../src/plugins/chat/config.py)：`chat_enable`、`ai_server_host`、`ai_server_port` 等。
 
 ## 排障
 
-| 现象 | 说明 |
-|------|------|
-| 不回复 | 未醉酒、未 `@` / 未以「牛牛」开头、`chat_enable` 为 false、或群冷却中。 |
-| 醒酒后不回复 | 设计如此；醒酒时会请求 AI 服务删除 session（见 `on_sober_up`）。 |
+| 现象 | 处理 |
+| --- | --- |
+| 无回复 | 确认已喝酒、AI 服务可达、`chat_enable=true` |
+| 冷却 | 群级冷却内可能静默 |
 
-实现见 [`src/plugins/chat/__init__.py`](../../../src/plugins/chat/__init__.py)。
+## 实现
+
+[`src/plugins/chat/`](../../../src/plugins/chat/)

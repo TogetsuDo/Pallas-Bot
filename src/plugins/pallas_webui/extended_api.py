@@ -230,11 +230,11 @@ def _help_menu_control() -> tuple[set[str], set[str]]:
     hidden: set[str] = set()
     try:
         from src.plugins.help.config import Config as HelpConfig
-        from src.plugins.help.visibility import load_help_hidden_plugins
+        from src.plugins.help.visibility import resolve_help_hidden_plugins
 
         cfg = get_plugin_config(HelpConfig)
         ignored = {str(x).strip() for x in list(getattr(cfg, "ignored_plugins", []) or []) if str(x).strip()}
-        hidden = {str(x).strip() for x in load_help_hidden_plugins() if str(x).strip()}
+        hidden = {str(x).strip() for x in resolve_help_hidden_plugins() if str(x).strip()}
     except Exception:
         pass
     return ignored, hidden

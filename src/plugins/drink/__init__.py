@@ -9,40 +9,46 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot_plugin_apscheduler import scheduler
 
+from src.common.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.common.cmd_perm.metadata_text import SCENE_GROUP, join_usage, usage_line
 from src.common.config import BotConfig
 from src.plugins.dream.runtime import send_dream_wake_text, stop_dream_worker
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛喝酒",
-    description="让牛牛喝酒！",
-    usage="""
-牛牛喝酒 - 让牛牛喝酒，增加聊天概率，有概率睡着zzz...
-牛牛醒一醒 - 让牛牛醒酒；若本群在做梦则一并结束做梦
-    """.strip(),
+    description="群内饮酒与醒酒，影响醉酒度及关联玩法。",
+    usage=join_usage(
+        usage_line("牛牛喝酒 / 牛牛干杯 / 牛牛继续喝", "增加醉酒度，可能睡着"),
+        usage_line("牛牛醒一醒 / 牛牛别喝了", "立即醒酒；本群在做梦时一并醒梦"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "menu_data": [
             {
                 "func": "牛牛喝酒",
                 "trigger_method": "on_message",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛喝酒 / 牛牛干杯 / 牛牛继续喝",
-                "brief_des": "让牛牛喝酒并产生醉酒效果",
-                "detail_des": "触发后牛牛会喝酒，根据醉酒程度可能会发送醉酒消息或直接睡着，一段时间后会自动清醒",
+                "brief_des": "饮酒并进入醉酒",
+                "detail_des": "醉酒会影响聊天、轮盘、夺舍等；程度过高可能睡着，之后会自动清醒。",
             },
             {
                 "func": "牛牛醒一醒",
                 "trigger_method": "on_message",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛醒一醒 / 牛牛别喝了",
-                "brief_des": "让牛牛醒酒",
-                "detail_des": "立即清除醉酒；若本群处于牛牛做梦状态则同时结束做梦并发梦醒提示",
+                "brief_des": "立即醒酒",
+                "detail_des": "清除醉酒；若本群正在「牛牛做梦」则同时结束做梦。",
             },
         ],
-        "menu_template": "default",
     },
 )
 

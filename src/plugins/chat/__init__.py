@@ -7,6 +7,12 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from ulid import ULID
 
+from src.common.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.common.cmd_perm.metadata_text import SCENE_GROUP, join_usage, usage_line
 from src.common.config import BotConfig, GroupConfig, TaskManager
 from src.common.utils import HTTPXClient
 
@@ -14,30 +20,27 @@ from .config import Config
 
 __plugin_meta__ = PluginMetadata(
     name="酒后聊天",
-    description="牛牛喝酒后开启的智能聊天功能",
-    usage="""
-在牛牛喝酒后，可以通过以下方式与牛牛聊天：
-1. @牛牛进行聊天
-2. 消息以"牛牛"开头与牛牛对话
-
-注意：该功能需要牛牛处于醉酒状态才能使用
-    """.strip(),
+    description="牛牛醉酒时在群内进行 AI 对话。",
+    usage=join_usage(
+        usage_line("@牛牛", "醉酒时与牛牛对话"),
+        usage_line("牛牛 + 文本", "以「牛牛」开头的消息"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "menu_data": [
             {
-                "func": "酒后智能聊天",
+                "func": "酒后聊天",
                 "trigger_method": "on_message",
-                "trigger_scene": "群内",
-                "trigger_condition": "@牛牛 或 以「牛牛」开头",
-                "brief_des": "在牛牛醉酒时转为ChatRWKV模型AI聊天",
-                "detail_des": "当牛牛处于醉酒状态时，用户可以通过@牛牛或以'牛牛'开头的消息与其进行智能对话。牛牛会根据上下文进行回复，并可能附带语音回复（如果启用了TTS功能）。",  # noqa: E501
+                "trigger_scene": SCENE_GROUP,
+                "trigger_condition": "@牛牛 / 牛牛 + 文本",
+                "brief_des": "醉酒时 AI 对话",
+                "detail_des": "须先「牛牛喝酒」；牛牛根据上下文回复，启用 TTS 时可能附带语音。",
             },
         ],
-        "menu_template": "default",
     },
 )
 

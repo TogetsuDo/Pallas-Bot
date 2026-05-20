@@ -23,6 +23,7 @@
 [![stars](https://img.shields.io/github/stars/PallasBot/Pallas-Bot?style=social)](https://github.com/PallasBot/Pallas-Bot/stargazers)
 [![ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/charliermarsh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
+[![maa-remote](https://img.shields.io/badge/Feature-MAA%20%E8%BF%9C%E6%8E%A7-FE7D37)](docs/plugins/maa/README.md)
 ![learning-repeater](https://img.shields.io/badge/Feature-%E5%AD%A6%E4%B9%A0%E5%9E%8B%E5%A4%8D%E8%AF%BB-8A2BE2)
 ![plugin-system](https://img.shields.io/badge/Feature-%E6%8F%92%E4%BB%B6%E5%8C%96-00A3FF)
 [![ai-chat-sing-tts](https://img.shields.io/badge/AI-Chat%26Sing%26TTS-6A5ACD)](https://github.com/PallasBot/Pallas-Bot-AI.git)
@@ -34,8 +35,9 @@
 </div>
 
 <p align="center">面向群聊场景的学习型机器人：会复读、会整活、可管理、可扩展。</p>
+<p align="center">亦可作为 <b>MAA（MaaAssistantArknights）</b> 的 QQ 侧远控：绑定设备后，在群聊或私聊用口令排队任务。</p>
 
->牛牛 基于 **`NoneBot2`** 与 **`OneBot v11`**，数据层支持 **`MongoDB`** 或 **`PostgreSQL`**；自带运维面板 [**`Pallas-Bot-WebUI`**](https://github.com/PallasBot/Pallas-Bot-WebUI.git)。
+>牛牛 基于 **`NoneBot2`** 与 **`OneBot v11`**，数据层支持 **`MongoDB`** 或 **`PostgreSQL`**；自带运维面板 [**`Pallas-Bot-WebUI`**](https://github.com/PallasBot/Pallas-Bot-WebUI.git)。使用 MAA 远控时，牛牛实现 [MAA 远程控制协议](https://docs.maa.plus/zh-cn/protocol/remote-control-schema.html)（详见 [MAA 远控](#maa-远控)）。
 发版与变更说明见 [Releases](https://github.com/PallasBot/Pallas-Bot/releases)；若需参考仅 **`MongoDB`** 的历史实现，见分支 [`archive/v2`](https://github.com/PallasBot/Pallas-Bot/tree/archive/v2)；向 **`PostgreSQL`** 迁移可使用 [Mongo → PG 迁移脚本](tools/migrate_mongo_to_pg.py)。
 
 <!-- Copy-paste in your Readme.md file -->
@@ -54,6 +56,7 @@
 
 - [关于项目](#关于项目)
   - [项目特点](#项目特点)
+  - [MAA 远控](#maa-远控)
 - [运维入口](#运维入口)
 - [快速开始（部署）](#快速开始部署)
   - [部署方式](#部署方式)
@@ -77,15 +80,32 @@
 牛牛的功能就是废话和复读。可以认为是高级版的复读机。
 发现牛牛学了一些不合适的话及时帮忙[删除](docs/FAQ.md#使用与管理)。
 大家一起教出更棒更聪明的牛牛！✿✿ヽ(°▽°)ノ✿
+
+若你使用 [**MaaAssistantArknights**](https://github.com/MaaAssistantArknights/MaaAssistantArknights)，牛牛还可作为其 QQ 侧远控：在 MAA 中配置远控地址并私聊绑定设备后，用「牛牛长草」「牛牛作战」等口令排队任务，执行结果与截图会回到 QQ（说明见下文 [MAA 远控](#maa-远控)）。
+
 <a id="项目特点"></a>
 ### ✨ 项目特点
 
 - 学习型复读，不依赖硬编码问答库
 - 支持跨群语料聚合与全局禁用
-- 牛牛玩法：喝酒、轮盘、唱歌、聊天、生图、夺舍；
+- 牛牛玩法：喝酒、轮盘、决斗、做梦、唱歌、聊天、生图、夺舍等；
 - 管理能力：黑名单、好友欢迎、好友/入群申请管理
 - 数据后端：`MongoDB` 或 `PostgreSQL`
 - 运维：`pallas_webui` 控制台、`pallas_protocol` 协议端管理
+- **MAA 远控**（可选）：与 MAA 客户端配合，在 QQ 绑定设备、下发口令、回传截图与状态（详见 [MAA 远控](#maa-远控)）
+- **牛牛帮助**：三级帮助图（总览 → 插件 → 功能详情）；群管可按插件开关功能
+- **牛牛连通**：探测画画网关、MAA 端点、唱歌 AI 等延迟（WebUI 可一键检测）
+
+<a id="maa-远控"></a>
+### 📡 MAA 远控
+
+与 [**MaaAssistantArknights**](https://github.com/MaaAssistantArknights/MaaAssistantArknights) 配套：MAA 在本地跑任务，牛牛在 QQ 侧**绑定设备、排队口令、回传截图与状态**（`getTask` / `reportStatus`）。
+
+1. 配置 `maa_public_base_url`（见 [maa 插件说明](docs/plugins/maa/README.md)）
+2. MAA「设置 → 远程控制」填入帮助页 URL，用户标识符填 QQ 号
+3. 私聊 `牛牛绑定MAA <设备标识符>`，群聊发 `牛牛长草`、`牛牛作战` 等
+
+口令一览、多设备与排障见 [docs/plugins/maa/README.md](docs/plugins/maa/README.md) 或 **牛牛帮助 → MAA 远控**；协议见 [MAA 远程控制文档](https://docs.maa.plus/zh-cn/protocol/remote-control-schema.html)。
 
 <a id="运维入口"></a>
 ## 🗂️ 运维入口
@@ -148,39 +168,37 @@ uv run nb run
 <details>
   <summary>忘记了就用牛牛帮助!</summary>
 
-#### 基础功能
+#### MAA 远控（[`maa`](docs/plugins/maa/README.md)）
 
-- `牛牛帮助`:查看牛牛可用插件以及开关状态
-- `牛牛喝酒` / `牛牛醒一醒`:控制牛牛醉酒与醒酒状态，影响聊天/轮盘/夺舍行为概率。
-- `牛牛轮盘`:提供踢人/禁言轮盘玩法，支持`牛牛救一下`与`牛牛补一枪`。
-- `酒后聊天`:牛牛醉酒时启用 AI 对话能力，支持 @牛牛 或"牛牛 + 文本"触发。（依赖 AI 服务端）。
-- `牛牛唱歌`:提供 AI 唱歌、继续唱、点歌、查询歌名支持（依赖 AI 服务端）。
-- `牛牛画画`：让牛牛AI生图；可附图或回复图作参考
-- `牛牛做梦`: 让群友的话与牛牛画的画成为漂流瓶，传到牛牛的其他梦里吧!
+| 类型 | 口令示例 |
+| --- | --- |
+| 绑定 / 设备 | `牛牛绑定MAA`、`牛牛MAA状态`、`牛牛切换MAA设备`、`牛牛MAA设备名`、`牛牛清空MAA队列` |
+| 任务 | `牛牛长草`、`牛牛作战`、`牛牛公招`、`牛牛基建`、`牛牛截图`、`牛牛停止` 等 |
+| 高级 | `牛牛MAA任务 <type> [params]`（协议原始 type） |
 
-#### 被动功能
-- `repeater`:牛牛复读的核心组件
-- `greeting`:牛牛群欢迎，处理入群/好友欢迎和部分群通知，支持自定义欢迎消息。
-- `take_name`:自动夺舍，定时随机更换牛牛群名片；醉酒时有概率同步修改被取名群友的名片。
-#### 管理功能
+#### 基础玩法
 
-- `pallas_webui`:Web 控制台，提供可视化管理界面（需部署前端，启动时自动下载）。
-- `pallas_protocol`:协议端管理，支持多账号运行、协议端发行包自动下载与状态管理。
-#### 群管理员功能
+| 口令 / 插件 | 说明 |
+| --- | --- |
+| `牛牛帮助` | 三级帮助图：总览 → 插件 → 功能；`牛牛开启` / `牛牛关闭` 管理本群插件 |
+| `牛牛喝酒` / `牛牛醒一醒` | 醉酒与醒酒，影响聊天、轮盘、夺舍、做梦等 |
+| `牛牛轮盘` | 踢人/禁言轮盘；`牛牛救一下`、`牛牛补一枪` |
+| `牛牛决斗` / `八角笼牛` | 泰拉风味多幕决斗、干员 QTE、双牛八角笼（[duel](docs/plugins/duel/README.md)） |
+| `牛牛做梦` / `牛牛醒梦` | 跨群梦话漂流、历史梦与画画归档图；醉酒联动夺舍（[dream](docs/plugins/dream/README.md)） |
+| 酒后聊天 | 醉酒时 @牛牛 或「牛牛 + 文本」（依赖 [AI 服务](https://github.com/PallasBot/Pallas-Bot-AI)） |
+| `牛牛唱歌` | 翻唱、继续唱、点歌、查歌名（依赖 AI 服务） |
+| `牛牛画画` | AI 生图，可附图或回复图作参考 |
+| `牛牛连通` / `牛牛网关` | 探测画画、MAA、唱歌等服务延迟（[connectivity](docs/plugins/connectivity/README.md)） |
 
-- 管理员可以查看帮助并管理功能开关（按功能名/序号启用或禁用，支持`牛牛开启/关闭全部功能`）。
-- 管理员可以通过牛牛轮盘禁言/踢人控制玩法
-#### 号主（`admins`）功能
+#### 被动与管理
 
-- `牛牛重新上号`:便捷地重启与登录牛牛实例。
-- `设置好友欢迎`:自定义牛牛添加好友的欢迎消息。
-- `同意好友/入群`:管理好友申请与入群邀请，支持审批与自动同意开关。
-- `牛牛在吗`:查询在线/离线 bot 并支持离线通知。
-#### 超管功能
-
-- `创建牛牛`:创建新的牛牛实例。
-- `牛牛帮助`:超管可以查看并管理隐藏的功能（按功能名/序号启用或禁用）。
-- `牛牛在吗`:查询在线/离线 bot 并支持离线通知（含测试邮件）。
+- **复读**（`repeater`）：学习型复读核心
+- **欢迎**（`greeting`）：入群/好友欢迎与部分群通知
+- **夺舍**（`take_name`）：定时改牛牛群名片；醉酒时可能同步改群友名片
+- **控制台**（`pallas_webui`）、**协议端**（`pallas_protocol`）：Web 运维与多账号协议端
+- **群管**：帮助与插件开关；轮盘禁言/踢人需群管权限
+- **号主**（`admins`）：`牛牛重新上号`、`设置好友欢迎`、`同意好友/入群`、`牛牛在吗`
+- **超管**：`创建牛牛`、隐藏功能开关、`牛牛在吗`（含邮件测试）
 </details>
 
 <a id="ai-扩展"></a>
@@ -214,6 +232,7 @@ uv run nb run
 | `MONGO_*` / `PG_*` | 见根目录 `.env` 模板 | 数据库地址与账号（与 `DB_BACKEND` 对应） | 是 |
 | `ACCESS_TOKEN` | 空 | 驱动层 HTTP 鉴权；公网暴露时建议填写 | 否 |
 | `PALLAS_PROTOCOL_ENABLED` / `PALLAS_PROTOCOL_WEBUI_ENABLED` | 默认开启 | 协议端插件与管理页 | 否 |
+| `maa_public_base_url` | （空） | MAA 远控对外 HTTP 基址；一般部署**只需此项**（见 [maa](docs/plugins/maa/README.md)） | 使用 MAA 时建议填 |
 
 
 控制台与协议管理页为**浏览器登录**，口令在 `data/pallas_console/`；说明见 [pallas_webui](docs/plugins/pallas_webui/README.md)、[pallas_protocol](docs/plugins/pallas_protocol/README.md)，遗忘与排障见 [FAQ](docs/FAQ.md)。
@@ -227,6 +246,9 @@ uv run nb run
 | Docker | [docs/DockerDeployment.md](docs/DockerDeployment.md) |
 | 常见问题 | [docs/FAQ.md](docs/FAQ.md)（[学习机制](docs/FAQ.md#学习机制)、[使用与管理](docs/FAQ.md#使用与管理)、[部署排障](docs/FAQ.md#部署排障)） |
 | 插件索引 | [docs/plugins/README.md](docs/plugins/README.md) |
+| MAA 远控 | [docs/plugins/maa/README.md](docs/plugins/maa/README.md) |
+| 连通性检测 | [docs/plugins/connectivity/README.md](docs/plugins/connectivity/README.md) |
+| 命令权限 / 帮助菜单 | [docs/common/cmd_perm/README.md](docs/common/cmd_perm/README.md) |
 | 协议端 / 控制台 | [pallas_protocol](docs/plugins/pallas_protocol/README.md)、[pallas_webui](docs/plugins/pallas_webui/README.md) |
 | 变更记录 | [GitHub Releases](https://github.com/PallasBot/Pallas-Bot/releases) |
 | 数据迁移 | [Mongo → PG 脚本](tools/migrate_mongo_to_pg.py)、[迁移说明（v3）](docs/Migration-v3.md) |
@@ -268,13 +290,14 @@ uv run nb run
 <a id="致谢"></a>
 ## 🙏 致谢
 
-- [`NoneBot2`](https://github.com/nonebot/nonebot2)：跨平台 Python 异步聊天机器人框架
-- [`jieba_next`](https://github.com/mxcoras/jieba-next)：Use Rust to Speed up jieba 高效、现代的中文分词库
-- [`beanie`](https://github.com/BeanieODM/beanie)：Asynchronous Python ODM for MongoDB
-- [`NapCat`](https://github.com/NapNeko/NapCatQQ)：现代化的基于 NTQQ 的 Bot 协议端实现
-- [`zhenxun_bot`](https://github.com/zhenxun-org/zhenxun_bot.git)：非常可爱的绪山真寻Bot
-- [`Amiya-bot`](https://github.com/AmiyaBot/Amiya-Bot.git)：基于 AmiyaBot 框架的 QQ 聊天机器人
-- [`CustomMarkdownImage`](https://github.com/Monody-S/CustomMarkdownImage.git)：基于pillow的可自定义markdown渲染器
+- [**MaaAssistantArknights**](https://github.com/MaaAssistantArknights/MaaAssistantArknights.git)：明日方舟长草助手 MAA ；本项目的远控能力基于其[远程控制协议](https://docs.maa.plus/zh-cn/protocol/remote-control-schema.html)实现
+- [**NoneBot2**](https://github.com/nonebot/nonebot2)：跨平台 Python 异步聊天机器人框架
+- [**jieba_next**](https://github.com/mxcoras/jieba-next)：Use Rust to Speed up jieba 高效、现代的中文分词库
+- [**beanie**](https://github.com/BeanieODM/beanie)：Asynchronous Python ODM for MongoDB
+- [**NapCat**](https://github.com/NapNeko/NapCatQQ)：现代化的基于 NTQQ 的 Bot 协议端实现
+- [**zhenxun_bot**](https://github.com/zhenxun-org/zhenxun_bot.git)：非常可爱的绪山真寻Bot
+- [**Amiya-bot**](https://github.com/AmiyaBot/Amiya-Bot.git)：基于 AmiyaBot 框架的 QQ 聊天机器人
+- [**CustomMarkdownImage**](https://github.com/Monody-S/CustomMarkdownImage.git)：基于pillow的可自定义markdown渲染器
 ## 📊 统计
 <!-- Copy-paste in your Readme.md file -->
 

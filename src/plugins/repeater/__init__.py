@@ -14,6 +14,12 @@ from nonebot.typing import T_State
 from nonebot_plugin_apscheduler import scheduler
 
 from src.common.cmd_perm import group_message_permission_for_command
+from src.common.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.common.cmd_perm.metadata_text import SCENE_AUTO, SCENE_GROUP, join_usage, usage_line
 from src.common.config import BotConfig
 from src.common.group_message_dedup import (
     normalize_group_raw_message as _normalize_group_raw_message,
@@ -33,17 +39,17 @@ from .model import Chat
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛复读",
-    description="具备智能学习和复读功能的聊天插件，可以学习群内对话并进行智能回复",
-    usage="""
-被动参与群聊：学习对话后智能回复、跟复读、定时主动发言、表情回应。
-管理：@牛牛 回复某条消息并说「不可以」，或说「不可以发这个」；撤回牛牛消息也会加入禁用。
-所需权限以「牛牛帮助」本插件「不可以」详情为准（可由 WebUI「命令权限」覆盖）。
-    """.strip(),
+    description="学习群聊并智能回复、跟复读与表情回应。",
+    usage=join_usage(
+        usage_line("群内聊天", "被动学习后回复、跟复读、定时发言"),
+        usage_line("@牛牛 回复「不可以」 / 不可以发这个", "禁用指定内容"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "command_permissions": [
             {"id": "repeater.ban", "label": "复读「不可以」", "default": "staff"},
             {"id": "repeater.ban_latest", "label": "复读「不可以发这个」", "default": "staff"},
@@ -52,7 +58,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "智能回复",
                 "trigger_method": "on_message",
-                "trigger_scene": "自动",
+                "trigger_scene": SCENE_AUTO,
                 "trigger_condition": "群内正常聊天",
                 "brief_des": "学习话题后参与讨论",
                 "detail_des": "根据相似度与上下文自动回复；相同句连发多次时会跟复读。",
@@ -60,7 +66,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "主动发言",
                 "trigger_method": "scheduler",
-                "trigger_scene": "自动",
+                "trigger_scene": SCENE_AUTO,
                 "trigger_condition": "定时触发",
                 "brief_des": "偶尔主动插话",
                 "detail_des": "按概率用学到的话在群内发言。",
@@ -68,7 +74,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "表情回应",
                 "trigger_method": "on_message",
-                "trigger_scene": "自动",
+                "trigger_scene": SCENE_AUTO,
                 "trigger_condition": "群内消息或他人贴表情",
                 "brief_des": "随机或跟随贴表情",
                 "detail_des": "可对消息概率回应、对含表情消息回应，或跟随他人已贴的表情。",
@@ -76,7 +82,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "不可以",
                 "trigger_method": "on_message",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "@牛牛 回复「不可以」/ 不可以发这个",
                 "command_permissions": ["repeater.ban", "repeater.ban_latest"],
                 "brief_des": "禁止牛牛再学/再说某内容",
@@ -85,7 +91,6 @@ __plugin_meta__ = PluginMetadata(
                 ),
             },
         ],
-        "menu_template": "default",
     },
 )
 message_id_lock = asyncio.Lock()

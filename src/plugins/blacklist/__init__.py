@@ -20,6 +20,12 @@ from nonebot.message import event_preprocessor
 from nonebot.plugin import PluginMetadata
 
 from src.common.cmd_perm import permission_for_command, satisfies_command_permission
+from src.common.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.common.cmd_perm.metadata_text import SCENE_BOTH, join_usage, usage_line
 from src.common.config import GroupConfig, UserConfig
 
 _IS_BANNED_DB_TIMEOUT_SEC = 3.0
@@ -227,16 +233,17 @@ async def query_group_blocked_for_gate(group_id: int, user_id: int) -> bool:
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛黑名单",
-    description="拉黑用户，防止牛牛与被拉黑用户进行交互。",
-    usage="""
-私聊：牛牛拉黑 / 牛牛屏蔽 + qq — 全局拉黑；牛牛解禁 — 全局解禁
-群聊：同上命令 — 仅在本群屏蔽（含群内消息与 notice）；私聊与无群上下文事件不受影响
-""".strip(),
+    description="私聊全局拉黑、群内本群屏蔽用户。",
+    usage=join_usage(
+        usage_line("牛牛拉黑 / 牛牛屏蔽 + QQ 或 @", "私聊为全局，群内仅本群"),
+        usage_line("牛牛解禁 + QQ 或 @", "对应解除"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot/Pallas-Bot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.1.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "command_permissions": [
             {"id": "blacklist.add", "label": "牛牛拉黑 / 牛牛屏蔽", "default": "staff"},
             {"id": "blacklist.remove", "label": "牛牛解禁", "default": "staff"},
@@ -245,7 +252,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "拉黑与解禁",
                 "trigger_method": "on_cmd",
-                "trigger_scene": "私聊或群内",
+                "trigger_scene": SCENE_BOTH,
                 "trigger_condition": "牛牛拉黑 / 牛牛屏蔽 / 牛牛解禁 + QQ 或 @",
                 "command_permissions": ["blacklist.add", "blacklist.remove"],
                 "brief_des": "屏蔽用户消息",
@@ -260,7 +267,6 @@ __plugin_meta__ = PluginMetadata(
                 "detail_des": "维护者对照；用户只需使用拉黑/解禁命令。",
             },
         ],
-        "menu_template": "default",
     },
 )
 

@@ -17,6 +17,12 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
 from src.common.cmd_perm import group_message_permission_for_command
+from src.common.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.common.cmd_perm.metadata_text import SCENE_GROUP, join_usage, usage_line
 from src.common.config import BotConfig, GroupConfig
 
 from .config import JUDGMENT_CFG, RESCUE_CFG, SHOT_CFG
@@ -24,31 +30,19 @@ from .player import PlayerList
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛轮盘",
-    description="危险的轮盘游戏，参与者可能被踢出群聊或禁言，有概率炸膛哦",
-    usage="""
-管理员可以更改游戏模式：
-1. 启动游戏：
-    - 要求牛牛是管理员
-    - 发送"牛牛轮盘"启动默认模式（禁言模式）
-    - 发送"牛牛轮盘踢人"启动踢人模式
-    - 发送"牛牛轮盘禁言"启动禁言模式
-2. 参与游戏：
-    - 发送"牛牛开枪"进行轮盘游戏
-    - 牛牛喝酒会乱开枪哦
-3. 救援功能：
-    - 发送"牛牛救一下"可以解禁所有被牛牛禁言的玩家
-    - 发送"牛牛救一下@用户"可以解除任意用户的禁言
-    - 牛牛救一下有概率炸膛，喝酒后会引发特别的效果...
-4. 补枪功能：
-    - 发送"牛牛补一枪"可以让所有被牛牛禁言的玩家追加禁言
-    - 发送"牛牛补一枪@用户"可以延长指定用户的禁言
-    - 牛牛补一枪也有概率炸膛，喝酒后会引发特别的效果...
-    """.strip(),
+    description="群内踢人/禁言轮盘，含救援与补枪（须牛牛为群管）。",
+    usage=join_usage(
+        usage_line("牛牛轮盘 / 牛牛轮盘踢人 / 牛牛轮盘禁言", "启动轮盘（默认禁言模式）"),
+        usage_line("牛牛开枪", "参与当前局"),
+        usage_line("牛牛救一下 [@用户]", "解除禁言，有概率炸膛"),
+        usage_line("牛牛补一枪 [@用户]", "追加禁言，有概率炸膛"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "command_permissions": [
             {"id": "roulette.mode_switch", "label": "牛牛轮盘切换模式", "default": "staff"},
         ],
@@ -56,45 +50,36 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "牛牛轮盘",
                 "trigger_method": "on_message",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛轮盘 / 牛牛轮盘踢人 / 牛牛轮盘禁言",
                 "brief_des": "启动轮盘",
-                "detail_des": "管理员可选择踢人模式或禁言模式，任何人都可以发送牛牛轮盘开启游戏。游戏开始后，六个弹槽中只有一颗子弹，触发者可能会被踢出群聊或禁言。",  # noqa: E501
+                "detail_des": "须牛牛为群管；可选踢人或禁言模式。六槽一枪，中弹者按模式被踢或禁言。",
             },
             {
                 "func": "参与轮盘",
                 "trigger_method": "on_message",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛开枪",
                 "brief_des": "参与轮盘",
-                "detail_des": "在游戏进行中，参与者发送'牛牛开枪'来触发轮盘。如果命中子弹，根据游戏模式，触发者可能会被踢出群聊或禁言。",  # noqa: E501
-            },
-            {
-                "func": "牛牛喝酒",
-                "trigger_method": "on_message",
-                "trigger_scene": "群内",
-                "trigger_condition": "牛牛喝酒 / 牛牛干杯 / 牛牛继续喝",
-                "brief_des": "在轮盘游戏中通过喝酒参与",
-                "detail_des": "在轮盘游戏进行中，发送'牛牛喝酒'、'牛牛干杯'或'牛牛继续喝'被视为加入轮盘，成为牛牛喝酒后乱开枪的对象。牛牛喝酒后所有参与轮盘的玩家均有概率中弹",  # noqa: E501
+                "detail_des": "局进行中发送「牛牛开枪」；中弹者按当前模式被踢或禁言。",
             },
             {
                 "func": "牛牛救一下",
                 "trigger_method": "on_message",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛救一下 [@用户]",
                 "brief_des": "解除被禁言的用户",
-                "detail_des": "解除被禁言的用户。发送'牛牛救一下'解除所有禁言，发送'牛牛救一下@用户'解除指定用户的禁言。在牛牛喝酒以后，牛牛救一下有概率把请求的人处决了()",  # noqa: E501
+                "detail_des": "「牛牛救一下」解禁全员；@ 用户则只解该人。有概率炸膛，醉酒时更易触发。",
             },
             {
                 "func": "牛牛补一枪",
                 "trigger_method": "on_message",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛补一枪 [@用户]",
                 "brief_des": "对已禁言玩家追加惩罚",
-                "detail_des": "对当前局中被禁言的玩家追加禁言时长。发送'牛牛补一枪'处理所有被禁言玩家，发送'牛牛补一枪@用户'处理指定玩家。有概率炸膛，喝酒后概率提升。",  # noqa: E501
+                "detail_des": "对已被禁言者追加时长；可 @ 指定用户。有概率炸膛，醉酒时更高。",
             },
         ],
-        "menu_template": "default",
     },
 )
 

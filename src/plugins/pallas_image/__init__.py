@@ -1,19 +1,25 @@
 from nonebot.plugin import PluginMetadata
 
+from src.common.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.common.cmd_perm.metadata_text import SCENE_GROUP, join_usage, usage_line
+
 __plugin_meta__ = PluginMetadata(
     name="牛牛画画",
-    description="在群里发送「牛牛画画」，让牛牛按你的话画图；也可以带上参考图一起改",
-    usage="""
-在群内直接发：
-· 「牛牛画画」后面跟上你想画的内容，例如：牛牛画画 一只戴斗篷的羊
-· 若要参考某张图：发「牛牛画画」同时附图，或者回复某一张图片，支持多图
-限制了画画次数，用完会提示
-    """.strip(),
+    description="群内 AI 生图，支持文字描述或参考图改图。",
+    usage=join_usage(
+        usage_line("牛牛画画 …", "按描述生图"),
+        usage_line("牛牛画画 + 附图 / 回复图片", "以参考图改图，可多图"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "command_permissions": [
             {"id": "pallas_image.draw", "label": "牛牛画画", "default": "everyone"},
         ],
@@ -21,14 +27,13 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "牛牛画画",
                 "trigger_method": "on_cmd",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛画画 …",
                 "command_permission": "pallas_image.draw",
-                "brief_des": "按你的话生成图，或按参考图改图",
-                "detail_des": "支持纯文字描述，也可附带一张或多张参考图；失败时牛牛会用大白话或简短提示说明原因。",
+                "brief_des": "生图或改图",
+                "detail_des": "可纯文字，也可附图或回复图片作参考；次数用尽时会提示。",
             },
         ],
-        "menu_template": "default",
     },
 )
 

@@ -8,6 +8,12 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State
 from ulid import ULID
 
+from src.common.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.common.cmd_perm.metadata_text import SCENE_GROUP, SCENE_PRIVATE, join_usage, usage_line
 from src.common.config import GroupConfig, TaskManager
 from src.common.db import SingProgress
 from src.common.utils import HTTPXClient
@@ -17,18 +23,19 @@ from .ncm_login import get_song_id, get_song_title
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛唱歌",
-    description="基于AI的唱歌功能，可以演唱网易云音乐歌曲",
-    usage="""
-牛牛唱歌 歌曲名 [key=±N] — AI 翻唱（可带网易云 song_id）
-牛牛继续唱 / 牛牛接着唱 — 续唱上一首
-牛牛点歌 歌曲名 — 播放网易云原曲
-牛牛什么歌 — 查询当前在唱的歌
-    """.strip(),
+    description="群内 AI 翻唱、点歌与续唱。",
+    usage=join_usage(
+        usage_line("牛牛唱歌 〈歌曲名〉 [key=±N]", "AI 翻唱，可调音调"),
+        usage_line("牛牛继续唱 / 牛牛接着唱", "续唱上一首"),
+        usage_line("牛牛点歌 〈歌曲名〉", "播放网易云原曲"),
+        usage_line("牛牛什么歌 / 牛牛哪首歌 / 牛牛啥歌", "查询当前曲目"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "command_permissions": [
             {"id": "sing.ncm_login", "label": "网易云登录", "default": "superuser"},
             {"id": "sing.ncm_logout", "label": "网易云登出", "default": "superuser"},
@@ -37,15 +44,15 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "牛牛唱歌",
                 "trigger_method": "on_message",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛唱歌 歌曲名 [key=±N]",
-                "brief_des": "演唱指定歌曲",
-                "detail_des": "通过网易云音乐搜索并演唱指定歌曲，支持调节音调（key参数），每个片段大约120秒。",
+                "brief_des": "AI 翻唱指定歌曲",
+                "detail_des": "按歌名搜索并翻唱，可用 key=±N 调音；每段约 120 秒。",
             },
             {
                 "func": "继续唱",
                 "trigger_method": "on_message",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛继续唱 / 牛牛接着唱",
                 "brief_des": "继续上次未完成的歌曲",
                 "detail_des": "继续播放上次未完成的歌曲的下一个片段。",
@@ -53,7 +60,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "点歌",
                 "trigger_method": "on_message",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛点歌 歌曲名",
                 "brief_des": "播放网易云原曲",
                 "detail_des": "在vip有效的情况下优先播放vip歌曲",
@@ -61,7 +68,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "牛牛什么歌",
                 "trigger_method": "on_message",
-                "trigger_scene": "群内",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛什么歌 / 牛牛哪首歌 / 牛牛啥歌",
                 "brief_des": "查询当前播放的歌曲名",
                 "detail_des": "查询牛牛当前正在演唱的歌曲名称。",
@@ -69,14 +76,13 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "网易云登录",
                 "trigger_method": "on_cmd",
-                "trigger_scene": "私聊",
+                "trigger_scene": SCENE_PRIVATE,
                 "trigger_condition": "网易云登录 / 网易云登出",
                 "command_permissions": ["sing.ncm_login", "sing.ncm_logout"],
                 "brief_des": "绑定或解绑网易云",
                 "detail_des": "私聊按提示完成登录或登出，用于点歌 VIP 等能力。",
             },
         ],
-        "menu_template": "default",
     },
 )
 
