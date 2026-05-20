@@ -80,7 +80,7 @@ SETTINGS_TYPES = frozenset({
 })
 
 COMBAT_COMMAND_PHRASE = "牛牛作战"
-# 维护者：MAA 远控 LinkStart-Combat 在含「剩余理智」等辅助 FightTask 时失败；官方合并 PR 后改回 LinkStart-Combat
+# TODO：MAA 远控 LinkStart-Combat 在含「剩余理智」等辅助 FightTask 时失败；官方合并 PR 后改回 LinkStart-Combat
 COMBAT_COMMAND_TASK_TYPE = "LinkStart"
 COMBAT_PREP_TASK_TYPES = frozenset({"LinkStart-Combat"})
 
