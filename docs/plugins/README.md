@@ -14,6 +14,7 @@
 - [`pallas_webui`](./pallas_webui/README.md)：控制台页面与 API、前端静态资源下载配置
 - [`bot_status`](./bot_status/README.md)：状态与通知相关说明
 - [`pallas_image`](./pallas_image/README.md)：牛牛画画
+- [`connectivity`](./connectivity/README.md)：牛牛连通 / 服务网关延迟检测
 - [`relogin_bot`](./relogin_bot/README.md)：牛牛重新上号、创建牛牛（私聊、依赖协议端）
 - [`request_handler`](./request_handler/README.md)：好友申请与入群邀请审批、自动同意
 - [`help`](./help/README.md)：帮助图与插件开关
@@ -21,6 +22,7 @@
 - [`take_name`](./take_name/README.md)：自动夺舍（群名片）
 - [`sing`](./sing/README.md)：牛牛唱歌（依赖 AI 服务与 callback）
 - [`callback`](./callback/README.md)：异步任务 HTTP 回调
+- [`maa`](./maa/README.md)：MAA 远程控制（getTask / reportStatus）
 - [`chat`](./chat/README.md)：酒后聊天（依赖 AI 服务与 callback）
 - [`roulette`](./roulette/README.md)：牛牛轮盘
 - [`drink`](./drink/README.md)：牛牛喝酒

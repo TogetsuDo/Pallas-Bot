@@ -185,6 +185,9 @@ class UserConfigRow(Base):
 
     user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     banned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    maa_devices: Mapped[Any] = mapped_column(_JsonB, nullable=False, default=dict)
+    maa_active_device: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    maa_stage_plan: Mapped[Any] = mapped_column(_JsonB, nullable=False, default=list)
 
 
 class ImageCacheRow(Base):
@@ -217,6 +220,20 @@ def _ensure_pg_group_config_blocked_user_ids(connection) -> None:
     connection.execute(text("ALTER TABLE group_config ADD COLUMN blocked_user_ids JSONB NOT NULL DEFAULT '[]'::jsonb"))
 
 
+def _ensure_pg_user_config_maa_devices(connection) -> None:
+    """旧库 user_config 缺列时补列。"""
+    insp = inspect(connection)
+    if not insp.has_table("user_config"):
+        return
+    names = {c["name"] for c in insp.get_columns("user_config")}
+    if "maa_devices" not in names:
+        connection.execute(text("ALTER TABLE user_config ADD COLUMN maa_devices JSONB NOT NULL DEFAULT '{}'::jsonb"))
+    if "maa_active_device" not in names:
+        connection.execute(text("ALTER TABLE user_config ADD COLUMN maa_active_device TEXT NOT NULL DEFAULT ''"))
+    if "maa_stage_plan" not in names:
+        connection.execute(text("ALTER TABLE user_config ADD COLUMN maa_stage_plan JSONB NOT NULL DEFAULT '[]'::jsonb"))
+
+
 @asynccontextmanager
 async def get_session():
     if _session_factory is None:
@@ -233,6 +250,7 @@ async def init_pg(engine: AsyncEngine) -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_ensure_pg_group_config_blocked_user_ids)
+        await conn.run_sync(_ensure_pg_user_config_maa_devices)
 
 
 async def dispose_pg() -> None:

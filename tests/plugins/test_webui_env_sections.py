@@ -23,6 +23,22 @@ def test_list_webui_env_sections_contains_plugin_common_sections():
     assert "pallas_webui" in ids
     assert "pallas_protocol" in ids
     assert "help" in ids
+    assert "service_gateways" in ids
+
+
+def test_service_gateways_payload_shape():
+    from src.common.webui import webui_env_section_payload
+
+    data = webui_env_section_payload("service_gateways")
+    assert data["plugin"] == "service_gateways"
+    assert data.get("gateway_editor") is True
+    assert data.get("supports_connectivity_check") is True
+    groups = data.get("field_groups") or []
+    assert {g["id"] for g in groups} == {"pallas_image", "maa", "sing"}
+    names = {f["name"] for f in data["fields"]}
+    assert "pallas_image_base_url" in names
+    assert "maa_public_base_url" in names
+    assert "sing_enable" in names
 
 
 def test_field_to_env_uppercase_keys_matches_plugin_api():

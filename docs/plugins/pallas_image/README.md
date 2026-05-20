@@ -25,7 +25,12 @@
 
 ## ⚙️ 配置说明
 
-在 `.env` / `.env.prod` 或 WebUI **插件配置**页（`/plugins/pallas_image`）中设置。字段由服务端 `Config` 自动生成，**无需单独改 WebUI 前端**；保存 400 时请看页面红色提示（如未知配置项、JSON 格式、数值越界）。修改后需 **重启 Bot** 或依赖热重载生效。字段说明以 [`config.py`](../../../src/plugins/pallas_image/config.py) 的 `Field(description=...)` 为准。
+在 `.env` / `.env.prod` 或 WebUI 中设置：
+
+- **通用配置 → 服务网关 / 连通性**：主/备网关地址、密钥与**全链路连通检测**（含 MAA、点歌）；见 [`connectivity`](../connectivity/README.md)。
+- **插件配置**（`/plugins/pallas_image`）：全部画画参数、网关列表编辑、**仅画画网关**检测（`config-check`）。
+
+字段由服务端 `Config` 自动生成；保存 400 时请看页面红色提示。修改后依赖热重载或 **重启 Bot** 生效。字段说明以 [`config.py`](../../../src/plugins/pallas_image/config.py) 的 `Field(description=...)` 为准。
 
 ### 基础与 API
 

@@ -1,6 +1,7 @@
+from src.common.service_probe import ServiceProbeResult
 from src.plugins.pallas_image.config import Config, ImageApiBackend, ImageGenSettings
 from src.plugins.pallas_image.gateway_probe import (
-    GatewayProbeResult,
+    IMAGE_PROBE_CATEGORY,
     backend_display_site,
     backend_site_name,
     format_gateway_status_lines,
@@ -38,9 +39,9 @@ def test_models_probe_urls() -> None:
 
 def test_format_gateway_status_lines() -> None:
     results = [
-        GatewayProbeResult("主站", True, 120, 200, None, "primary"),
-        GatewayProbeResult("备线1", False, None, 401, None, "fallback-0"),
-        GatewayProbeResult("备线2", False, None, None, "超时", "fallback-1"),
+        ServiceProbeResult(IMAGE_PROBE_CATEGORY, "主站", True, 120, 200, None),
+        ServiceProbeResult(IMAGE_PROBE_CATEGORY, "备线1", False, None, 401, None),
+        ServiceProbeResult(IMAGE_PROBE_CATEGORY, "备线2", False, None, None, "超时"),
     ]
     lines = format_gateway_status_lines(results)
     assert lines[0] == "牛牛画画：主站：120ms"

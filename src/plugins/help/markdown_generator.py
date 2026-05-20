@@ -171,6 +171,13 @@ def generate_plugin_functions_markdown(
         markdown_content += "## 插件内用法\n\n"
         markdown_content += f"{usage}\n\n"
 
+        if target_plugin.name == "maa":
+            from src.plugins.maa.endpoints import format_maa_http_setup_help
+
+            maa_http = _wrap_paragraphs_for_help_page(format_maa_http_setup_help())
+            markdown_content += "## MAA 对接地址\n\n"
+            markdown_content += f"{maa_http}\n\n"
+
         if hasattr(metadata, "extra") and metadata.extra:
             menu_data = metadata.extra.get("menu_data", [])
             if menu_data:
@@ -275,6 +282,12 @@ def generate_function_detail_markdown(plugin_name: str, function_name: str) -> t
     detail_des = target_function.get("detail_des", "")
     if detail_des:
         markdown_content += f"## 补充说明\n\n{_wrap_paragraphs_for_help_page(str(detail_des))}\n\n"
+
+    if target_plugin.name == "maa" and func_name in {"绑定 MAA 设备", "MAA HTTP"}:
+        from src.plugins.maa.endpoints import format_maa_http_setup_help
+
+        maa_http = _wrap_paragraphs_for_help_page(format_maa_http_setup_help())
+        markdown_content += f"## MAA 对接地址\n\n{maa_http}\n\n"
 
     markdown_content += "---\n\n"
     markdown_content += f"- **回到本插件功能列表**：「牛牛帮助 {plugin_name_display}」\n"

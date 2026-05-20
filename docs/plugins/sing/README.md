@@ -4,7 +4,7 @@
 
 ## 前置条件
 
-1. 部署与 Bot 配置一致的 **AI 服务**（默认 `127.0.0.1:9099`），且服务能访问 **回调地址** `POST /callback/{task_id}`（由 `callback` 插件注册）。
+1. 部署与 Bot 配置一致的 **AI 服务**（默认 `127.0.0.1:9099`，如 [Pallas-Bot-AI](https://github.com/PallasBot/Pallas-Bot-AI)），且服务能访问 **回调地址** `POST /callback/{task_id}`（由 `callback` 插件注册）。AI 服务提供 `GET /health` 供健康检查与「牛牛连通」探测。
 2. 在配置中开启 `sing_enable`（默认关闭）。
 
 ## 配置

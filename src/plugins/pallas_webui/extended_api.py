@@ -2835,6 +2835,32 @@ def register_extended_api(
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": data})
 
+    @router.post(
+        f"{x}/common-config/service_gateways/connectivity-check",
+        include_in_schema=True,
+    )
+    async def _service_gateways_connectivity_check(
+        body: _PluginConfigUpdateBody,
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        from src.common.service_probe import format_probe_lines
+        from src.plugins.connectivity.probe_collect import probe_all_connectivity_from_draft
+
+        try:
+            results = await probe_all_connectivity_from_draft(dict(body.values or {}))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        lines = format_probe_lines(results)
+        return JSONResponse({
+            "ok": True,
+            "data": {
+                "lines": lines,
+                "results": [r.to_dict() for r in results],
+            },
+        })
+
     @router.get(f"{x}/bots", include_in_schema=True)
     async def _bots() -> JSONResponse:
         async def _load() -> list[dict[str, Any]]:

@@ -43,7 +43,7 @@ __plugin_meta__ = PluginMetadata(
 清除好友欢迎 - 清除已设置的好友欢迎消息（私聊）
 设置群欢迎 - 在当前群设置自定义入群欢迎（文本/图片/图文混合，群内）
 清除群欢迎 - 清除当前群的自定义入群欢迎（群内）
-所需权限以「牛牛帮助」本插件功能详情中的触发条件为准（可由 WebUI「命令权限」覆盖）。
+所需权限以「牛牛帮助」本插件功能详情中的触发条件为准。
     """.strip(),
     type="application",
     homepage="https://github.com/PallasBot/Pallas-Bot",
