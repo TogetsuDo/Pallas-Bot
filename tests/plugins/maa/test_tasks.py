@@ -5,6 +5,7 @@ from src.plugins.maa.tasks import (
     TASK_TYPES_WITHOUT_AUTO_SCREENSHOT,
     MaaTaskSpec,
     bind_device_id_error,
+    combat_enqueue_hints,
     expand_command_specs,
     format_maa_control_commands_help,
     maa_raw_task_validate,
@@ -50,6 +51,13 @@ def test_parse_bind_with_alias() -> None:
     assert alias == "家里电脑"
 
 
+def test_parse_bind_strips_leading_device_word() -> None:
+    device, alias = parse_bind_command_args("设备 6b46c8ff9c73448e8ba32fa2b82769c5 mumu")
+    assert device == "6b46c8ff9c73448e8ba32fa2b82769c5"
+    assert alias == "mumu"
+    assert bind_device_id_error(device, "123") is None
+
+
 def test_parse_link_start() -> None:
     spec = parse_command_line("牛牛长草")
     assert spec is not None
@@ -83,15 +91,44 @@ def test_rename_award_command() -> None:
     assert "牛牛任务" not in COMMAND_TASK_MAP
 
 
-def test_combat_auto_prepare() -> None:
+def test_combat_command_maps_to_link_start_combat() -> None:
+    spec = parse_command_line("牛牛作战")
+    assert spec is not None
+    assert spec.task_type == "LinkStart-Combat"
+
+
+def test_combat_auto_prepare_for_combat_phrase() -> None:
+    specs = expand_command_specs(
+        [MaaTaskSpec("LinkStart-Combat")],
+        stage_plan=["1-7", "CE-6"],
+        combat_auto_prepare=True,
+        command_line="牛牛作战",
+    )
+    assert specs[0].task_type == "Settings-Stage1"
+    assert specs[0].params == "1-7"
+    assert specs[-1].task_type == "LinkStart-Combat"
+
+
+def test_combat_auto_prepare_for_link_start_combat() -> None:
     specs = expand_command_specs(
         [MaaTaskSpec("LinkStart-Combat")],
         stage_plan=["1-7", "CE-6"],
         combat_auto_prepare=True,
     )
     assert specs[0].task_type == "Settings-Stage1"
-    assert specs[0].params == "1-7"
     assert specs[-1].task_type == "LinkStart-Combat"
+
+
+def test_combat_enqueue_hints_without_stage_plan() -> None:
+    text = combat_enqueue_hints([])
+    assert "CombatError" in text
+    assert "牛牛设置关卡" in text
+
+
+def test_combat_enqueue_hints_with_stage_plan() -> None:
+    text = combat_enqueue_hints(["1-7", ""])
+    assert "剩余理智" in text
+    assert "牛牛设置关卡" not in text
 
 
 def test_combat_auto_prepare_skips_duplicate_stage() -> None:

@@ -131,9 +131,8 @@
 ### 作战准备与关卡候选
 
 - **`牛牛设置关卡`**：解析最多 4 个关卡候选（空格/逗号分隔，`-` 表示空位），写入 `maa_stage_plan`；向 MAA **仅下发 `Settings-Stage1`（第 1 个非空候选）**，勿下发 `Stage2`～`Stage4` 或 `FightEnable`，否则 MAA 6.10+ 可能把 `StagePlan` 撑满空位并提示「调用了不存在的任务 id」。
-- **`maa_combat_auto_prepare`**（默认开）：发「牛牛作战」时，若本批未含 `Settings-Stage1`，会在 `LinkStart-Combat` 前自动再写一次已保存的主关卡。
-- **`LinkStart-Combat` 要求 MAA 任务队列中仅有一个「作战」任务**，且 `StagePlan` 须能解析出有效关卡，否则易出现 CombatError / 未选择任务。
-
+- **`maa_combat_auto_prepare`**（默认开）：发「牛牛作战」时，若本批未含 `Settings-Stage1`，会在 `LinkStart` 前自动再排队一次已保存的主关卡（`Settings-Stage1`）。
+- **`LinkStart-Combat`**：MAA 官方在任务列表含「剩余理智」等辅助 `FightTask` 时会失败；
 维护者排障：看 `debug/asst.log` 中 `taskchain`（如 `Combat`、`Mall`）与 `first` 字段（如 `CombatBegin`、`MallBegin`）的重试耗尽后的 `SubTaskError`。
 
 ### 截图与 QQ 通知

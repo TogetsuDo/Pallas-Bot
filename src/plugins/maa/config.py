@@ -48,7 +48,7 @@ class Config(BaseModel, extra="ignore"):
     )
     maa_combat_auto_prepare: bool = Field(
         default=True,
-        description="牛牛作战前是否自动排队作战准备（启用作战、写入已保存的关卡候选）。",
+        description="牛牛作战前是否自动排队 Settings-Stage1（写入已保存的主关卡候选）。",
     )
 
 

@@ -24,9 +24,11 @@ from .tasks import (
     TASK_TYPES_WITHOUT_AUTO_SCREENSHOT,
     MaaTaskSpec,
     bind_device_id_error,
+    combat_enqueue_hints,
     expand_command_specs,
     format_maa_control_commands_help,
     format_maa_raw_task_types_help,
+    is_combat_control_command,
     maa_raw_task_validate,
     normalize_device_id,
     parse_bind_command_args,
@@ -66,7 +68,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "绑定 MAA 设备",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "牛牛绑定MAA <设备标识符> [别名]（私聊）",
+                "trigger_condition": "牛牛绑定MAA / 牛牛绑定MAA设备 <设备标识符> [别名]（私聊）",
                 "command_permission": "maa.bind",
                 "brief_des": "将 MAA 设备与 QQ 绑定",
                 "detail_des": (
@@ -159,6 +161,7 @@ def format_pending_type_counts(counts: dict[str, int]) -> str:
 
 bind_cmd = on_command(
     "牛牛绑定MAA",
+    aliases={"牛牛绑定MAA设备"},
     priority=5,
     block=True,
     permission=private_message_permission_for_command("maa.bind"),
@@ -350,17 +353,26 @@ async def handle_device_alias(event: PrivateMessageEvent, args: Message = Comman
     await device_alias_cmd.finish(f"已清除设备 {device} 的别名。")
 
 
-async def enqueue_and_reply(bot: Bot, event: MessageEvent, specs: list[MaaTaskSpec], matcher) -> None:
+async def enqueue_and_reply(
+    bot: Bot,
+    event: MessageEvent,
+    specs: list[MaaTaskSpec],
+    matcher,
+    *,
+    command_line: str = "",
+) -> None:
     if not specs:
         return
     notify = _notify_from_event(event, bot)
     qq = int(event.get_user_id())
     cfg = get_maa_config()
     stage_plan = await store.get_stage_plan(qq)
+    combat_cmd = is_combat_control_command(command_line, specs)
     specs = expand_command_specs(
         specs,
         stage_plan=stage_plan,
         combat_auto_prepare=cfg.maa_combat_auto_prepare,
+        command_line=command_line,
     )
     last = specs[-1]
     attach = cfg.maa_attach_screenshot and last.task_type not in TASK_TYPES_WITHOUT_AUTO_SCREENSHOT
@@ -381,6 +393,8 @@ async def enqueue_and_reply(bot: Bot, event: MessageEvent, specs: list[MaaTaskSp
             "\n注意：最近未检测到当前设备向牛牛轮询 getTask，"
             "任务会一直处于「待拉取」直至 MAA 连上；请核对远程控制里的用户标识符、端点与设备 id。"
         )
+    if combat_cmd:
+        msg += "\n" + combat_enqueue_hints(stage_plan)
     await matcher.finish(msg)
 
 
@@ -394,7 +408,7 @@ async def handle_control(bot: Bot, event: MessageEvent):
         stages = parse_stage_setting_values(text.removeprefix("牛牛设置关卡 "))
         if stages:
             await store.set_stage_plan(int(event.get_user_id()), stages)
-    await enqueue_and_reply(bot, event, specs, maa_control_msg)
+    await enqueue_and_reply(bot, event, specs, maa_control_msg, command_line=text)
 
 
 @maa_raw_task_cmd.handle()
@@ -406,4 +420,4 @@ async def handle_raw_task(bot: Bot, event: MessageEvent, args: Message = Command
         await maa_raw_task_cmd.finish(err)
     if spec is None:
         await maa_raw_task_cmd.finish("用法：牛牛MAA任务 <type> [params]")
-    await enqueue_and_reply(bot, event, [spec], maa_raw_task_cmd)
+    await enqueue_and_reply(bot, event, [spec], maa_raw_task_cmd, command_line=line)

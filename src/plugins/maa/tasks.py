@@ -23,13 +23,20 @@ def normalize_device_id(raw: str) -> str | None:
 
 
 def parse_bind_command_args(text: str) -> tuple[str, str]:
-    """解析「牛牛绑定MAA <设备标识符> [别名]」，返回 (设备参数, 别名)。"""
+    """解析绑定参数：设备标识符与可选别名。
+
+    兼容误写「牛牛绑定MAA设备 <id>」时 NoneBot 将「设备」吃进参数的情况。
+    """
     line = (text or "").strip()
     if not line:
         return "", ""
-    parts = line.split(maxsplit=1)
-    device_part = parts[0].strip()
-    alias_part = parts[1].strip() if len(parts) > 1 else ""
+    tokens = line.split()
+    if tokens and tokens[0] == "设备":
+        tokens = tokens[1:]
+    if not tokens:
+        return "", ""
+    device_part = tokens[0]
+    alias_part = " ".join(tokens[1:]).strip()
     return device_part, alias_part
 
 
@@ -40,6 +47,11 @@ def bind_device_id_error(raw: str, qq: str) -> str | None:
         return "用法：牛牛绑定MAA <设备标识符> [别名]\n请复制 MAA「远程控制」中的「设备标识符（只读）」。"
     if text == (qq or "").strip():
         return "你填写的是用户标识符（QQ 号）。请填写 MAA 设置里「设备标识符（只读）」那一项（32 位十六进制）。"
+    if text == "设备":
+        return (
+            "不要把「设备」当作标识符。请发：牛牛绑定MAA <32位设备标识符> [别名]\n"
+            "（也可发：牛牛绑定MAA设备 <标识符> [别名]）"
+        )
     if normalize_device_id(text) is None:
         return "设备标识符格式不正确，请从 MAA「远程控制」完整复制「设备标识符（只读）」。"
     return None
@@ -67,6 +79,7 @@ SETTINGS_TYPES = frozenset({
     SETTINGS_STAGE_REMOTE,
 })
 
+COMBAT_COMMAND_PHRASE = "牛牛作战"
 COMBAT_PREP_TASK_TYPES = frozenset({"LinkStart-Combat"})
 
 TOOLBOX_TYPES = frozenset({
@@ -120,7 +133,7 @@ MAA_CONTROL_COMMAND_HELPS: tuple[MaaControlCommandHelp, ...] = (
     MaaControlCommandHelp(
         "牛牛作战",
         "LinkStart-Combat",
-        "仅执行「作战」子项（刷理智关卡，关卡依 MAA 作战配置）。",
+        "仅执行「作战」子项（刷理智关卡；可先「牛牛设置关卡」）。",
     ),
     MaaControlCommandHelp(
         "牛牛公招",
@@ -270,13 +283,31 @@ def build_combat_prep_specs(stage_plan: list[str]) -> list[MaaTaskSpec]:
     return build_stage_setting_specs(stage_plan)
 
 
+def is_combat_control_command(command_line: str, specs: list[MaaTaskSpec]) -> bool:
+    if (command_line or "").strip() == COMBAT_COMMAND_PHRASE:
+        return True
+    return any(s.task_type in COMBAT_PREP_TASK_TYPES for s in specs)
+
+
+def combat_enqueue_hints(stage_plan: list[str]) -> str:
+    """作战排队成功后的简要说明。"""
+    lines = [
+        "仅跑作战子项（不含唤醒）；游戏宜在主界面。",
+        "若 MAA 报 CombatError：官方版在含「剩余理智」任务项时常失败，需带补丁的 MAA 或删该项后再试。",
+    ]
+    if not primary_stage_from_plan(stage_plan):
+        lines.append("你尚未在牛牛保存关卡，可先：牛牛设置关卡 <关卡名>")
+    return "\n".join(lines)
+
+
 def expand_command_specs(
     specs: list[MaaTaskSpec],
     *,
     stage_plan: list[str],
     combat_auto_prepare: bool,
+    command_line: str = "",
 ) -> list[MaaTaskSpec]:
-    if not combat_auto_prepare or not any(s.task_type in COMBAT_PREP_TASK_TYPES for s in specs):
+    if not combat_auto_prepare or not is_combat_control_command(command_line, specs):
         return specs
     if any(s.task_type == SETTINGS_STAGE_REMOTE for s in specs):
         return specs
