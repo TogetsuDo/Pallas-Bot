@@ -18,8 +18,9 @@ __plugin_meta__ = PluginMetadata(
         "menu_data": [
             {
                 "func": "牛牛连通",
-                "trigger_method": "on_command",
-                "trigger_condition": "「牛牛连通」或「牛牛网关」（群内）",
+                "trigger_method": "on_cmd",
+                "trigger_scene": "群内",
+                "trigger_condition": "牛牛连通 / 牛牛网关",
                 "command_permission": "connectivity.probe",
                 "brief_des": "检测画画、MAA 远控与唱歌服务延迟",
                 "detail_des": ("并行探测画画 API 网关、MAA getTask/reportStatus 端点及唱歌 AI 服务。"),

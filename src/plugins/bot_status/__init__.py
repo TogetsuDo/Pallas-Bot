@@ -44,7 +44,8 @@ __plugin_meta__ = PluginMetadata(
         "menu_data": [
             {
                 "func": "查看牛牛在线状况",
-                "trigger_method": "命令",
+                "trigger_method": "on_cmd",
+                "trigger_scene": "私聊",
                 "trigger_condition": "牛牛在吗",
                 "command_permission": "bot_status.status",
                 "brief_des": "总计牛牛在线情况",
@@ -52,7 +53,8 @@ __plugin_meta__ = PluginMetadata(
             },
             {
                 "func": "发送测试邮件",
-                "trigger_method": "命令",
+                "trigger_method": "on_cmd",
+                "trigger_scene": "私聊",
                 "trigger_condition": "测试邮件",
                 "command_permission": "bot_status.test_mail",
                 "brief_des": "发送测试邮件",
@@ -60,7 +62,8 @@ __plugin_meta__ = PluginMetadata(
             },
             {
                 "func": "牛牛依次报数",
-                "trigger_method": "命令",
+                "trigger_method": "on_cmd",
+                "trigger_scene": "群内",
                 "trigger_condition": "牛牛报数 / 牛牛出列",
                 "command_permission": "bot_status.count",
                 "brief_des": "在线牛牛依次报数",

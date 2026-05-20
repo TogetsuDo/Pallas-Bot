@@ -8,6 +8,7 @@ from .check import (
 )
 from .config import CmdPermConfig, clear_cmd_perm_cache, get_cmd_perm_config
 from .declare import command_perm_list, command_perm_row
+from .help_menu import help_say_phrase, help_scene_text, is_user_help_menu_item, iter_user_help_menu
 from .menu_display import (
     effective_permission_avail_text,
     raw_trigger_condition,
@@ -30,6 +31,10 @@ __all__ = [
     "resolved_level",
     "satisfies_command_permission",
     "effective_permission_avail_text",
+    "help_say_phrase",
+    "help_scene_text",
+    "is_user_help_menu_item",
+    "iter_user_help_menu",
     "raw_trigger_condition",
     "trigger_condition_with_effective_perm",
 ]

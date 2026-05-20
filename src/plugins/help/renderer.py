@@ -35,7 +35,7 @@ def _help_image_cache_suffix() -> str:
     return f"{base}|pm={paint_mtime}"
 
 
-def resize_image_if_needed(image, max_width=1200, max_height=2000):
+def resize_image_if_needed(image, max_width=1200, max_height=2800):
     """调整图像大小"""
     if image.width > max_width or image.height > max_height:
         ratio = min(max_width / image.width, max_height / image.height)

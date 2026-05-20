@@ -28,14 +28,16 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "牛牛喝酒",
                 "trigger_method": "on_message",
-                "trigger_condition": "牛牛喝酒/牛牛干杯/牛牛继续喝",
+                "trigger_scene": "群内",
+                "trigger_condition": "牛牛喝酒 / 牛牛干杯 / 牛牛继续喝",
                 "brief_des": "让牛牛喝酒并产生醉酒效果",
                 "detail_des": "触发后牛牛会喝酒，根据醉酒程度可能会发送醉酒消息或直接睡着，一段时间后会自动清醒",
             },
             {
                 "func": "牛牛醒一醒",
                 "trigger_method": "on_message",
-                "trigger_condition": "牛牛醒一醒/牛牛别喝了",
+                "trigger_scene": "群内",
+                "trigger_condition": "牛牛醒一醒 / 牛牛别喝了",
                 "brief_des": "让牛牛醒酒",
                 "detail_des": "立即清除醉酒；若本群处于牛牛做梦状态则同时结束做梦并发梦醒提示",
             },

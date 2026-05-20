@@ -24,7 +24,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "消息拦截",
                 "trigger_method": "on_message/on_notice",
-                "trigger_condition": "",
+                "help_audience": "maintainer",
+                "trigger_condition": "内部拦截",
                 "brief_des": "拦截群事件",
                 "detail_des": "阻断群消息与通知，避免触发后续插件逻辑。",
             },

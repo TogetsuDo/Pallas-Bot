@@ -76,7 +76,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "查看待处理申请",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "查看好友申请 / 查看入群邀请（私聊）",
+                "trigger_scene": "私聊",
+                "trigger_condition": "查看好友申请 / 查看入群邀请",
                 "command_permissions": ["request.list_friends", "request.list_groups"],
                 "brief_des": "列出待处理好友与入群邀请",
                 "detail_des": "好友列表含被拦截、需单独处理的可疑申请",
@@ -84,7 +85,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "快捷同意最近申请",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "同意（私聊）",
+                "trigger_scene": "私聊",
+                "trigger_condition": "同意",
                 "command_permission": "request.approve_latest",
                 "brief_des": "快捷同意一条申请",
                 "detail_des": "私聊「同意」对应牛牛最新一条提醒；引用某条审批提醒则只处理该条",
@@ -92,7 +94,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "引用审批消息快捷同意",
                 "trigger_method": "on_message",
-                "trigger_condition": "私聊引用牛牛发出的审批提醒，正文为同意/好/留空",
+                "trigger_scene": "私聊",
+                "trigger_condition": "引用审批提醒：同意 / 好 / 留空",
                 "command_permission": "request.approval_reply",
                 "brief_des": "按引用对应单一申请同意",
                 "detail_des": "须引用仍有效的审批消息；好友或入群邀请分别走对应处理逻辑",
@@ -100,7 +103,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "好友申请审批",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "同意好友 <QQ号>（私聊）",
+                "trigger_scene": "私聊",
+                "trigger_condition": "同意好友 <QQ号>",
                 "command_permission": "request.approve_friend",
                 "brief_des": "按 QQ 同意好友",
                 "detail_des": "同意指定 QQ 的好友申请（含普通与可疑申请）",
@@ -108,7 +112,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "好友申请拒绝",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "拒绝好友 <QQ号>（私聊）",
+                "trigger_scene": "私聊",
+                "trigger_condition": "拒绝好友 <QQ号>",
                 "command_permission": "request.reject_friend",
                 "brief_des": "按 QQ 拒绝好友",
                 "detail_des": "拒绝指定 QQ 的好友申请（含普通与可疑申请）",
@@ -116,7 +121,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "批量审批",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "同意/拒绝所有好友、同意/拒绝所有入群（私聊）",
+                "trigger_scene": "私聊",
+                "trigger_condition": "同意所有好友 / 拒绝所有好友 / 同意所有入群 / 拒绝所有入群",
                 "command_permissions": [
                     "request.approve_all_friends",
                     "request.reject_all_friends",
@@ -129,7 +135,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "入群邀请审批",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "同意入群/拒绝入群 <群号>（私聊）",
+                "trigger_scene": "私聊",
+                "trigger_condition": "同意入群 / 拒绝入群 <群号>",
                 "command_permissions": ["request.approve_group", "request.reject_group"],
                 "brief_des": "按群号同意或拒绝",
                 "detail_des": "同意或拒绝指定群的入群邀请",
@@ -145,7 +152,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "自动同意开关",
                 "trigger_method": "on_cmd",
-                "trigger_condition": ("查看自动同意 / 开关自动同意好友 / 开关自动同意入群（私聊）"),
+                "trigger_scene": "私聊",
+                "trigger_condition": "查看自动同意 / 开启或关闭自动同意好友 / 入群",
                 "command_permissions": [
                     "request.auto_accept_status",
                     "request.enable_auto_friend",

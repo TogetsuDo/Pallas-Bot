@@ -20,8 +20,9 @@ __plugin_meta__ = PluginMetadata(
         "menu_data": [
             {
                 "func": "牛牛画画",
-                "trigger_method": "on_command",
-                "trigger_condition": "「牛牛画画 …」（群内）",
+                "trigger_method": "on_cmd",
+                "trigger_scene": "群内",
+                "trigger_condition": "牛牛画画 …",
                 "command_permission": "pallas_image.draw",
                 "brief_des": "按你的话生成图，或按参考图改图",
                 "detail_des": "支持纯文字描述，也可附带一张或多张参考图；失败时牛牛会用大白话或简短提示说明原因。",

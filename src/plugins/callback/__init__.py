@@ -25,6 +25,7 @@ POST /callback/{task_id}
             {
                 "func": "任务回调",
                 "trigger_method": "http",
+                "help_audience": "maintainer",
                 "trigger_condition": "/callback/{task_id}",
                 "brief_des": "接收任务状态回调",
                 "detail_des": "根据回调结果更新任务状态并发送群消息或语音。",

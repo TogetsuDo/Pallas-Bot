@@ -36,7 +36,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "重新上号",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "牛牛重新上号 [QQ号]（私聊）",
+                "trigger_scene": "私聊",
+                "trigger_condition": "牛牛重新上号 [QQ号]",
                 "command_permission": "relogin.relogin",
                 "brief_des": "重启账号并回传二维码（号主可用）",
                 "detail_des": "自动重启协议端账号，等待二维码文件生成并在私聊推送。",
@@ -44,7 +45,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "创建牛牛",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "创建牛牛 …（私聊）",
+                "trigger_scene": "私聊",
+                "trigger_condition": "创建牛牛 …",
                 "command_permission": "relogin.create",
                 "brief_des": "创建并启动新牛牛账号（仅超管）",
                 "detail_des": "在协议端创建账号并启动，私聊回传登录二维码",

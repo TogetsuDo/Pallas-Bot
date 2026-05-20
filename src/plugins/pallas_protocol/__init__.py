@@ -34,6 +34,7 @@ X-Pallas-Protocol-Token 或 ?token=
             {
                 "func": "协议端管理页",
                 "trigger_method": "http",
+                "help_audience": "maintainer",
                 "trigger_condition": "/protocol/console",
                 "brief_des": "管理协议账号与进程",
                 "detail_des": "可在页面执行创建账号、启动、停止、重启与日志查看。",
@@ -41,6 +42,7 @@ X-Pallas-Protocol-Token 或 ?token=
             {
                 "func": "协议端 API",
                 "trigger_method": "http",
+                "help_audience": "maintainer",
                 "trigger_condition": "/protocol/*",
                 "brief_des": "提供协议管理接口",
                 "detail_des": "提供账号、配置、协议端发行包下载与状态查询接口。",

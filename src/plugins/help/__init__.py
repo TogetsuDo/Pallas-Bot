@@ -20,13 +20,13 @@ __plugin_meta__ = PluginMetadata(
     name="帮助系统",
     description="显示所有功能的帮助信息，管理功能启用/禁用",
     usage="""
-牛牛帮助 — 总列表：全部插件、启用状态与简介
-牛牛帮助 〈插件名或序号〉 — 某一插件：说明、用法与功能列表
-牛牛帮助 〈插件名或序号〉 〈功能序号或名称〉 — 某条功能：触发方式与详细说明
+牛牛帮助 — 全部插件一览（名称、状态、简介）
+牛牛帮助 〈插件名或序号〉 — 某插件说明与功能表（可说序号或中文名）
+牛牛帮助 〈插件〉 〈功能序号或名称〉 — 单条功能的口令与详情
 
-插件开关（名称可用中文展示名、包名或总列表里的序号）：
-牛牛开启 〈插件名或序号〉 / 牛牛关闭 〈插件名或序号〉
-牛牛开启全部功能 / 牛牛关闭全部功能（具体权限以「牛牛帮助」内说明为准）
+牛牛开启 / 牛牛关闭 〈插件名或序号〉 — 本群开关某插件
+牛牛开启全部功能 / 牛牛关闭全部功能 — 本群一键全开或全关
+所需权限以各功能详情「何人可用」为准（可由 WebUI「命令权限」覆盖）。
     """.strip(),
     type="application",
     homepage="https://github.com/PallasBot/Pallas-Bot",
@@ -43,35 +43,48 @@ __plugin_meta__ = PluginMetadata(
         "menu_data": [
             {
                 "func": "总列表",
-                "trigger_method": "命令",
+                "trigger_method": "on_cmd",
+                "trigger_scene": "群内或私聊",
                 "trigger_condition": "牛牛帮助",
                 "command_permission": "help.help",
                 "brief_des": "全部插件、状态与简介",
-                "detail_des": "一张图里看完当前加载了哪些插件、在本群是否启用；并说明如何用序号或名称打开下级菜单",
+                "detail_des": "看图可知本群各插件是否启用；用序号或中文名继续打开下级。",
             },
             {
                 "func": "插件详情",
-                "trigger_method": "命令",
+                "trigger_method": "on_cmd",
+                "trigger_scene": "群内或私聊",
                 "trigger_condition": "牛牛帮助 〈插件名或序号〉",
                 "command_permission": "help.help",
-                "brief_des": "单个插件的说明与功能表",
-                "detail_des": "含插件描述、用法原文、功能列表；插件名可用总列表序号、中文名或与包名一致的英文名",
+                "brief_des": "单插件说明与功能表",
+                "detail_des": "含用法与「怎么说 / 场景 / 何人可用」；可再跟功能序号或名称看详情。",
+            },
+            {
+                "func": "功能详情",
+                "trigger_method": "on_cmd",
+                "trigger_scene": "群内或私聊",
+                "trigger_condition": "牛牛帮助 〈插件〉 〈功能序号或名称〉",
+                "command_permission": "help.help",
+                "brief_des": "单条功能的口令与说明",
+                "detail_des": "展示完整怎么说、场景、权限与 detail_des。",
             },
             {
                 "func": "插件开关",
-                "trigger_method": "命令",
-                "trigger_condition": "牛牛开启/关闭 〈插件名或序号〉",
+                "trigger_method": "on_cmd",
+                "trigger_scene": "群内",
+                "trigger_condition": "牛牛开启 / 牛牛关闭 〈插件名或序号〉",
                 "command_permissions": ["help.plugin_enable", "help.plugin_disable"],
-                "brief_des": "启用或停用某个插件",
-                "detail_des": "例：牛牛开启 牛牛复读、牛牛关闭 1；名称规则与打开详情时相同。",
+                "brief_des": "本群启用或停用某插件",
+                "detail_des": "例：牛牛开启 牛牛复读、牛牛关闭 1；命名规则同打开插件详情。",
             },
             {
-                "func": "批量开关插件",
-                "trigger_method": "命令",
+                "func": "批量开关",
+                "trigger_method": "on_cmd",
+                "trigger_scene": "群内",
                 "trigger_condition": "牛牛开启全部功能 / 牛牛关闭全部功能",
                 "command_permissions": ["help.plugin_enable_all", "help.plugin_disable_all"],
-                "brief_des": "一键启用或停用全部插件",
-                "detail_des": "遍历已加载插件并切换开关；仍受单群/单 Bot 作用域影响。",
+                "brief_des": "本群一键全开或全关",
+                "detail_des": "切换当前群内所有已加载插件的开关状态。",
             },
         ],
         "menu_template": "default",

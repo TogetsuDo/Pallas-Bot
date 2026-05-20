@@ -59,7 +59,8 @@ __plugin_meta__ = PluginMetadata(
     · 全部幕数演完或一方血量归零即分胜负；
 4. 维护
     · 「决斗事件重载」热更新剧情包与干员表
-。
+
+所需权限以「牛牛帮助」本插件功能详情为准（可由 WebUI「命令权限」覆盖）。
     """.strip(),
     type="application",
     homepage="https://github.com/PallasBot/Pallas-Bot",
@@ -80,6 +81,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "牛牛决斗",
                 "trigger_method": "on_message",
+                "trigger_scene": "群内",
                 "trigger_condition": "牛牛决斗 @一名对手 [N幕|N回合]",
                 "command_permission": "duel.duel",
                 "brief_des": "泰拉风味多幕擂台，与群友或牛牛对决",
@@ -91,6 +93,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "双牛决斗",
                 "trigger_method": "on_message",
+                "trigger_scene": "群内",
                 "trigger_condition": "牛牛决斗 @牛A @牛B [N幕|N回合]",
                 "command_permission": "duel.duel",
                 "brief_des": "指定两只牛牛同台对决",
@@ -101,6 +104,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "八角笼牛",
                 "trigger_method": "on_message",
+                "trigger_scene": "群内",
                 "trigger_condition": "八角笼牛 [N幕|N回合]",
                 "command_permission": "duel.cage",
                 "brief_des": "随机抽两只在线牛牛对决",
@@ -112,7 +116,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "决斗抢答",
                 "trigger_method": "on_message",
-                "trigger_condition": "决斗进行中，按幕面提示发送干员名或关键词",
+                "trigger_scene": "群内",
+                "trigger_condition": "按幕面提示发干员名或关键词",
                 "brief_des": "限时抢答影响血量",
                 "detail_des": (
                     "幕面出现抢答时，在时限内发送正确干员全名或关键词可占优；"
@@ -123,6 +128,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "决斗事件重载",
                 "trigger_method": "on_message",
+                "trigger_scene": "群内",
                 "trigger_condition": "决斗事件重载",
                 "command_permission": "duel.reload_events",
                 "brief_des": "热更新泰拉剧情包与干员名单",

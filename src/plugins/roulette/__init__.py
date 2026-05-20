@@ -56,13 +56,15 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "牛牛轮盘",
                 "trigger_method": "on_message",
-                "trigger_condition": "牛牛轮盘（开局）；牛牛轮盘踢人/禁言等切换模式",
+                "trigger_scene": "群内",
+                "trigger_condition": "牛牛轮盘 / 牛牛轮盘踢人 / 牛牛轮盘禁言",
                 "brief_des": "启动轮盘",
                 "detail_des": "管理员可选择踢人模式或禁言模式，任何人都可以发送牛牛轮盘开启游戏。游戏开始后，六个弹槽中只有一颗子弹，触发者可能会被踢出群聊或禁言。",  # noqa: E501
             },
             {
                 "func": "参与轮盘",
                 "trigger_method": "on_message",
+                "trigger_scene": "群内",
                 "trigger_condition": "牛牛开枪",
                 "brief_des": "参与轮盘",
                 "detail_des": "在游戏进行中，参与者发送'牛牛开枪'来触发轮盘。如果命中子弹，根据游戏模式，触发者可能会被踢出群聊或禁言。",  # noqa: E501
@@ -70,21 +72,24 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "牛牛喝酒",
                 "trigger_method": "on_message",
-                "trigger_condition": "牛牛喝酒/牛牛干杯/牛牛继续喝",
+                "trigger_scene": "群内",
+                "trigger_condition": "牛牛喝酒 / 牛牛干杯 / 牛牛继续喝",
                 "brief_des": "在轮盘游戏中通过喝酒参与",
                 "detail_des": "在轮盘游戏进行中，发送'牛牛喝酒'、'牛牛干杯'或'牛牛继续喝'被视为加入轮盘，成为牛牛喝酒后乱开枪的对象。牛牛喝酒后所有参与轮盘的玩家均有概率中弹",  # noqa: E501
             },
             {
                 "func": "牛牛救一下",
                 "trigger_method": "on_message",
-                "trigger_condition": "牛牛救一下",
+                "trigger_scene": "群内",
+                "trigger_condition": "牛牛救一下 [@用户]",
                 "brief_des": "解除被禁言的用户",
                 "detail_des": "解除被禁言的用户。发送'牛牛救一下'解除所有禁言，发送'牛牛救一下@用户'解除指定用户的禁言。在牛牛喝酒以后，牛牛救一下有概率把请求的人处决了()",  # noqa: E501
             },
             {
                 "func": "牛牛补一枪",
                 "trigger_method": "on_message",
-                "trigger_condition": "牛牛补一枪",
+                "trigger_scene": "群内",
+                "trigger_condition": "牛牛补一枪 [@用户]",
                 "brief_des": "对已禁言玩家追加惩罚",
                 "detail_des": "对当前局中被禁言的玩家追加禁言时长。发送'牛牛补一枪'处理所有被禁言玩家，发送'牛牛补一枪@用户'处理指定玩家。有概率炸膛，喝酒后概率提升。",  # noqa: E501
             },

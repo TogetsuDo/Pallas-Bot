@@ -4,7 +4,12 @@ from enum import StrEnum
 
 from nonebot import get_loaded_plugins
 
-from src.common.cmd_perm import effective_permission_avail_text, raw_trigger_condition
+from src.common.cmd_perm import (
+    effective_permission_avail_text,
+    help_say_phrase,
+    help_scene_text,
+    iter_user_help_menu,
+)
 
 from .config import Config
 from .plugin_manager import find_plugin, plugin_display_name
@@ -40,14 +45,31 @@ def _markdown_table_cell_truncate(text: str, width: int) -> str:
     return single
 
 
+def _is_markdown_table_block(block: str) -> bool:
+    lines = [ln.strip() for ln in block.strip().splitlines() if ln.strip()]
+    if len(lines) < 2:
+        return False
+    return all("|" in ln for ln in lines)
+
+
+def _is_bullet_block(block: str) -> bool:
+    lines = [ln.strip() for ln in block.strip().splitlines() if ln.strip()]
+    if not lines:
+        return False
+    return all(ln.startswith(("·", "•", "- ", "* ")) for ln in lines)
+
+
 def _wrap_paragraphs_for_help_page(text: str, width: int = _HELP_DETAIL_WRAP) -> str:
-    """详情页「说明」「用法」等：按空行分段后对每段 soft-wrap。"""
+    """详情页「说明」「用法」等：按空行分段后对每段 soft-wrap；表格与条目列表保持原样。"""
     if not (text or "").strip():
         return text or ""
     chunks: list[str] = []
     for block in (text or "").split("\n\n"):
         b = block.strip()
         if not b:
+            continue
+        if _is_markdown_table_block(b) or _is_bullet_block(b):
+            chunks.append(b)
             continue
         line = re.sub(r"[ \t\r\f\v]+", " ", b.replace("\n", " ")).strip()
         if not line:
@@ -168,8 +190,6 @@ def generate_plugin_functions_markdown(
         usage = _wrap_paragraphs_for_help_page(metadata.usage or "暂无说明")
         markdown_content += "## 说明\n\n"
         markdown_content += f"{description}\n\n"
-        markdown_content += "## 插件内用法\n\n"
-        markdown_content += f"{usage}\n\n"
 
         if target_plugin.name == "maa":
             from src.plugins.maa.endpoints import format_maa_http_setup_help
@@ -178,24 +198,34 @@ def generate_plugin_functions_markdown(
             markdown_content += "## MAA 对接地址\n\n"
             markdown_content += f"{maa_http}\n\n"
 
+        markdown_content += "## 插件内用法\n\n"
+        markdown_content += f"{usage}\n\n"
+
         if hasattr(metadata, "extra") and metadata.extra:
             menu_data = metadata.extra.get("menu_data", [])
-            if menu_data:
+            user_menu = list(iter_user_help_menu(menu_data))
+            if user_menu:
                 markdown_content += "## 本插件功能一览\n\n"
-                markdown_content += "| 序号 | 功能 | 触发条件 | 何人可用 | 简介 |\n"
-                markdown_content += "|------|------|----------|----------|------|\n"
-                for i, item in enumerate(menu_data, 1):
+                markdown_content += "「怎么说」= 你要发的口令或操作；「场景」= 私聊 / 群内 / 自动。\n\n"
+                markdown_content += "| 序号 | 功能 | 怎么说 | 场景 | 何人可用 | 简介 |\n"
+                markdown_content += "|------|------|--------|------|----------|------|\n"
+                say_wrap = 36 if target_plugin.name == "maa" else 30
+                list_brief_wrap = 18 if target_plugin.name == "maa" else 16
+                for i, item in enumerate(user_menu, 1):
                     func_name = _sanitize_pipe(str(item.get("func", f"未命名功能 {i}") or ""))
-                    trig_cell = _markdown_table_cell_truncate(raw_trigger_condition(item), 28)
+                    say_cell = _markdown_table_cell_truncate(help_say_phrase(item), say_wrap)
+                    scene_cell = _markdown_table_cell_truncate(help_scene_text(item), 6)
                     perm_raw = effective_permission_avail_text(item)
                     perm_cell = _markdown_table_cell_truncate(perm_raw, 14) if perm_raw else "—"
                     brief_raw = item.get("brief_des", "暂无简介") or "暂无简介"
-                    brief_des = _markdown_table_cell_truncate(str(brief_raw), 16)
-                    markdown_content += f"| {i} | {func_name} | {trig_cell} | {perm_cell} | {brief_des} |\n"
+                    brief_des = _markdown_table_cell_truncate(str(brief_raw), list_brief_wrap)
+                    markdown_content += (
+                        f"| {i} | {func_name} | {say_cell} | {scene_cell} | {perm_cell} | {brief_des} |\n"
+                    )
                 markdown_content += "\n### 查看功能详情\n\n"
                 markdown_content += f"**示例**（当前插件为「{plugin_name_display}」）\n\n"
-                markdown_content += f"- 「牛牛帮助 {plugin_name_display} 1」→ 打开表中第 1 条功能的详情页\n"
-                if len(menu_data) > 1:
+                markdown_content += f"- 「牛牛帮助 {plugin_name_display} 1」→ 表中第 1 条详情\n"
+                if len(user_menu) > 1:
                     markdown_content += f"- 「牛牛帮助 {plugin_name_display} 2」→ 第 2 条\n"
 
             else:
@@ -223,17 +253,18 @@ def generate_function_detail_markdown(plugin_name: str, function_name: str) -> t
 
     metadata = target_plugin.metadata
     menu_data = metadata.extra.get("menu_data", []) if metadata.extra else []
+    user_menu = list(iter_user_help_menu(menu_data))
 
     target_function = None
     target_index = -1
 
     if function_name.isdigit():
         index = int(function_name) - 1
-        if 0 <= index < len(menu_data):
-            target_function = menu_data[index]
+        if 0 <= index < len(user_menu):
+            target_function = user_menu[index]
             target_index = index + 1
     else:
-        for index, item in enumerate(menu_data):
+        for index, item in enumerate(user_menu):
             func = item.get("func", "")
             if func.lower() == function_name.lower():
                 target_function = item
@@ -241,7 +272,7 @@ def generate_function_detail_markdown(plugin_name: str, function_name: str) -> t
                 break
 
         if not target_function:
-            for index, item in enumerate(menu_data):
+            for index, item in enumerate(user_menu):
                 func = item.get("func", "")
                 if function_name.lower() in func.lower():
                     target_function = item
@@ -269,11 +300,11 @@ def generate_function_detail_markdown(plugin_name: str, function_name: str) -> t
     brief_cell = target_function.get("brief_des", "暂无简介") or "暂无简介"
     markdown_content += f"| 简介 | {_markdown_table_cell_truncate(str(brief_cell), 28)} |\n"
 
-    trigger_method = str(target_function.get("trigger_method", "未知") or "未知")
-    trigger_plain = raw_trigger_condition(target_function)
+    say_plain = help_say_phrase(target_function)
+    scene_plain = help_scene_text(target_function)
     perm_avail = effective_permission_avail_text(target_function)
-    markdown_content += f"| 触发方式 | {_markdown_table_cell_truncate(trigger_method, 28)} |\n"
-    markdown_content += f"| 触发条件 | {_markdown_table_cell_truncate(trigger_plain, 40)} |\n"
+    markdown_content += f"| 怎么说 | {_markdown_table_cell_truncate(say_plain, 40)} |\n"
+    markdown_content += f"| 场景 | {_markdown_table_cell_truncate(scene_plain, 12)} |\n"
     perm_row = perm_avail or "—"
     markdown_content += f"| 何人可用 | {_markdown_table_cell_truncate(perm_row, 28)} |\n"
 
@@ -281,7 +312,7 @@ def generate_function_detail_markdown(plugin_name: str, function_name: str) -> t
 
     detail_des = target_function.get("detail_des", "")
     if detail_des:
-        markdown_content += f"## 补充说明\n\n{_wrap_paragraphs_for_help_page(str(detail_des))}\n\n"
+        markdown_content += f"## 怎么用\n\n{_wrap_paragraphs_for_help_page(str(detail_des))}\n\n"
 
     if target_plugin.name == "maa" and func_name in {"绑定 MAA 设备", "MAA HTTP"}:
         from src.plugins.maa.endpoints import format_maa_http_setup_help

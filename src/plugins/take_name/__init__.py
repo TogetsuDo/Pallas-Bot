@@ -16,10 +16,7 @@ __plugin_meta__ = PluginMetadata(
     name="自动夺舍",
     description="牛牛自动取名和同步群名片的功能",
     usage="""
-这个插件会让牛牛自动更换群名片，这是一项被动技能：
-1. 牛牛会定期自动更换自己的群名片为群内随机用户的名片
-2. 当牛牛醉酒时，有一定概率会"夺舍"其他群友的名片
-3. 当被取名的用户修改自己的群名片时，牛牛会同步修改自己的群名片为该用户的新名片
+被动技能：牛牛会偶尔模仿群友名片，醉酒时可能「夺舍」改名；被模仿者改名时牛牛会跟着改。
     """.strip(),
     type="application",
     homepage="https://github.com/PallasBot",
@@ -30,21 +27,24 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "牛牛夺舍",
                 "trigger_method": "scheduler",
-                "trigger_condition": "定时任务",
+                "trigger_scene": "自动",
+                "trigger_condition": "随机模仿群友名片",
                 "brief_des": "牛牛自动更换群名片",
                 "detail_des": "牛牛每分钟有约0.2%的概率自动更换自己的群名片为群内随机用户的名片，并戳一戳该用户。",
             },
             {
                 "func": "醉酒夺舍",
                 "trigger_method": "scheduler",
-                "trigger_condition": "醉酒状态",
+                "trigger_scene": "自动",
+                "trigger_condition": "牛牛醉酒时",
                 "brief_des": "醉酒时随机更换群友名片",
                 "detail_des": "当牛牛处于醉酒状态且为群管理员时，更换自己名片的同时有概率将被取名用户的名字改为固定名称（帕拉斯、牛牛等）。",  # noqa: E501
             },
             {
                 "func": "名片同步",
                 "trigger_method": "on_notice",
-                "trigger_condition": "群名片变更",
+                "trigger_scene": "自动",
+                "trigger_condition": "被模仿者改名",
                 "brief_des": "同步被取名用户的群名片",
                 "detail_des": "当被牛牛取名的用户修改自己的群名片时，牛牛会自动同步修改自己的群名片为该用户的新名片。",
             },
