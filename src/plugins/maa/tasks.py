@@ -215,29 +215,51 @@ _MAA_SETTINGS_COMMAND_HELPS: tuple[MaaControlCommandHelp, ...] = (
 )
 
 
-def format_maa_control_commands_help() -> str:
-    """生成「牛牛帮助」中 MAA 远控口令说明（与 COMMAND_TASK_MAP 同步）。"""
-    bullet_lines = [f"· {item.phrase}：{item.description}" for item in MAA_CONTROL_COMMAND_HELPS]
-    bullet_lines.extend(f"· {item.phrase}：{item.description}" for item in _MAA_SETTINGS_COMMAND_HELPS)
-    body = "\n".join(bullet_lines)
+def _maa_help_table_section(title: str, items: tuple[MaaControlCommandHelp, ...]) -> str:
+    rows = ["| 口令 | 说明 |", "|------|------|"]
+    for item in items:
+        phrase = item.phrase.replace("|", "｜")
+        desc = item.description.replace("|", "｜")
+        rows.append(f"| {phrase} | {desc} |")
+    return f"### {title}\n\n" + "\n".join(rows)
+
+
+def format_maa_plugin_usage_brief() -> str:
+    """二级帮助页「插件内用法」简报（完整口令表见功能详情「MAA 远控」）。"""
     return "\n\n".join([
-        "发送下列完整一行口令（须先私聊「牛牛绑定MAA」）。",
-        "子项类口令会单独跑对应一键长草模块；"
-        "牛牛作战前可自动写入已保存的关卡候选（见「牛牛设置关卡」）。"
-        "具体行为以 MAA 本地配置为准：",
-        body,
-        "协议 type 写法：牛牛MAA任务 <type> [params]（见本插件「MAA 远控（原始 type）」详情）。",
+        "1. **私聊绑定**：牛牛绑定MAA <设备标识符> [别名]（MAA 设置里复制 32 位设备 id）",
+        "2. **MAA 配置**：「远程控制」填写上方对接地址；用户标识符填 QQ 号",
+        "3. **远控口令**：牛牛长草、牛牛作战、牛牛公招等（须已绑定；**完整表**见下表第 2 条 → 功能详情）",
+        "4. **多设备**（私聊）：牛牛MAA状态、牛牛切换MAA设备、牛牛MAA设备名、牛牛清空MAA队列",
+    ])
+
+
+def format_maa_control_commands_help() -> str:
+    """三级「MAA 远控」详情：分组表格（与 COMMAND_TASK_MAP 同步）。"""
+    sections = [
+        _maa_help_table_section("长草", (MAA_CONTROL_COMMAND_HELPS[0],)),
+        _maa_help_table_section(
+            "子项（按 MAA 左侧勾选；作战可先牛牛设置关卡）",
+            MAA_CONTROL_COMMAND_HELPS[1:9],
+        ),
+        _maa_help_table_section("截图与控制", MAA_CONTROL_COMMAND_HELPS[9:]),
+        _maa_help_table_section("设置", _MAA_SETTINGS_COMMAND_HELPS),
+    ]
+    return "\n\n".join([
+        "发送**完整一行**口令（须先私聊绑定）。子项口令不含唤醒，游戏宜在主界面。",
+        *sections,
+        "高级：牛牛MAA任务 <type> [params] → 见本插件「MAA 远控（原始 type）」详情。",
     ])
 
 
 def format_maa_raw_task_types_help() -> str:
-    allowed = "、".join(sorted(ALLOWED_REMOTE_TASK_TYPES))
-    return (
-        "用法：牛牛MAA任务 <type> [params]。"
-        "Settings-* 须带 params；其余 type 勿多余参数。"
-        f"可用 type：{allowed}。"
-        "示例：牛牛MAA任务 Settings-Stage1 1-7；牛牛MAA任务 LinkStart-Recruiting。"
-    )
+    common = "LinkStart、LinkStart-Combat、CaptureImage、Settings-Stage1、StopTask…"
+    return "\n\n".join([
+        "用法：牛牛MAA任务 <type> [params]",
+        "Settings-* 须带 params；其余 type 勿带多余参数。",
+        f"常用 type：{common}",
+        "完整列表见协议文档；示例：牛牛MAA任务 Settings-Stage1 1-7",
+    ])
 
 
 @dataclass(frozen=True, slots=True)

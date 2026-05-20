@@ -27,6 +27,17 @@ def test_format_maa_control_help_lists_commands() -> None:
     assert "牛牛设置关卡" in text
     assert "牛牛基建" in text
     assert "牛牛一键长草" not in text
+    assert "| 口令 | 说明 |" in text
+    assert "### 长草" in text
+
+
+def test_format_maa_plugin_usage_brief() -> None:
+    from src.plugins.maa.tasks import format_maa_plugin_usage_brief
+
+    text = format_maa_plugin_usage_brief()
+    assert "牛牛绑定MAA" in text
+    assert "功能详情" in text
+    assert "| 口令 |" not in text
 
 
 def test_normalize_device_hex32() -> None:

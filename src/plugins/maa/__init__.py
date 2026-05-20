@@ -26,6 +26,7 @@ from .tasks import (
     bind_device_id_error,
     expand_command_specs,
     format_maa_control_commands_help,
+    format_maa_plugin_usage_brief,
     format_maa_raw_task_types_help,
     is_combat_control_command,
     maa_raw_task_validate,
@@ -40,19 +41,9 @@ store = maa_store
 
 __plugin_meta__ = PluginMetadata(
     name="MAA 远控",
-    description="通过 MAA 远程控制协议绑定设备并下发任务。",
-    usage=f"""
-1. 绑定（私聊）
-牛牛绑定MAA <设备标识符> [别名]（MAA「设备标识符（只读）」32 位 hex，不是 QQ 号）
-2. MAA 对接地址
-发「牛牛帮助 MAA远控」见当前 getTask / reportStatus 完整 URL（由部署配置生成）。
-3. 远控口令（群聊或私聊，向已绑定设备排队）
-{format_maa_control_commands_help()}
-4. 多设备（私聊）
-牛牛MAA状态 — 查看已绑定设备与当前选用
-牛牛切换MAA设备 <标识符/别名/id前缀> — 指定远控口令下发到哪台
-牛牛MAA设备名 <标识符/别名/id前缀> <别名> — 为设备起名（别名最长 32 字）
-    """.strip(),
+    description="在 QQ 里给已绑定的 MAA 下发远控任务并接收结果。",
+    usage=format_maa_plugin_usage_brief()
+    + "\n\n所需权限以「牛牛帮助」本插件功能详情为准（可由 WebUI「命令权限」覆盖）。",
     type="application",
     homepage="https://github.com/PallasBot/Pallas-Bot",
     supported_adapters={"~onebot.v11"},
@@ -65,78 +56,82 @@ __plugin_meta__ = PluginMetadata(
         ],
         "menu_data": [
             {
-                "func": "绑定 MAA 设备",
+                "func": "绑定设备",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "牛牛绑定MAA / 牛牛绑定MAA设备 <设备标识符> [别名]（私聊）",
+                "trigger_scene": "私聊",
+                "trigger_condition": "牛牛绑定MAA <设备标识符> [别名]",
                 "command_permission": "maa.bind",
-                "brief_des": "将 MAA 设备与 QQ 绑定",
+                "brief_des": "绑定 MAA 与 QQ",
                 "detail_des": (
-                    "MAA 用户标识符须为 QQ 号；设备标识符在 MAA 设置中复制。"
-                    "须先让 MAA 连上牛牛并轮询后再绑定；可选第二参数为设备别名（最长 32 字）。"
-                    "对接 URL 见「牛牛帮助 MAA远控」中的「MAA 对接地址」。"
+                    "在 MAA「远程控制」复制设备标识符（32 位）；用户标识符填你的 QQ 号。"
+                    "须 MAA 已连上牛牛后再绑定。可选别名便于多台设备切换。"
+                    "对接地址见本插件二级帮助「MAA 对接地址」。"
                 ),
             },
             {
-                "func": "MAA 远控",
+                "func": "远控口令",
                 "trigger_method": "on_message",
-                "trigger_condition": "牛牛长草、牛牛公招、牛牛截图等口令",
+                "trigger_scene": "群内或私聊",
+                "trigger_condition": "牛牛长草 / 牛牛作战 / 牛牛公招 等",
                 "command_permission": "maa.control",
-                "brief_des": "向已绑定 MAA 下发任务",
+                "brief_des": "下发作战、长草等任务",
                 "detail_des": format_maa_control_commands_help(),
             },
             {
-                "func": "MAA 远控（原始 type）",
+                "func": "原始协议任务",
                 "trigger_method": "on_cmd",
+                "trigger_scene": "群内或私聊",
                 "trigger_condition": "牛牛MAA任务 <type> [params]",
                 "command_permission": "maa.control",
-                "brief_des": "按协议 type 下发远控任务",
+                "brief_des": "高级：按协议 type 下发",
                 "detail_des": format_maa_raw_task_types_help(),
             },
             {
-                "func": "MAA 状态",
+                "func": "查看状态",
                 "trigger_method": "on_cmd",
+                "trigger_scene": "群内或私聊",
                 "trigger_condition": "牛牛MAA状态",
                 "command_permission": "maa.status",
-                "brief_des": "查看绑定设备与待执行任务",
+                "brief_des": "设备与待执行任务",
                 "detail_des": (
-                    "展示已绑定设备、当前选用设备及待拉取任务数。"
-                    "多台设备时需先「牛牛切换MAA设备」或绑定后自动选用最近绑定的一台。"
-                    "积压时可发「牛牛清空MAA队列」丢弃未拉取任务。"
+                    "查看已绑定设备、当前选用哪台、待拉取任务数。"
+                    "多台设备时用「牛牛切换MAA设备」；积压可「牛牛清空MAA队列」。"
                 ),
             },
             {
-                "func": "清空 MAA 队列",
+                "func": "清空队列",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "牛牛清空MAA队列",
+                "trigger_scene": "群内或私聊",
+                "trigger_condition": "牛牛清空MAA队列 [当前]",
                 "command_permission": "maa.control",
-                "brief_des": "丢弃尚未被 MAA 拉取的任务",
-                "detail_des": ("仅清除牛牛内存中的待拉取队列，不影响 MAA 本地正在执行的任务。重启牛牛也会清空队列。"),
+                "brief_des": "丢弃未拉取任务",
+                "detail_des": "只清牛牛侧排队，不影响 MAA 正在跑的任务。加「当前」仅清当前设备。",
             },
             {
-                "func": "切换 MAA 设备",
+                "func": "切换设备",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "牛牛切换MAA设备 <标识符或别名>（私聊）",
+                "trigger_scene": "私聊",
+                "trigger_condition": "牛牛切换MAA设备 <标识符或别名>",
                 "command_permission": "maa.bind",
-                "brief_des": "指定当前远控目标设备",
-                "detail_des": "可用完整 32 位设备 id、已设置的别名，或至少 8 位 id 前缀。",
+                "brief_des": "改远控目标设备",
+                "detail_des": "可用完整设备 id、别名或至少 8 位 id 前缀。",
             },
             {
-                "func": "MAA 设备别名",
+                "func": "设备别名",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "牛牛MAA设备名 <设备> <别名>（私聊）",
+                "trigger_scene": "私聊",
+                "trigger_condition": "牛牛MAA设备名 <设备> <别名>",
                 "command_permission": "maa.bind",
-                "brief_des": "为已绑定设备设置别名",
-                "detail_des": "便于多台设备时切换；别名为空可清除。设备参数规则同「牛牛切换MAA设备」。",
+                "brief_des": "给设备起名",
+                "detail_des": "别名为空则清除。设备参数规则同「牛牛切换MAA设备」。",
             },
             {
-                "func": "MAA HTTP",
+                "func": "MAA HTTP 轮询",
                 "trigger_method": "http",
+                "help_audience": "maintainer",
                 "trigger_condition": "POST /maa/getTask、/maa/reportStatus",
-                "brief_des": "MAA 轮询与汇报端点",
-                "detail_des": (
-                    "实现 MAA 远程控制协议。"
-                    "完整 URL 见「牛牛帮助 MAA远控」中的「MAA 对接地址」（由 maa_public_base_url 等配置生成）。"
-                ),
+                "brief_des": "MAA 客户端轮询端点",
+                "detail_des": "维护者对照；用户只需在 MAA 填写二级帮助中的对接地址。",
             },
         ],
     },
