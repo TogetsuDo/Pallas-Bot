@@ -56,7 +56,7 @@
 
 `Settings-*` 类必须带 `params`；其余 type 不要多余参数。可用 type 与[远程控制协议](https://docs.maa.plus/zh-cn/protocol/remote-control-schema.html)一致。
 
-默认在指令执行后会再排队一张截图（可在插件配置 `maa_attach_screenshot` 关闭）。
+默认在指令执行后会再排队一张截图（`Settings-*` 设置类口令除外；可在插件配置 `maa_attach_screenshot` 关闭）。
 
 ## 插件配置项
 
@@ -140,7 +140,7 @@
 
 - 每项任务结束后 MAA `POST reportStatus` → `http_api.maa_report_status` 向 `NotifyTarget`（群/私聊与下发时一致）发消息。
 - **`CaptureImage` / `CaptureImageNow`** 且 `payload` 非空：文字 + `base64://` 图；过大则仅文字（见 `MAA_SCREENSHOT_PAYLOAD_MAX_LEN`）。
-- **其它 type**：默认仅文字；若 `maa_attach_screenshot=true`（默认），`enqueue` 会再排队一张 `CaptureImage`，截图完成后再发图。
+- **其它 type**：默认仅文字；若 `maa_attach_screenshot=true`（默认），`enqueue` 会再排队一张 `CaptureImage`（`Settings-*` 除外），截图完成后再发图。
 - **`HeartBeat`**：仅文字，带当前顺序任务 id。
 
 ### 队列与设备

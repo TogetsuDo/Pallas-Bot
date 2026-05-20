@@ -80,8 +80,8 @@ IMMEDIATE_TYPES = frozenset({
     "HeartBeat",
 })
 
-# 下发这些 type 时不再自动追加截图任务（CaptureImageNow 已在 IMMEDIATE_TYPES）
-TASK_TYPES_WITHOUT_AUTO_SCREENSHOT = IMMEDIATE_TYPES | frozenset({"CaptureImage"})
+# 下发这些 type 时不再自动追加截图任务（Settings 改配置无需截图，减轻 reportStatus 体积）
+TASK_TYPES_WITHOUT_AUTO_SCREENSHOT = IMMEDIATE_TYPES | frozenset({"CaptureImage"}) | SETTINGS_TYPES
 
 # 维护者：LinkStart-* 子项（除 WakeUp/完整 LinkStart）不含唤醒；游戏未在主界面时 MAA 易 TaskChainError。
 # 牛牛不自动前置 LinkStart-WakeUp。截图/心跳/停止见 IMMEDIATE_TYPES。详见 docs/plugins/maa/README.md「维护者说明」。

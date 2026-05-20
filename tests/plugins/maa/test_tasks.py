@@ -1,6 +1,8 @@
 from src.plugins.maa.tasks import (
     COMMAND_TASK_MAP,
     MAA_CONTROL_COMMAND_HELPS,
+    SETTINGS_TYPES,
+    TASK_TYPES_WITHOUT_AUTO_SCREENSHOT,
     MaaTaskSpec,
     bind_device_id_error,
     expand_command_specs,
@@ -69,6 +71,10 @@ def test_parse_stage_candidates() -> None:
     assert len(specs) == 1
     assert specs[0].task_type == "Settings-Stage1"
     assert specs[0].params == "12-17-HARD"
+
+
+def test_settings_types_skip_auto_screenshot() -> None:
+    assert SETTINGS_TYPES <= TASK_TYPES_WITHOUT_AUTO_SCREENSHOT
 
 
 def test_rename_award_command() -> None:
