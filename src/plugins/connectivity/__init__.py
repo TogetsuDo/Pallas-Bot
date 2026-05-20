@@ -1,31 +1,38 @@
 from nonebot.plugin import PluginMetadata
 
+from src.common.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.common.cmd_perm.metadata_text import SCENE_GROUP, join_usage, usage_line
+
 __plugin_meta__ = PluginMetadata(
-    name="牛牛连通检测",
-    description="检测画画网关、MAA 远控端点与唱歌服务延迟",
-    usage="""
-在群内发：
-· 「牛牛连通」或 「牛牛网关」— 检测画画网关、MAA 获取/汇报端点、唱歌服务连通与延迟
-    """.strip(),
+    name="牛牛连通",
+    description="群内检测画画、MAA 与唱歌服务的连通性与延迟。",
+    usage=join_usage(
+        usage_line("牛牛连通 / 牛牛网关", "并行探测上述服务并回报延迟"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "command_permissions": [
             {"id": "connectivity.probe", "label": "牛牛连通", "default": "everyone"},
         ],
         "menu_data": [
             {
                 "func": "牛牛连通",
-                "trigger_method": "on_command",
-                "trigger_condition": "「牛牛连通」或「牛牛网关」（群内）",
+                "trigger_method": "on_cmd",
+                "trigger_scene": SCENE_GROUP,
+                "trigger_condition": "牛牛连通 / 牛牛网关",
                 "command_permission": "connectivity.probe",
                 "brief_des": "检测画画、MAA 远控与唱歌服务延迟",
-                "detail_des": ("并行探测画画 API 网关、MAA getTask/reportStatus 端点及唱歌 AI 服务。"),
+                "detail_des": "并行探测画画 API 网关、MAA getTask/reportStatus 端点及唱歌 AI 服务。",
             },
         ],
-        "menu_template": "default",
     },
 )
 

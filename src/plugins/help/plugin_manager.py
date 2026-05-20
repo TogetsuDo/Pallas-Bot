@@ -1,7 +1,9 @@
 import asyncio
 import copy
+import re
 import shutil
 import time
+from collections.abc import Iterable
 from typing import Any
 
 from nonebot import get_loaded_plugins, logger
@@ -10,8 +12,9 @@ from src.common.db import make_bot_config_repository, make_group_config_reposito
 from src.common.db.modules import BotConfigModule, GroupConfigModule
 from src.common.paths import plugin_data_dir
 
+from .plugin_match import find_matching_plugins
 from .styles import load_config
-from .visibility import load_help_hidden_plugins
+from .visibility import resolve_help_hidden_plugins, resolve_help_ignored_plugins
 
 bot_config_repo = make_bot_config_repository()
 group_config_repo = make_group_config_repository()
@@ -42,6 +45,22 @@ def plugin_display_name(plugin: Any) -> str:
         if isinstance(n, str) and n.strip():
             return n.strip()
     return plugin.name or "未命名插件"
+
+
+def get_help_menu_plugins(
+    *,
+    show_ignored: bool = False,
+    ignored_plugins: list[str] | None = None,
+) -> list[Any]:
+    """与一级帮助总览相同的插件集合（已排序）。"""
+    plugins = [p for p in get_loaded_plugins() if p.name]
+    if show_ignored:
+        return sorted(plugins, key=plugin_display_name)
+
+    ignored = set(ignored_plugins if ignored_plugins is not None else resolve_help_ignored_plugins())
+    hidden = set(resolve_help_hidden_plugins())
+    filtered = [p for p in plugins if p.name not in ignored and p.name not in hidden]
+    return sorted(filtered, key=plugin_display_name)
 
 
 def clear_help_cache(group_id: int | None = None):
@@ -290,32 +309,18 @@ async def update_group_config(group_id: int, disabled_plugins: list[str]) -> Gro
     return group_config
 
 
-def find_plugin(plugin_name: str) -> Any | None:
+def find_plugin(plugin_name: str, *, plugins: Iterable[Any] | None = None) -> Any | None:
     """
-    查找插件对象：支持英文包名或 PluginMetadata.name（中文展示名），以及模糊匹配。
+    查找插件：包名、展示名、help_aliases 与 plugin_aliases 表；去空格后精确或子串匹配。
+    仅当唯一命中时返回，否则 None（由 find_plugin_by_identifier 提示歧义）。
     """
-    plugins = get_loaded_plugins()
-    key = plugin_name.strip()
+    key = (plugin_name or "").strip()
     if not key:
         return None
-    key_lower = key.lower()
-
-    for plugin in plugins:
-        if plugin.name and plugin.name.lower() == key_lower:
-            return plugin
-
-    for plugin in plugins:
-        if plugin_display_name(plugin).lower() == key_lower:
-            return plugin
-
-    for plugin in plugins:
-        if plugin.name and key_lower in plugin.name.lower():
-            return plugin
-
-    for plugin in plugins:
-        if key_lower in plugin_display_name(plugin).lower():
-            return plugin
-
+    pool = list(plugins) if plugins is not None else [p for p in get_loaded_plugins() if p.name]
+    matches = find_matching_plugins(key, pool)
+    if len(matches) == 1:
+        return matches[0]
     return None
 
 
@@ -469,52 +474,30 @@ async def find_plugin_by_identifier(plugin_identifier: str, ignored_plugins: lis
 
     # 如果不是数字，直接返回插件名称
     if not plugin_identifier.isdigit():
-        plugin = find_plugin(plugin_identifier)
+        if ignored_plugins is None:
+            candidates = [p for p in get_loaded_plugins() if p.name]
+        else:
+            candidates = get_help_menu_plugins(show_ignored=False, ignored_plugins=ignored_plugins)
+
+        plugin = find_plugin(plugin_identifier, plugins=candidates)
         if plugin:
             return plugin.name or "", None
 
-        plugins = get_loaded_plugins()
-        pid_lower = plugin_identifier.lower()
-        matched_plugins: list[Any] = []
-        for p in plugins:
-            if not p.name:
-                continue
-            if pid_lower in p.name.lower() or pid_lower in plugin_display_name(p).lower():
-                matched_plugins.append(p)
-
-        seen: set[str] = set()
-        unique: list[Any] = []
-        for p in matched_plugins:
-            pn = p.name or ""
-            if pn and pn not in seen:
-                seen.add(pn)
-                unique.append(p)
-
-        if len(unique) == 1:
-            return unique[0].name or "", None
-        if len(unique) > 1:
-            plugin_names = [plugin_display_name(p) for p in unique]
+        matched_plugins = find_matching_plugins(plugin_identifier, candidates)
+        if len(matched_plugins) == 1:
+            return matched_plugins[0].name or "", None
+        if len(matched_plugins) > 1:
+            plugin_names = [plugin_display_name(p) for p in matched_plugins]
             return (
                 None,
                 f"博士，你说的'{plugin_identifier}'有多个可能：{'、'.join(plugin_names)}，请说得更具体一些哦",
             )
         return None, f"博士，你说的'{plugin_identifier}'是什么呀？"
 
-    # 获取插件配置
     if ignored_plugins is None:
-        from .styles import load_config
-
-        plugin_config = load_config()
-        ignored_plugins = plugin_config.ignored_plugins if plugin_config else []
-
-    # 过滤和排序插件
-    hidden_plugins = set(load_help_hidden_plugins())
-    filtered_plugins = [
-        p
-        for p in get_loaded_plugins()
-        if p.name and (ignored_plugins is None or p.name not in ignored_plugins) and (p.name not in hidden_plugins)
-    ]
-    sorted_plugins = sorted(filtered_plugins, key=lambda p: plugin_display_name(p))
+        sorted_plugins = get_help_menu_plugins(show_ignored=True)
+    else:
+        sorted_plugins = get_help_menu_plugins(show_ignored=False, ignored_plugins=ignored_plugins)
 
     # 检查序号是否有效
     index = int(plugin_identifier) - 1
@@ -531,42 +514,60 @@ async def find_plugin_by_identifier(plugin_identifier: str, ignored_plugins: lis
         )
 
 
+def apply_status_marks_to_plugin_table(markdown_content: str, marks: list[str]) -> str:
+    """按「插件列表」表数据行顺序填入状态，每行仅替换一个占位符。"""
+    from .help_constants import HELP_STATUS_PLACEHOLDER
+
+    lines = markdown_content.splitlines()
+    out: list[str] = []
+    row_i = 0
+    in_plugin_table = False
+    for line in lines:
+        if "## 插件列表" in line:
+            in_plugin_table = True
+            out.append(line)
+            continue
+        if (
+            in_plugin_table
+            and HELP_STATUS_PLACEHOLDER in line
+            and line.strip().startswith("|")
+            and not re.match(r"^\|\s*[-:]+\s*\|", line.strip())
+        ):
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if cells and cells[0].isdigit():
+                mark = marks[row_i] if row_i < len(marks) else "？"
+                line = line.replace(HELP_STATUS_PLACEHOLDER, mark, 1)
+                row_i += 1
+        out.append(line)
+    return "\n".join(out)
+
+
 async def fill_plugin_status(
     markdown_content: str, bot_id: int | None = None, group_id: int | None = None, show_ignored: bool = False
 ) -> str:
+    from .markdown_generator import help_list_status_mark
     from .styles import load_config
 
     plugin_config = load_config()
 
     if show_ignored:
-        # 超级用户在私聊时显示所有插件
-        filtered_plugins = [p for p in get_loaded_plugins() if p.name]
+        sorted_plugins = get_help_menu_plugins(show_ignored=True)
     else:
-        # 普通情况，过滤掉忽略的插件
-        ignored_plugins = plugin_config.ignored_plugins if plugin_config else []
-        hidden_plugins = set(load_help_hidden_plugins())
-        filtered_plugins = [
-            p for p in get_loaded_plugins() if p.name and p.name not in ignored_plugins and p.name not in hidden_plugins
-        ]
-
-    sorted_plugins = sorted(filtered_plugins, key=lambda p: plugin_display_name(p))
+        sorted_plugins = get_help_menu_plugins(
+            show_ignored=False,
+            ignored_plugins=plugin_config.ignored_plugins if plugin_config else [],
+        )
     logger.debug(f"help fill_plugin_status sorted_plugins count={len(sorted_plugins)}")
-
-    result_content = markdown_content
-    placeholders_count = result_content.count("{status}")
 
     disabled_names = await collect_disabled_plugin_names(bot_id, group_id, ignore_cache=True)
 
-    for index, plugin in enumerate(sorted_plugins, 1):
-        if index > placeholders_count:
-            break
-
+    marks: list[str] = []
+    for plugin in sorted_plugins:
         plugin_name = plugin.name or "未命名插件"
-
         is_disabled = plugin_name in disabled_names
-        status = "⛔ 禁用" if is_disabled else "✅ 启用"
+        marks.append(help_list_status_mark(not is_disabled))
 
-        result_content = result_content.replace("{status}", status, 1)
+    result_content = apply_status_marks_to_plugin_table(markdown_content, marks)
+    from .help_constants import HELP_STATUS_PLACEHOLDER
 
-    result_content = result_content.replace("{status}", "❓ 未知")
-    return result_content
+    return result_content.replace(HELP_STATUS_PLACEHOLDER, "？")

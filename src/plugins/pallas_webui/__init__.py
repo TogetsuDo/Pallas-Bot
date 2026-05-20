@@ -4,6 +4,12 @@ import asyncio
 from nonebot import get_app, get_driver, get_plugin_config, logger
 from nonebot.plugin import PluginMetadata
 
+from src.common.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.common.cmd_perm.metadata_text import join_usage, usage_line
 from src.common.pallas_console_login import install_pallas_http_request_context_middleware, prime_shared_console_login
 from src.common.utils.format_exception import format_exception_for_log
 from src.common.web import public_base_url
@@ -27,31 +33,23 @@ from .manager import (
 from .public import register_routes
 
 __plugin_meta__ = PluginMetadata(
-    name="Pallas-Bot 控制台",
-    description="提供 Pallas-Bot 控制台页面与扩展 API。",
-    usage="""
-浏览器入口：
-/pallas/
-
-核心接口：
-/pallas/api/health
-/pallas/api/system
-/pallas/api/instances
-/pallas/api/logs
-/pallas/api/db/overview
-/pallas/api/message-stats
-/pallas/api/plugin-run-stats
-/pallas/api/console-daily-stats
-""".strip(),
+    name="Web 控制台",
+    description="浏览器运维控制台与扩展 API。",
+    usage=join_usage(
+        usage_line("/pallas/", "控制台页面"),
+        usage_line("/pallas/api/*", "实例、日志、数据库与插件统计等接口"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot/Pallas-Bot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "menu_data": [
             {
                 "func": "控制台页面",
                 "trigger_method": "http",
+                "help_audience": "maintainer",
                 "trigger_condition": "/pallas/",
                 "brief_des": "提供控制台界面",
                 "detail_des": "展示实例状态、日志、数据库与插件信息。",
@@ -59,6 +57,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "扩展状态接口",
                 "trigger_method": "http",
+                "help_audience": "maintainer",
                 "trigger_condition": "/pallas/api/*",
                 "brief_des": "提供控制台数据接口",
                 "detail_des": "提供 health、system、instances、logs、message-stats 等接口。",

@@ -26,6 +26,12 @@ from src.common.cmd_perm import (
     group_message_permission_for_command,
     private_message_permission_for_command,
 )
+from src.common.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.common.cmd_perm.metadata_text import SCENE_AUTO, SCENE_GROUP, SCENE_PRIVATE, join_usage, usage_line
 from src.common.config import BotConfig, GroupConfig, UserConfig
 from src.common.paths import plugin_data_dir
 from src.common.utils import HTTPXClient, is_bot_admin
@@ -37,19 +43,17 @@ from .voice import get_random_voice, get_voice_filepath
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛欢迎",
-    description="处理群变动信息以及支持自定义好友欢迎消息",
-    usage="""
-设置好友欢迎 - 设置自定义好友欢迎消息（文本/图片/图文混合，私聊）
-清除好友欢迎 - 清除已设置的好友欢迎消息（私聊）
-设置群欢迎 - 在当前群设置自定义入群欢迎（文本/图片/图文混合，群内）
-清除群欢迎 - 清除当前群的自定义入群欢迎（群内）
-所需权限以「牛牛帮助」本插件功能详情中的触发条件为准。
-    """.strip(),
+    description="入群/好友欢迎与自定义欢迎图文。",
+    usage=join_usage(
+        usage_line("设置好友欢迎 / 清除好友欢迎", "私聊维护新好友欢迎"),
+        usage_line("设置群欢迎 / 清除群欢迎", "群内维护入群欢迎"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot/Pallas-Bot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "command_permissions": [
             {
                 "id": "greeting.set_friend_welcome",
@@ -76,65 +80,56 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "入群欢迎",
                 "trigger_method": "on_notice",
-                "trigger_condition": "群成员增加通知",
-                "brief_des": "新成员入群时发送欢迎消息",
-                "detail_des": "新成员入群时发送欢迎",
+                "trigger_scene": SCENE_AUTO,
+                "trigger_condition": "新人入群",
+                "brief_des": "发送入群欢迎",
+                "detail_des": "若本群已「设置群欢迎」则优先发自定义内容，否则发默认欢迎。",
             },
             {
                 "func": "好友欢迎",
                 "trigger_method": "on_notice",
-                "trigger_condition": "好友添加通知",
-                "brief_des": "新好友添加时发送欢迎消息",
-                "detail_des": "新好友添加后自动发送自定义欢迎消息（若已设置）",
+                "trigger_scene": SCENE_AUTO,
+                "trigger_condition": "新好友添加",
+                "brief_des": "发送好友欢迎",
+                "detail_des": "若已「设置好友欢迎」则发送你保存的图文内容。",
             },
             {
                 "func": "设置好友欢迎",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "设置好友欢迎（私聊）",
+                "trigger_scene": SCENE_PRIVATE,
+                "trigger_condition": "设置好友欢迎",
                 "command_permission": "greeting.set_friend_welcome",
-                "brief_des": "设置自定义好友欢迎消息",
-                "detail_des": "私聊中按提示发送内容，支持文本、图片或图文混合",
+                "brief_des": "自定义新好友欢迎",
+                "detail_des": "私聊按提示发送文本、图片或图文混合。",
             },
             {
                 "func": "清除好友欢迎",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "清除好友欢迎（私聊）",
+                "trigger_scene": SCENE_PRIVATE,
+                "trigger_condition": "清除好友欢迎",
                 "command_permission": "greeting.clear_friend_welcome",
-                "brief_des": "清除已设置的好友欢迎消息",
-                "detail_des": "私聊中执行，清除已保存的好友欢迎素材",
+                "brief_des": "恢复默认好友欢迎",
+                "detail_des": "清除已保存的好友欢迎素材。",
             },
             {
                 "func": "设置群欢迎",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "设置群欢迎（群内）",
+                "trigger_scene": SCENE_GROUP,
+                "trigger_condition": "设置群欢迎",
                 "command_permission": "greeting.set_group_welcome",
-                "brief_des": "设置本群自定义入群欢迎",
-                "detail_des": "群内发起后按提示发送内容，支持文本、图片或图文混合；新人入群时若已配置则优先发送该欢迎",
+                "brief_des": "自定义本群入群欢迎",
+                "detail_des": "群内按提示发送文本、图片或图文混合。",
             },
             {
                 "func": "清除群欢迎",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "清除群欢迎（群内）",
+                "trigger_scene": SCENE_GROUP,
+                "trigger_condition": "清除群欢迎",
                 "command_permission": "greeting.clear_group_welcome",
-                "brief_des": "清除本群自定义入群欢迎",
-                "detail_des": "群内使用该命令，清除已保存的本群欢迎素材",
-            },
-            {
-                "func": "被踢自动拉黑",
-                "trigger_method": "on_notice",
-                "trigger_condition": "群成员减少通知（kick_me）",
-                "brief_des": "被踢出群时自动拉黑该群及操作人",
-                "detail_des": "可通过配置 enable_kick_ban=false 关闭此功能",
-            },
-            {
-                "func": "长时间禁言自动退群",
-                "trigger_method": "on_notice",
-                "trigger_condition": "群禁言通知（ban，目标为牛牛）",
-                "brief_des": "被禁言超过 36 小时时自动退群",
-                "detail_des": "禁言时长超过 36 小时则自动调用退群接口",
+                "brief_des": "恢复默认入群欢迎",
+                "detail_des": "清除本群已保存的入群欢迎素材。",
             },
         ],
-        "menu_template": "default",
     },
 )
 

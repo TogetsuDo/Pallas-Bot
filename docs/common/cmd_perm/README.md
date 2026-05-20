@@ -73,22 +73,41 @@ if not await satisfies_command_permission(bot, event, "my_plugin.do_something"):
 
 ## 帮助菜单：`menu_data` 与动态权限文案
 
-帮助二级页「本插件功能一览」、三级页详情中：
+帮助图展示（用户向）：
 
-- **触发条件**：`raw_trigger_condition`（metadata 原文，不含权限）。
-- **何人可用**：`effective_permission_avail_text`（如 `号主可用`、`任一：群管或号主 / 仅超管 可用`）；无 `command_permission(s)` 时二级表为「—」，三级表为「—」。
+| 字段 | 谁看 | 含义 |
+|------|------|------|
+| **`trigger_condition`** | 用户 | **怎么说**：完整口令或可见操作说明（如 `牛牛长草`、`牛牛决斗 @对手`） |
+| **`trigger_scene`** | 用户 | **场景**：`私聊` / `群内` / `自动`（可选；也可写在括号里由程序解析） |
+| **`trigger_method`** | 维护者 | 实现方式（`on_cmd`、`on_message` 等），**不出现在帮助图** |
+| **`help_audience`** | 维护者 | 默认 `user`；`maintainer` 时不进入帮助图（HTTP、WebUI 等） |
+| **`brief_des` / `detail_des`** | 用户 | 简介 / 详情页「怎么用」 |
+| **`command_permission(s)`** | 用户 | 映射为帮助表「何人可用」 |
+
+**不要**把 `on_message`、`on_cmd` 写在 `trigger_condition` 里——那是实现细节，不是用户要发的内容。
 
 ### 写法约定
 
-1. **`PluginMetadata.usage`**：只写**如何触发 / 做什么**；**不要**在各行说明里写「仅群管」「默认群主」等（WebUI 与 `.env` 覆盖后会与文案矛盾）。有独立命令权限的插件，可在 `usage` **末行**统一加一句（与 `greeting`、`duel` 一致）：
-   `所需权限以「牛牛帮助」本插件功能详情为准（可由 WebUI「命令权限」覆盖）。`
-2. **`trigger_condition`**：只描述**如何触发**（场景、私聊/群、关键词等），**不要**写死权限角色；权限单独由「何人可用」列展示。
-3. **`command_permission`**：字符串，单个命令 ID。
-4. **`command_permissions`**：字符串列表；多命令且当前生效等级不一致时，「何人可用」为「任一：…可用」。
+1. **`PluginMetadata.usage`**：分步说明**怎么用**；不写部署配置、环境变量、URL 生成方式。帮助图为图片，**勿写**「复制」「粘贴」等。**勿在 `usage` 里写权限脚注**——「何人可用」由帮助图自动展示。
+   - 每行：`口令或同义口令 — 说明`（分隔符用中文破折号 `—`，同义口令用 ` / ` 分隔）。
+   - 占位：`〈插件名〉`、`〈QQ号〉`；可选参数：`[别名]`、`[@用户]`。
+   - **编号**：用 `join_usage(usage_line(...), ...)` 拼接；**2 条及以上自动加** `1.` `2.` …，仅 1 条时不编号；`numbered=False` 可强制无序号。
+   - 维护者向 HTTP 插件同样遵循上述规则。
+   - 辅助函数：`metadata_text.usage_line`、`metadata_text.join_usage`。
+2. **`description`**：一句陈述功能，句号结尾；避免多余感叹号。
+3. **`trigger_condition`**：用户可见口令原文；自动功能写「新人入群」等，`trigger_scene` 为 `自动`。
+4. **`trigger_scene`**：仅 `群内` / `私聊` / `群内或私聊` / `自动`（常量见 `metadata_text.SCENE_*`）。
+5. **`brief_des`**：短句动宾，一般不加句号（约 8～20 字）。
+6. **`detail_des`**：一至两句；用户口令用「」；不写权限角色（由帮助表展示）。
+7. **`command_permission`** / **`command_permissions`**：与 `permission_for_command` 的 ID 一致。
 
-与 cmd_perm **无关**的业务前提（例如须**本 Bot 账号**为 QQ 群管才能执行某副作用）：写在 `detail_des` 或 `docs/plugins/<name>/README.md`，不要写进 `usage` / `trigger_condition`。
+与 cmd_perm **无关**的业务前提（例如须**本 Bot 账号**为 QQ 群管）：写在 `detail_des` 或 `docs/plugins/<name>/README.md`。
 
-`docs/plugins/*/README.md` 面向维护者，可用表格列出**代码默认等级**（如「群管/群主」），并注明实际以 WebUI / 本页覆盖配置为准。
+`docs/plugins/*/README.md` 面向维护者，结构见 [插件文档模板](../../plugins/TEMPLATE.md)；可用表格列出**代码默认等级**，并注明实际以 WebUI 为准。
+
+`PluginMetadata` 共用常量：`src/common/cmd_perm/metadata_defaults.py`（`PLUGIN_HOMEPAGE`、`PLUGIN_EXTRA_VERSION`、`PLUGIN_MENU_TEMPLATE`）。
+
+**帮助解析别名**：`牛牛帮助 远控` 等口令除包名、展示名外，还可匹配 `src/plugins/help/plugin_aliases.py` 中的简称；单插件可在 `extra["help_aliases"]` 追加。匹配时会忽略空格与英文大小写。
 
 `trigger_condition_with_effective_perm` 仍导出，行为与 `raw_trigger_condition` 相同（兼容旧代码）。
 
@@ -113,6 +132,8 @@ if not await satisfies_command_permission(bot, event, "my_plugin.do_something"):
 | `src/common/cmd_perm/menu_display.py` | `raw_trigger_condition`、`effective_permission_avail_text`、帮助用权限文案 |
 | `src/common/webui/env_sections.py` | `cmd_perm` 配置段与 payload 附加字段 |
 | `src/common/cmd_perm/declare.py` | `command_perm_row` / `command_perm_list` 声明辅助 |
+| `src/common/cmd_perm/metadata_defaults.py` | `PLUGIN_HOMEPAGE`、`PLUGIN_EXTRA_VERSION`、`PLUGIN_MENU_TEMPLATE` |
+| `src/common/cmd_perm/metadata_text.py` | `usage_line`、`join_usage`、`SCENE_*` |
 | `src/plugins/help/markdown_generator.py` | 二/三级帮助 Markdown 生成 |
 
 ## 自检清单（新插件上线前）
@@ -121,3 +142,5 @@ if not await satisfies_command_permission(bot, event, "my_plugin.do_something"):
 - [ ] `extra["command_permissions"]` 是否包含这些 ID 及可读 `label`？
 - [ ] `menu_data` 中带权限的条目是否已配置 `command_permission` 或 `command_permissions`，且 `trigger_condition` 无静态权限描述（权限由帮助「何人可用」列展示）？
 - [ ] 若命令仍需全局兜底：是否已在 `DEFAULT_COMMAND_PERMISSIONS` 或本插件 metadata 中声明默认等级？
+- [ ] `usage` 是否未写死权限角色、且无多余权限脚注？`homepage` 是否为 `PLUGIN_HOMEPAGE`？
+- [ ] `extra` 是否含 `menu_template: default`（维护者向 HTTP 功能用 `help_audience: maintainer`）？

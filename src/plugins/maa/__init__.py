@@ -63,7 +63,7 @@ __plugin_meta__ = PluginMetadata(
                 "command_permission": "maa.bind",
                 "brief_des": "绑定 MAA 与 QQ",
                 "detail_des": (
-                    "在 MAA「远程控制」复制设备标识符（32 位）；用户标识符填你的 QQ 号。"
+                    "设备标识符在 MAA「远程控制」查看（32 位）；用户标识符填你的 QQ 号。"
                     "须 MAA 已连上牛牛后再绑定。可选别名便于多台设备切换。"
                     "对接地址见本插件二级帮助「MAA 对接地址」。"
                 ),

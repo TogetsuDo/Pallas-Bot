@@ -211,6 +211,8 @@ __marimo__/
 resource/*
 !resource/arknights/
 !resource/arknights/**
+!resource/styles/
+!resource/styles/**
 accounts
 mixed_data
 backups

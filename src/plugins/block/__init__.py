@@ -4,27 +4,34 @@ from nonebot.adapters.onebot.v11 import GroupIncreaseNoticeEvent, GroupMessageEv
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
+from src.common.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.common.cmd_perm.metadata_text import join_usage, usage_line
 from src.common.config import BotConfig
 
 from .config import Config
 
 __plugin_meta__ = PluginMetadata(
-    name="其他牛牛消息拦截",
-    description="拦截其他牛牛的消息与通知。",
-    usage="""
-功能说明：
-将拦截其他牛牛的群消息与群通知事件。
-""".strip(),
+    name="其他牛牛拦截",
+    description="拦截其它牛牛账号在本群的群消息与通知。",
+    usage=join_usage(
+        usage_line("（内部）", "多 Bot 同群时避免互相触发"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot/Pallas-Bot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "menu_data": [
             {
                 "func": "消息拦截",
                 "trigger_method": "on_message/on_notice",
-                "trigger_condition": "",
+                "help_audience": "maintainer",
+                "trigger_condition": "内部拦截",
                 "brief_des": "拦截群事件",
                 "detail_des": "阻断群消息与通知，避免触发后续插件逻辑。",
             },

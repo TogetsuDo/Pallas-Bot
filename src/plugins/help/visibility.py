@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import json
 
-from nonebot import get_plugin_config
-
 from src.common.paths import plugin_data_dir
 
-from .config import Config
-
 _VISIBILITY_FILE = "help_visibility.json"
+
+# 始终不出现在普通帮助总览与「开启/关闭全部」范围内
+BUILTIN_HELP_HIDDEN_PLUGINS = frozenset({"pallas_webui", "pallas_protocol"})
 
 
 def _visibility_path():
@@ -17,6 +16,10 @@ def _visibility_path():
 
 def resolve_help_ignored_plugins() -> list[str]:
     try:
+        from nonebot import get_plugin_config
+
+        from .config import Config
+
         cfg = get_plugin_config(Config)
         vals = list(getattr(cfg, "ignored_plugins", []) or [])
     except Exception:
@@ -25,6 +28,7 @@ def resolve_help_ignored_plugins() -> list[str]:
 
 
 def load_help_hidden_plugins() -> list[str]:
+    """从 data 读取的额外隐藏名单（WebUI 可编辑）；不含内置隐藏。"""
     path = _visibility_path()
     if not path.exists():
         return []
@@ -39,6 +43,11 @@ def load_help_hidden_plugins() -> list[str]:
         return []
     out = [str(x).strip() for x in vals if str(x).strip()]
     return sorted(set(out))
+
+
+def resolve_help_hidden_plugins() -> list[str]:
+    """帮助总览与批量开关使用的完整隐藏名单（内置 + 文件）。"""
+    return sorted(BUILTIN_HELP_HIDDEN_PLUGINS | set(load_help_hidden_plugins()))
 
 
 def save_help_hidden_plugins(hidden_plugins: list[str]) -> list[str]:

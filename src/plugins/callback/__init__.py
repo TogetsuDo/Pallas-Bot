@@ -4,27 +4,34 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from nonebot import get_app, get_bot
 from nonebot.plugin import PluginMetadata
 
+from src.common.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.common.cmd_perm.metadata_text import join_usage, usage_line
 from src.common.config import GroupConfig, TaskManager
 from src.common.db import SingProgress
 
 app: FastAPI = get_app()
 
 __plugin_meta__ = PluginMetadata(
-    name="回调处理",
-    description="处理任务回调并转发执行结果。",
-    usage="""
-HTTP 回调：
-POST /callback/{task_id}
-""".strip(),
+    name="任务回调",
+    description="接收 AI/唱歌等异步任务 HTTP 回调并推送结果。",
+    usage=join_usage(
+        usage_line("POST /callback/{task_id}", "维护者配置 AI 服务回调地址"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot/Pallas-Bot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "menu_data": [
             {
                 "func": "任务回调",
                 "trigger_method": "http",
+                "help_audience": "maintainer",
                 "trigger_condition": "/callback/{task_id}",
                 "brief_des": "接收任务状态回调",
                 "detail_des": "根据回调结果更新任务状态并发送群消息或语音。",

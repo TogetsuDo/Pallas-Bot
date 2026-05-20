@@ -21,6 +21,12 @@ from nonebot.rule import Rule
 from nonebot_plugin_apscheduler import scheduler
 
 from src.common.cmd_perm import satisfies_command_permission
+from src.common.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.common.cmd_perm.metadata_text import SCENE_GROUP, SCENE_PRIVATE, join_usage, usage_line
 from src.common.config import BotConfig, GroupConfig, UserConfig, get_bot_admins, user_is_bot_admin
 from src.common.paths import plugin_data_dir
 from src.plugins.help.plugin_manager import is_plugin_disabled
@@ -28,31 +34,22 @@ from src.plugins.request_handler.config import Config
 
 __plugin_meta__ = PluginMetadata(
     name="申请管理",
-    description=(
-        "处理好友申请与入群邀请：通知管理员，支持命令同意/拒绝或引用牛牛发出的提醒消息审批；"
-        "被过滤好友申请每 4 小时轮询并提醒"
+    description="好友/入群申请提醒与审批，支持自动同意开关。",
+    usage=join_usage(
+        usage_line("查看好友申请 / 查看入群邀请", "列出待处理项"),
+        usage_line("同意", "处理最新提醒，或引用某条提醒后同意"),
+        usage_line("同意好友 / 拒绝好友 〈QQ〉", "按 QQ 审批好友"),
+        usage_line("同意所有好友 / 拒绝所有好友", "批量好友"),
+        usage_line("同意入群 / 拒绝入群 〈群号〉", "按群号审批入群"),
+        usage_line("同意所有入群 / 拒绝所有入群", "批量入群"),
+        usage_line("查看自动同意 / 开启或关闭自动同意好友 / 入群", "自动同意策略"),
     ),
-    usage="""
-查看好友申请 — 列出待处理好友（含需单独看的可疑申请）
-同意 — 同意最新一条提醒，或引用某条提醒后发送「同意」「好」或留空
-同意好友 <QQ> — 同意指定 QQ 的好友申请
-拒绝好友 <QQ> — 拒绝指定 QQ 的好友申请
-同意所有好友 — 同意当前全部好友申请
-拒绝所有好友 — 拒绝当前全部好友申请
-查看入群邀请 — 列出待处理入群邀请
-同意入群 <群号> — 同意指定群的邀请
-同意所有入群 — 同意当前全部入群邀请
-拒绝所有入群 — 拒绝当前全部入群邀请
-拒绝入群 <群号> — 拒绝指定群的邀请
-查看自动同意 — 查看自动同意开关
-开启/关闭自动同意好友 — 切换好友自动同意
-开启/关闭自动同意入群 — 切换入群自动同意
-    """.strip(),
     type="application",
-    homepage="https://github.com/PallasBot/Pallas-Bot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "command_permissions": [
             {"id": "request.list_friends", "label": "查看好友申请", "default": "bot_moderator"},
             {"id": "request.list_groups", "label": "查看入群邀请", "default": "bot_moderator"},
@@ -76,7 +73,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "查看待处理申请",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "查看好友申请 / 查看入群邀请（私聊）",
+                "trigger_scene": SCENE_PRIVATE,
+                "trigger_condition": "查看好友申请 / 查看入群邀请",
                 "command_permissions": ["request.list_friends", "request.list_groups"],
                 "brief_des": "列出待处理好友与入群邀请",
                 "detail_des": "好友列表含被拦截、需单独处理的可疑申请",
@@ -84,7 +82,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "快捷同意最近申请",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "同意（私聊）",
+                "trigger_scene": SCENE_PRIVATE,
+                "trigger_condition": "同意",
                 "command_permission": "request.approve_latest",
                 "brief_des": "快捷同意一条申请",
                 "detail_des": "私聊「同意」对应牛牛最新一条提醒；引用某条审批提醒则只处理该条",
@@ -92,7 +91,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "引用审批消息快捷同意",
                 "trigger_method": "on_message",
-                "trigger_condition": "私聊引用牛牛发出的审批提醒，正文为同意/好/留空",
+                "trigger_scene": SCENE_PRIVATE,
+                "trigger_condition": "引用审批提醒：同意 / 好 / 留空",
                 "command_permission": "request.approval_reply",
                 "brief_des": "按引用对应单一申请同意",
                 "detail_des": "须引用仍有效的审批消息；好友或入群邀请分别走对应处理逻辑",
@@ -100,7 +100,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "好友申请审批",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "同意好友 <QQ号>（私聊）",
+                "trigger_scene": SCENE_PRIVATE,
+                "trigger_condition": "同意好友 <QQ号>",
                 "command_permission": "request.approve_friend",
                 "brief_des": "按 QQ 同意好友",
                 "detail_des": "同意指定 QQ 的好友申请（含普通与可疑申请）",
@@ -108,7 +109,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "好友申请拒绝",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "拒绝好友 <QQ号>（私聊）",
+                "trigger_scene": SCENE_PRIVATE,
+                "trigger_condition": "拒绝好友 <QQ号>",
                 "command_permission": "request.reject_friend",
                 "brief_des": "按 QQ 拒绝好友",
                 "detail_des": "拒绝指定 QQ 的好友申请（含普通与可疑申请）",
@@ -116,7 +118,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "批量审批",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "同意/拒绝所有好友、同意/拒绝所有入群（私聊）",
+                "trigger_scene": SCENE_PRIVATE,
+                "trigger_condition": "同意所有好友 / 拒绝所有好友 / 同意所有入群 / 拒绝所有入群",
                 "command_permissions": [
                     "request.approve_all_friends",
                     "request.reject_all_friends",
@@ -129,7 +132,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "入群邀请审批",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "同意入群/拒绝入群 <群号>（私聊）",
+                "trigger_scene": SCENE_PRIVATE,
+                "trigger_condition": "同意入群 / 拒绝入群 <群号>",
                 "command_permissions": ["request.approve_group", "request.reject_group"],
                 "brief_des": "按群号同意或拒绝",
                 "detail_des": "同意或拒绝指定群的入群邀请",
@@ -137,7 +141,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "通知开关",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "牛牛开启/关闭 request_handler（与帮助里「牛牛开启/关闭」一致）",
+                "trigger_scene": SCENE_GROUP,
+                "trigger_condition": "牛牛开启 / 牛牛关闭 request_handler",
                 "command_permissions": ["help.plugin_enable", "help.plugin_disable"],
                 "brief_des": "是否推送申请提醒",
                 "detail_des": "在帮助系统里开关本插件的好友/入群提醒推送",
@@ -145,7 +150,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "自动同意开关",
                 "trigger_method": "on_cmd",
-                "trigger_condition": ("查看自动同意 / 开关自动同意好友 / 开关自动同意入群（私聊）"),
+                "trigger_scene": SCENE_PRIVATE,
+                "trigger_condition": "查看自动同意 / 开启或关闭自动同意好友 / 入群",
                 "command_permissions": [
                     "request.auto_accept_status",
                     "request.enable_auto_friend",
@@ -157,7 +163,6 @@ __plugin_meta__ = PluginMetadata(
                 "detail_des": "查看或切换好友申请、入群邀请的自动同意开关",
             },
         ],
-        "menu_template": "default",
     },
 )
 
