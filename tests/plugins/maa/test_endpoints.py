@@ -49,10 +49,11 @@ def test_format_help_contains_urls(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "https://nb.example.com/maa/reportStatus" in text
 
 
-def test_resolve_probe_uses_process_base_on_sharded_worker_without_public_base(
+def test_resolve_probe_uses_hub_public_base_on_sharded_worker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     cfg = Config(
+        maa_public_base_url="https://hub.example.com",
         maa_get_task_path="/maa/getTask",
         maa_report_status_path="/maa/reportStatus",
     )
@@ -67,8 +68,8 @@ def test_resolve_probe_uses_process_base_on_sharded_worker_without_public_base(
     monkeypatch.setattr(ep_mod, "get_driver", lambda: type("D", (), {"config": _DConf()})())
 
     ep = ep_mod.resolve_maa_probe_http_endpoints()
-    assert ep.get_task_url == "http://127.0.0.1:8092/maa/getTask"
-    assert ep.report_status_url == "http://127.0.0.1:8092/maa/reportStatus"
+    assert ep.get_task_url == "https://hub.example.com/maa/getTask"
+    assert ep.report_status_url == "https://hub.example.com/maa/reportStatus"
 
 
 def test_maa_public_http_base_uses_hub_when_sharded(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -85,7 +86,7 @@ def test_maa_public_http_base_uses_hub_when_sharded(monkeypatch: pytest.MonkeyPa
     assert inferred is True
 
 
-def test_probe_uses_process_url_on_sharded_worker_even_with_public_base(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_probe_uses_public_base_on_sharded_worker(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = Config(maa_public_base_url="https://hub.example.com")
     patch_maa_config(monkeypatch, cfg)
     monkeypatch.setattr("src.common.shard.registry.config.is_sharding_active", lambda: True)
@@ -97,7 +98,7 @@ def test_probe_uses_process_url_on_sharded_worker_even_with_public_base(monkeypa
 
     monkeypatch.setattr(ep_mod, "get_driver", lambda: type("D", (), {"config": _DConf()})())
     ep = ep_mod.resolve_maa_probe_http_endpoints(cfg)
-    assert ep.get_task_url == "http://127.0.0.1:8091/maa/getTask"
+    assert ep.get_task_url == "https://hub.example.com/maa/getTask"
 
 
 def test_resolve_probe_keeps_public_base_when_unified(monkeypatch: pytest.MonkeyPatch) -> None:

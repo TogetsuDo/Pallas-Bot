@@ -55,9 +55,21 @@ class Config(BaseModel, extra="ignore"):
 def on_maa_config_reload(cfg: Config) -> None:  # noqa: ARG001
     from nonebot import get_app
 
-    from .http_routes import remount_maa_http_routes
+    from src.common.bot_runtime.roles import is_hub_role, is_sharded_worker
+    from src.common.shard.registry.config import is_sharding_active
 
-    remount_maa_http_routes(get_app())
+    app = get_app()
+    if is_hub_role():
+        from src.common.shard.coord.maa_hub_routes import remount_maa_hub_forward_routes
+
+        from .http_routes import unmount_maa_http_routes
+
+        unmount_maa_http_routes(app)
+        remount_maa_hub_forward_routes(app)
+    elif not is_sharding_active() or is_sharded_worker():
+        from .http_routes import remount_maa_http_routes
+
+        remount_maa_http_routes(app)
     try:
         from src.plugins.help.plugin_manager import clear_help_cache
 

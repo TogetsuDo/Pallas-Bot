@@ -8,6 +8,16 @@ from .http_api import GetTaskResponse, current_maa_http_paths, maa_get_task, maa
 _mounted_paths: frozenset[str] = frozenset()
 
 
+def unmount_maa_http_routes(app: FastAPI) -> None:
+    """移除 worker 侧 MAA 路由（hub 重载配置时避免覆盖 maa_hub 转发）。"""
+    global _mounted_paths
+    if not _mounted_paths:
+        return
+    app.router.routes = [route for route in app.router.routes if getattr(route, "path", None) not in _mounted_paths]
+    _mounted_paths = frozenset()
+    logger.info("maa http routes unmounted")
+
+
 def remount_maa_http_routes(app: FastAPI) -> None:
     """按当前配置挂载 getTask / reportStatus；路径变更时移除旧路由。"""
     global _mounted_paths

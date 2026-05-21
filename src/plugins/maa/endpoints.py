@@ -101,15 +101,7 @@ def resolve_maa_process_http_endpoints(cfg: Config | None = None) -> MaaHttpEndp
 
 
 def resolve_maa_probe_http_endpoints(cfg: Config | None = None) -> MaaHttpEndpoints:
-    """连通性探测：分片 worker 测本机路由；hub / 单进程测对外 URL。"""
-    from src.common.bot_runtime.roles import is_sharded_hub, is_sharded_worker
-    from src.common.shard.registry.config import is_sharding_active
-
-    cfg = cfg if cfg is not None else get_maa_config()
-    if is_sharding_active() and is_sharded_worker():
-        return resolve_maa_process_http_endpoints(cfg)
-    if is_sharding_active() and is_sharded_hub():
-        return resolve_maa_http_endpoints(cfg)
+    """连通性探测：与 MAA 客户端轮询地址一致（分片时为 hub 对外 URL，非 worker 本机端口）。"""
     return resolve_maa_http_endpoints(cfg)
 
 

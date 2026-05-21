@@ -8,7 +8,7 @@ import httpx
 from fastapi import HTTPException
 from nonebot import logger
 
-from src.common.shard.coord.maa_route_registry import resolve_worker_port_for_maa_user
+from src.common.shard.coord.maa_route_registry import register_maa_user_route, resolve_worker_port_for_maa_user
 
 
 async def forward_maa_json_post(
@@ -35,4 +35,6 @@ async def forward_maa_json_post(
         body = resp.json()
     except Exception:
         body = {"message": "ok"}
+    if user.strip():
+        register_maa_user_route(user, worker_port=int(port))
     return resp.status_code, body

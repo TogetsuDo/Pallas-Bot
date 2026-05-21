@@ -8,9 +8,11 @@ import time
 from pathlib import Path
 from typing import Any
 
+from nonebot import logger
+
 from src.common.paths import plugin_data_dir
 from src.common.shard.registry.config import get_shard_registry_settings, is_sharding_active
-from src.common.shard.registry.store import worker_port_for_shard
+from src.common.shard.registry.store import get_shard_registry, worker_port_for_shard
 
 _PLUGIN = "pallas_shard"
 _TTL_SEC = 86400.0 * 7
@@ -111,6 +113,7 @@ def register_maa_user_route(user: str, *, worker_port: int | None = None) -> Non
     lk = _lock_path(path)
     fd = _acquire_lock(lk)
     if fd is None:
+        logger.warning("maa route register lock timeout user={}", key)
         return
     s = get_shard_registry_settings()
     try:
@@ -130,17 +133,24 @@ def register_maa_user_route(user: str, *, worker_port: int | None = None) -> Non
 def resolve_worker_port_for_maa_user(user: str) -> int | None:
     if not is_sharding_active():
         return None
-    path = _route_path(user)
-    if path is None:
+    key = _user_key(user)
+    if key is None:
         return None
-    rec = _read(path)
-    if not rec or _is_stale(rec):
-        try:
-            path.unlink(missing_ok=True)
-        except OSError:
-            pass
+    path = _route_path(key)
+    if path is not None:
+        rec = _read(path)
+        if rec and not _is_stale(rec):
+            try:
+                return int(rec["worker_port"])
+            except (KeyError, TypeError, ValueError):
+                pass
+        else:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+    reg = get_shard_registry()
+    sid = reg.shard_for_bot(key)
+    if sid is None:
         return None
-    try:
-        return int(rec["worker_port"])
-    except (KeyError, TypeError, ValueError):
-        return None
+    return int(worker_port_for_shard(int(sid), registry=reg))
