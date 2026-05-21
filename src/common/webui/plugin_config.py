@@ -36,15 +36,22 @@ def default_parse_env_value(name: str, raw: str, ann: Any) -> Any:  # noqa: ARG0
     return text
 
 
+def env_key_for_field(name: str, field_to_env: dict[str, str] | None) -> str:
+    if field_to_env and name in field_to_env:
+        return field_to_env[name]
+    return name.upper()
+
+
 def config_from_env[C: BaseModel](
     config_cls: type[C],
     *,
     parse_env_value: ParseEnvValue | None = None,
+    field_to_env: dict[str, str] | None = None,
 ) -> C:
     parse = parse_env_value or default_parse_env_value
     data: dict[str, Any] = {}
     for name, field in config_cls.model_fields.items():
-        key = name.upper()
+        key = env_key_for_field(name, field_to_env)
         raw = repo_env_raw_value(key)
         if raw is None:
             continue
@@ -64,6 +71,7 @@ def install_hot_reload_config[C: BaseModel](
     *,
     config_module: str,
     parse_env_value: ParseEnvValue | None = None,
+    field_to_env: dict[str, str] | None = None,
     on_reload: OnReload | None = None,
     register_keys: tuple[str, ...] | None = None,
 ) -> PluginWebuiConfigHandle:
@@ -82,7 +90,11 @@ def install_hot_reload_config[C: BaseModel](
         with lock:
             if cached is None:
                 if repo_layered_dotenv_files_exist():
-                    cached = config_from_env(config_cls, parse_env_value=parse)
+                    cached = config_from_env(
+                        config_cls,
+                        parse_env_value=parse,
+                        field_to_env=field_to_env,
+                    )
                 else:
                     cached = get_plugin_config(config_cls)
             return cached

@@ -4,20 +4,20 @@ from collections import defaultdict
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING
 
-from nonebot import get_bots, get_plugin_config
+from nonebot import get_bots
 from nonebot.adapters.onebot.v11 import Message
 
 from src.common.config import BotConfig
 from src.common.db import Answer, make_context_repository
 
 from .ban_manager import BanManager
-from .config import Config
+from .config import get_repeater_config
 
 if TYPE_CHECKING:
     from .model import ChatData
 
 
-plugin_config = get_plugin_config(Config)
+plugin_config = get_repeater_config()
 
 
 context_repo = make_context_repository()

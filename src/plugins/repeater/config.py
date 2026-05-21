@@ -1,5 +1,12 @@
 from pydantic import BaseModel, Field
 
+from src.common.webui import install_hot_reload_config
+
+FIELD_TO_ENV: dict[str, str] = {
+    "learn_concurrency": "PALLAS_REPEATER_LEARN_CONCURRENCY",
+    "learn_queue_max_size": "PALLAS_REPEATER_LEARN_QUEUE_SIZE",
+}
+
 
 class Config(BaseModel, extra="ignore"):
     answer_threshold: int = Field(
@@ -70,6 +77,18 @@ class Config(BaseModel, extra="ignore"):
         default=100,
         description="持久化后每个群在内存中保留的最近消息条数。",
     )
+    learn_concurrency: int = Field(
+        default=24,
+        ge=1,
+        le=128,
+        description=("后台 learn 并发；WebUI「通用配置 → 复读 / 后台 learn」或 PALLAS_REPEATER_LEARN_CONCURRENCY。"),
+    )
+    learn_queue_max_size: int = Field(
+        default=2048,
+        ge=64,
+        le=20000,
+        description="待 learn 队列长度；WebUI 同段或 PALLAS_REPEATER_LEARN_QUEUE_SIZE，满则只丢 learn。",
+    )
     enable_reaction: bool = Field(default=True, description="是否启用 QQ 表情回应（Reaction）能力。")
     enable_probability_reaction: bool = Field(
         default=True,
@@ -91,3 +110,67 @@ class Config(BaseModel, extra="ignore"):
         default=True,
         description="跟表情回应时是否优先使用与对方相同的表情。",
     )
+
+
+def sync_repeater_runtime_constants(cfg: Config) -> None:
+    from . import emoji_reaction as emoji_mod
+    from . import model as model_mod
+    from . import responder as resp_mod
+
+    for mod in (model_mod, resp_mod, emoji_mod):
+        mod.plugin_config = cfg
+
+    choice = list(range(cfg.answer_threshold - len(cfg.answer_threshold_weights) + 1, cfg.answer_threshold + 1))
+    chat_attrs = {
+        "ANSWER_THRESHOLD": cfg.answer_threshold,
+        "ANSWER_THRESHOLD_WEIGHTS": cfg.answer_threshold_weights,
+        "TOPICS_SIZE": cfg.topics_size,
+        "TOPICS_IMPORTANCE": cfg.topics_importance,
+        "CROSS_GROUP_THRESHOLD": cfg.cross_group_threshold,
+        "REPEAT_THRESHOLD": cfg.repeat_threshold,
+        "SPEAK_THRESHOLD": cfg.speak_threshold,
+        "DUPLICATE_REPLY": cfg.duplicate_reply,
+        "SPLIT_PROBABILITY": cfg.split_probability,
+        "DRUNK_TTS_THRESHOLD": cfg.drunk_tts_threshold,
+        "SPEAK_CONTINUOUSLY_PROBABILITY": cfg.speak_continuously_probability,
+        "SPEAK_POKE_PROBABILITY": cfg.speak_poke_probability,
+        "SPEAK_CONTINUOUSLY_MAX_LEN": cfg.speak_continuously_max_len,
+        "SAVE_TIME_THRESHOLD": cfg.save_time_threshold,
+        "SAVE_COUNT_THRESHOLD": cfg.save_count_threshold,
+        "SAVE_RESERVED_SIZE": cfg.save_reserved_size,
+        "ANSWER_THRESHOLD_CHOICE_LIST": choice,
+    }
+    responder_attrs = {
+        "ANSWER_THRESHOLD": cfg.answer_threshold,
+        "ANSWER_THRESHOLD_WEIGHTS": cfg.answer_threshold_weights,
+        "TOPICS_SIZE": cfg.topics_size,
+        "TOPICS_IMPORTANCE": cfg.topics_importance,
+        "CROSS_GROUP_THRESHOLD": cfg.cross_group_threshold,
+        "REPEAT_THRESHOLD": cfg.repeat_threshold,
+        "DUPLICATE_REPLY": cfg.duplicate_reply,
+        "SPLIT_PROBABILITY": cfg.split_probability,
+        "SAVE_RESERVED_SIZE": cfg.save_reserved_size,
+        "ANSWER_THRESHOLD_CHOICE_LIST": choice,
+    }
+    for name, value in chat_attrs.items():
+        setattr(model_mod.Chat, name, value)
+    for name, value in responder_attrs.items():
+        setattr(resp_mod.Responder, name, value)
+
+
+def on_repeater_config_reload(cfg: Config) -> None:
+    sync_repeater_runtime_constants(cfg)
+    from .learn_runtime_config import clear_repeater_learn_runtime_config_cache
+
+    clear_repeater_learn_runtime_config_cache()
+
+
+plugin_webui = install_hot_reload_config(
+    Config,
+    config_module=__name__,
+    field_to_env=FIELD_TO_ENV,
+    on_reload=on_repeater_config_reload,
+)
+get_repeater_config = plugin_webui.get
+reload_repeater_config = plugin_webui.reload
+clear_repeater_config_cache = plugin_webui.clear_cache

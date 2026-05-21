@@ -2,13 +2,11 @@ import re
 import time
 from collections import defaultdict
 
-from nonebot import get_plugin_config
-
 from src.common.db import Ban, Context, make_blacklist_repository, make_context_repository
 
-from .config import Config
+from .config import get_repeater_config
 
-plugin_config = get_plugin_config(Config)
+plugin_config = get_repeater_config()
 
 
 context_repo = make_context_repository()

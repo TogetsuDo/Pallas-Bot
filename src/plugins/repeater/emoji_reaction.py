@@ -2,7 +2,7 @@ import operator
 import random
 import time
 
-from nonebot import get_plugin_config, logger, on_message, on_notice
+from nonebot import logger, on_message, on_notice
 from nonebot.adapters import Bot, Event
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, NoticeEvent
 from nonebot.exception import ActionFailed
@@ -11,7 +11,7 @@ from nonebot.typing import T_State
 from nonebot_plugin_alconna import message_reaction
 from nonebot_plugin_apscheduler import scheduler
 
-from .config import Config
+from .config import get_repeater_config
 
 EMOJI_IDS = (
     4,
@@ -189,7 +189,7 @@ def get_random_emoji() -> str:
 
 sent_reactions: dict[str, dict[int, float]] = {}
 last_cleanup_time = 0
-plugin_config = get_plugin_config(Config)
+plugin_config = get_repeater_config()
 
 
 def should_trigger_reaction() -> bool:

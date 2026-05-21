@@ -5,18 +5,18 @@ from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
-from nonebot import get_plugin_config, logger
+from nonebot import logger
 
 from src.common.db import Message as MessageModel
 from src.common.db import make_message_repository
 
-from .config import Config
+from .config import get_repeater_config
 
 if TYPE_CHECKING:
     from .model import ChatData
 
 
-plugin_config = get_plugin_config(Config)
+plugin_config = get_repeater_config()
 
 
 message_repo = make_message_repository()

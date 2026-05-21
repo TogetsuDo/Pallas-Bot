@@ -8,7 +8,6 @@ from functools import cached_property
 from typing import cast
 
 import pypinyin
-from nonebot import get_plugin_config
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message
 
 from src.common.config import BotConfig
@@ -16,7 +15,7 @@ from src.common.db import Message as MessageModel
 from src.common.db import make_context_repository
 
 from .ban_manager import BanManager
-from .config import Config
+from .config import get_repeater_config
 from .learner import Learner
 from .message_store import MessageStore
 from .responder import Responder
@@ -33,7 +32,7 @@ except ImportError:
     print("Using jieba for repeater")
 
 
-plugin_config = get_plugin_config(Config)
+plugin_config = get_repeater_config()
 
 
 context_repo = make_context_repository()

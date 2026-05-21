@@ -6,6 +6,7 @@
 
 新增段：在 ``_registered_sections`` 中追加；插件段可用 ``_plugin_env_section_from_module``。
 已使用 ``install_hot_reload_config`` 的插件会通过注册表读取当前值。
+``ingress`` / ``repeater_learn`` 等 common 段保存后会清缓存并触发热重载钩子。
 """
 
 from __future__ import annotations
@@ -158,6 +159,27 @@ def _plugin_env_section_from_module(
     )
 
 
+def _repeater_learn_section() -> WebuiEnvSection:
+    from src.plugins.repeater.learn_runtime_config import (
+        RepeaterLearnRuntimeConfig,
+        get_repeater_learn_runtime_config,
+    )
+
+    field_to_env = {
+        "learn_concurrency": "PALLAS_REPEATER_LEARN_CONCURRENCY",
+        "learn_queue_max_size": "PALLAS_REPEATER_LEARN_QUEUE_SIZE",
+    }
+    return WebuiEnvSection(
+        id="repeater_learn",
+        title="复读 / 后台 learn",
+        module_label="src.plugins.repeater",
+        model_cls=RepeaterLearnRuntimeConfig,
+        read_current=get_repeater_learn_runtime_config,
+        field_to_env=field_to_env,
+        skip_fields=frozenset(),
+    )
+
+
 def _cmd_perm_section() -> WebuiEnvSection:
     from src.common.cmd_perm.config import CmdPermConfig, get_cmd_perm_config
 
@@ -182,6 +204,9 @@ def _registered_sections() -> tuple[WebuiEnvSection, ...]:
     parts: list[WebuiEnvSection] = []
     if (_COMMON_ROOT / "message_scrub" / "config.py").is_file():
         parts.append(_message_scrub_section())
+    repeater_learn_cfg = _COMMON_ROOT.parent / "plugins" / "repeater" / "learn_runtime_config.py"
+    if repeater_learn_cfg.is_file():
+        parts.append(_repeater_learn_section())
     parts.append(_cmd_perm_section())
     parts.extend(
         s
@@ -315,6 +340,26 @@ def apply_webui_env_section_patch(section_id: str, patch: dict[str, Any]) -> dic
             clear_cmd_perm_cache()
         except Exception:
             pass
+    elif section_id == "repeater_learn":
+        try:
+            import asyncio
+
+            from nonebot import logger
+
+            from src.plugins.repeater.learn_queue import reload_repeater_learn_worker_runtime
+
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(reload_repeater_learn_worker_runtime())
+            except RuntimeError:
+                import asyncio as aio
+
+                aio.run(reload_repeater_learn_worker_runtime())
+            logger.info("repeater_learn: WebUI 已写入 .env，learn 并发/队列已热重载")
+        except Exception as e:
+            from nonebot import logger
+
+            logger.warning("repeater_learn hot reload failed: {}", e)
     else:
         plugin_module = s.module_label if s.module_label.startswith("src.") else ""
         if plugin_module:

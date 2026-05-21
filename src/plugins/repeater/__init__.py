@@ -35,7 +35,10 @@ from src.plugins.dream.ban_ack_state import DREAM_BAN_ACK_SENT_STATE_KEY
 
 from .ban_state import REPEATER_BAN_ACK_SENT_STATE_KEY
 from .emoji_reaction import reaction_msg
+from .learn_queue import bind_repeater_learn_lifecycle, enqueue_repeater_learn
 from .model import Chat
+
+bind_repeater_learn_lifecycle()
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛复读",
@@ -203,7 +206,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         if seg.type == "image":
             await insert_image(seg)
 
-    await chat.learn()
+    await enqueue_repeater_learn(chat, event)
 
     if not answers:
         return

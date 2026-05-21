@@ -13,6 +13,29 @@ from src.common.env_dotenv import env_value_to_str, upsert_env_dotenv_items
 
 from .registry import read_plugin_config, reload_plugin_config
 
+_REPEATER_FIELD_TO_ENV = {
+    "learn_concurrency": "PALLAS_REPEATER_LEARN_CONCURRENCY",
+    "learn_queue_max_size": "PALLAS_REPEATER_LEARN_QUEUE_SIZE",
+}
+
+
+def plugin_field_env_key(plugin_name: str, field_name: str) -> str:
+    if plugin_name == "repeater":
+        return _REPEATER_FIELD_TO_ENV.get(field_name, field_name.upper())
+    return field_name.upper()
+
+
+def schedule_repeater_learn_reload() -> None:
+    try:
+        import asyncio
+
+        from src.plugins.repeater.learn_queue import reload_repeater_learn_worker_runtime
+
+        loop = asyncio.get_running_loop()
+        loop.create_task(reload_repeater_learn_worker_runtime())
+    except (RuntimeError, Exception):
+        pass
+
 
 def find_loaded_plugin(plugin_name: str):
     target = (plugin_name or "").strip()
@@ -138,7 +161,7 @@ def plugin_config_payload(
             "kind": field_kind_from_annotation(f.annotation),
             "required": bool(f.is_required()),
             "description": str(f.description or ""),
-            "env_key": key.upper(),
+            "env_key": plugin_field_env_key(plugin_name, key),
             "default": jsonable_value(default_value),
             "current": jsonable_value(cur),
         })
@@ -173,10 +196,12 @@ def apply_plugin_config_patch(
         validated = validated_obj.model_dump(mode="python")
     except ValidationError as e:
         raise ValueError(format_validation_error(e)) from e
-    env_items = {str(k).upper(): env_value_to_str(validated[k]) for k in normalized}
+    env_items = {plugin_field_env_key(plugin_name, k): env_value_to_str(validated[k]) for k in normalized}
     upsert_env_dotenv_items(env_items)
     try:
         reload_plugin_config(module_name)
     except Exception:
         pass
+    if plugin_name == "repeater" and {"learn_concurrency", "learn_queue_max_size"} & normalized.keys():
+        schedule_repeater_learn_reload()
     return plugin_config_payload(plugin_name, current_values=validated)
