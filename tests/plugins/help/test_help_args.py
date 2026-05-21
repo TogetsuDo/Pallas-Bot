@@ -1,0 +1,68 @@
+from src.plugins.help.help_args import (
+    PLUGIN_DISABLE_COMMAND,
+    PLUGIN_ENABLE_COMMAND,
+    extract_help_tail,
+    parse_help_args,
+    parse_plugin_toggle_args,
+)
+
+
+def test_extract_help_tail_strips_slash_prefix() -> None:
+    assert extract_help_tail("/牛牛帮助 1") == "1"
+    assert extract_help_tail("牛牛帮助MAA远控") == "MAA远控"
+
+
+def test_parse_spaced_args() -> None:
+    assert parse_help_args("牛牛帮助 1", plugin_count=10) == ["1"]
+    assert parse_help_args("牛牛帮助 1 2", plugin_count=10) == ["1", "2"]
+    assert parse_help_args("牛牛帮助 MAA远控", plugin_count=10) == ["MAA远控"]
+
+
+def test_parse_compact_plugin_index() -> None:
+    assert parse_help_args("牛牛帮助1", plugin_count=10) == ["1"]
+    assert parse_help_args("/牛牛帮助3", plugin_count=10) == ["3"]
+
+
+def test_parse_compact_plugin_index_when_many_plugins() -> None:
+    assert parse_help_args("牛牛帮助12", plugin_count=17) == ["12"]
+
+
+def test_parse_compact_plugin_and_function_index() -> None:
+    assert parse_help_args("牛牛帮助12", plugin_count=5) == ["1", "2"]
+    assert parse_help_args("牛牛帮助12", plugin_count=1) == ["1", "2"]
+
+
+def test_parse_compact_plugin_name_without_space() -> None:
+    assert parse_help_args("牛牛帮助MAA远控", plugin_count=10) == ["MAA远控"]
+
+
+def test_parse_compact_plugin_index_and_function_name() -> None:
+    assert parse_help_args("牛牛帮助1复读", plugin_count=10) == ["1", "复读"]
+
+
+def test_parse_empty_is_home() -> None:
+    assert parse_help_args("牛牛帮助", plugin_count=10) == []
+    assert parse_help_args("  牛牛帮助  ", plugin_count=10) == []
+
+
+def test_parse_toggle_compact_plugin_index() -> None:
+    assert parse_plugin_toggle_args("牛牛开启1", PLUGIN_ENABLE_COMMAND, plugin_count=10) == ["1"]
+    assert parse_plugin_toggle_args("牛牛关闭MAA远控", PLUGIN_DISABLE_COMMAND, plugin_count=10) == [
+        "MAA远控"
+    ]
+
+
+def test_parse_toggle_does_not_split_plugin_and_function_digits() -> None:
+    assert parse_plugin_toggle_args("牛牛开启12", PLUGIN_ENABLE_COMMAND, plugin_count=5) == ["12"]
+    assert parse_plugin_toggle_args("牛牛关闭12", PLUGIN_DISABLE_COMMAND, plugin_count=17) == ["12"]
+
+
+def test_parse_toggle_compact_with_global_suffix() -> None:
+    assert parse_plugin_toggle_args("牛牛开启1global", PLUGIN_ENABLE_COMMAND, plugin_count=10) == [
+        "1",
+        "global",
+    ]
+    assert parse_plugin_toggle_args("牛牛关闭 1 global", PLUGIN_DISABLE_COMMAND, plugin_count=10) == [
+        "1",
+        "global",
+    ]

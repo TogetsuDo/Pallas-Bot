@@ -2,6 +2,7 @@ from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, PrivateMessageEv
 from nonebot.permission import SUPERUSER
 from nonebot.typing import T_State
 
+from .help_args import parse_help_args
 from .markdown_generator import (
     HelpMarkdownIssue,
     generate_function_detail_markdown,
@@ -12,6 +13,7 @@ from .plugin_manager import (
     fill_plugin_status,
     find_plugin,
     find_plugin_by_identifier,
+    get_help_menu_plugins,
     is_plugin_disabled,
     plugin_display_name,
     toggle_plugin,
@@ -45,13 +47,18 @@ async def handle_help_command(
 ):
     """统一处理帮助命令，支持群聊和私聊"""
 
-    args = event.get_plaintext().strip().split()[1:] if event.get_plaintext() else []
     bot_id, group_id = get_context_info(bot, event)
     style_name = default_style_name
 
     is_superuser = await SUPERUSER(bot, event)
     is_private = isinstance(event, PrivateMessageEvent)
     show_ignored = is_superuser and is_private
+
+    menu_plugins = get_help_menu_plugins(
+        show_ignored=show_ignored,
+        ignored_plugins=plugin_config.ignored_plugins if plugin_config else [],
+    )
+    args = parse_help_args(event.get_plaintext() or "", plugin_count=len(menu_plugins))
 
     if len(args) == 0:
         markdown_content = generate_plugins_markdown(
@@ -110,14 +117,14 @@ async def handle_plugin_operation(
     bot: Bot, event: GroupMessageEvent | PrivateMessageEvent, state: T_State, action: str, matcher
 ):
     """处理插件操作命令，支持群聊和私聊"""
-    args = event.get_plaintext().strip().split()[1:] if event.get_plaintext() else []
+    args: list[str] = list(state.get("toggle_args") or [])
     bot_id, group_id = get_context_info(bot, event)
 
     is_superuser = await SUPERUSER(bot, event)
     is_private = isinstance(event, PrivateMessageEvent)
     show_ignored = is_superuser and is_private
 
-    plugin_identifier = state.get("plugin_name", "") or (args[0] if args else "")
+    plugin_identifier = args[0] if args else ""
 
     if not plugin_identifier:
         await matcher.finish(f"博士，即使身为大祭司，你不说想要{action}什么，我也帮不了你呀")

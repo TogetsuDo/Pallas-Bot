@@ -20,6 +20,12 @@ from .handlers import (
     handle_help_command,
     handle_plugin_operation,
 )
+from .help_args import (
+    PLUGIN_DISABLE_COMMAND,
+    PLUGIN_ENABLE_COMMAND,
+    parse_plugin_toggle_args,
+)
+from .plugin_manager import get_help_menu_plugins
 from .styles import get_default_style, load_config, load_custom_styles
 
 __plugin_meta__ = PluginMetadata(
@@ -136,36 +142,44 @@ async def handle_help_cmd(bot: Bot, event: GroupMessageEvent | PrivateMessageEve
     await handle_help_command(bot, event, state, plugin_config, AVAILABLE_STYLES, DEFAULT_STYLE_NAME, help_cmd)
 
 
-def extract_plugin_name_from_command(event: GroupMessageEvent | PrivateMessageEvent, prefix: str) -> str:
-    """从命令文本中提取插件名称"""
-    message_text = event.get_plaintext().strip()
-    if message_text.startswith(prefix):
-        args = message_text[len(prefix) :].strip().split()
-        return args[0] if args else ""
-    return ""
+def _toggle_command_plugin_count() -> int:
+    return len(
+        get_help_menu_plugins(
+            show_ignored=False,
+            ignored_plugins=plugin_config.ignored_plugins if plugin_config else [],
+        )
+    )
 
 
 @plugin_enable_cmd.handle()
 async def handle_enable_command(bot: Bot, event: GroupMessageEvent | PrivateMessageEvent, state: T_State):
     """处理功能启用命令"""
-    plugin_name = extract_plugin_name_from_command(event, "牛牛开启")
-    if not plugin_name:
+    args = parse_plugin_toggle_args(
+        event.get_plaintext() or "",
+        PLUGIN_ENABLE_COMMAND,
+        plugin_count=_toggle_command_plugin_count(),
+    )
+    if not args:
         await plugin_enable_cmd.finish("博士，即使身为大祭司，你不说想要开启什么，我也帮不了你呀")
         return
 
-    state["plugin_name"] = plugin_name
+    state["toggle_args"] = args
     await handle_plugin_operation(bot, event, state, "enable", plugin_enable_cmd)
 
 
 @plugin_disable_cmd.handle()
 async def handle_disable_command(bot: Bot, event: GroupMessageEvent | PrivateMessageEvent, state: T_State):
     """处理功能禁用命令"""
-    plugin_name = extract_plugin_name_from_command(event, "牛牛关闭")
-    if not plugin_name:
+    args = parse_plugin_toggle_args(
+        event.get_plaintext() or "",
+        PLUGIN_DISABLE_COMMAND,
+        plugin_count=_toggle_command_plugin_count(),
+    )
+    if not args:
         await plugin_disable_cmd.finish("博士，即使身为大祭司，你不说想要关闭什么，我也帮不了你呀")
         return
 
-    state["plugin_name"] = plugin_name
+    state["toggle_args"] = args
     await handle_plugin_operation(bot, event, state, "disable", plugin_disable_cmd)
 
 
