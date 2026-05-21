@@ -13,6 +13,7 @@ from src.common.cmd_perm.metadata_text import SCENE_BOTH, SCENE_GROUP, join_usag
 from src.common.config import BotConfig, GroupConfig
 
 from .config import Config
+from .event_preprocessor import IGNORED_PLUGINS  # noqa: F401
 
 # 导入处理函数
 from .handlers import (

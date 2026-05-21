@@ -213,6 +213,7 @@ resource/*
 !resource/arknights/**
 !resource/styles/
 !resource/styles/**
+resource/styles/**/__pycache__/
 accounts
 mixed_data
 backups
