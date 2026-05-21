@@ -19,7 +19,7 @@ _group_event_sig_set: set[tuple[int, int, str, int]] = set()
 
 _CROSS_BOT_CLAIM_MAX = 4000
 _cross_bot_claim_lock = asyncio.Lock()
-_cross_bot_claim_owners: dict[tuple[str, tuple[int, int, str, int]], int] = {}
+_cross_bot_claim_owners: dict[tuple[str, tuple[int, int, str]], int] = {}
 
 
 def normalize_group_raw_message(raw_message: str) -> str:
@@ -45,9 +45,11 @@ def cross_bot_message_signature(
     message_time: int,
     *,
     use_plaintext: bool = True,
-) -> tuple[int, int, str, int]:
+) -> tuple[int, int, str]:
+    """多牛抢占签名：群 + 用户 + 正文，不含 event.time。"""
+    del message_time
     body = normalize_group_plaintext(message_body) if use_plaintext else normalize_group_raw_message(message_body)
-    return (group_id, user_id, body, normalize_message_time(message_time))
+    return (group_id, user_id, body)
 
 
 def cross_bot_group_message_key(
@@ -66,7 +68,7 @@ def cross_bot_group_message_key(
         message_time,
         use_plaintext=use_plaintext,
     )
-    payload = f"{sig[0]}:{sig[1]}:{sig[3]}:{sig[2]}"
+    payload = f"{sig[0]}:{sig[1]}:{sig[2]}"
     return int(hashlib.sha256(payload.encode("utf-8")).hexdigest()[:15], 16)
 
 

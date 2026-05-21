@@ -29,11 +29,13 @@ def test_cross_bot_key_same_plaintext_different_raw_cq() -> None:
     assert k_plain == cross_bot_group_message_key(gid, uid, text, t, use_plaintext=True)
 
 
-def test_cross_bot_signature_ms_and_sec_match() -> None:
+def test_cross_bot_signature_ignores_message_time() -> None:
     gid, uid, body = 1, 2, "牛牛画画"
     assert cross_bot_message_signature(gid, uid, body, 1746358610) == cross_bot_message_signature(
         gid, uid, body, 1746358610000
     )
+    assert cross_bot_message_signature(gid, uid, body, 100) == cross_bot_message_signature(gid, uid, body, 101)
+    assert cross_bot_group_message_key(gid, uid, body, 100) == cross_bot_group_message_key(gid, uid, body, 101)
 
 
 def test_normalize_plaintext_collapses_whitespace() -> None:
@@ -46,6 +48,13 @@ async def test_cross_bot_memory_claim_only_one_bot() -> None:
     assert await try_claim_cross_bot_message_memory("pallas_image", gid, uid, body, t, 111) is True
     assert await try_claim_cross_bot_message_memory("pallas_image", gid, uid, body, t, 222) is False
     assert await try_claim_cross_bot_message_memory("pallas_image", gid, uid, body, t, 111) is True
+
+
+@pytest.mark.asyncio
+async def test_cross_bot_memory_claim_same_body_different_time() -> None:
+    gid, uid, body = 12345, 999, "牛牛帮助"
+    assert await try_claim_cross_bot_message_memory("ingress", gid, uid, body, 100, 111) is True
+    assert await try_claim_cross_bot_message_memory("ingress", gid, uid, body, 101, 222) is False
 
 
 @pytest.mark.asyncio
