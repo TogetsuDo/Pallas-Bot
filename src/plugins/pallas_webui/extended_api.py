@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import copy
 import json
 import os
@@ -125,14 +126,20 @@ def _hist_bucket_start_local(ts: int, bucket_sec: int) -> int:
     return day0 + floored
 
 
-# self_id -> { day_key, by_plugin: { plugin: { runs, errors, day_runs, day_errors } } }
+# self_id -> { day_key, by_plugin: { plugin: { runs, errors, day_runs, day_errors, duration_* } } }
 _PLUGIN_RUN_STATS: dict[str, dict[str, Any]] = {}
 _PLUGIN_RUN_TRACKING_INIT = False
 _EXCLUDED_PLUGIN_RUN_NAMES = frozenset({"pallas_webui"})
+_MATCHER_RUN_STARTED: contextvars.ContextVar[float | None] = contextvars.ContextVar(
+    "matcher_run_started",
+    default=None,
+)
 _MATCHER_ERROR_LOG_CAP = 80
+_MATCHER_DURATION_LOG_CAP = 80
 _MATCHER_ERROR_MSG_MAX = 2000
 _MATCHER_ERROR_TB_MAX = 8000
 _MATCHER_ERROR_JSONL_LOCK = threading.Lock()
+_MATCHER_DURATION_JSONL_LOCK = threading.Lock()
 _LOG_ERROR_LOG_CAP = _MATCHER_ERROR_LOG_CAP
 _LOG_ERROR_MSG_MAX = _MATCHER_ERROR_MSG_MAX
 _LOG_ERROR_TB_MAX = _MATCHER_ERROR_TB_MAX
@@ -977,6 +984,9 @@ def _rollover_console_day_if_needed(sid: str, today: str) -> None:
                 if isinstance(prow, dict):
                     prow["day_runs"] = 0
                     prow["day_errors"] = 0
+                    prow["day_duration_ms_sum"] = 0
+                    prow["day_duration_count"] = 0
+                    prow["day_duration_ms_max"] = 0
     _CONSOLE_CAL_DAY[sid] = today
 
 
@@ -1430,12 +1440,56 @@ def _plugin_run_bot_bucket(sid: str) -> dict[str, Any]:
 def _plugin_run_plugin_row(sid: str, plugin: str) -> dict[str, Any]:
     rec = _plugin_run_bot_bucket(sid)
     by_plugin = rec["by_plugin"]
-    row = by_plugin.setdefault(plugin, {"runs": 0, "errors": 0, "day_runs": 0, "day_errors": 0})
+    row = by_plugin.setdefault(
+        plugin,
+        {
+            "runs": 0,
+            "errors": 0,
+            "day_runs": 0,
+            "day_errors": 0,
+            "duration_ms_sum": 0,
+            "duration_count": 0,
+            "duration_ms_max": 0,
+            "day_duration_ms_sum": 0,
+            "day_duration_count": 0,
+            "day_duration_ms_max": 0,
+        },
+    )
     row.setdefault("runs", 0)
     row.setdefault("errors", 0)
     row.setdefault("day_runs", 0)
     row.setdefault("day_errors", 0)
+    row.setdefault("duration_ms_sum", 0)
+    row.setdefault("duration_count", 0)
+    row.setdefault("duration_ms_max", 0)
+    row.setdefault("day_duration_ms_sum", 0)
+    row.setdefault("day_duration_count", 0)
+    row.setdefault("day_duration_ms_max", 0)
     return row
+
+
+def _avg_duration_ms(ms_sum: int, count: int) -> int | None:
+    if count <= 0:
+        return None
+    return int(round(int(ms_sum) / int(count)))
+
+
+def _matcher_elapsed_ms(started: float | None) -> float:
+    """Matcher 墙钟耗时（毫秒，保留两位小数；极短执行可能为 0.0）。"""
+    if started is None:
+        return 0.0
+    return max(0.0, round((time.perf_counter() - started) * 1000, 2))
+
+
+def _record_plugin_run_duration(sid: str, plugin: str, elapsed_ms: int | float) -> None:
+    ms = max(0, int(round(float(elapsed_ms))))
+    row = _plugin_run_plugin_row(sid, plugin)
+    row["duration_ms_sum"] = int(row["duration_ms_sum"]) + ms
+    row["duration_count"] = int(row["duration_count"]) + 1
+    row["duration_ms_max"] = max(int(row["duration_ms_max"]), ms)
+    row["day_duration_ms_sum"] = int(row["day_duration_ms_sum"]) + ms
+    row["day_duration_count"] = int(row["day_duration_count"]) + 1
+    row["day_duration_ms_max"] = max(int(row["day_duration_ms_max"]), ms)
 
 
 def _append_matcher_error_log(sid: str, plugin: str, exception: BaseException) -> None:
@@ -1479,6 +1533,138 @@ def _append_matcher_error_log(sid: str, plugin: str, exception: BaseException) -
                 f.write(line)
     except Exception:  # noqa: BLE001
         pass
+
+
+def _rewrite_matcher_durations_jsonl() -> None:
+    """用各账号进程内缓冲（每账号最多 _MATCHER_DURATION_LOG_CAP 条）覆写 jsonl。"""
+    from src.common.paths import plugin_data_dir
+
+    path = plugin_data_dir("pallas_webui") / "matcher_durations.jsonl"
+    lines: list[str] = []
+    for sid, rec in _PLUGIN_RUN_STATS.items():
+        if not isinstance(rec, dict):
+            continue
+        raw = rec.get("matcher_duration_log")
+        if not isinstance(raw, list):
+            continue
+        for it in raw:
+            if not isinstance(it, dict):
+                continue
+            line_obj = {
+                "self_id": str(sid),
+                "at": int(it.get("at") or 0),
+                "plugin": str(it.get("plugin") or ""),
+                "duration_ms": max(0.0, round(float(it.get("duration_ms") or 0), 2)),
+                "had_error": bool(it.get("had_error")),
+            }
+            lines.append(json.dumps(line_obj, ensure_ascii=False))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".jsonl.tmp")
+    tmp.write_text(("\n".join(lines) + ("\n" if lines else "")), encoding="utf-8")
+    tmp.replace(path)
+
+
+def _load_matcher_duration_logs_from_disk() -> None:
+    """启动时从 jsonl 恢复各账号最近 _MATCHER_DURATION_LOG_CAP 条单次耗时。"""
+    from src.common.paths import plugin_data_dir
+
+    path = plugin_data_dir("pallas_webui") / "matcher_durations.jsonl"
+    if not path.exists():
+        return
+    by_sid: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        sid = str(obj.get("self_id") or "").strip()
+        if not sid:
+            continue
+        try:
+            at = int(obj.get("at") or 0)
+        except (TypeError, ValueError):
+            at = 0
+        try:
+            duration_ms = max(0.0, round(float(obj.get("duration_ms") or 0), 2))
+        except (TypeError, ValueError):
+            duration_ms = 0.0
+        by_sid[sid].append({
+            "at": at,
+            "plugin": str(obj.get("plugin") or ""),
+            "duration_ms": duration_ms,
+            "had_error": bool(obj.get("had_error")),
+        })
+    cap = _MATCHER_DURATION_LOG_CAP
+    for sid, entries in by_sid.items():
+        rec = _plugin_run_bot_bucket(sid)
+        rec["matcher_duration_log"] = entries[-cap:]
+
+
+def _append_matcher_duration_log(
+    sid: str,
+    plugin: str,
+    duration_ms: int | float,
+    *,
+    had_error: bool,
+) -> None:
+    """进程内环形缓冲 + jsonl（每账号最多 _MATCHER_DURATION_LOG_CAP 条，重启可恢复）。"""
+    entry: dict[str, Any] = {
+        "at": int(time.time()),
+        "plugin": plugin,
+        "duration_ms": max(0.0, round(float(duration_ms), 2)),
+        "had_error": bool(had_error),
+    }
+    try:
+        with _MATCHER_DURATION_JSONL_LOCK:
+            rec = _plugin_run_bot_bucket(sid)
+            log = rec.setdefault("matcher_duration_log", [])
+            if not isinstance(log, list):
+                rec["matcher_duration_log"] = []
+                log = rec["matcher_duration_log"]
+            log.append(entry)
+            while len(log) > _MATCHER_DURATION_LOG_CAP:
+                log.pop(0)
+            _rewrite_matcher_durations_jsonl()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _matcher_duration_log_public(
+    rec: dict[str, Any],
+    *,
+    limit: int = _MATCHER_DURATION_LOG_CAP,
+) -> list[dict[str, Any]]:
+    raw = rec.get("matcher_duration_log")
+    if not isinstance(raw, list) or not raw:
+        return []
+    out: list[dict[str, Any]] = []
+    for it in reversed(raw[-limit:]):
+        if not isinstance(it, dict):
+            continue
+        try:
+            at = int(it.get("at") or 0)
+        except (TypeError, ValueError):
+            at = 0
+        try:
+            duration_ms = max(0.0, round(float(it.get("duration_ms") or 0), 2))
+        except (TypeError, ValueError):
+            duration_ms = 0.0
+        out.append({
+            "at": at,
+            "plugin": str(it.get("plugin") or ""),
+            "duration_ms": duration_ms,
+            "had_error": bool(it.get("had_error")),
+        })
+    return out
 
 
 def _matcher_error_log_public(rec: dict[str, Any], *, limit: int = 30, tb_limit: int = 4000) -> list[dict[str, Any]]:
@@ -1638,27 +1824,38 @@ async def _scheduled_cleanup_matcher_error_logs() -> None:
     """每日 4:00 清理 Matcher 异常与日志 ERROR 归档（jsonl + 进程内缓冲）。"""
     from src.common.paths import plugin_data_dir
 
-    path = plugin_data_dir("pallas_webui") / "matcher_errors.jsonl"
+    err_path = plugin_data_dir("pallas_webui") / "matcher_errors.jsonl"
+    dur_path = plugin_data_dir("pallas_webui") / "matcher_durations.jsonl"
     with _MATCHER_ERROR_JSONL_LOCK:
         try:
-            if path.exists():
-                path.unlink()
+            if err_path.exists():
+                err_path.unlink()
         except OSError as e:
             logger.warning("Pallas-Bot 控制台: 删除 matcher_errors.jsonl 失败: {}", str(e))
         for rec in _PLUGIN_RUN_STATS.values():
             if isinstance(rec, dict):
                 rec["matcher_error_log"] = []
+    with _MATCHER_DURATION_JSONL_LOCK:
+        try:
+            if dur_path.exists():
+                dur_path.unlink()
+        except OSError as e:
+            logger.warning("Pallas-Bot 控制台: 删除 matcher_durations.jsonl 失败: {}", str(e))
+        for rec in _PLUGIN_RUN_STATS.values():
+            if isinstance(rec, dict):
+                rec["matcher_duration_log"] = []
     _cleanup_log_error_archives_sync()
     _drop_read_cache(("plugin-run-stats:",))
     logger.info(
         "Pallas-Bot 控制台: 控制台异常记录已按计划清理（每日 4:00，"
-        "matcher_errors.jsonl、log_errors.jsonl 与进程内缓冲）"
+        "matcher_errors.jsonl、matcher_durations.jsonl、log_errors.jsonl 与进程内缓冲）"
     )
 
 
-def _matcher_hist_bump(sid: str, plugin: str, had_error: bool) -> None:
+def _matcher_hist_bump(sid: str, plugin: str, had_error: bool, *, duration_ms: int = 0) -> None:
     """Matcher 执行按时间桶、按插件名记录（与 plugin-run-stats 插件维度一致）。"""
     pname = str(plugin).strip() or "_"
+    dur = max(0, int(duration_ms))
     rec = _plugin_run_bot_bucket(sid)
     hist = rec.setdefault("matcher_hist", [])
     if not isinstance(hist, list):
@@ -1693,6 +1890,12 @@ def _matcher_hist_bump(sid: str, plugin: str, had_error: bool) -> None:
                 hist[-1]["plugins"] = {}
                 plugs = hist[-1]["plugins"]
             plugs[pname] = int(plugs.get(pname, 0)) + 1
+            if dur > 0:
+                durs = hist[-1].setdefault("plugin_duration_ms", {})
+                if not isinstance(durs, dict):
+                    hist[-1]["plugin_duration_ms"] = {}
+                    durs = hist[-1]["plugin_duration_ms"]
+                durs[pname] = int(durs.get(pname, 0)) + dur
             if had_error:
                 errs = hist[-1].setdefault("plugin_errors", {})
                 if not isinstance(errs, dict):
@@ -1701,6 +1904,8 @@ def _matcher_hist_bump(sid: str, plugin: str, had_error: bool) -> None:
                 errs[pname] = int(errs.get(pname, 0)) + 1
             return
     entry: dict[str, Any] = {"at": bucket, "plugins": {pname: 1}}
+    if dur > 0:
+        entry["plugin_duration_ms"] = {pname: dur}
     if had_error:
         entry["plugin_errors"] = {pname: 1}
     hist.append(entry)
@@ -1764,14 +1969,102 @@ def _matcher_hist_series_public(rec: dict[str, Any], *, limit: int = _HIST_PLUGI
     return {"matcher_runs_by_plugin": runs_out, "matcher_errors_by_plugin": err_out}
 
 
+def _matcher_duration_hist_series_public(
+    rec: dict[str, Any],
+    *,
+    limit: int = _HIST_PLUGIN_SERIES_MAX,
+) -> dict[str, Any]:
+    """各插件 Matcher 耗时（毫秒）按时间桶累计；与 matcher_runs 同桶可算平均耗时。"""
+    raw = rec.get("matcher_hist")
+    ranked: list[str] = []
+    by_plugin = rec.get("by_plugin")
+    if isinstance(by_plugin, dict) and by_plugin:
+
+        def _day_dur_sum(plugin_key: str) -> int:
+            prow = by_plugin.get(plugin_key)
+            if not isinstance(prow, dict):
+                return 0
+            return int(prow.get("day_duration_ms_sum", 0))
+
+        ranked = sorted(by_plugin.keys(), key=lambda k: -_day_dur_sum(k))
+        ranked = [str(k) for k in ranked if str(k).strip()][:limit]
+    if not ranked and isinstance(raw, list):
+        acc: set[str] = set()
+        for it in raw:
+            if not isinstance(it, dict):
+                continue
+            durs = it.get("plugin_duration_ms")
+            if isinstance(durs, dict):
+                acc.update(str(k) for k in durs if str(k).strip())
+        ranked = sorted(acc)[:limit]
+    if not isinstance(raw, list) or not raw or not ranked:
+        return {"matcher_duration_ms_by_plugin": [], "matcher_avg_duration_ms_by_plugin": []}
+    buckets = sorted(
+        [x for x in raw if isinstance(x, dict) and "at" in x],
+        key=lambda x: int(x.get("at") or 0),
+    )
+    ms_out: list[dict[str, Any]] = []
+    avg_out: list[dict[str, Any]] = []
+    for pname in ranked:
+        ms_pts: list[dict[str, Any]] = []
+        avg_pts: list[dict[str, Any]] = []
+        for it in buckets:
+            try:
+                at = int(it["at"])
+            except (TypeError, ValueError, KeyError):
+                continue
+            plugs = it.get("plugins")
+            runs = 0
+            if isinstance(plugs, dict):
+                try:
+                    runs = int(plugs.get(pname, 0))
+                except (TypeError, ValueError):
+                    runs = 0
+            durs = it.get("plugin_duration_ms")
+            ms = 0
+            if isinstance(durs, dict):
+                try:
+                    ms = int(durs.get(pname, 0))
+                except (TypeError, ValueError):
+                    ms = 0
+            if ms <= 0 and runs <= 0:
+                continue
+            ms_pts.append({"at": at, "total": ms})
+            if runs > 0 and ms > 0:
+                avg_pts.append({"at": at, "total": int(round(ms / runs))})
+        if sum(int(x.get("total", 0) or 0) for x in ms_pts):
+            ms_out.append({"plugin": pname, "points": ms_pts})
+        if sum(int(x.get("total", 0) or 0) for x in avg_pts):
+            avg_out.append({"plugin": pname, "points": avg_pts})
+    return {
+        "matcher_duration_ms_by_plugin": ms_out,
+        "matcher_avg_duration_ms_by_plugin": avg_out,
+    }
+
+
 def _init_plugin_run_tracking() -> None:
-    """run_postprocessor：Matcher.run 结束后计数（不含被 run_preprocessor 拦截的调度）。"""
+    """run_pre/postprocessor：Matcher 墙钟耗时与次数（不含被 run_preprocessor 拦截的调度）。"""
     global _PLUGIN_RUN_TRACKING_INIT
     if _PLUGIN_RUN_TRACKING_INIT:
         return
     _PLUGIN_RUN_TRACKING_INIT = True
+    _load_matcher_duration_logs_from_disk()
 
-    from nonebot.message import run_postprocessor
+    from nonebot.message import run_postprocessor, run_preprocessor
+
+    @run_preprocessor
+    async def _mark_plugin_matcher_run_start(
+        matcher: Matcher,
+        bot: BaseBot,
+        _event: Event,
+    ) -> None:
+        plugin = _plugin_short_name_from_matcher(matcher).strip()
+        if not plugin or plugin.lower() in _EXCLUDED_PLUGIN_RUN_NAMES:
+            return
+        sid = str(getattr(bot, "self_id", "") or "").strip()
+        if not sid:
+            return
+        _MATCHER_RUN_STARTED.set(time.perf_counter())
 
     @run_postprocessor
     async def _count_plugin_matcher_run(
@@ -1786,6 +2079,8 @@ def _init_plugin_run_tracking() -> None:
         sid = str(getattr(bot, "self_id", "") or "").strip()
         if not sid:
             return
+        started = _MATCHER_RUN_STARTED.get()
+        elapsed_ms = _matcher_elapsed_ms(started)
         try:
             row = _plugin_run_plugin_row(sid, plugin)
             row["runs"] = int(row["runs"]) + 1
@@ -1794,9 +2089,24 @@ def _init_plugin_run_tracking() -> None:
                 row["errors"] = int(row["errors"]) + 1
                 row["day_errors"] = int(row["day_errors"]) + 1
                 _append_matcher_error_log(sid, plugin, exception)
-            _matcher_hist_bump(sid, plugin, exception is not None)
+            if elapsed_ms > 0:
+                _record_plugin_run_duration(sid, plugin, elapsed_ms)
+            _append_matcher_duration_log(
+                sid,
+                plugin,
+                elapsed_ms,
+                had_error=exception is not None,
+            )
+            _matcher_hist_bump(
+                sid,
+                plugin,
+                exception is not None,
+                duration_ms=int(round(elapsed_ms)),
+            )
         except Exception:  # noqa: BLE001
             pass
+        finally:
+            _MATCHER_RUN_STARTED.set(None)
 
 
 def _plugin_run_stats_overview(*, self_id: str | None) -> dict[str, Any]:
@@ -1825,12 +2135,22 @@ def _plugin_run_stats_overview(*, self_id: str | None) -> dict[str, Any]:
             e = int(prow.get("errors", 0))
             rt = int(prow.get("day_runs", 0))
             et = int(prow.get("day_errors", 0))
+            dsum = int(prow.get("duration_ms_sum", 0))
+            dcnt = int(prow.get("duration_count", 0))
+            dmax = int(prow.get("duration_ms_max", 0))
+            dsum_t = int(prow.get("day_duration_ms_sum", 0))
+            dcnt_t = int(prow.get("day_duration_count", 0))
+            dmax_t = int(prow.get("day_duration_ms_max", 0))
             plugins_list.append({
                 "name": str(pname),
                 "runs": r,
                 "runs_today": rt,
                 "errors": e,
                 "errors_today": et,
+                "avg_duration_ms": _avg_duration_ms(dsum, dcnt),
+                "max_duration_ms": dmax if dcnt > 0 else None,
+                "avg_duration_ms_today": _avg_duration_ms(dsum_t, dcnt_t),
+                "max_duration_ms_today": dmax_t if dcnt_t > 0 else None,
             })
             br += r
             be += e
@@ -1838,7 +2158,9 @@ def _plugin_run_stats_overview(*, self_id: str | None) -> dict[str, Any]:
             bet += et
         plugins_list.sort(key=lambda x: (-int(x["runs_today"]), -int(x["runs"]), str(x["name"])))
         hist_pack = _matcher_hist_series_public(bucket if isinstance(bucket, dict) else {})
+        dur_pack = _matcher_duration_hist_series_public(bucket if isinstance(bucket, dict) else {})
         err_log = _matcher_error_log_public(bucket if isinstance(bucket, dict) else {})
+        dur_log = _matcher_duration_log_public(bucket if isinstance(bucket, dict) else {})
         rows_out.append({
             "self_id": sid,
             "connection_key": str(key),
@@ -1849,7 +2171,11 @@ def _plugin_run_stats_overview(*, self_id: str | None) -> dict[str, Any]:
             "plugins": plugins_list,
             "matcher_runs_by_plugin": hist_pack["matcher_runs_by_plugin"],
             "matcher_errors_by_plugin": hist_pack["matcher_errors_by_plugin"],
+            "matcher_duration_ms_by_plugin": dur_pack["matcher_duration_ms_by_plugin"],
+            "matcher_avg_duration_ms_by_plugin": dur_pack["matcher_avg_duration_ms_by_plugin"],
             "matcher_error_log": err_log,
+            "matcher_duration_log": dur_log,
+            "matcher_duration_log_cap": _MATCHER_DURATION_LOG_CAP,
         })
         total_runs += br
         total_errors += be
