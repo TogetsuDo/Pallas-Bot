@@ -19,6 +19,14 @@ from nonebot.exception import IgnoredException
 from nonebot.message import event_preprocessor
 from nonebot.plugin import PluginMetadata
 
+from src.common.ban_gate_snapshot import (
+    fallback_db_timeout_sec,
+    is_user_blocked_in_group_fast,
+    is_user_globally_banned_fast,
+    patch_group_blocked_users,
+    patch_user_banned,
+    refresh_ban_gate_snapshot,
+)
 from src.common.cmd_perm import permission_for_command, satisfies_command_permission
 from src.common.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
@@ -28,7 +36,7 @@ from src.common.cmd_perm.metadata_defaults import (
 from src.common.cmd_perm.metadata_text import SCENE_BOTH, join_usage, usage_line
 from src.common.config import GroupConfig, UserConfig
 
-_IS_BANNED_DB_TIMEOUT_SEC = 3.0
+_IS_BANNED_DB_TIMEOUT_SEC = fallback_db_timeout_sec()
 _BAN_GATE_CACHE_TTL_SEC = 45.0
 _BAN_GATE_CACHE_MAX = 50_000
 _ban_gate_cache: dict[int, tuple[float, bool]] = {}
@@ -55,6 +63,7 @@ async def invalidate_user_ban_gate_cache(uids: int | Iterable[int]) -> None:
         for u in ids:
             _ban_gate_cache.pop(u, None)
             _user_gate_generation[u] = _user_gate_generation.get(u, 0) + 1
+    asyncio.create_task(refresh_ban_gate_snapshot())
 
 
 async def reset_user_ban_gate_cache() -> None:
@@ -87,6 +96,7 @@ async def invalidate_group_ban_gate_cache(group_ids: int | Iterable[int] | None 
             gid = int(g)
             _group_ban_gate_cache.pop(gid, None)
             _group_gate_generation[gid] = _group_gate_generation.get(gid, 0) + 1
+    asyncio.create_task(refresh_ban_gate_snapshot())
 
 
 async def reset_group_ban_gate_cache() -> None:
@@ -137,6 +147,10 @@ async def query_user_ban_status_for_gate(user_id: int) -> bool:
     查询用户是否全局拉黑（带 TTL 缓存）。
     数据库超时或异常时返回 False（不拦截），避免连接堆积或事件链卡死。
     """
+    fast = is_user_globally_banned_fast(user_id)
+    if fast is not None:
+        return fast
+
     while True:
         now = time.monotonic()
         async with _ban_gate_lock:
@@ -204,6 +218,10 @@ async def _await_group_blocked_deduped(group_id: int) -> frozenset[int]:
 
 async def query_group_blocked_for_gate(group_id: int, user_id: int) -> bool:
     """本群拉黑名单（按群缓存 blocked_user_ids 集合）；超时/异常 fail-open。"""
+    fast = is_user_blocked_in_group_fast(group_id, user_id)
+    if fast is not None:
+        return fast
+
     while True:
         now = time.monotonic()
         async with _group_ban_gate_lock:
@@ -388,12 +406,14 @@ async def handle_blacklist_add(bot: Bot, event: GroupMessageEvent | PrivateMessa
     if isinstance(event, PrivateMessageEvent):
         for uid in targets:
             await UserConfig(uid).ban()
+            await patch_user_banned(uid, True)
         await invalidate_user_ban_gate_cache(targets)
         await blacklist_add_cmd.finish(
             f"米诺斯不再眷顾这 {len(targets)} 个灵魂（全局）：{', '.join(map(str, targets))}"
         )
         return
     await GroupConfig(event.group_id).add_blocked_users(targets)
+    await patch_group_blocked_users(event.group_id, await GroupConfig(event.group_id).blocked_user_ids())
     await invalidate_group_ban_gate_cache(event.group_id)
     await blacklist_add_cmd.finish(f"在这里，米诺斯不再响应这 {len(targets)} 个灵魂：{', '.join(map(str, targets))}")
 
@@ -409,11 +429,13 @@ async def handle_blacklist_remove(bot: Bot, event: GroupMessageEvent | PrivateMe
     if isinstance(event, PrivateMessageEvent):
         for uid in targets:
             await UserConfig(uid).unban()
+            await patch_user_banned(uid, False)
         await invalidate_user_ban_gate_cache(targets)
         await blacklist_remove_cmd.finish(
             f"这 {len(targets)} 个灵魂又获得了米诺斯的眷顾（全局）：{', '.join(map(str, targets))}"
         )
         return
     await GroupConfig(event.group_id).remove_blocked_users(targets)
+    await patch_group_blocked_users(event.group_id, await GroupConfig(event.group_id).blocked_user_ids())
     await invalidate_group_ban_gate_cache(event.group_id)
     await blacklist_remove_cmd.finish(f"在这里，米诺斯又愿倾听这 {len(targets)} 个灵魂：{', '.join(map(str, targets))}")

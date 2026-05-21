@@ -1,6 +1,7 @@
 import nonebot
 from nonebot.adapters.onebot.v11 import Adapter as ONEBOT_V11Adapter
 
+from src.common.ban_gate_snapshot import start_ban_gate_snapshot, stop_ban_gate_snapshot
 from src.common.db import init_db
 from src.common.logging import apply_stdlib_logging_channel_prefix
 from src.common.utils.voice_downloader import ensure_voices
@@ -17,8 +18,13 @@ config = driver.config
 @driver.on_startup
 async def startup():
     await init_db()
-
+    await start_ban_gate_snapshot()
     await ensure_voices()
+
+
+@driver.on_shutdown
+async def shutdown():
+    await stop_ban_gate_snapshot()
 
 
 nonebot.load_from_toml("pyproject.toml")
