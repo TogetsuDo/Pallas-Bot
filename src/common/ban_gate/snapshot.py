@@ -94,7 +94,7 @@ async def refresh_ban_gate_snapshot() -> None:
         _group_blocked = groups
         _last_refresh_mono = time.monotonic()
         _ready = True
-    logger.info(
+    logger.debug(
         "ban_gate_snapshot refreshed: global_banned={} groups_with_blocks={}",
         len(users),
         len(groups),
