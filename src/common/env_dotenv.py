@@ -27,6 +27,23 @@ def repo_layered_dotenv_files_exist() -> bool:
     return root.is_file() or layered.is_file()
 
 
+def repo_env_raw_value(key_upper: str) -> str | None:
+    """读取配置项原始字符串：磁盘 ``.env`` 优先于 ``os.environ``。
+
+    NoneBot 启动会把 ``.env`` 注入 ``os.environ``；WebUI 写盘后若仍先读环境变量，
+    热重载会一直拿到旧值。
+    """
+    key = (key_upper or "").strip().upper()
+    if not key:
+        return None
+    merged = merged_repo_dotenv_upper()
+    if key in merged:
+        return merged[key]
+    if key in os.environ:
+        return os.environ.get(key)
+    return None
+
+
 def merged_repo_dotenv_upper() -> dict[str, str]:
     """合并项目根 ``.env`` 与 ``.env.{ENVIRONMENT}``（后者覆盖前者），键名为大写。
 
@@ -84,3 +101,5 @@ def upsert_env_dotenv_items(items: dict[str, str]) -> None:
             out.append("")
         out.extend(f"{k}={items[k]}" for k in sorted(remained))
     path.write_text("\n".join(out) + "\n", encoding="utf-8")
+    for k, v in items.items():
+        os.environ[k] = v

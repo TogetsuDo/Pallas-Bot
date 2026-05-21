@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from threading import Lock
@@ -12,7 +11,7 @@ from typing import Any, TypeVar
 from nonebot import get_plugin_config
 from pydantic import BaseModel
 
-from src.common.env_dotenv import merged_repo_dotenv_upper, repo_layered_dotenv_files_exist
+from src.common.env_dotenv import repo_env_raw_value, repo_layered_dotenv_files_exist
 
 from .registry import PluginWebuiConfigHooks, register_plugin_webui_config
 
@@ -43,15 +42,10 @@ def config_from_env[C: BaseModel](
     parse_env_value: ParseEnvValue | None = None,
 ) -> C:
     parse = parse_env_value or default_parse_env_value
-    merged = merged_repo_dotenv_upper()
     data: dict[str, Any] = {}
     for name, field in config_cls.model_fields.items():
         key = name.upper()
-        raw: str | None = None
-        if key in os.environ:
-            raw = os.environ.get(key)
-        elif key in merged:
-            raw = merged[key]
+        raw = repo_env_raw_value(key)
         if raw is None:
             continue
         data[name] = parse(name, str(raw), field.annotation)
