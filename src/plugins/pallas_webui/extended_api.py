@@ -2378,6 +2378,24 @@ def _cleanup_log_error_archives_sync() -> None:
         _LOG_ERROR_BUFFER.clear()
 
 
+def _cleanup_log_errors_manual_sync() -> dict[str, Any]:
+    """清空日志报错归档（log_errors.jsonl、进程内缓冲；分片 hub 另清 errors/*.jsonl）。"""
+    _cleanup_log_error_archives_sync()
+    sharded_errors = False
+    try:
+        from src.common.bot_runtime.roles import is_sharded_hub
+
+        if is_sharded_hub():
+            from src.common.shard.logs.errors import cleanup_shard_error_archives_sync
+
+            cleanup_shard_error_archives_sync()
+            sharded_errors = True
+    except Exception:
+        pass
+    _drop_read_cache(("plugin-run-stats:",))
+    return {"cleared": True, "sharded_errors": sharded_errors}
+
+
 async def _scheduled_cleanup_matcher_error_logs() -> None:
     """每日 4:00 清理 Matcher 异常与日志 ERROR 归档（jsonl + 进程内缓冲）。"""
     from src.common.paths import plugin_data_dir
@@ -3813,6 +3831,17 @@ def register_extended_api(
 
         key = f"plugin-run-stats:{self_id or 'all'}:logsrc:{src}:tbl:{tb_limit}"
         data = await _cached_read(key=key, loader=_load, ttl_sec=2.0, stale_sec=10.0)
+        return JSONResponse({"ok": True, "data": data})
+
+    @router.post(f"{x}/log-errors/cleanup", include_in_schema=True)
+    async def _log_errors_cleanup() -> JSONResponse:
+        """清空日志报错归档（与每日 4:00 任务中的 log_errors 部分一致，不含 Matcher 异常 jsonl）。"""
+        try:
+            data = await asyncio.to_thread(_cleanup_log_errors_manual_sync)
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Pallas-Bot 控制台: 清理日志报错失败")
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        logger.info("Pallas-Bot 控制台: 已手动清理日志报错归档")
         return JSONResponse({"ok": True, "data": data})
 
     @router.get(f"{x}/console-daily-stats", include_in_schema=True)
