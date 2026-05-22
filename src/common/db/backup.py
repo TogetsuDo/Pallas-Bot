@@ -167,7 +167,10 @@ def _run_checked(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
     )
     if proc.returncode != 0:
         err = (proc.stderr or proc.stdout or "").strip() or f"退出码 {proc.returncode}"
-        raise RuntimeError(err)
+        cmd_hint = " ".join(cmd[:6])
+        if len(cmd) > 6:
+            cmd_hint += " …"
+        raise RuntimeError(f"{err}（命令: {cmd_hint}）")
 
 
 def run_postgres_backup(

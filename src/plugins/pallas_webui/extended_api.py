@@ -4203,7 +4203,8 @@ def register_extended_api(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         except RuntimeError as e:
-            raise HTTPException(status_code=502, detail=str(e)) from e
+            # 工具缺失、mongodump/pg_dump 失败等，非网关故障
+            raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:  # noqa: BLE001
             logger.exception("Pallas-Bot 控制台: 数据库备份失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
