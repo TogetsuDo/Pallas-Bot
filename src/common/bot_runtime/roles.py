@@ -13,6 +13,7 @@ HUB_PLUGIN_MODULES: tuple[str, ...] = (
     "src.plugins.maa_hub",
     "src.plugins.blacklist",
     "src.plugins.help",
+    "src.plugins.community_stats",
 )
 
 # worker：跳过 hub 独占插件

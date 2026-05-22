@@ -24,6 +24,13 @@ db = "PallasBot"
 # password = ""
 # db = "PallasBot"
 
+# 社区统计（opt-in 心跳，默认开启；关闭设 enabled = false）
+[community_stats]
+enabled = true
+endpoint = "https://stats.pallasbot.top/v1/heartbeat"
+# token = ""  # 与中心 HEARTBEAT_TOKEN 一致；生产请填写
+interval_sec = 300
+
 # 与历史 .env 同名的扁平项（键名大写）；也可只放 bootstrap，其余交给 WebUI。
 # [env]
 # PALLAS_PROTOCOL_ENABLED = true

@@ -120,10 +120,27 @@ def _flatten_env_section(section: Any) -> dict[str, str]:
     return out
 
 
+def _flatten_community_stats(section: Any) -> dict[str, str]:
+    if not isinstance(section, dict):
+        return {}
+    key_map = {
+        "enabled": "PALLAS_COMMUNITY_STATS_ENABLED",
+        "endpoint": "PALLAS_COMMUNITY_STATS_ENDPOINT",
+        "token": "PALLAS_COMMUNITY_STATS_TOKEN",
+        "interval_sec": "PALLAS_COMMUNITY_STATS_INTERVAL_SEC",
+    }
+    out: dict[str, str] = {}
+    for k, env_key in key_map.items():
+        if k in section and section[k] is not None:
+            out[env_key] = env_value_to_str(section[k])
+    return out
+
+
 def _load_pallas_toml_upper() -> dict[str, str]:
     data = _load_toml_file(repo_config_path())
     merged: dict[str, str] = {}
     merged.update(_flatten_bootstrap(data.get("bootstrap")))
+    merged.update(_flatten_community_stats(data.get("community_stats")))
     merged.update(_flatten_env_section(data.get("env")))
     return merged
 
