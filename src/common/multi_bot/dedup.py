@@ -19,7 +19,8 @@ _group_event_sig_set: set[tuple[int, int, str, int]] = set()
 
 _CROSS_BOT_CLAIM_MAX = 4000
 _cross_bot_claim_lock = asyncio.Lock()
-_cross_bot_claim_owners: dict[tuple[str, tuple[int, int, str]], int] = {}
+CrossBotSig = tuple[int, int, str] | tuple[int, int, str, int]
+_cross_bot_claim_owners: dict[tuple[str, CrossBotSig], int] = {}
 
 
 def normalize_group_raw_message(raw_message: str) -> str:
@@ -45,10 +46,12 @@ def cross_bot_message_signature(
     message_time: int,
     *,
     use_plaintext: bool = True,
-) -> tuple[int, int, str]:
-    """多牛抢占签名：群 + 用户 + 正文，不含 event.time。"""
-    del message_time
+    include_message_time: bool = False,
+) -> CrossBotSig:
+    """多牛抢占签名：默认群+用户+正文（同条 fanout）；决斗/八角笼可含 message_time 区分场次。"""
     body = normalize_group_plaintext(message_body) if use_plaintext else normalize_group_raw_message(message_body)
+    if include_message_time:
+        return (group_id, user_id, body, normalize_message_time(message_time))
     return (group_id, user_id, body)
 
 
@@ -59,6 +62,7 @@ def cross_bot_group_message_key(
     message_time: int,
     *,
     use_plaintext: bool = True,
+    include_message_time: bool = False,
 ) -> int:
     """各 Bot 连接的 message_id 不同；同一条物理消息用此键做文件抢占。"""
     sig = cross_bot_message_signature(
@@ -67,8 +71,12 @@ def cross_bot_group_message_key(
         message_body,
         message_time,
         use_plaintext=use_plaintext,
+        include_message_time=include_message_time,
     )
-    payload = f"{sig[0]}:{sig[1]}:{sig[2]}"
+    if len(sig) == 4:
+        payload = f"{sig[0]}:{sig[1]}:{sig[2]}:{sig[3]}"
+    else:
+        payload = f"{sig[0]}:{sig[1]}:{sig[2]}"
     return int(hashlib.sha256(payload.encode("utf-8")).hexdigest()[:15], 16)
 
 
@@ -88,6 +96,7 @@ async def try_claim_cross_bot_message_memory(
     bot_id: int,
     *,
     use_plaintext: bool = True,
+    include_message_time: bool = False,
 ) -> bool:
     sig = cross_bot_message_signature(
         group_id,
@@ -95,6 +104,7 @@ async def try_claim_cross_bot_message_memory(
         message_body,
         message_time,
         use_plaintext=use_plaintext,
+        include_message_time=include_message_time,
     )
     key = (plugin, sig)
     async with _cross_bot_claim_lock:
@@ -115,6 +125,7 @@ async def try_claim_cross_bot_message(
     bot_id: int,
     *,
     use_plaintext: bool = True,
+    include_message_time: bool = False,
 ) -> bool:
     """同进程内存抢占 + 跨进程文件抢占（共享 data/ 时生效）。"""
     if not await try_claim_cross_bot_message_memory(
@@ -125,6 +136,7 @@ async def try_claim_cross_bot_message(
         message_time,
         bot_id,
         use_plaintext=use_plaintext,
+        include_message_time=include_message_time,
     ):
         return False
     claim_key = cross_bot_group_message_key(
@@ -133,6 +145,7 @@ async def try_claim_cross_bot_message(
         message_body,
         message_time,
         use_plaintext=use_plaintext,
+        include_message_time=include_message_time,
     )
     return await try_claim_message(plugin, group_id, claim_key, bot_id)
 
@@ -325,6 +338,7 @@ async def claim_group_message_event(
     bot_id: int,
     *,
     use_plaintext: bool = True,
+    include_message_time: bool = False,
 ) -> bool:
     """本 Bot 是否应处理该条群消息（跨 Bot + 跨进程）。未抢占返回 False。"""
     return await try_claim_cross_bot_message(
@@ -335,6 +349,7 @@ async def claim_group_message_event(
         group_event.time,
         bot_id,
         use_plaintext=use_plaintext,
+        include_message_time=include_message_time,
     )
 
 
