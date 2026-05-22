@@ -68,16 +68,7 @@ async def maa_report_status(body: ReportStatusRequest) -> dict[str, str]:
             lines.append(body.payload[:500])
         segments = [MessageSegment.text("\n".join(lines))]
 
-    image_bytes: bytes | None = None
-    if task.task_type in {"CaptureImage", "CaptureImageNow"} and body.payload:
-        import base64
-
-        try:
-            image_bytes = base64.b64decode(body.payload)
-        except Exception:
-            image_bytes = None
-
-    await deliver_maa_notify(notify, segments, image_bytes=image_bytes, task_id=body.task)
+    await deliver_maa_notify(notify, segments, task_id=body.task)
     return {"message": "ok"}
 
 
@@ -85,7 +76,6 @@ async def deliver_maa_notify(
     notify,
     segments,
     *,
-    image_bytes: bytes | None = None,
     task_id: str = "",
 ) -> None:
     from src.common.shard.presence import bot_has_local_connection
@@ -102,14 +92,12 @@ async def deliver_maa_notify(
                     bot_id,
                     int(notify.group_id),
                     message,
-                    image_bytes=image_bytes,
                 )
             else:
                 ok = await send_private_msg_as_bot(
                     bot_id,
                     int(notify.user_id),
                     message,
-                    image_bytes=image_bytes,
                 )
             if not ok:
                 logger.warning("maa reportStatus: shard notify failed bot={} task={}", bot_id, task_id)

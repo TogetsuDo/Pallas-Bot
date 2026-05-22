@@ -21,6 +21,7 @@ from src.plugins.duel import duel_penalty  # noqa: F401 — 注册惩罚消息 m
 from src.plugins.duel.config import plugin_config
 from src.plugins.duel.duel_bots import (
     duel_narrator_bot_id,
+    fleet_bot_confirmed_in_group,
     infer_duel_defender_when_at_self_hidden,
     is_bot_qq,
     list_local_fleet_bots_in_group,
@@ -381,6 +382,8 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State) -> None:
     from src.common.shard.registry.config import is_sharding_active
 
     if is_sharding_active():
+        if not await fleet_bot_confirmed_in_group(bot, event.group_id):
+            return
         from src.common.shard.coord.cage_duel import (
             run_shard_cage_duel_coord,
             update_shard_cage_duel_registration,

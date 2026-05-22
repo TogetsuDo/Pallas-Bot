@@ -156,7 +156,8 @@ def _message_from_payload(payload: dict[str, Any]) -> Message | str:
         text = str(payload.get("message_text") or "")
         msg = text or Message()
     image_b64 = payload.get("image_b64")
-    if isinstance(image_b64, str) and image_b64:
+    cq_text = str(msg) if isinstance(msg, Message) else str(msg)
+    if isinstance(image_b64, str) and image_b64 and "[CQ:image" not in cq_text:
         try:
             raw = base64.b64decode(image_b64.encode("ascii"))
             if isinstance(msg, Message):

@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 from nonebot import get_bots, logger
 
 from src.common.multi_bot.dedup import normalize_message_time
-from src.plugins.block import is_fleet_bot_qq, plugin_config
+from src.plugins.block import is_fleet_bot_qq
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import GroupMessageEvent
@@ -191,6 +191,21 @@ async def list_group_online_bot_ids(group_id: int) -> list[int]:
         return out
 
 
+async def fleet_bot_confirmed_in_group(bot: Any, group_id: int) -> bool:
+    """当前牛牛账号是否在该群（成员列表失败时逐号探测）。"""
+    try:
+        bid = int(bot.self_id)
+    except (AttributeError, TypeError, ValueError):
+        return False
+    if not is_fleet_bot_qq(bid):
+        return False
+    try:
+        await bot.get_group_member_info(group_id=group_id, user_id=bid, no_cache=True)
+        return True
+    except Exception:
+        return False
+
+
 async def list_local_fleet_bots_in_group(group_id: int) -> list[int]:
     """本 worker 已连接且能确认在本群的 fleet 牛（八角笼分片登记用）。"""
     from src.common.multi_bot.fleet import get_catalog_bot_ids
@@ -213,16 +228,10 @@ async def list_local_fleet_bots_in_group(group_id: int) -> list[int]:
     probed = await probe_fleet_bots_in_group(caller, group_id, scope)
     if probed:
         return probed
-    return sorted(scope)
-
-    bots = get_bots()
     out: list[int] = []
-    for bid in sorted(plugin_config.bots):
-        key = str(bid)
-        if key not in bots:
-            continue
+    for bid in sorted(scope):
         try:
-            await bots[key].get_group_member_info(group_id=group_id, user_id=int(bid), no_cache=True)
+            await caller.get_group_member_info(group_id=group_id, user_id=int(bid), no_cache=True)  # type: ignore[union-attr]
         except Exception:
             continue
         out.append(int(bid))
