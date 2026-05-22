@@ -1834,8 +1834,18 @@ class PallasProtocolService:
 
     def _is_bot_connected(self, account: dict) -> bool:
         qq = self._resolve_qq(account)
-        if not qq:
+        if not qq or not qq.isdigit():
             return False
+        try:
+            from src.common.bot_runtime.roles import is_sharded_hub
+            from src.common.shard.registry.config import is_sharding_active
+
+            if is_sharding_active() and is_sharded_hub():
+                from src.common.shard.presence import get_cluster_online_bot_ids
+
+                return int(qq) in get_cluster_online_bot_ids()
+        except Exception:
+            pass
         try:
             from nonebot import get_bots
 
