@@ -76,3 +76,43 @@ def test_collect_cluster_log_errors(tmp_path, monkeypatch):
     assert len(rows) >= 1
     assert any("worker-2" in str(r.get("plugin")) for r in rows)
     assert any(r.get("exc_type") == "ValueError" for r in rows)
+
+
+def test_exc_type_from_traceback_ignores_stack_frames(tmp_path, monkeypatch):
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    (log_dir / "worker-99.log").write_text(
+        "05-23 04:25:47 | ERROR    | nonebot:1 - Failed to import \"nonebot_plugin_apscheduler\"\n"
+        "Traceback (most recent call last):\n"
+        "  File \"plugin_loader.py\", line 176, in load_plugins_for_role\n"
+        "    manager.load_plugin(module_path)\n"
+        "  File \"load.py\", line 43, in load_plugin\n"
+        "    importlib.import_module(name)\n"
+        "ModuleNotFoundError: No module named 'nonebot_plugin_apscheduler'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("src.common.shard.logs.view.shard_logs_dir", lambda: log_dir)
+    monkeypatch.setattr("src.common.shard.logs.errors.shard_logs_dir", lambda: log_dir)
+    rows = collect_cluster_log_errors(per_file=80, limit=10)
+    assert len(rows) >= 1
+    row = next(r for r in rows if "worker-99" in str(r.get("plugin")))
+    assert row.get("exc_type") == "ModuleNotFoundError"
+    assert "nonebot_plugin_apscheduler" in str(row.get("message") or "")
+
+
+def test_exc_type_from_loguru_style_traceback(tmp_path, monkeypatch):
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    (log_dir / "worker-0.log").write_text(
+        "Traceback (most recent call last):\n"
+        '  File "load.py", line 43, in load_plugin\n'
+        "    return manager.load_plugin(module_path)\n"
+        "           │       │           └ 'nonebot_plugin_apscheduler'\n"
+        "ModuleNotFoundError: No module named 'nonebot_plugin_apscheduler'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("src.common.shard.logs.view.shard_logs_dir", lambda: log_dir)
+    monkeypatch.setattr("src.common.shard.logs.errors.shard_logs_dir", lambda: log_dir)
+    rows = collect_cluster_log_errors(per_file=50, limit=10)
+    assert rows
+    assert rows[-1].get("exc_type") == "ModuleNotFoundError"

@@ -334,16 +334,25 @@ def _plugin_label(source: str, scope: str) -> str:
     return f"{source}/{short}" if short else source
 
 
-def _exc_type_from_traceback(tb: str) -> str:
+_EXC_TYPE_LINE_RE = re.compile(r"^([A-Z][a-zA-Z0-9_]*(?:Error|Exception))\s*:\s*(.*)$")
+
+
+def _exc_type_and_message_from_traceback(tb: str) -> tuple[str, str]:
+    """从 traceback 末行取标准异常类型与消息，避免误把栈帧代码行当类型。"""
     for line in reversed(tb.splitlines()):
         line = line.strip()
         if not line or line.startswith("Traceback"):
             continue
-        head = line.split(":", 1)[0].strip()
-        if head and not head.startswith("File"):
-            token = head.rsplit(" ", 1)[-1]
-            return token or "LogError"
-    return "LogError"
+        if "└" in line or "│" in line:
+            continue
+        m = _EXC_TYPE_LINE_RE.match(line)
+        if m:
+            return m.group(1), (m.group(2) or "").strip()
+    return "LogError", ""
+
+
+def _exc_type_from_traceback(tb: str) -> str:
+    return _exc_type_and_message_from_traceback(tb)[0]
 
 
 def _parse_error_header_line(line: str) -> dict[str, Any] | None:
@@ -414,13 +423,7 @@ def _scan_log_file_errors(path, source: str, *, max_lines: int) -> list[dict[str
         line = lines[i]
         if line.strip().startswith("Traceback"):
             tb, j = _collect_traceback_lines(lines, i)
-            exc_type = _exc_type_from_traceback(tb)
-            msg = ""
-            for row in reversed(tb.splitlines()):
-                row = row.strip()
-                if row and not row.startswith("Traceback") and not row.startswith("File"):
-                    msg = row
-                    break
+            exc_type, msg = _exc_type_and_message_from_traceback(tb)
             out.append({
                 "at": _error_at_before(lines, i),
                 "plugin": source,
@@ -435,14 +438,19 @@ def _scan_log_file_errors(path, source: str, *, max_lines: int) -> list[dict[str
             i += 1
             continue
         tb, j = _collect_traceback_lines(lines, i + 1)
-        exc_type = header["exc_type"]
+        exc_type = str(header["exc_type"] or "LogError")
+        msg = str(header.get("message") or "")
         if tb:
-            exc_type = _exc_type_from_traceback(tb)
+            tb_exc, tb_msg = _exc_type_and_message_from_traceback(tb)
+            if tb_exc != "LogError":
+                exc_type = tb_exc
+            if tb_msg:
+                msg = tb_msg
         out.append({
             "at": int(header["at"] or 0),
             "plugin": _plugin_label(source, str(header.get("scope") or "")),
             "exc_type": exc_type,
-            "message": str(header.get("message") or "")[:2000],
+            "message": msg[:2000],
             "traceback": tb,
         })
         i = j

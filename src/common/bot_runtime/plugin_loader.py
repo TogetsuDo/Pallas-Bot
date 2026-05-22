@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib.util
+
 import nonebot
 from nonebot import logger
 
@@ -18,6 +20,7 @@ from src.common.paths import PROJECT_ROOT
 
 _PLUGINS_ROOT = PROJECT_ROOT / "src" / "plugins"
 _PYPROJECT = PROJECT_ROOT / "pyproject.toml"
+_APSCHEDULER_MODULE = "nonebot_plugin_apscheduler"
 
 
 def _discover_plugin_modules() -> list[str]:
@@ -39,6 +42,19 @@ def _short_name(module_path: str) -> str:
     return module_path.rsplit(".", 1)[-1]
 
 
+def _prioritize_scheduler_modules(module_paths: list[str]) -> list[str]:
+    """nonebot_plugin_apscheduler 须先于依赖 scheduler 的 src 插件加载。"""
+    sched = [m for m in module_paths if _short_name(m) == _APSCHEDULER_MODULE]
+    rest = [m for m in module_paths if m not in sched]
+    return sched + rest
+
+
+def load_apscheduler_plugin_first(*, role_label: str, loaded_short: set[str]) -> bool:
+    if _short_name(_APSCHEDULER_MODULE) in loaded_short:
+        return False
+    return _load_plugin_module(_APSCHEDULER_MODULE, role_label=role_label, loaded_short=loaded_short)
+
+
 def _load_plugin_module(
     module_path: str,
     *,
@@ -47,6 +63,13 @@ def _load_plugin_module(
 ) -> bool:
     short = _short_name(module_path)
     if short in loaded_short:
+        return False
+    if importlib.util.find_spec(module_path) is None:
+        logger.error(
+            "bot_runtime: {} skip {} (pip 包未安装，请在仓库根目录执行 uv sync)",
+            role_label,
+            module_path,
+        )
         return False
     try:
         nonebot.load_plugin(module_path)
@@ -112,6 +135,7 @@ def load_pyproject_extra_plugins(
 ) -> int:
     """加载 pyproject [tool.nonebot.plugins] 与（可选）额外 plugin_dirs。"""
     module_paths, plugin_dirs = parse_nonebot_plugin_config(_PYPROJECT)
+    module_paths = _prioritize_scheduler_modules(module_paths)
     total = 0
     if include_extra_dirs:
         extra_dirs = extra_plugin_dirs_for_role(plugin_dirs)
@@ -140,6 +164,7 @@ def load_plugins_for_role() -> None:
     loaded_short: set[str] = set()
 
     if is_hub_role():
+        load_apscheduler_plugin_first(role_label="hub", loaded_short=loaded_short)
         loaded = 0
         for mod in HUB_PLUGIN_MODULES:
             if _load_plugin_module(mod, role_label="hub", loaded_short=loaded_short):
@@ -157,6 +182,8 @@ def load_plugins_for_role() -> None:
             extra,
         )
         return
+
+    load_apscheduler_plugin_first(role_label="worker", loaded_short=loaded_short)
 
     ingress_gate = "src.plugins._ingress_gate"
     gate_path = _PLUGINS_ROOT / "_ingress_gate"

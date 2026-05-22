@@ -2219,6 +2219,16 @@ def _tb_and_exc_type_from_log_record(record: Any) -> tuple[str, str, str]:
         tb = "".join(traceback.format_exception(et, val, tb_obj))
     except Exception:  # noqa: BLE001
         tb = str(val) if val is not None else ""
+    if tb:
+        from src.common.shard.logs.view import _exc_type_and_message_from_traceback
+
+        parsed_exc, parsed_msg = _exc_type_and_message_from_traceback(tb)
+        if parsed_exc != "LogError":
+            exc_type = parsed_exc
+        if parsed_msg and (not msg.strip() or msg.startswith("Failed to import")):
+            msg = parsed_msg or msg
+    if msg.startswith("Failed to import") and exc_type in ("LogError", "ImportError"):
+        exc_type = "ModuleNotFoundError"
     return exc_type, msg, tb
 
 
