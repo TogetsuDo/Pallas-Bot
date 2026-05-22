@@ -20,6 +20,7 @@ from src.common.shard.registry.config import is_sharding_active
 _PLUGIN = "pallas_shard"
 _POLL_SEC = 0.08
 _STALE_SEC = 180.0
+_DONE_RETAIN_SEC = 45.0
 _OPEN_OVERDUE_GRACE_SEC = 5.0
 _DEFAULT_TIMEOUT = 18.0
 _inflight: set[str] = set()
@@ -406,7 +407,7 @@ async def poll_bot_action_pending(local_ids: frozenset[str]) -> None:
             await _maybe_warn_stale_open(row, now=now)
             continue
         created = float(row.get("created_at") or 0)
-        if now - created > _STALE_SEC:
+        if now - created > _DONE_RETAIN_SEC:
             try:
                 path.unlink(missing_ok=True)
             except OSError:
@@ -445,7 +446,7 @@ async def prune_stale_bot_action_files() -> dict[str, int]:
             continue
         if row.get("done"):
             created = float(row.get("created_at") or 0)
-            if now - created > _STALE_SEC:
+            if now - created > _DONE_RETAIN_SEC:
                 try:
                     path.unlink(missing_ok=True)
                 except OSError:

@@ -47,7 +47,7 @@ def test_prune_stale_bot_action_removes_overdue_open(tmp_path, monkeypatch):
         json.dumps({
             "request_id": "old",
             "done": True,
-            "created_at": now - mod._STALE_SEC - 10,
+            "created_at": now - mod._DONE_RETAIN_SEC - 10,
         }),
         encoding="utf-8",
     )
