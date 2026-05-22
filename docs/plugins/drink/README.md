@@ -17,11 +17,16 @@
 
 无独立 `config.py`；状态与冷却见 `BotConfig`。
 
+## 分片（多 worker）
+
+喝酒/醒酒口令（`牛牛喝酒` 等）在代码侧**恒 fanout**（见 `src/common/ingress/drink_plaintext.py`），无需写入 WebUI「分片全员同响」白名单；各牛独立醉酒态。
+
 ## 排障
 
 | 现象 | 处理 |
 | --- | --- |
-| 喝酒无反应 | 群冷却内可能静默；查日志是否 `ActionFailed` |
+| 喝酒无反应 | 群冷却内可能静默；查日志是否 `ActionFailed`；分片下若见 `Event ... is ignored` 且非饮酒口令，多为 ingress claim |
+| 仅一头牛喝酒 | 历史版本需白名单；现版应全牛同响，确认 worker 已更新 |
 | 一直不醒 | 发 `牛牛醒一醒`；或等待定时 `fully_sober_up` |
 
 ## 实现

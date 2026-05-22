@@ -9,6 +9,7 @@ from nonebot.message import event_preprocessor
 
 from src.common.bot_runtime.roles import is_hub_role
 from src.common.ingress.cage_plaintext import is_cage_plaintext
+from src.common.ingress.drink_plaintext import is_drink_plaintext
 from src.common.multi_bot.dedup import try_claim_cross_bot_message
 from src.common.multi_bot.fleet import fleet_bot_ids_contains, get_fleet_bot_ids
 from src.common.shard.coord.bot_count import should_skip_ingress_claim_for_shard_bot_count
@@ -65,6 +66,7 @@ async def ingress_group_message_gate(bot, event) -> None:
         is_ingress_fanout_plaintext(plain)
         or should_skip_ingress_claim_for_shard_bot_count(plain)
         or is_cage_plaintext(plain)
+        or is_drink_plaintext(plain)
     ):
         return
 
