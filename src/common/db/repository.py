@@ -91,6 +91,17 @@ class MessageRepository(Protocol):
         """批量插入 Message 文档"""
         ...
 
+    async def find_recent_in_group(
+        self,
+        group_id: int,
+        *,
+        before_time: int | None = None,
+        user_id: int | None = None,
+        limit: int = 8,
+    ) -> list[Message]:
+        """群内近期消息，按 time 升序（供复读 learn 上下文链）。"""
+        ...
+
 
 @runtime_checkable
 class BlackListRepository(Protocol):
