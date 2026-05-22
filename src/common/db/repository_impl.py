@@ -132,6 +132,24 @@ class MongoContextRepository:
 class MongoMessageRepository:
     """MongoDB 版 MessageRepository 实现"""
 
+    async def find_recent_in_group(
+        self,
+        group_id: int,
+        *,
+        before_time: int | None = None,
+        user_id: int | None = None,
+        limit: int = 8,
+    ) -> list[Message]:
+        cap = max(1, min(int(limit), 32))
+        query: dict = {"group_id": int(group_id)}
+        if before_time is not None:
+            query["time"] = {"$lt": int(before_time)}
+        if user_id is not None:
+            query["user_id"] = int(user_id)
+        docs = await Message.find(query).sort("-time").limit(cap).to_list()
+        docs.reverse()
+        return docs
+
     async def bulk_insert(self, messages: list[Message]) -> None:
         await Message.insert_many(messages)
 

@@ -34,3 +34,10 @@ interval_sec = 300
 # 与历史 .env 同名的扁平项（键名大写）；也可只放 bootstrap，其余交给 WebUI。
 # [env]
 # PALLAS_PROTOCOL_ENABLED = true
+# 分片跨进程 claim（与 Pallas-Bot-AI 共用时可填同一 REDIS_URL；run_sharded_bot.sh 自动探测）
+# REDIS_URL = "redis://127.0.0.1:6379/0"
+# PALLAS_COORD_REDIS_ENABLED = "auto"
+# PALLAS_COORD_REDIS_URL = "redis://127.0.0.1:6379/0"
+# PostgreSQL（db_backend=postgresql 时）：分片约 (worker+hub) 进程 × (pool+overflow)，建议单进程 ≤20
+# PG_POOL_SIZE = "12"
+# PG_MAX_OVERFLOW = "8"

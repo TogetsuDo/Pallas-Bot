@@ -48,7 +48,7 @@ def _acquire_lock(lock_path: Path, *, timeout: float = 3.0) -> int | None:
                     lock_path.unlink(missing_ok=True)
             except OSError:
                 pass
-            time.sleep(0.02)
+            time.sleep(0.05)
     return None
 
 
@@ -297,6 +297,7 @@ async def update_shard_cage_duel_registration(
         plaintext,
         message_time,
         use_plaintext=True,
+        include_message_time=True,
     )
     path = _session_path(group_id, claim_key)
     shard_id = get_shard_registry_settings().shard_id
@@ -321,6 +322,7 @@ async def run_shard_cage_duel_coord(
         plaintext,
         message_time,
         use_plaintext=True,
+        include_message_time=True,
     )
     path = _session_path(group_id, claim_key)
     t = normalize_message_time(message_time)

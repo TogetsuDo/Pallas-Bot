@@ -174,6 +174,11 @@ any_msg = on_message(
 
 @any_msg.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
+    from .shard_opt import repeater_worker_handles_message
+
+    if not repeater_worker_handles_message(int(bot.self_id)):
+        return
+
     # 多账号登陆，且在同一群中时；避免一条消息被处理多次
     async with message_id_lock:
         message_id = event.message_id
@@ -188,6 +193,25 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if await _should_skip_duplicate_group_event(event.group_id, event.user_id, norm_raw, event.time):
         return
 
+    from src.common.shard.registry.config import is_sharding_active
+
+    if is_sharding_active():
+        from .fanout_reply import repeater_fanout_enabled
+
+        if not repeater_fanout_enabled():  # 配置关闭 fanout 时片内单牛 claim
+            from src.common.multi_bot.dedup import try_claim_cross_bot_message
+
+            if not await try_claim_cross_bot_message(
+                "repeater_reply",
+                event.group_id,
+                event.user_id,
+                event.get_plaintext(),
+                event.time,
+                int(bot.self_id),
+                use_plaintext=True,
+            ):
+                return
+
     if await is_message_scrub_blocked_async(plain_text=event.get_plaintext(), raw_message=norm_raw):
         pv = scrub_intercept_log_preview(event.get_plaintext(), norm_raw)
         logger.info(
@@ -198,10 +222,17 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     chat: Chat = Chat(event)
 
-    answers = None
     config = BotConfig(event.self_id, event.group_id)
+    bundle = None
+    fanout_gate = None
     if await config.is_cooldown("repeat"):
-        answers = await chat.answer()
+        from .fanout_reply import resolve_fanout_gate
+
+        fanout_gate = await resolve_fanout_gate(event)
+        if fanout_gate.lost:
+            bundle = None
+        else:
+            bundle = await chat.find_reply_bundle()
 
     for seg in event.message:
         if seg.type == "image":
@@ -209,12 +240,17 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     await enqueue_repeater_learn(chat, event)
 
-    if not answers:
+    if bundle is None:
         return
 
-    from .fanout_reply import maybe_orchestrate_repeater_fanout
+    if fanout_gate is not None and fanout_gate.won:
+        from .fanout_reply import dispatch_repeater_fanout
 
-    if await maybe_orchestrate_repeater_fanout(event, answers):
+        await dispatch_repeater_fanout(event, fanout_gate.bot_ids, bundle)
+        return
+
+    answers = await chat.answer_from_bundle(bundle)
+    if answers is None:
         return
 
     await config.refresh_cooldown("repeat")
@@ -366,6 +402,10 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
 
 @scheduler.scheduled_job("interval", seconds=60)
 async def speak_up():
+    from .shard_opt import repeater_scheduler_runs_on_worker
+
+    if not repeater_scheduler_runs_on_worker():
+        return
     ret = await Chat.speak()
     if not ret:
         return

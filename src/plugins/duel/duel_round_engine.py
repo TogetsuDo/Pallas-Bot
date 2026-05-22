@@ -131,8 +131,13 @@ DuelCommandGate = Literal["ok", "busy", "cooldown"]
 
 
 async def try_claim_duel_message(event: GroupMessageEvent) -> bool:
-    """同一条群消息仅一只牛走完整指令处理（人 vs 人等无固定主持牛时）。"""
-    return await claim_group_message_event("duel", event, int(event.self_id))
+    """同一条群消息仅一只牛走完整指令处理；含 message_time 以免多场八角笼共用抢占。"""
+    return await claim_group_message_event(
+        "duel",
+        event,
+        int(event.self_id),
+        include_message_time=True,
+    )
 
 
 async def try_claim_duel_user_reply(group_id: int, *, ttl_sec: float | None = None) -> bool:
@@ -158,7 +163,10 @@ def end_duel_group(group_id: int) -> None:
 async def begin_duel_command(group_id: int) -> DuelCommandGate:
     """群级互斥 + 群级指令 CD（多 Bot 共用）。"""
     if not try_begin_duel_group(group_id):
-        return "busy"
+        from src.common.shard.coord.duel_group import try_reclaim_orphan_duel_group
+
+        if not (await try_reclaim_orphan_duel_group(group_id) and try_begin_duel_group(group_id)):
+            return "busy"
     group_cfg = GroupConfig(group_id, cooldown=plugin_config.duel_bot_cooldown_sec)
     if not await group_cfg.is_cooldown(DUEL_GROUP_COOLDOWN_KEY):
         end_duel_group(group_id)

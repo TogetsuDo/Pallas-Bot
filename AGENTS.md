@@ -82,14 +82,25 @@ uv run ruff format --check src/
 
 - **插件专项说明**：[docs/plugins/README.md](docs/plugins/README.md)（各子目录 `README.md` 与 `src/plugins/<name>/` 对应）。
 - **命令权限（cmd_perm）**：[docs/common/cmd_perm/README.md](docs/common/cmd_perm/README.md)（可配置等级、WebUI 覆盖、帮助菜单「何人可用」）。
+- **运行配置存储**：[docs/architecture/settings-storage.md](docs/architecture/settings-storage.md)（`pallas.toml` + `webui.json`，勿再向根目录 `.env` 写入新项）。
 - **常见问题与部署排障**：[docs/FAQ.md](docs/FAQ.md)。
+
+## 运行配置（Agent 必读）
+
+- **主配置**：复制 [`config/pallas.example.toml`](config/pallas.example.toml) 为 **`config/pallas.toml`**（已 gitignore），填写 `[bootstrap]`（监听、数据库等）。
+- **WebUI 落盘**：插件与通用项写入 **`data/pallas_config/webui.json`**；只读快照 **`config/pallas.webui.export.toml`** 由保存自动生成。
+- **合并顺序**：`pallas.toml` → `webui.json` → 遗留 `.env` / `.env.{ENVIRONMENT}`（后者覆盖前者；**WebUI 不再写入 `.env`**）。
+- **读取 API**：`src/common/config/repo_settings.py` 的 `repo_env_raw_value()` / `merged_repo_settings_upper()`；启动前 `apply_repo_settings_to_environ()`。
+- **从旧 `.env` 迁移**：`uv run python tools/migrate_env_to_pallas.py`（一次性）；迁移后请清理根目录残留 `.env` 同名键，避免覆盖 WebUI。
+- **分片可选 Redis**：在 `pallas.toml` 的 `[env]` 配置 `REDIS_URL`；`run_sharded_bot.sh` 自动探测。依赖：`uv sync --extra coord-redis`。
+- **Docker Compose 数据库**：仍可用 [`config/compose.env.example`](config/compose.env.example)（仅编排插值，非 Bot 主配置）。
 
 ## Agent 工作约定
 
 ### 修改范围
 
 - **优先修改 `src/` 与 `tests/`**，避免无意义的重排/大范围格式变化。
-- **不提交密钥与私密配置**：例如 `.env`、token、私钥、访问凭据等。
+- **不提交密钥与私密配置**：例如 `config/pallas.toml`、`data/`、`webui.json`、token、私钥、访问凭据等。
 - **依赖变更需谨慎**：新增依赖优先走 `pyproject.toml`（`uv` 工作流），并确保 CI 仍能通过。
 - **最小必要改动**：只改完成任务所需的代码与文件；避免「顺手」重构无关模块、扩大 diff。
 - **全仓格式化/尾随空格/无关换行**：非任务所需不要做；若某次检查或格式化会**波及大量历史文件**，先向维护者说明影响范围再执行。

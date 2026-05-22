@@ -14,6 +14,13 @@ from src.common.multi_bot.dedup import try_claim_cross_bot_message, try_claim_cr
 from src.common.multi_bot.fleet import fleet_bot_ids_contains, get_fleet_bot_ids
 from src.common.shard.coord.bot_count import should_skip_ingress_claim_for_shard_bot_count
 from src.common.shard.ingress_fanout import is_ingress_fanout_plaintext
+from src.common.shard.ingress_metrics import (
+    record_ingress_claim,
+    record_ingress_early_discard,
+    record_ingress_event,
+    record_ingress_fanout_bypass,
+    should_record_ingress_metrics,
+)
 from src.common.shard.registry.config import get_shard_registry_settings, is_sharding_active
 
 INGRESS_CLAIM_PLUGIN = "ingress_gate"
@@ -51,8 +58,14 @@ async def ingress_group_message_gate(bot, event) -> None:
 
     self_id = int(bot.self_id)
     user_id = int(event.user_id)
+    metrics = should_record_ingress_metrics(self_id)
+
+    if metrics:
+        record_ingress_event()
 
     if fleet_bot_ids_contains(user_id) and user_id != self_id:
+        if metrics:
+            record_ingress_early_discard("fleet")
         raise IgnoredException("fleet bot message")
 
     ats = group_at_qq_ids(event)
@@ -60,6 +73,8 @@ async def ingress_group_message_gate(bot, event) -> None:
         fleet = get_fleet_bot_ids()
         pallas_ats = ats & fleet
         if pallas_ats and self_id not in pallas_ats:
+            if metrics:
+                record_ingress_early_discard("not_at_target")
             raise IgnoredException("not at-target bot")
 
     plain = (event.get_plaintext() or "").strip()
@@ -69,6 +84,8 @@ async def ingress_group_message_gate(bot, event) -> None:
         or is_cage_plaintext(plain)
         or is_drink_plaintext(plain)
     ):
+        if metrics:
+            record_ingress_fanout_bypass()
         return
 
     body = plain or event.raw_message
@@ -82,8 +99,13 @@ async def ingress_group_message_gate(bot, event) -> None:
             event.time,
             shard_id,
             use_plaintext=True,
+            bot_id=self_id,
         ):
+            if metrics:
+                record_ingress_claim(won=False)
             raise IgnoredException("ingress shard claim lost")
+        if metrics:
+            record_ingress_claim(won=True)
         return
 
     if not await try_claim_cross_bot_message(
@@ -95,7 +117,11 @@ async def ingress_group_message_gate(bot, event) -> None:
         self_id,
         use_plaintext=True,
     ):
+        if metrics:
+            record_ingress_claim(won=False)
         raise IgnoredException("ingress claim lost")
+    if metrics:
+        record_ingress_claim(won=True)
 
 
 @driver.on_startup

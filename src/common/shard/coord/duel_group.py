@@ -15,6 +15,8 @@ from src.common.shard.registry.config import (
 
 _PLUGIN = "pallas_shard"
 _BUSY_TTL_SEC = 7200.0
+# 占用后若未登记双牛对局（如主持牛校验失败），超过该秒数视为孤儿锁可回收
+_ORPHAN_BUSY_MIN_AGE_SEC = 30.0
 _local_busy: set[int] = set()
 
 
@@ -77,18 +79,56 @@ def _write_atomic(path, data: dict[str, Any]) -> None:
     tmp.replace(path)
 
 
-def _mutate(path, fn) -> dict[str, Any] | None:
-    lk = _session_lock_path(path)
-    fd = _acquire_lock(lk)
-    if fd is None:
-        return _read(path)
-    try:
-        data = _read(path) or {}
-        fn(data)
-        _write_atomic(path, data)
-        return data
-    finally:
-        _release_lock(fd, lk)
+def _mutate(path, fn, *, retries: int = 8) -> dict[str, Any] | None:
+    for attempt in range(max(1, retries)):
+        lk = _session_lock_path(path)
+        fd = _acquire_lock(lk)
+        if fd is None:
+            if attempt + 1 < retries:
+                time.sleep(0.03 * (attempt + 1))
+                continue
+            return _read(path)
+        try:
+            data = _read(path) or {}
+            fn(data)
+            _write_atomic(path, data)
+            return data
+        finally:
+            _release_lock(fd, lk)
+    return _read(path)
+
+
+def _has_live_session(data: dict[str, Any]) -> bool:
+    pair = data.get("session_pair")
+    if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+        return False
+    until = float(data.get("session_until") or 0)
+    return until > time.time()
+
+
+def is_orphan_duel_group_lock(data: dict[str, Any] | None) -> bool:
+    """文件层 busy 但无有效 session：多为非主持牛开团后未 end 的泄漏。"""
+    if not data or not data.get("busy"):
+        return False
+    acquired = float(data.get("acquired_at") or 0)
+    if acquired <= 0 or time.time() < acquired + _ORPHAN_BUSY_MIN_AGE_SEC:
+        return False
+    return not _has_live_session(data)
+
+
+def mark_duel_group_session(group_id: int, bot_a: int, bot_b: int) -> None:
+    """双牛对局已开始：写入共享文件，供跨 worker 孤儿锁判断。"""
+    gid = int(group_id)
+    if not is_sharding_active():
+        return
+    path = _lock_path(gid)
+    now = time.time()
+
+    def stamp(data: dict[str, Any]) -> None:
+        data["session_pair"] = [int(bot_a), int(bot_b)]
+        data["session_until"] = now + _BUSY_TTL_SEC
+
+    _mutate(path, stamp)
 
 
 def try_begin_duel_group(group_id: int) -> bool:
@@ -135,5 +175,31 @@ def end_duel_group(group_id: int) -> None:
     def release(data: dict[str, Any]) -> None:
         data["busy"] = False
         data["until"] = 0
+        data.pop("session_pair", None)
+        data.pop("session_until", None)
 
     _mutate(path, release)
+
+
+async def try_reclaim_orphan_duel_group(group_id: int) -> bool:
+    """
+    回收泄漏的群决斗占用：busy 较久且协调文件无有效 session_pair。
+    不依赖本 worker 内存 duel_pair，避免分片下误判/漏判。
+    """
+    gid = int(group_id)
+    if not is_sharding_active():
+        if gid not in _local_busy:
+            return False
+        from src.plugins.duel.duel_session import get_duel_pair
+
+        if await get_duel_pair(gid) is not None:
+            return False
+        _local_busy.discard(gid)
+        return True
+
+    path = _lock_path(gid)
+    data = _read(path)
+    if not is_orphan_duel_group_lock(data):
+        return False
+    end_duel_group(gid)
+    return True

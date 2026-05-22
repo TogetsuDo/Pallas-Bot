@@ -165,6 +165,32 @@ class Chat:
             Chat._topics_lock,
         )
 
+    async def find_reply_bundle(self):
+        from .message_store import MessageStore
+        from .responder import Responder
+
+        return await Responder.find_reply_bundle(
+            self.chat_data,
+            self.config,
+            Chat._reply_dict,
+            MessageStore._message_dict,
+            Chat._recent_topics,
+        )
+
+    async def answer_from_bundle(self, bundle, *, plan: tuple[list[str], str] | None = None):
+        from .responder import Responder
+
+        return await Responder.answer_from_bundle(
+            bundle,
+            self.chat_data,
+            self.config,
+            Chat._reply_dict,
+            Chat._reply_lock,
+            Chat._recent_topics,
+            Chat._topics_lock,
+            plan=plan,
+        )
+
     @staticmethod
     async def reply_post_proc(raw_message: str, new_msg: str, bot_id: int, group_id: int) -> bool:
         return await Responder.reply_post_proc(

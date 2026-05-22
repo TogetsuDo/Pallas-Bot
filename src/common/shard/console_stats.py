@@ -101,6 +101,7 @@ def write_worker_stats_sync(
     shard_id: int,
     bots: dict[str, Any],
     preserve_matcher_hist: bool = False,
+    worker_meta: dict[str, Any] | None = None,
 ) -> None:
     """整文件覆写本 worker 快照（含各 QQ 的 by_plugin / matcher_duration_log / msg / 可选 matcher_hist）。"""
     payload = preserve_matcher_hist_from_file(shard_id, bots) if preserve_matcher_hist else bots
@@ -114,12 +115,18 @@ def write_worker_stats_sync(
             "updated_at": time.time(),
             "bots": payload,
         }
+        if worker_meta:
+            data.update(worker_meta)
         path = worker_stats_path(shard_id)
         tmp = path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(path)
     finally:
         _release_lock(shard_id, fd)
+
+
+def read_worker_stats_file(shard_id: int) -> dict[str, Any]:
+    return _read_worker_file(shard_id)
 
 
 def read_worker_stats(shard_id: int) -> dict[str, Any]:

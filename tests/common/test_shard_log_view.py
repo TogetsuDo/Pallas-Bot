@@ -71,6 +71,7 @@ def test_collect_cluster_log_errors(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     monkeypatch.setattr("src.common.shard.logs.view.shard_logs_dir", lambda: log_dir)
+    monkeypatch.setattr("src.common.shard.logs.errors.shard_logs_dir", lambda: log_dir)
     rows = collect_cluster_log_errors(per_file=50, limit=10)
     assert len(rows) >= 1
     assert any("worker-2" in str(r.get("plugin")) for r in rows)

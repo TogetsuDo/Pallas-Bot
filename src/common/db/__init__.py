@@ -286,6 +286,12 @@ async def init_postgresql_db() -> None:
     )
     await init_pg(engine)
     logger.info(f"{db_name} 连接成功！(pool={pool_size}+{max_overflow}, recycle={pool_recycle}s)")
+    try:
+        from src.common.shard.observability import log_pg_pool_warning_if_needed
+
+        log_pg_pool_warning_if_needed()
+    except Exception:
+        pass
 
     # bot 退出时释放连接池
     try:

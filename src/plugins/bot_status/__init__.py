@@ -217,38 +217,38 @@ async def handle_bot_count(bot: Bot, event: MessageEvent) -> None:
     if not isinstance(event, GroupMessageEvent):
         await bot_count_cmd.finish("牛牛报数仅支持群聊中使用")
 
-    group_bot_ids = await list_connected_bots_in_group(event.group_id)
-    if not group_bot_ids:
-        return
-
     self_id = int(bot.self_id)
 
     if is_sharding_active():
         from src.common.shard.coord.bot_count import update_shard_bot_count_registration
+        from src.common.shard.local_representative import is_local_worker_representative
+        from src.plugins.duel.duel_bots import list_local_fleet_bots_in_group
+
+        plain = (event.get_plaintext() or "").strip()
+        local_ids = [self_id]
+        if is_local_worker_representative(self_id):
+            probed = await list_local_fleet_bots_in_group(event.group_id)
+            local_ids = sorted({self_id, *probed})
 
         coord_task = asyncio.create_task(
             run_shard_coordinated_bot_count(
                 group_id=event.group_id,
                 user_id=int(event.user_id),
-                plaintext=(event.get_plaintext() or "").strip(),
+                plaintext=plain,
                 message_time=event.time,
                 self_bot_id=self_id,
-                local_bot_ids=[self_id],
+                local_bot_ids=local_ids,
             )
         )
         try:
-            if self_id not in group_bot_ids:
-                coord_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await coord_task
-                return
-            await update_shard_bot_count_registration(
-                group_id=event.group_id,
-                user_id=int(event.user_id),
-                plaintext=(event.get_plaintext() or "").strip(),
-                message_time=event.time,
-                bot_ids=group_bot_ids,
-            )
+            if is_local_worker_representative(self_id) and local_ids:
+                await update_shard_bot_count_registration(
+                    group_id=event.group_id,
+                    user_id=int(event.user_id),
+                    plaintext=plain,
+                    message_time=event.time,
+                    bot_ids=local_ids,
+                )
             coord = await coord_task
         except asyncio.CancelledError:
             raise
@@ -269,6 +269,10 @@ async def handle_bot_count(bot: Bot, event: MessageEvent) -> None:
         if index == total:
             await asyncio.sleep(0.3)
             await bot_count_cmd.finish("牛牛们报数完毕！")
+        return
+
+    group_bot_ids = await list_connected_bots_in_group(event.group_id)
+    if not group_bot_ids:
         return
 
     config = GroupConfig(group_id=event.group_id, cooldown=10)
