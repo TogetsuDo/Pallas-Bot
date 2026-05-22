@@ -31,9 +31,8 @@
 
 [![tencent-qq](https://img.shields.io/badge/%E7%BE%A4-开发者群-red?style=logo=tencent-qq)](https://jq.qq.com/?_wv=1027&k=tlLDuWzc)
 [![tencent-qq](https://img.shields.io/badge/%E7%BE%A4-拉牛牛-c73e7e?style=logo=tencent-qq)](#qq-群)
-
-![community-deployments](https://img.shields.io/badge/dynamic/json?url=https://stats.pallasbot.top/v1/stats&label=%E7%A4%BE%E5%8C%BA%E9%83%A8%E7%BD%B2&query=%24.deployments_online&suffix=%20%E5%A5%97%E5%9C%A8%E7%BA%BF&color=FE7D37)
-![community-bots](https://img.shields.io/badge/dynamic/json?url=https://stats.pallasbot.top/v1/stats&label=%E5%9C%A8%E7%BA%BF%E7%89%9B&query=%24.bots_online_sum&color=FE7D37)
+![community-deployments](https://img.shields.io/endpoint?url=https%3A%2F%2Fstats.pallasbot.top%2Fv1%2Fbadges%2Fdeployments-online)
+![community-bots](https://img.shields.io/endpoint?url=https%3A%2F%2Fstats.pallasbot.top%2Fv1%2Fbadges%2Fbots-online)
 
 </div>
 
