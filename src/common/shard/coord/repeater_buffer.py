@@ -18,10 +18,12 @@ if TYPE_CHECKING:
     from src.plugins.repeater.model import ChatData
 
 _PLUGIN = "pallas_shard"
+_REDIS_CHANNEL = "pallas:repeater_buffer"
 _TTL_SEC = 90.0
 _MAX_GROUP_TAIL = 256
 _seen_event_ids: deque[str] = deque(maxlen=8000)
 _seen_set: set[str] = set()
+_redis_listener_started = False
 
 
 def _coord_dir():
@@ -132,23 +134,56 @@ def message_payload_from_chat_data(chat_data: ChatData) -> dict[str, Any]:
     }
 
 
+def buffer_event_envelope(chat_data: ChatData, *, event_id: str | None = None) -> dict[str, Any]:
+    return {
+        "event_id": event_id or uuid.uuid4().hex,
+        "source_shard_id": int(get_shard_registry_settings().shard_id),
+        "msg": message_payload_from_chat_data(chat_data),
+    }
+
+
+def publish_repeater_buffer_redis_sync(envelope: dict[str, Any]) -> bool:
+    from src.common.coord.redis_settings import coord_redis_enabled
+
+    if not coord_redis_enabled():
+        return False
+    from src.common.coord.redis_claim import get_coord_redis_client
+
+    client = get_coord_redis_client()
+    if client is None:
+        return False
+    import json
+
+    try:
+        body = json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))
+        client.publish(_REDIS_CHANNEL, body)
+        return True
+    except Exception:
+        return False
+
+
+def publish_repeater_buffer_file_sync(envelope: dict[str, Any]) -> None:
+    event_id = str(envelope["event_id"])
+    now = time.time()
+    path = _coord_dir() / f"{event_id}.json"
+    payload = {
+        **envelope,
+        "created_at": now,
+        "expires_at": now + _TTL_SEC,
+        "applied_shard_ids": [],
+    }
+    _write_atomic(path, payload)
+
+
 def publish_repeater_buffer_event_sync(chat_data: ChatData) -> None:
     if not is_sharding_active():
         return
     if get_shard_registry_settings().role != "worker":
         return
-    event_id = uuid.uuid4().hex
-    now = time.time()
-    path = _coord_dir() / f"{event_id}.json"
-    payload = {
-        "event_id": event_id,
-        "source_shard_id": int(get_shard_registry_settings().shard_id),
-        "created_at": now,
-        "expires_at": now + _TTL_SEC,
-        "msg": message_payload_from_chat_data(chat_data),
-        "applied_shard_ids": [],
-    }
-    _write_atomic(path, payload)
+    envelope = buffer_event_envelope(chat_data)
+    if publish_repeater_buffer_redis_sync(envelope):
+        return
+    publish_repeater_buffer_file_sync(envelope)
 
 
 def schedule_publish_repeater_buffer(chat_data: ChatData) -> None:
@@ -172,6 +207,22 @@ def _message_tail_dup(group_msgs: list, msg: dict[str, Any]) -> bool:
         if int(m.user_id) == uid and int(m.time) == t and str(m.plain_text or "") == plain:
             return True
     return False
+
+
+async def ingest_repeater_buffer_event(data: dict[str, Any]) -> None:
+    event_id = str(data.get("event_id") or "")
+    if not event_id or event_id in _seen_set:
+        return
+    local_shard = int(get_shard_registry_settings().shard_id)
+    source = int(data.get("source_shard_id") or -1)
+    if source == local_shard:
+        _remember_event(event_id)
+        return
+    msg = data.get("msg")
+    if not isinstance(msg, dict):
+        return
+    await apply_repeater_buffer_message(msg)
+    _remember_event(event_id)
 
 
 async def apply_repeater_buffer_message(msg: dict[str, Any]) -> bool:
@@ -238,8 +289,7 @@ async def poll_repeater_buffer_pending() -> None:
             except OSError:
                 pass
             continue
-        await apply_repeater_buffer_message(msg)
-        _remember_event(event_id)
+        await ingest_repeater_buffer_event(data)
 
         def mark_applied(d: dict[str, Any]) -> None:
             applied = d.setdefault("applied_shard_ids", [])
@@ -254,6 +304,66 @@ async def poll_repeater_buffer_pending() -> None:
                 path.unlink(missing_ok=True)
             except OSError:
                 pass
+
+
+async def repeater_buffer_redis_listen_loop() -> None:
+    from src.common.coord.redis_claim import get_coord_redis_client
+    from src.common.coord.redis_settings import coord_redis_enabled
+
+    while True:
+        if not is_sharding_active() or get_shard_registry_settings().role != "worker":
+            return
+        if not coord_redis_enabled():
+            await asyncio.sleep(5.0)
+            continue
+        client = get_coord_redis_client()
+        if client is None:
+            await asyncio.sleep(5.0)
+            continue
+        pubsub = None
+        try:
+            pubsub = client.pubsub(ignore_subscribe_messages=True)
+            await asyncio.to_thread(pubsub.subscribe, _REDIS_CHANNEL)
+            while is_sharding_active():
+                raw = await asyncio.to_thread(pubsub.get_message, timeout=1.0)
+                if not raw or raw.get("type") != "message":
+                    continue
+                import json
+
+                body = raw.get("data")
+                if isinstance(body, bytes):
+                    body = body.decode("utf-8")
+                if not isinstance(body, str):
+                    continue
+                try:
+                    data = json.loads(body)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(data, dict):
+                    await ingest_repeater_buffer_event(data)
+        except Exception as err:
+            logger.debug(f"repeater_buffer redis listen: {err}")
+            await asyncio.sleep(2.0)
+        finally:
+            if pubsub is not None:
+                try:
+                    await asyncio.to_thread(pubsub.close)
+                except Exception:
+                    pass
+
+
+def start_repeater_buffer_redis_listener() -> None:
+    global _redis_listener_started
+    if _redis_listener_started or not is_sharding_active():
+        return
+    if get_shard_registry_settings().role != "worker":
+        return
+    from src.common.coord.redis_settings import coord_redis_enabled
+
+    if not coord_redis_enabled():
+        return
+    _redis_listener_started = True
+    asyncio.create_task(repeater_buffer_redis_listen_loop())
 
 
 async def prune_stale_repeater_buffer_files() -> None:

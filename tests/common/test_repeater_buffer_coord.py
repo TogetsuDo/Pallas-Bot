@@ -46,6 +46,40 @@ def test_repeater_buffer_cross_shard_append(tmp_path, monkeypatch):
     assert msgs[0].plain_text == "hello"
 
 
+def test_publish_prefers_redis_over_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "_coord_dir", lambda: tmp_path)
+    monkeypatch.setattr(mod, "publish_repeater_buffer_redis_sync", lambda env: True)
+    monkeypatch.setattr(mod, "is_sharding_active", lambda: True)
+    monkeypatch.setattr(
+        mod,
+        "get_shard_registry_settings",
+        lambda: type("S", (), {"role": "worker", "shard_id": 0, "enabled": True})(),
+    )
+    wrote: list[str] = []
+    monkeypatch.setattr(
+        mod,
+        "publish_repeater_buffer_file_sync",
+        lambda env: wrote.append(str(env["event_id"])),
+    )
+
+    chat = type(
+        "Chat",
+        (),
+        {
+            "group_id": 1,
+            "user_id": 2,
+            "bot_id": 3,
+            "raw_message": "hi",
+            "plain_text": "hi",
+            "is_plain_text": True,
+            "keywords": "hi",
+            "time": 99,
+        },
+    )()
+    mod.publish_repeater_buffer_event_sync(chat)
+    assert wrote == []
+
+
 def test_repeater_buffer_skips_duplicate_tail(tmp_path, monkeypatch):
     MessageStore._message_dict.clear()
     MessageStore._message_dict[100] = [

@@ -72,7 +72,10 @@ def start_shard_coord_worker_watcher() -> None:
         return
     if get_shard_registry_settings().role != "worker":
         return
+    from src.common.shard.coord.repeater_buffer import start_repeater_buffer_redis_listener
+
     _started = True
+    start_repeater_buffer_redis_listener()
     asyncio.create_task(shard_coord_worker_poll_loop())
 
 
