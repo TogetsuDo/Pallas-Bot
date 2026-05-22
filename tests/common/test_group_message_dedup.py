@@ -38,6 +38,14 @@ def test_cross_bot_signature_ignores_message_time() -> None:
     assert cross_bot_group_message_key(gid, uid, body, 100) == cross_bot_group_message_key(gid, uid, body, 101)
 
 
+def test_cross_bot_key_includes_message_time_when_requested() -> None:
+    gid, uid, body = 733291779, 3023094357, "八角笼牛"
+    k1 = cross_bot_group_message_key(gid, uid, body, 100, include_message_time=True)
+    k2 = cross_bot_group_message_key(gid, uid, body, 101, include_message_time=True)
+    assert k1 != k2
+    assert cross_bot_group_message_key(gid, uid, body, 100) == cross_bot_group_message_key(gid, uid, body, 101)
+
+
 def test_normalize_plaintext_collapses_whitespace() -> None:
     assert normalize_group_plaintext("牛牛画画  一只羊") == "牛牛画画 一只羊"
 
@@ -55,6 +63,20 @@ async def test_cross_bot_memory_claim_same_body_different_time() -> None:
     gid, uid, body = 12345, 999, "牛牛帮助"
     assert await try_claim_cross_bot_message_memory("ingress", gid, uid, body, 100, 111) is True
     assert await try_claim_cross_bot_message_memory("ingress", gid, uid, body, 101, 222) is False
+
+
+@pytest.mark.asyncio
+async def test_duel_memory_claim_scoped_by_message_time() -> None:
+    gid, uid, body = 733291779, 1, "八角笼牛"
+    assert await try_claim_cross_bot_message_memory(
+        "duel", gid, uid, body, 100, 111, include_message_time=True
+    )
+    assert await try_claim_cross_bot_message_memory(
+        "duel", gid, uid, body, 101, 222, include_message_time=True
+    )
+    assert not await try_claim_cross_bot_message_memory(
+        "duel", gid, uid, body, 101, 111, include_message_time=True
+    )
 
 
 @pytest.mark.asyncio

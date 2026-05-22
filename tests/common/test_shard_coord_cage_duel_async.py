@@ -52,7 +52,9 @@ async def test_cage_session_resets_after_completed_round(tmp_path, monkeypatch) 
 
     group_id = 626266902
     user_id = 1
-    claim_key = cross_bot_group_message_key(group_id, user_id, "八角笼牛", 1000, use_plaintext=True)
+    claim_key = cross_bot_group_message_key(
+        group_id, user_id, "八角笼牛", 1000, use_plaintext=True, include_message_time=True
+    )
     path = mod._session_path(group_id, claim_key)
     path.write_text(
         json.dumps({
@@ -78,6 +80,12 @@ async def test_cage_session_resets_after_completed_round(tmp_path, monkeypatch) 
         plaintext="八角笼牛",
         self_bot_id=111,
     )
-    data = json.loads(path.read_text(encoding="utf-8"))
+    path_new = mod._session_path(
+        group_id,
+        cross_bot_group_message_key(
+            group_id, user_id, "八角笼牛", 2000, use_plaintext=True, include_message_time=True
+        ),
+    )
+    data = json.loads(path_new.read_text(encoding="utf-8"))
     assert data.get("message_time") == 2000
     assert data.get("pair") is None or pair is not None

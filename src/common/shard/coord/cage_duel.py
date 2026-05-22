@@ -297,6 +297,7 @@ async def update_shard_cage_duel_registration(
         plaintext,
         message_time,
         use_plaintext=True,
+        include_message_time=True,
     )
     path = _session_path(group_id, claim_key)
     shard_id = get_shard_registry_settings().shard_id
@@ -321,6 +322,7 @@ async def run_shard_cage_duel_coord(
         plaintext,
         message_time,
         use_plaintext=True,
+        include_message_time=True,
     )
     path = _session_path(group_id, claim_key)
     t = normalize_message_time(message_time)
