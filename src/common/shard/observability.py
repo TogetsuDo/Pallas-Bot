@@ -7,7 +7,7 @@ from typing import Any
 from src.common.shard.coord_pending import coord_pending_snapshot_sync
 from src.common.shard.ingress_metrics import merge_ingress_metrics
 from src.common.shard.registry.config import is_sharding_active
-from src.common.shard.registry.store import load_shard_registry
+from src.common.shard.registry.store import get_shard_registry
 
 
 def pg_pool_estimate() -> dict[str, Any]:
@@ -25,7 +25,7 @@ def pg_pool_estimate() -> dict[str, Any]:
     per_process_max = pool_size + max_overflow
     worker_count = 0
     if is_sharding_active():
-        reg = load_shard_registry()
+        reg = get_shard_registry()
         worker_count = len(reg.shards)
         process_count = worker_count + 1  # workers + hub
     else:
