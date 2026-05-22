@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Any
 
 from src.common.shard.logs.errors import append_shard_log_error_from_sink, log_stem_for_shard
+from src.common.shard.logs.session import maybe_rotate_logs_for_new_session
 from src.common.shard.logs.view import shard_logs_dir
 from src.common.shard.registry.config import get_shard_registry_settings, is_sharding_active
 
@@ -38,6 +39,7 @@ def install_shard_process_logging() -> str | None:
 
     path = shard_log_file_path(role=role, shard_id=s.shard_id)
     stem = log_stem_for_shard(role=role, shard_id=s.shard_id)
+    maybe_rotate_logs_for_new_session(stem=stem, main_log_path=pathlib.Path(path))
 
     logger.add(
         path,

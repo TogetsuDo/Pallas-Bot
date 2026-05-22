@@ -808,9 +808,15 @@ async def _fetch_friend_list_for_self_id(
 async def _get_doubt_friends_for_self_id(self_id: int) -> list[dict[str, Any]]:
     try:
         raw = await _onebot_v11_api_call(int(self_id), "get_doubt_friends_add_request", count=50)
-    except HTTPException:
-        raise
-    except Exception:  # noqa: BLE001
+    except HTTPException as e:
+        logger.debug(
+            "Pallas-Bot 控制台: get_doubt_friends_add_request 不可用 self_id={}: {}",
+            self_id,
+            getattr(e, "detail", e),
+        )
+        return []
+    except Exception as e:  # noqa: BLE001
+        logger.debug("Pallas-Bot 控制台: get_doubt_friends_add_request 失败 self_id={}: {}", self_id, e)
         return []
     return _rows_from_doubt_friends_api(raw)
 

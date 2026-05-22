@@ -5,6 +5,7 @@
 #   ./scripts/run_sharded_bot.sh status
 #   ./scripts/run_sharded_bot.sh stop
 #   ./scripts/run_sharded_bot.sh restart
+#   ./scripts/run_sharded_bot.sh restart --workers-only
 
 set -euo pipefail
 
@@ -22,6 +23,7 @@ BOTS_PER_SHARD="${PALLAS_SHARD_BOTS_PER:-5}"
 HUB_PORT="${PALLAS_SHARD_HUB_PORT:-${PORT:-8088}}"
 WORKER_BASE_PORT="${PALLAS_SHARD_WORKER_BASE_PORT:-8090}"
 WORKER_COUNT_OVERRIDE=""
+WORKERS_ONLY=0
 DRY_RUN=0
 SKIP_PORT_SYNC=0
 SKIP_OCCUPIED_PORTS=1
@@ -53,9 +55,9 @@ usage() {
 
 命令:
   start     启动控制台与全部牛牛 worker（后台运行）
-  stop      停止全部分片进程
-  status    查看各进程是否在运行、对应端口
-  restart   先 stop 再 start
+  stop      停止全部分片进程（可加 --workers-only 仅停 worker）
+  status    查看进程、端口、Redis 协调与配置摘要
+  restart   先 stop 再 start（可加 --workers-only 仅重启 worker，保留 hub）
 
 测试 worker（手动迁入账号，不参与自动负载）:
   test init              在 registry 中启用 test 分片并分配端口
@@ -69,6 +71,7 @@ usage() {
   ./scripts/run_sharded_bot.sh start
   ./scripts/run_sharded_bot.sh status
   ./scripts/run_sharded_bot.sh restart
+  ./scripts/run_sharded_bot.sh restart --workers-only
   ./scripts/run_sharded_bot.sh test init
   ./scripts/run_sharded_bot.sh test add 123456789 --sync-ws
   ./scripts/run_sharded_bot.sh test start
@@ -81,6 +84,7 @@ usage() {
   --skip-port-sync     启动前不自动改写协议端里的反向 WS 地址
   --no-skip-occupied-ports
                        worker 严格使用 起点+N，不自动避开已占用端口
+  --workers-only       仅操作生产 worker（不停/不启 hub；restart 时常用）
   --dry-run            只显示将要执行的命令，不真正启动
   -h, --help           显示本帮助
 
@@ -109,6 +113,91 @@ shard_coord_backend_hint() {
     echo "跨进程 claim：Redis"
   else
     echo "跨进程 claim：共享 data/ 文件"
+  fi
+}
+
+REDIS_STATUS_LINES=()
+
+load_redis_status_lines() {
+  REDIS_STATUS_LINES=()
+  if [[ ! -f "${DETECT_REDIS_SCRIPT}" ]]; then
+    return
+  fi
+  mapfile -t REDIS_STATUS_LINES < <("${START_CMD[@]}" "${DETECT_REDIS_SCRIPT}" --status 2>/dev/null || true)
+}
+
+redis_status_get() {
+  local key="$1" line
+  for line in "${REDIS_STATUS_LINES[@]}"; do
+    [[ "${line}" == "${key}="* ]] || continue
+    echo "${line#*=}"
+    return
+  done
+}
+
+print_redis_status_block() {
+  echo "  跨进程协调 (ingress claim)"
+  if [[ ! -f "${DETECT_REDIS_SCRIPT}" ]]; then
+    echo "    后端     共享 data/ 文件（未找到探测脚本）"
+    return
+  fi
+  load_redis_status_lines
+  local policy url pkg reachable active backend
+  policy="$(redis_status_get policy)"
+  url="$(redis_status_get url)"
+  pkg="$(redis_status_get package)"
+  reachable="$(redis_status_get reachable)"
+  active="$(redis_status_get active)"
+  backend="$(redis_status_get backend)"
+  policy="${policy:-auto}"
+  backend="${backend:-file}"
+  if [[ "${policy}" == "false" ]]; then
+    echo "    策略     已禁用 (PALLAS_COORD_REDIS_ENABLED=false)"
+    echo "    后端     共享 data/ 文件"
+    return
+  fi
+  if [[ -z "${url}" ]]; then
+    echo "    策略     ${policy}"
+    echo "    配置     未设置 REDIS_URL（pallas.toml [env] 或 webui.json）"
+    echo "    后端     共享 data/ 文件"
+    return
+  fi
+  echo "    策略     ${policy}"
+  echo "    地址     ${url}"
+  if [[ "${pkg}" == "no" ]]; then
+    echo "    客户端   未安装（uv sync --extra coord-redis）"
+  else
+    echo "    客户端   已安装"
+  fi
+  if [[ "${reachable}" == "yes" ]]; then
+    echo "    连通     可达 → 启动 worker 时将使用 Redis"
+  else
+    echo "    连通     不可达 → 回退共享 data/ 文件"
+  fi
+  if [[ "${active}" == "yes" ]]; then
+    echo "    当前     Redis 已启用"
+  else
+    echo "    当前     文件 claim"
+  fi
+}
+
+shard_common_env() {
+  (
+    echo "PALLAS_SHARD_ENABLED=true"
+    echo "PALLAS_SHARD_BOTS_PER=${BOTS_PER_SHARD}"
+    echo "PALLAS_SHARD_HUB_PORT=${HUB_PORT}"
+    echo "PALLAS_SHARD_WORKER_BASE_PORT=${WORKER_BASE_PORT}"
+  )
+}
+
+print_config_summary() {
+  local workers="$1"
+  echo "  每片牛数   ${BOTS_PER_SHARD}"
+  echo "  worker 数  ${workers}"
+  echo "  hub 端口   ${HUB_PORT}"
+  echo "  worker 起点 ${WORKER_BASE_PORT}"
+  if [[ -n "${WORKER_PORTS_CSV:-}" ]]; then
+    echo "  worker 端口 ${WORKER_PORTS_CSV}"
   fi
 }
 
@@ -182,6 +271,22 @@ is_running() {
   [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null
 }
 
+rotate_bootstrap_log() {
+  local name="$1"
+  local bootstrap="$2"
+  [[ -f "${bootstrap}" ]] || return 0
+  local size=0
+  size="$(wc -c <"${bootstrap}" 2>/dev/null | tr -d ' ')" || size=0
+  if [[ "${size}" -eq 0 ]]; then
+    rm -f "${bootstrap}"
+    return 0
+  fi
+  mkdir -p "${LOG_DIR}/archive"
+  local ts
+  ts="$(date +%Y%m%d-%H%M%S)"
+  mv -f "${bootstrap}" "${LOG_DIR}/archive/${name}.bootstrap-${ts}.log"
+}
+
 start_one() {
   local name="$1"
   local label="$2"
@@ -201,7 +306,8 @@ start_one() {
   fi
 
   mkdir -p "${RUN_DIR}" "${LOG_DIR}"
-  # 主日志由进程内 loguru 写入 ${logfile}（轮转）；bootstrap 仅捕获 init 前/崩溃输出
+  rotate_bootstrap_log "${name}" "${bootstrap}"
+  # 主日志由进程内 loguru 写入 ${logfile}（每次启动归档旧会话）；bootstrap 仅捕获 init 前/崩溃输出
   nohup "$@" >>"${bootstrap}" 2>&1 &
   local pid=$!
   echo "${pid}" >"${pidfile}"
@@ -241,6 +347,52 @@ stop_orphan_shard_processes() {
   sleep 1
   for pat in "${REPO_ROOT}/.venv/bin/python3 bot_hub.py" "${REPO_ROOT}/.venv/bin/python3 bot_worker.py"; do
     pkill -KILL -f "${pat}" 2>/dev/null || true
+  done
+}
+
+stop_orphan_worker_processes() {
+  local pat="${REPO_ROOT}/.venv/bin/python3 bot_worker.py"
+  pkill -TERM -f "${pat}" 2>/dev/null || true
+  sleep 1
+  pkill -KILL -f "${pat}" 2>/dev/null || true
+}
+
+stop_production_workers() {
+  local f sid
+  for f in "${RUN_DIR}"/worker-*.pid; do
+    [[ -e "${f}" ]] || continue
+    [[ "$(basename "${f}" .pid)" == "worker-test" ]] && continue
+    sid=""
+    if [[ "$(basename "${f}" .pid)" =~ worker-([0-9]+) ]]; then
+      sid="${BASH_REMATCH[1]}"
+    fi
+    stop_one "$(basename "${f}" .pid)" "worker-${sid}"
+  done
+  stop_orphan_worker_processes
+}
+
+start_production_workers() {
+  local workers="$1"
+  local -a common
+  mapfile -t common < <(shard_common_env)
+  load_shard_redis_env
+  local sid=0
+  local -a _worker_ports=()
+  if [[ -n "${WORKER_PORTS_CSV:-}" ]]; then
+    IFS=',' read -r -a _worker_ports <<< "${WORKER_PORTS_CSV}"
+  fi
+  while [[ "${sid}" -lt "${workers}" ]]; do
+    local wport=$((WORKER_BASE_PORT + sid))
+    if [[ "${#_worker_ports[@]}" -gt "${sid}" && -n "${_worker_ports[sid]:-}" ]]; then
+      wport="${_worker_ports[sid]}"
+    fi
+    start_one "worker-${sid}" "worker-${sid}  WS:${wport}" env \
+      "${common[@]}" \
+      PALLAS_BOT_ROLE=worker \
+      PALLAS_SHARD_ID="${sid}" \
+      PORT="${wport}" \
+      "${START_CMD[@]}" bot_worker.py
+    sid=$((sid + 1))
   done
 }
 
@@ -532,17 +684,21 @@ dispatch_test_subcmd() {
 cmd_start() {
   local workers="${WORKER_COUNT_OVERRIDE:-$(calc_worker_count)}"
   local hub_url="http://127.0.0.1:${HUB_PORT}"
+  local -a common
+  mapfile -t common < <(shard_common_env)
 
   print_title "Pallas-Bot 分片模式 · 启动"
-  echo "  配置：控制台端口 ${HUB_PORT}，worker ${workers} 个，每片约 ${BOTS_PER_SHARD} 头牛"
-  echo "        worker 起点端口 ${WORKER_BASE_PORT}$(
-    [[ "${SKIP_OCCUPIED_PORTS}" -eq 1 ]] && echo "（自动跳过占用）" || echo "（严格 起点+分片号）"
-  )"
+  print_config_summary "${workers}"
+  if [[ "${SKIP_OCCUPIED_PORTS}" -eq 1 ]]; then
+    echo "  端口策略   自动跳过占用"
+  else
+    echo "  端口策略   严格 起点+分片号"
+  fi
   load_shard_redis_env
-  echo "        $(shard_coord_backend_hint)"
+  echo "  $(shard_coord_backend_hint)"
   if [[ "${PALLAS_COORD_REDIS_ENABLED:-}" == "true" ]]; then
     if ! uv run python -c "import redis" 2>/dev/null; then
-      echo "        提示：请执行 uv sync --extra coord-redis 以安装 redis 客户端" >&2
+      echo "  提示       请执行 uv sync --extra coord-redis 以安装 redis 客户端" >&2
     fi
   fi
   echo ""
@@ -550,20 +706,10 @@ cmd_start() {
   wait_worker_ports_released "${workers}" || true
   echo ""
   prepare_shard_ports "${workers}" || return 1
-  if [[ -n "${WORKER_PORTS_CSV:-}" ]]; then
-    echo "        实际端口：${WORKER_PORTS_CSV}"
-  fi
   echo ""
   echo "  正在启动进程…"
 
-  local common=(
-    PALLAS_SHARD_ENABLED=true
-    PALLAS_SHARD_BOTS_PER="${BOTS_PER_SHARD}"
-    PALLAS_SHARD_HUB_PORT="${HUB_PORT}"
-    PALLAS_SHARD_WORKER_BASE_PORT="${WORKER_BASE_PORT}"
-  )
-
-  start_one hub "控制台 (hub)" env \
+  start_one hub "hub  控制台 :${HUB_PORT}" env \
     "${common[@]}" \
     PALLAS_BOT_ROLE=hub \
     PORT="${HUB_PORT}" \
@@ -573,21 +719,7 @@ cmd_start() {
     sleep 1
   fi
 
-  local sid=0
-  IFS=',' read -r -a _worker_ports <<< "${WORKER_PORTS_CSV:-}"
-  while [[ "${sid}" -lt "${workers}" ]]; do
-    local wport=$((WORKER_BASE_PORT + sid))
-    if [[ "${#_worker_ports[@]}" -gt "${sid}" && -n "${_worker_ports[sid]}" ]]; then
-      wport="${_worker_ports[sid]}"
-    fi
-    start_one "worker-${sid}" "牛牛 worker-${sid}（WS 端口 ${wport}）" env \
-      "${common[@]}" \
-      PALLAS_BOT_ROLE=worker \
-      PALLAS_SHARD_ID="${sid}" \
-      PORT="${wport}" \
-      "${START_CMD[@]}" bot_worker.py
-    sid=$((sid + 1))
-  done
+  start_production_workers "${workers}"
 
   if [[ "${DRY_RUN}" -eq 1 ]]; then
     echo ""
@@ -618,17 +750,17 @@ cmd_start() {
   done
 
   print_title "启动完成"
+  echo "  汇总       hub $([[ "${hub_ok}" -eq 1 ]] && echo 运行中 || echo 未就绪) · worker ${worker_running}/${workers} 运行"
   if [[ "${hub_ok}" -eq 1 ]]; then
-    echo "  在浏览器打开："
-    echo "    WebUI   ${hub_url}/pallas/"
-    echo "    协议端  ${hub_url}/protocol/console/"
+    echo "  WebUI      ${hub_url}/pallas/"
+    echo "  协议端     ${hub_url}/protocol/console/"
   fi
   echo ""
-  echo "  常用命令："
-  echo "    ./scripts/run_sharded_bot.sh status   查看运行状态"
-  echo "    ./scripts/run_sharded_bot.sh stop     停止全部分片"
-  echo "    ./scripts/run_sharded_bot.sh test start   仅启测试 worker"
-  echo "    tail -f ${LOG_DIR}/worker-0.log       查看某 worker 日志"
+  echo "  常用命令"
+  echo "    status              查看运行状态与 Redis"
+  echo "    restart --workers-only   仅重启 worker（保留 hub）"
+  echo "    test start          仅启测试 worker"
+  echo "    tail -f ${LOG_DIR}/worker-0.log"
   if [[ "${worker_fail}" -gt 0 ]]; then
     echo ""
     echo "  部分 worker 未保持运行，多为端口占用或配置错误；修复后执行 restart。"
@@ -639,19 +771,23 @@ cmd_start() {
 }
 
 cmd_stop() {
+  if [[ "${WORKERS_ONLY}" -eq 1 ]]; then
+    print_title "Pallas-Bot 分片模式 · 停止 worker（保留 hub）"
+    if is_running "${PID_HUB}"; then
+      echo "  hub        保持运行（端口 ${HUB_PORT}）"
+    else
+      echo "  hub        未运行"
+    fi
+    echo ""
+    stop_production_workers
+    echo ""
+    echo "  生产 worker 已处理完毕（测试 worker-test 未停止）。"
+    return 0
+  fi
   print_title "Pallas-Bot 分片模式 · 停止"
   stop_one "worker-test" "测试 worker-test"
-  local f
-  for f in "${RUN_DIR}"/worker-*.pid; do
-    [[ -e "${f}" ]] || continue
-    [[ "$(basename "${f}" .pid)" == "worker-test" ]] && continue
-    local sid=""
-    if [[ "$(basename "${f}" .pid)" =~ worker-([0-9]+) ]]; then
-      sid="${BASH_REMATCH[1]}"
-    fi
-    stop_one "$(basename "${f}" .pid)" "牛牛 worker-${sid}"
-  done
-  stop_one hub "控制台 (hub)"
+  stop_production_workers
+  stop_one hub "hub  控制台"
   stop_orphan_shard_processes
   echo ""
   echo "  全部分片进程已处理完毕。"
@@ -661,30 +797,38 @@ cmd_status() {
   local workers=0
   local running_workers=0
   local stale_workers=0
+  local expected_workers
+  expected_workers="$(calc_worker_count)"
   local hub_url="http://127.0.0.1:${HUB_PORT}"
+  local hub_state="未运行"
 
   print_title "Pallas-Bot 分片模式 · 运行状态"
 
+  echo "  配置摘要"
+  print_config_summary "${expected_workers}"
+  echo ""
+
+  print_redis_status_block
+  echo ""
+
+  echo "  进程"
   if is_running "${PID_HUB}"; then
-    echo "  控制台 (hub)     运行中"
-    echo "                   ${hub_url}/pallas/"
-    echo "                   ${hub_url}/protocol/console/"
+    hub_state="运行中"
+    echo "    hub        ${hub_state}  :${HUB_PORT}"
+    echo "               ${hub_url}/pallas/"
   else
     if [[ -f "${PID_HUB}" ]]; then
-      echo "  控制台 (hub)     未运行（残留 pid 文件，可执行 start 清理并拉起）"
-    else
-      echo "  控制台 (hub)     未运行"
+      hub_state="未运行（残留 pid）"
     fi
+    echo "    hub        ${hub_state}"
   fi
 
-  echo ""
-  echo "  牛牛 worker："
   local f
   for f in "${RUN_DIR}"/worker-*.pid; do
     [[ -e "${f}" ]] || continue
     [[ "$(basename "${f}" .pid)" == "worker-test" ]] && continue
     workers=$((workers + 1))
-    local name pid port
+    local name port state
     name="$(basename "${f}" .pid)"
     port=""
     if [[ "${name}" =~ worker-([0-9]+) ]]; then
@@ -692,47 +836,109 @@ cmd_status() {
     fi
     if is_running "${f}"; then
       running_workers=$((running_workers + 1))
-      echo "    ${name}   运行中   反向 WS 端口 ${port}"
+      state="运行中"
     else
       stale_workers=$((stale_workers + 1))
-      echo "    ${name}   未运行   （进程已退出，日志 ${LOG_DIR}/${name}.log）"
+      state="未运行"
     fi
+    printf "    %-10s %-6s  WS:%s\n" "${name}" "${state}" "${port}"
   done
   if [[ "${workers}" -eq 0 ]]; then
-    echo "    （尚无生产 worker 记录，请先 start）"
+    echo "    （尚无生产 worker，请先 start）"
+  else
+    echo "    小计       ${running_workers}/${workers} 运行"
   fi
 
   echo ""
-  echo "  测试 worker-test："
+  echo "  测试 worker-test"
   if registry_test_enabled; then
     local tsid tport
     tsid="$(registry_test_shard_id)"
     tport="$(registry_test_port)"
     if is_running "${PID_WORKER_TEST}"; then
-      echo "    运行中   分片 ${tsid}，WS 端口 ${tport}"
+      echo "    状态       运行中  分片 ${tsid}  WS:${tport}"
     else
-      echo "    未运行   分片 ${tsid}，WS 端口 ${tport}（test start 拉起）"
+      echo "    状态       未运行  分片 ${tsid}  WS:${tport}（test start）"
     fi
   else
-    echo "    未配置（test init 启用）"
+    echo "    状态       未配置（test init）"
   fi
 
   echo ""
-  echo "  日志目录：${LOG_DIR}/"
-  echo "  （WebUI「日志」页可汇总查看 hub + 各 worker）"
+  echo "  日志       ${LOG_DIR}/"
 
   if [[ "${stale_workers}" -gt 0 ]]; then
     echo ""
-    echo "  提示：有 ${stale_workers} 个 worker 未在运行，可执行："
-    echo "    ./scripts/run_sharded_bot.sh restart"
+    echo "  提示：${stale_workers} 个 worker 未运行"
+    if is_running "${PID_HUB}"; then
+      echo "    ./scripts/run_sharded_bot.sh restart --workers-only"
+    else
+      echo "    ./scripts/run_sharded_bot.sh restart"
+    fi
   elif [[ "${running_workers}" -eq 0 ]] && ! is_running "${PID_HUB}"; then
     echo ""
-    echo "  当前无运行中的分片进程。启动请执行："
+    echo "  提示：当前无运行中的分片进程"
     echo "    ./scripts/run_sharded_bot.sh start"
   fi
 }
 
+cmd_restart_workers_only() {
+  local workers="${WORKER_COUNT_OVERRIDE:-$(calc_worker_count)}"
+
+  print_title "Pallas-Bot 分片模式 · 重启 worker（保留 hub）"
+  print_config_summary "${workers}"
+  if is_running "${PID_HUB}"; then
+    echo "  hub        保持运行（:${HUB_PORT}）"
+  else
+    echo "  hub        未运行（仅 worker；WebUI 需单独 start hub）"
+  fi
+  echo ""
+
+  stop_production_workers
+  echo ""
+  wait_worker_ports_released "${workers}" || true
+  echo ""
+  prepare_shard_ports "${workers}" || return 1
+  echo ""
+  echo "  正在启动 worker…"
+  start_production_workers "${workers}"
+
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    echo ""
+    echo "  （预览模式，未实际启动）"
+    return 0
+  fi
+
+  echo ""
+  echo "  正在确认 worker…"
+  local worker_running=0 worker_fail=0
+  local f
+  for f in "${RUN_DIR}"/worker-*.pid; do
+    [[ -e "${f}" ]] || continue
+    [[ "$(basename "${f}" .pid)" == "worker-test" ]] && continue
+    if is_running "${f}"; then
+      worker_running=$((worker_running + 1))
+    else
+      worker_fail=$((worker_fail + 1))
+      local wname
+      wname="$(basename "${f}" .pid)"
+      echo "  · ${wname} 启动后已退出，请查看: ${LOG_DIR}/${wname}.log"
+    fi
+  done
+
+  print_title "worker 重启完成"
+  load_shard_redis_env
+  echo "  汇总       worker ${worker_running}/${workers} 运行 · $(shard_coord_backend_hint)"
+  if [[ "${worker_fail}" -gt 0 ]]; then
+    echo "  提示       部分 worker 未保持运行，请检查端口与日志"
+  fi
+}
+
 cmd_restart() {
+  if [[ "${WORKERS_ONLY}" -eq 1 ]]; then
+    cmd_restart_workers_only
+    return
+  fi
   local workers="${WORKER_COUNT_OVERRIDE:-$(calc_worker_count)}"
   cmd_stop
   echo ""
@@ -800,6 +1006,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-skip-occupied-ports)
       SKIP_OCCUPIED_PORTS=0
+      shift
+      ;;
+    --workers-only)
+      WORKERS_ONLY=1
       shift
       ;;
     -h|--help)

@@ -33,7 +33,7 @@ chmod +x scripts/run_sharded_bot.sh scripts/sync_shard_protocol_ports.py
 
 - 默认 **每片 5 牛**，按 `accounts.json` / 注册表自动计算 worker 数量（例如 22 个 enabled 账号约 **1 hub + 5 worker**，端口 8090～8094）。
 - 强制 worker 数：`./scripts/run_sharded_bot.sh start --workers 5`
-- 日志：`data/pallas_shard/logs/hub.log`、`worker-0.log` …
+- 日志：`data/pallas_shard/logs/hub.log`、`worker-0.log` …（**当前会话**；每次 worker/hub 启动时非空旧文件会归档到 `logs/archive/`，默认每 stem 保留 8 份，可用 `PALLAS_SHARD_LOG_ROTATE_ON_START`、`PALLAS_SHARD_LOG_ARCHIVE_MAX` 调整）
 - PID：`data/pallas_shard/run/*.pid`
 
 `start` / `restart` 时脚本会：

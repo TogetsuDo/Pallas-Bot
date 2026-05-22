@@ -43,9 +43,10 @@ async def shard_coord_worker_poll_loop() -> None:
         try:
             if is_sharding_active():
                 local_ids = frozenset(get_bots().keys())
-                if local_ids and coord_dirs_have_pending_json():
-                    await poll_duel_qte_pending(local_ids)
+                if local_ids:
                     await poll_bot_action_pending(local_ids)
+                    if coord_dirs_have_pending_json():
+                        await poll_duel_qte_pending(local_ids)
                 tick += 1
                 if tick >= _PRUNE_EVERY:
                     tick = 0
