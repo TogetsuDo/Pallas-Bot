@@ -10,6 +10,8 @@ from typing import Any
 from src.common.shard.logs.view import shard_logs_dir
 
 _ERRORS_DIR_NAME = "errors"
+# 存在时表示仅认 errors/*.jsonl，清空后勿再扫 hub.log / worker-*.log（避免 WebUI 清理后旧 ERROR 复现）
+_JSONL_ARCHIVE_MARKER = ".jsonl_archive"
 _APPEND_LOCK = threading.Lock()
 _MSG_MAX = 2000
 _TB_MAX = 50_000
@@ -89,6 +91,12 @@ def append_shard_log_error(entry: dict[str, Any], *, stem: str) -> None:
                 path.write_text("".join(f"{r}\n" for r in keep if r.strip()), encoding="utf-8")
         except OSError:
             pass
+        marker = shard_errors_dir() / _JSONL_ARCHIVE_MARKER
+        if not marker.is_file():
+            try:
+                marker.write_text(str(int(time.time())), encoding="utf-8")
+            except OSError:
+                pass
 
 
 def append_shard_log_error_from_sink(text: str, record: Any, *, stem: str) -> None:
@@ -162,13 +170,21 @@ def collect_cluster_log_errors_from_jsonl(*, limit: int = 120) -> list[dict[str,
     return deduped[-limit:]
 
 
+def errors_archive_prefers_jsonl_only() -> bool:
+    return (shard_errors_dir() / _JSONL_ARCHIVE_MARKER).is_file()
+
+
 def cleanup_shard_error_archives_sync() -> None:
     root = shard_errors_dir()
     if not root.is_dir():
-        return
+        root.mkdir(parents=True, exist_ok=True)
     with _APPEND_LOCK:
         for path in root.glob("*.jsonl"):
             try:
                 path.unlink()
             except OSError:
                 pass
+        try:
+            (root / _JSONL_ARCHIVE_MARKER).write_text(str(int(time.time())), encoding="utf-8")
+        except OSError:
+            pass

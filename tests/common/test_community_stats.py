@@ -129,8 +129,10 @@ async def test_send_heartbeat_success(monkeypatch):
             "src.common.community_stats.reporter.load_or_create_deployment_id",
             return_value="550e8400-e29b-41d4-a716-446655440000",
         ),
-        patch("src.common.community_stats.reporter.is_sharding_active", return_value=False),
-        patch("src.common.community_stats.reporter.get_bots", return_value={"1": object()}),
+        patch(
+            "src.common.shard.presence.count_connected_bots_for_reporting",
+            return_value=1,
+        ),
         patch("src.common.community_stats.reporter.get_fleet_bot_ids", return_value=frozenset({1, 2})),
         patch("src.common.community_stats.reporter.httpx.AsyncClient", return_value=mock_client),
     ):
@@ -148,8 +150,8 @@ def test_build_payload_sharded():
     with (
         patch("src.common.community_stats.reporter.is_sharding_active", return_value=True),
         patch(
-            "src.common.shard.presence.get_cluster_online_bot_ids",
-            return_value=frozenset({111, 222}),
+            "src.common.shard.presence.count_connected_bots_for_reporting",
+            return_value=2,
         ),
         patch("src.common.community_stats.reporter.get_fleet_bot_ids", return_value=frozenset({111, 222, 333})),
         patch("src.common.community_stats.reporter.get_shard_registry") as mock_reg,

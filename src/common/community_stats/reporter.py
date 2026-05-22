@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 
 import httpx
-from nonebot import get_bots, logger
+from nonebot import logger
 
 from src.common.bot_runtime.roles import is_sharded_worker
 from src.common.cmd_perm.metadata_defaults import PLUGIN_EXTRA_VERSION
@@ -26,12 +26,9 @@ def should_run_community_stats_reporter() -> bool:
 
 
 def build_heartbeat_payload() -> dict[str, object]:
-    if is_sharding_active():
-        from src.common.shard.presence import get_cluster_online_bot_ids
+    from src.common.shard.presence import count_connected_bots_for_reporting
 
-        online_bots = len(get_cluster_online_bot_ids())
-    else:
-        online_bots = len(get_bots())
+    online_bots = count_connected_bots_for_reporting()
     catalog_bots = len(get_fleet_bot_ids())
     sharded = is_sharding_active()
     shard_workers = 0

@@ -462,15 +462,21 @@ def collect_cluster_log_errors(
     per_file: int = 600,
     limit: int = 120,
 ) -> list[dict[str, Any]]:
-    """合并分片 ERROR：优先 errors/*.jsonl，否则回退扫落盘日志尾部。"""
+    """合并分片 ERROR：优先 errors/*.jsonl；已启用 jsonl 归档且清空后不再扫落盘日志。"""
     if limit <= 0:
         return []
     try:
-        from src.common.shard.logs.errors import collect_cluster_log_errors_from_jsonl
+        from src.common.shard.logs.errors import (
+            collect_cluster_log_errors_from_jsonl,
+            errors_archive_prefers_jsonl_only,
+            shard_errors_dir,
+        )
 
         jsonl_rows = collect_cluster_log_errors_from_jsonl(limit=limit)
         if jsonl_rows:
             return jsonl_rows
+        if shard_errors_dir().is_dir() and errors_archive_prefers_jsonl_only():
+            return []
     except Exception:
         pass
     root = shard_logs_dir()

@@ -19,6 +19,8 @@
 
 - 首次启用时在 `data/pallas_config/community_stats.json` 生成 `deployment_id`（UUID）。
 - **单进程 / hub** 上报；**分片 worker** 不上报（避免重复计数）。
+- `online_bots` 与控制台 **「在线 Bot」** 同源（分片为 presence 合并，单进程为 `get_bots()`）；首包在启动约 **60 秒** 后发送，之后按 `interval_sec`（默认 300 秒）刷新。
+- WebUI **「在线牛总和」** 为**全社区**各部署 `online_bots` 之和，不是本机实时数；本机以首页 **「在线 Bot」** 为准。
 - 失败仅记日志，不影响 Bot 启动与消息处理。
 
 ## 隐私

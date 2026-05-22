@@ -60,6 +60,24 @@ def test_worker_glob_excludes_bootstrap(tmp_path, monkeypatch):
     assert not any("CancelledError" in row for row in merged)
 
 
+def test_collect_cluster_log_errors_empty_after_cleanup(tmp_path, monkeypatch):
+    log_dir = tmp_path / "logs"
+    err_dir = log_dir / "errors"
+    err_dir.mkdir(parents=True)
+    (log_dir / "hub.log").write_text(
+        "05-23 04:25:47 | ERROR    | nonebot:1 - stale hub error\n"
+        "ModuleNotFoundError: nope\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("src.common.shard.logs.view.shard_logs_dir", lambda: log_dir)
+    monkeypatch.setattr("src.common.shard.logs.errors.shard_logs_dir", lambda: err_dir)
+    from src.common.shard.logs.errors import cleanup_shard_error_archives_sync
+
+    cleanup_shard_error_archives_sync()
+    rows = collect_cluster_log_errors(per_file=50, limit=10)
+    assert rows == []
+
+
 def test_collect_cluster_log_errors(tmp_path, monkeypatch):
     log_dir = tmp_path / "logs"
     log_dir.mkdir()

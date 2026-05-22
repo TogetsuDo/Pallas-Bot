@@ -186,6 +186,18 @@ def get_cluster_online_bot_ids() -> frozenset[int]:
     return frozenset(out)
 
 
+def count_connected_bots_for_reporting() -> int:
+    """与控制台 /bots、社区统计心跳的 online_bots 口径一致。"""
+    from src.common.bot_runtime.roles import is_sharded_hub
+    from src.common.shard.registry.config import is_sharding_active
+
+    if is_sharding_active() and is_sharded_hub():
+        return len(get_cluster_online_bot_ids())
+    from nonebot import get_bots
+
+    return len(get_bots())
+
+
 def list_connected_bots_for_webui() -> list[dict[str, Any]]:
     """hub WebUI /bots：全 worker 已连接牛牛（不依赖 hub 进程 get_bots）。"""
     from src.common.webui.protocol_accounts import protocol_account_display_names
