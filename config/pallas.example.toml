@@ -28,7 +28,7 @@ db = "PallasBot"
 [community_stats]
 enabled = true
 endpoint = "https://stats.pallasbot.top/v1/heartbeat"
-# token = ""  # 与中心 HEARTBEAT_TOKEN 一致；生产请填写
+# token = ""  # 公开 stats.pallasbot.top 可省略；自建中心若启用 HEARTBEAT_TOKEN 再填写
 interval_sec = 300
 
 # 与历史 .env 同名的扁平项（键名大写）；也可只放 bootstrap，其余交给 WebUI。

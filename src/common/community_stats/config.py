@@ -42,7 +42,10 @@ class CommunityStatsConfig(BaseModel):
         default="https://stats.pallasbot.top/v1/heartbeat",
         description="心跳 URL（POST）。",
     )
-    token: str = Field(default="", description="与中心 HEARTBEAT_TOKEN 一致的 Bearer。")
+    token: str = Field(
+        default="",
+        description="可选 Bearer；中心 HEARTBEAT_TOKEN 非空时填写。公开实例（token 未配置）可留空。",
+    )
     interval_sec: int = Field(default=300, ge=60, le=3600, description="周期上报间隔（秒）。")
 
 

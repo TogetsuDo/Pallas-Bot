@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | `enabled` | `true` | `false` 时不上报 |
 | `endpoint` | `https://stats.pallasbot.top/v1/heartbeat` | POST 地址 |
-| `token` | 空 | 与中心 `HEARTBEAT_TOKEN` 一致；生产必填 |
+| `token` | 空 | 可选；公开中心（未配置 `HEARTBEAT_TOKEN`）无需填写；私有中心设了 token 时再填 |
 | `interval_sec` | `300` | 周期上报间隔（60–3600） |
 
 等价环境变量：`PALLAS_COMMUNITY_STATS_*`。

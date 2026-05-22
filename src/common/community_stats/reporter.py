@@ -71,11 +71,14 @@ async def send_community_stats_heartbeat() -> bool:
         if resp.status_code == 200:
             logger.debug("community_stats: heartbeat ok deployment_id={}", payload["deployment_id"])
             return True
-        logger.warning(
-            "community_stats: heartbeat HTTP {} body={}",
-            resp.status_code,
-            (resp.text or "")[:200],
-        )
+        if resp.status_code == 429:
+            logger.warning("community_stats: heartbeat rate limited (429)")
+        else:
+            logger.warning(
+                "community_stats: heartbeat HTTP {} body={}",
+                resp.status_code,
+                (resp.text or "")[:200],
+            )
     except httpx.HTTPError as e:
         logger.warning(f"community_stats: heartbeat failed: {e}")
     return False
