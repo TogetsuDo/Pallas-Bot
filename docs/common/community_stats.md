@@ -1,6 +1,6 @@
 # 社区统计上报（community_stats）
 
-向 [Pallas-Bot-Community-Stats](https://github.com/TogetsuDo/Pallas-Bot-Community-Stats) 中心 **opt-in** 上报部署心跳，用于统计社区内自托管部署数与在线数。默认**开启**；不需要可在 `config/pallas.toml` 关闭。
+向官方共用中心 **`https://stats.pallasbot.top`** **opt-in** 上报部署心跳（[Pallas-Bot-Community-Stats](https://github.com/TogetsuDo/Pallas-Bot-Community-Stats)），用于统计社区内自托管部署数与在线数。默认**开启**；不需要可在 `config/pallas.toml` 设 `enabled = false`。**无需向用户分发 token。**
 
 ## 配置（`[community_stats]`）
 
@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | `enabled` | `true` | `false` 时不上报 |
 | `endpoint` | `https://stats.pallasbot.top/v1/heartbeat` | POST 地址 |
-| `token` | 空 | 可选；公开中心（未配置 `HEARTBEAT_TOKEN`）无需填写；私有中心设了 token 时再填 |
+| `token` | 空 | **共用中心 `stats.pallasbot.top` 留空即可**；仅自建私有中心且启用 token 时才填 |
 | `interval_sec` | `300` | 周期上报间隔（60–3600） |
 
 等价环境变量：`PALLAS_COMMUNITY_STATS_*`。
