@@ -9,6 +9,8 @@ from src.common.community_stats.reporter import (
     send_community_stats_heartbeat,
     should_run_community_stats_reporter,
 )
+from src.common.community_stats.public_stats import _parse_stats_body
+from src.common.community_stats.stats_url import stats_url_from_endpoint
 from src.common.community_stats.store import community_stats_state_path, load_or_create_deployment_id
 
 
@@ -17,6 +19,29 @@ def clear_config_cache():
     cfg_mod.clear_community_stats_config_cache()
     yield
     cfg_mod.clear_community_stats_config_cache()
+
+
+def test_stats_url_from_heartbeat_endpoint():
+    assert (
+        stats_url_from_endpoint("https://stats.pallasbot.top/v1/heartbeat")
+        == "https://stats.pallasbot.top/v1/stats"
+    )
+    assert stats_url_from_endpoint("") == "https://stats.pallasbot.top/v1/stats"
+
+
+def test_parse_stats_body():
+    data = _parse_stats_body(
+        {
+            "deployments_total": 10,
+            "deployments_online": 3,
+            "bots_online_sum": 7,
+            "online_ttl_sec": 900,
+            "as_of": "2026-05-22T12:00:00Z",
+        },
+        "https://stats.example/v1/stats",
+    )
+    assert data["deployments_total"] == 10
+    assert data["online_ttl_sec"] == 900
 
 
 def test_config_enabled_default_true(monkeypatch):
