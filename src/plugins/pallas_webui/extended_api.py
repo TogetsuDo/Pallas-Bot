@@ -805,6 +805,107 @@ async def _fetch_friend_list_for_self_id(
     return _parse_friend_list_raw(raw, limit=limit)
 
 
+async def _get_doubt_friends_for_self_id(self_id: int) -> list[dict[str, Any]]:
+    try:
+        raw = await _onebot_v11_api_call(int(self_id), "get_doubt_friends_add_request", count=50)
+    except HTTPException:
+        raise
+    except Exception:  # noqa: BLE001
+        return []
+    return _rows_from_doubt_friends_api(raw)
+
+
+async def _stranger_nickname_for_self_id(self_id: int, user_id: int) -> str:
+    try:
+        raw = await _onebot_v11_api_call(int(self_id), "get_stranger_info", user_id=int(user_id))
+    except Exception:  # noqa: BLE001
+        return ""
+    if not isinstance(raw, dict):
+        return ""
+    return _nickname_from_stranger_info(raw)
+
+
+async def _enrich_friend_request_rows_nicknames_for_self_id(
+    self_id: int,
+    pending: list[dict[str, Any]],
+    doubt: list[dict[str, Any]],
+) -> None:
+    need: set[int] = set()
+    for p in pending:
+        if str(p.get("nickname", "")).strip():
+            continue
+        uid = p.get("user_id")
+        if uid is None:
+            continue
+        try:
+            need.add(int(uid))
+        except (TypeError, ValueError):
+            pass
+    for d in doubt:
+        if str(d.get("nickname", "")).strip():
+            continue
+        uid = d.get("user_id")
+        if uid is None:
+            continue
+        try:
+            need.add(int(uid))
+        except (TypeError, ValueError):
+            pass
+    nick_map: dict[int, str] = {}
+    for uid in sorted(need):
+        nick = await _stranger_nickname_for_self_id(self_id, uid)
+        if nick:
+            nick_map[uid] = nick
+    for p in pending:
+        try:
+            uid = int(p["user_id"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not str(p.get("nickname", "")).strip() and uid in nick_map:
+            p["nickname"] = nick_map[uid]
+    for d in doubt:
+        try:
+            uid = int(d["user_id"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not str(d.get("nickname", "")).strip() and uid in nick_map:
+            d["nickname"] = nick_map[uid]
+
+
+async def _console_set_friend_add_request(self_id: int, *, flag: str, approve: bool) -> None:
+    await _onebot_v11_api_call(
+        int(self_id),
+        "set_friend_add_request",
+        flag=str(flag),
+        approve=bool(approve),
+    )
+
+
+async def _console_set_group_add_request(
+    self_id: int,
+    *,
+    flag: str,
+    sub_type: str,
+    approve: bool,
+) -> None:
+    await _onebot_v11_api_call(
+        int(self_id),
+        "set_group_add_request",
+        flag=str(flag),
+        sub_type=str(sub_type or "invite"),
+        approve=bool(approve),
+    )
+
+
+async def _console_set_doubt_friend_add_request(self_id: int, *, flag: str, approve: bool) -> None:
+    await _onebot_v11_api_call(
+        int(self_id),
+        "set_doubt_friends_add_request",
+        flag=str(flag),
+        approve=bool(approve),
+    )
+
+
 def _rows_from_doubt_friends_api(raw: object) -> list[dict[str, Any]]:
     if isinstance(raw, list):
         return [x for x in raw if isinstance(x, dict)]
@@ -872,6 +973,10 @@ async def _enrich_friend_request_rows_nicknames(
     doubt: list[dict[str, Any]],
 ) -> None:
     if not _is_onebot_v11_bot(bot):
+        return
+    sid = str(getattr(bot, "self_id", "") or "").strip()
+    if sid.isdigit():
+        await _enrich_friend_request_rows_nicknames_for_self_id(int(sid), pending, doubt)
         return
     need: set[int] = set()
     for p in pending:
@@ -3026,11 +3131,15 @@ async def _friend_requests_overview(
         online = sid in online_by_self
         if online:
             conn, bot = online_by_self[sid]
-            adapter = _bot_adapter_label(bot)
-            if include_doubt and _is_onebot_v11_bot(bot):
-                doubt = await _call_get_doubt_friends(bot)
-            if _is_onebot_v11_bot(bot):
-                await _enrich_friend_request_rows_nicknames(bot, pending, doubt)
+            if bot is not None:
+                adapter = _bot_adapter_label(bot)
+            elif sid.isdigit():
+                _, adapter = _console_bot_connection_meta(int(sid))
+            if sid.isdigit():
+                sid_i = int(sid)
+                if include_doubt:
+                    doubt = await _get_doubt_friends_for_self_id(sid_i)
+                await _enrich_friend_request_rows_nicknames_for_self_id(sid_i, pending, doubt)
         rows.append({
             "self_id": sid,
             "connection_key": conn,
@@ -3073,7 +3182,7 @@ def _system_dict() -> dict[str, Any]:
         "superuser_count": n_sup,
         "server_time": time.time(),
         "plugin_count": sum(1 for r in _list_plugins_dict() if r.get("help_visible")),
-        "bot_count": len(get_bots()),
+        "bot_count": len(_list_bots_dict()),
         "console": console,
         "runtime": _runtime_metrics(),
     }
@@ -4649,18 +4758,19 @@ def register_extended_api(
         x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
     ) -> JSONResponse:
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
-        _, bot = _find_online_onebot_v11_bot(str(body.self_id))
+        sid_i = int(body.self_id)
+        _console_bot_connection_meta(sid_i)
         approve = body.action == "approve"
         if body.kind == "friend":
             if body.user_id is None:
                 raise HTTPException(status_code=400, detail="friend 请求需要 user_id")
             uid = str(int(body.user_id))
             if body.source == "doubt":
-                doubt = await _call_get_doubt_friends(bot)
+                doubt = await _get_doubt_friends_for_self_id(sid_i)
                 flag = next((str(x.get("flag") or "") for x in doubt if str(x.get("user_id")) == uid), "")
                 if not flag:
                     raise HTTPException(status_code=404, detail="未找到可疑好友申请")
-                await bot.call_api("set_doubt_friends_add_request", flag=flag, approve=approve)  # type: ignore[union-attr]
+                await _console_set_doubt_friend_add_request(sid_i, flag=flag, approve=approve)
                 _drop_read_cache(_CONSOLE_APPROVAL_RELATED_CACHE_PREFIXES)
                 return JSONResponse({"ok": True, "data": {"handled": True}})
             pending = _read_pending_friend_requests_disk()
@@ -4668,7 +4778,7 @@ def register_extended_api(
             flag = str(by_bot.get(uid) or "")
             if not flag:
                 raise HTTPException(status_code=404, detail="未找到待处理好友申请")
-            await bot.set_friend_add_request(flag=flag, approve=approve)  # type: ignore[union-attr]
+            await _console_set_friend_add_request(sid_i, flag=flag, approve=approve)
             by_bot.pop(uid, None)
             pending[str(body.self_id)] = by_bot
             _save_pending_friend_requests_disk(pending)
@@ -4682,7 +4792,8 @@ def register_extended_api(
         req = by_bot_g.get(str(int(body.group_id)))
         if not isinstance(req, dict):
             raise HTTPException(status_code=404, detail="未找到待处理群邀请")
-        await bot.set_group_add_request(  # type: ignore[union-attr]
+        await _console_set_group_add_request(
+            sid_i,
             flag=str(req.get("flag") or ""),
             sub_type=str(req.get("sub_type") or "invite"),
             approve=approve,
@@ -4722,7 +4833,7 @@ def register_extended_api(
 
         for sid_str, items in friends_by_sid.items():
             try:
-                _, bot = _find_online_onebot_v11_bot(sid_str)
+                _console_bot_connection_meta(int(sid_str))
             except HTTPException as e:
                 detail = e.detail
                 msg = detail if isinstance(detail, str) else str(detail)
@@ -4739,12 +4850,13 @@ def register_extended_api(
             if sid_str not in pending_friend:
                 pending_friend[sid_str] = {}
             bot_pending = pending_friend[sid_str]
+            sid_i = int(sid_str)
 
             for it in items:
                 uid = str(int(it.user_id))
                 try:
                     if it.source == "doubt":
-                        doubt_rows = await _call_get_doubt_friends(bot)
+                        doubt_rows = await _get_doubt_friends_for_self_id(sid_i)
                         flag = ""
                         for row in doubt_rows:
                             if not isinstance(row, dict):
@@ -4755,12 +4867,12 @@ def register_extended_api(
                             break
                         if not flag:
                             raise ValueError("未找到可疑好友申请")
-                        await bot.call_api("set_doubt_friends_add_request", flag=flag, approve=approve)  # type: ignore[union-attr]
+                        await _console_set_doubt_friend_add_request(sid_i, flag=flag, approve=approve)
                     else:
                         flag = str(bot_pending.get(uid) or "")
                         if not flag:
                             raise ValueError("未找到待处理好友申请")
-                        await bot.set_friend_add_request(flag=flag, approve=approve)  # type: ignore[union-attr]
+                        await _console_set_friend_add_request(sid_i, flag=flag, approve=approve)
                         bot_pending.pop(uid, None)
                     friends_ok += 1
                 except Exception as e:  # noqa: BLE001
@@ -4787,7 +4899,7 @@ def register_extended_api(
 
         for sid_str, items in groups_by_sid.items():
             try:
-                _, bot = _find_online_onebot_v11_bot(sid_str)
+                _console_bot_connection_meta(int(sid_str))
             except HTTPException as e:
                 detail = e.detail
                 msg = detail if isinstance(detail, str) else str(detail)
@@ -4804,6 +4916,7 @@ def register_extended_api(
             if sid_str not in pending_group:
                 pending_group[sid_str] = {}
             bot_grp = pending_group[sid_str]
+            sid_i = int(sid_str)
 
             for it in items:
                 gkey = str(int(it.group_id))
@@ -4811,7 +4924,8 @@ def register_extended_api(
                     req = bot_grp.get(gkey)
                     if not isinstance(req, dict):
                         raise ValueError("未找到待处理群邀请")
-                    await bot.set_group_add_request(  # type: ignore[union-attr]
+                    await _console_set_group_add_request(
+                        sid_i,
                         flag=str(req.get("flag") or ""),
                         sub_type=str(req.get("sub_type") or "invite"),
                         approve=approve,
