@@ -48,7 +48,7 @@ def _acquire_lock(lock_path: Path, *, timeout: float = 3.0) -> int | None:
                     lock_path.unlink(missing_ok=True)
             except OSError:
                 pass
-            time.sleep(0.02)
+            time.sleep(0.05)
     return None
 
 

@@ -82,6 +82,7 @@ async def ingress_group_message_gate(bot, event) -> None:
             event.time,
             shard_id,
             use_plaintext=True,
+            bot_id=self_id,
         ):
             raise IgnoredException("ingress shard claim lost")
         return

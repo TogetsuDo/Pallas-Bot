@@ -188,6 +188,25 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if await _should_skip_duplicate_group_event(event.group_id, event.user_id, norm_raw, event.time):
         return
 
+    from src.common.shard.registry.config import is_sharding_active
+
+    if is_sharding_active():
+        from .fanout_reply import repeater_fanout_enabled
+
+        if not repeater_fanout_enabled():
+            from src.common.multi_bot.dedup import try_claim_cross_bot_message
+
+            if not await try_claim_cross_bot_message(
+                "repeater_reply",
+                event.group_id,
+                event.user_id,
+                event.get_plaintext(),
+                event.time,
+                int(bot.self_id),
+                use_plaintext=True,
+            ):
+                return
+
     if await is_message_scrub_blocked_async(plain_text=event.get_plaintext(), raw_message=norm_raw):
         pv = scrub_intercept_log_preview(event.get_plaintext(), norm_raw)
         logger.info(

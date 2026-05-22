@@ -8,8 +8,25 @@ from nonebot import logger
 
 from src.common.shard.registry.config import get_shard_registry_settings, is_sharding_active
 
-_WATCH_SEC = 0.12
+_WATCH_SEC = 0.28
+_PRUNE_EVERY = 8
 _started = False
+
+
+def coord_dirs_have_pending_json() -> bool:
+    """存在待处理 coord 请求时再做 QTE/代发轮询，降低空转。"""
+    from pathlib import Path
+
+    from src.common.paths import plugin_data_dir
+
+    root = Path(plugin_data_dir("pallas_shard", create=False)) / "coord"
+    if not root.is_dir():
+        return False
+    for sub in ("bot_action", "duel_qte"):
+        d = root / sub
+        if d.is_dir() and any(d.glob("*.json")):
+            return True
+    return False
 
 
 async def shard_coord_worker_poll_loop() -> None:
@@ -21,18 +38,22 @@ async def shard_coord_worker_poll_loop() -> None:
     from src.common.shard.coord.maa_pending_registry import prune_stale_maa_pending_files
     from src.common.shard.coord.maa_seen_registry import prune_stale_maa_seen_files
 
+    tick = 0
     while True:
         try:
             if is_sharding_active():
                 local_ids = frozenset(get_bots().keys())
-                if local_ids:
+                if local_ids and coord_dirs_have_pending_json():
                     await poll_duel_qte_pending(local_ids)
                     await poll_bot_action_pending(local_ids)
-                await prune_stale_duel_qte_files()
-                await prune_stale_bot_action_files()
-                await prune_stale_cage_duel_files()
-                await prune_stale_maa_seen_files()
-                await prune_stale_maa_pending_files()
+                tick += 1
+                if tick >= _PRUNE_EVERY:
+                    tick = 0
+                    await prune_stale_duel_qte_files()
+                    await prune_stale_bot_action_files()
+                    await prune_stale_cage_duel_files()
+                    await prune_stale_maa_seen_files()
+                    await prune_stale_maa_pending_files()
         except Exception as err:
             logger.debug(f"shard_coord worker poll: {err}")
         await asyncio.sleep(_WATCH_SEC)

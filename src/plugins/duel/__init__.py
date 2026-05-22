@@ -382,6 +382,9 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State) -> None:
     from src.common.shard.registry.config import is_sharding_active
 
     if is_sharding_active():
+        from src.common.shard.local_representative import is_local_worker_representative
+
+        self_id = int(bot.self_id)
         if not await fleet_bot_confirmed_in_group(bot, event.group_id):
             return
         from src.common.shard.coord.cage_duel import (
@@ -389,7 +392,6 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State) -> None:
             update_shard_cage_duel_registration,
         )
 
-        self_id = int(bot.self_id)
         coord_task = asyncio.create_task(
             run_shard_cage_duel_coord(
                 group_id=event.group_id,
@@ -400,14 +402,15 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State) -> None:
             )
         )
         try:
-            probed = await list_local_fleet_bots_in_group(event.group_id)
-            await update_shard_cage_duel_registration(
-                group_id=event.group_id,
-                user_id=int(event.user_id),
-                message_time=int(event.time),
-                plaintext=plain,
-                bot_ids=sorted({self_id, *probed}),
-            )
+            if is_local_worker_representative(self_id):
+                probed = await list_local_fleet_bots_in_group(event.group_id)
+                await update_shard_cage_duel_registration(
+                    group_id=event.group_id,
+                    user_id=int(event.user_id),
+                    message_time=int(event.time),
+                    plaintext=plain,
+                    bot_ids=sorted({self_id, *probed}),
+                )
             pair = await coord_task
         except asyncio.CancelledError:
             raise

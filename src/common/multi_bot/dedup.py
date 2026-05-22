@@ -6,11 +6,11 @@ import asyncio
 import hashlib
 import re
 import time
-from collections import deque
+from collections import defaultdict, deque
 
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent
 
-from src.common.multi_bot.claim import try_claim_message
+from src.common.multi_bot.claim import read_claim_owner_sync, try_claim_message
 
 _GROUP_EVENT_DEDUP_MAX = 4000
 _group_event_dedup_lock = asyncio.Lock()
@@ -164,6 +164,9 @@ async def try_claim_cross_shard_message_memory(
         return owner == shard_id
 
 
+_shard_ingress_file_locks: dict[tuple[str, tuple[int, int, str]], asyncio.Lock] = defaultdict(asyncio.Lock)
+
+
 async def try_claim_cross_shard_message(
     plugin: str,
     group_id: int,
@@ -173,6 +176,7 @@ async def try_claim_cross_shard_message(
     shard_id: int,
     *,
     use_plaintext: bool = True,
+    bot_id: int | None = None,
 ) -> bool:
     """分片 ingress：全舰队每条消息仅一个 shard 通过；该 shard 上各牛不再互斥。"""
     if not await try_claim_cross_shard_message_memory(
@@ -185,6 +189,13 @@ async def try_claim_cross_shard_message(
         use_plaintext=use_plaintext,
     ):
         return False
+    sig = cross_bot_message_signature(
+        group_id,
+        user_id,
+        message_body,
+        message_time,
+        use_plaintext=use_plaintext,
+    )
     claim_key = cross_bot_group_message_key(
         group_id,
         user_id,
@@ -192,7 +203,22 @@ async def try_claim_cross_shard_message(
         message_time,
         use_plaintext=use_plaintext,
     )
-    return await try_claim_message(plugin, group_id, claim_key, shard_id)
+    lock_key = (plugin, sig)
+    async with _shard_ingress_file_locks[lock_key]:
+        owner = await asyncio.to_thread(read_claim_owner_sync, plugin, group_id, claim_key)
+        if owner is not None:
+            return owner == shard_id
+        if bot_id is not None:
+            from src.common.shard.local_representative import is_local_worker_representative
+
+            if not is_local_worker_representative(bot_id):
+                for _ in range(20):
+                    owner = await asyncio.to_thread(read_claim_owner_sync, plugin, group_id, claim_key)
+                    if owner is not None:
+                        return owner == shard_id
+                    await asyncio.sleep(0.01)
+                return False
+        return await try_claim_message(plugin, group_id, claim_key, shard_id)
 
 
 async def should_skip_duplicate_group_event(

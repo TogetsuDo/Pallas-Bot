@@ -31,6 +31,16 @@ def _prune_old_claims(plugin: str, *, max_files: int = 500) -> None:
             pass
 
 
+def read_claim_owner_sync(plugin: str, group_id: int, message_id: int) -> int | None:
+    path = _claim_path(plugin, group_id, message_id)
+    if not path.is_file():
+        return None
+    try:
+        return int(path.read_text(encoding="utf-8").strip())
+    except (ValueError, OSError):
+        return None
+
+
 def try_claim_message_sync(plugin: str, group_id: int, message_id: int, bot_id: int) -> bool:
     path = _claim_path(plugin, group_id, message_id)
     if path.is_file():

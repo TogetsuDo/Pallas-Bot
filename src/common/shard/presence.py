@@ -209,10 +209,15 @@ def list_connected_bots_for_webui() -> list[dict[str, Any]]:
 
 
 def pick_local_query_bot():
-    """本 worker 任选一只有 API 能力的 Bot 用于查群成员。"""
+    """本 worker 用最小 QQ 的 Bot 查群成员（与 fanout 代表牛一致）。"""
     from nonebot import get_bots
 
+    from src.common.shard.local_representative import local_worker_representative_bot_id
+
+    rep = local_worker_representative_bot_id()
     bots = get_bots()
+    if rep is not None and str(rep) in bots:
+        return bots[str(rep)]
     if not bots:
         return None
     return next(iter(bots.values()))
