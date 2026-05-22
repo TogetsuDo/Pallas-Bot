@@ -1,0 +1,33 @@
+from nonebot import get_driver, logger
+from nonebot.plugin import PluginMetadata
+
+from src.common.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.common.community_stats.scheduler import start_community_stats_reporter
+
+__plugin_meta__ = PluginMetadata(
+    name="社区统计上报",
+    description="opt-in 向社区统计中心上报部署心跳（默认开启，可在 pallas.toml 关闭）。",
+    usage="（内部）默认向 stats.pallasbot.top 周期上报；设置 [community_stats] enabled=false 可关闭。",
+    type="application",
+    homepage=PLUGIN_HOMEPAGE,
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
+        "help_audience": "maintainer",
+    },
+)
+
+driver = get_driver()
+
+
+@driver.on_startup
+async def community_stats_startup() -> None:
+    try:
+        await start_community_stats_reporter()
+    except Exception as e:
+        logger.warning(f"community_stats: startup failed: {e}")

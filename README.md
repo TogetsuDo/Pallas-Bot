@@ -31,6 +31,8 @@
 
 [![tencent-qq](https://img.shields.io/badge/%E7%BE%A4-开发者群-red?style=logo=tencent-qq)](https://jq.qq.com/?_wv=1027&k=tlLDuWzc)
 [![tencent-qq](https://img.shields.io/badge/%E7%BE%A4-拉牛牛-c73e7e?style=logo=tencent-qq)](#qq-群)
+![community-deployments](https://img.shields.io/endpoint?url=https%3A%2F%2Fstats.pallasbot.top%2Fv1%2Fbadges%2Fdeployments-online)
+![community-bots](https://img.shields.io/endpoint?url=https%3A%2F%2Fstats.pallasbot.top%2Fv1%2Fbadges%2Fbots-online)
 
 </div>
 
@@ -314,6 +316,8 @@ uv run python tools/migrate_env_to_pallas.py
 
 <a id="社区与支持"></a>
 ## 🤝 社区与支持
+
+页顶徽章展示社区部署概况。`community_stats` 在 hub / 单进程**默认开启**；关闭见 [社区统计说明](docs/common/community_stats.md)。
 
 <a id="qq-群"></a>
 ### 💬 QQ 群

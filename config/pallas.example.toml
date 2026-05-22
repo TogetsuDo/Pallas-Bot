@@ -24,6 +24,14 @@ db = "PallasBot"
 # password = ""
 # db = "PallasBot"
 
+# 社区统计：升级含 community_stats 的 release 后默认自动上报，无需复制本段。
+# 仅关闭时取消注释并设 enabled = false（或环境变量 PALLAS_COMMUNITY_STATS_ENABLED=false）。
+# [community_stats]
+# enabled = false
+# endpoint = "https://stats.pallasbot.top/v1/heartbeat"
+# token = ""  # 公开 stats.pallasbot.top 可省略；自建中心若启用 HEARTBEAT_TOKEN 再填写
+# interval_sec = 300
+
 # 与历史 .env 同名的扁平项（键名大写）；也可只放 bootstrap，其余交给 WebUI。
 # [env]
 # PALLAS_PROTOCOL_ENABLED = true

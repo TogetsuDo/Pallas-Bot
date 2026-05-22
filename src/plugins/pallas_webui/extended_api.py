@@ -3816,6 +3816,16 @@ def register_extended_api(
         data = await _cached_read(key=key, loader=_load, ttl_sec=2.0, stale_sec=10.0)
         return JSONResponse({"ok": True, "data": data})
 
+    @router.get(f"{x}/community-stats", include_in_schema=True)
+    async def _community_stats() -> JSONResponse:
+        from src.common.community_stats.public_stats import fetch_community_public_stats
+
+        async def _load() -> dict[str, Any]:
+            return await fetch_community_public_stats()
+
+        data = await _cached_read(key="community-stats", loader=_load, ttl_sec=30.0, stale_sec=120.0)
+        return JSONResponse({"ok": True, "data": data})
+
     @router.get(f"{x}/plugin-run-stats", include_in_schema=True)
     async def _plugin_run_stats(
         self_id: int | None = Query(default=None, ge=1),
