@@ -31,6 +31,16 @@ def _rollover_if_needed() -> None:
         _state[k] = 0
 
 
+def should_record_ingress_metrics(bot_id: int) -> bool:
+    """分片模式下仅代表牛记数，避免多牛重复放大 won/lost。"""
+    from src.common.shard.local_representative import is_local_worker_representative
+    from src.common.shard.registry.config import is_sharding_active
+
+    if not is_sharding_active():
+        return True
+    return is_local_worker_representative(bot_id)
+
+
 def record_ingress_event() -> None:
     _rollover_if_needed()
     _state["events"] += 1

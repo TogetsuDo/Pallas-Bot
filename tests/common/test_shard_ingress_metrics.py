@@ -7,6 +7,7 @@ from src.common.shard.ingress_metrics import (
     record_ingress_early_discard,
     record_ingress_event,
     record_ingress_fanout_bypass,
+    should_record_ingress_metrics,
 )
 
 
@@ -30,3 +31,24 @@ def test_ingress_metrics_snapshot_and_merge():
     assert cluster["claim_won"] == 2
     assert cluster["claim_lost"] == 1
     assert round(cluster["claim_hit_rate"], 4) == round(2 / 3, 4)
+
+
+def test_should_record_ingress_metrics_unified(monkeypatch):
+    monkeypatch.setattr(
+        "src.common.shard.registry.config.is_sharding_active",
+        lambda: False,
+    )
+    assert should_record_ingress_metrics(12345) is True
+
+
+def test_should_record_ingress_metrics_shard_rep(monkeypatch):
+    monkeypatch.setattr(
+        "src.common.shard.registry.config.is_sharding_active",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "src.common.shard.local_representative.is_local_worker_representative",
+        lambda bot_id: bot_id == 10001,
+    )
+    assert should_record_ingress_metrics(10001) is True
+    assert should_record_ingress_metrics(10002) is False
