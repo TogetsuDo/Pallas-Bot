@@ -91,6 +91,7 @@ async def ingress_group_message_gate(bot, event) -> None:
     body = plain or event.raw_message
     if is_sharding_active():
         shard_id = get_shard_registry_settings().shard_id
+        # 不传 bot_id：避免「代表牛」不在群内时非代表牛永远无法通过文件 claim（如群内发牛牛网关）
         if not await try_claim_cross_shard_message(
             INGRESS_SHARD_CLAIM_PLUGIN,
             event.group_id,
@@ -99,11 +100,22 @@ async def ingress_group_message_gate(bot, event) -> None:
             event.time,
             shard_id,
             use_plaintext=True,
-            bot_id=self_id,
         ):
             if metrics:
                 record_ingress_claim(won=False)
             raise IgnoredException("ingress shard claim lost")
+        if not await try_claim_cross_bot_message(
+            INGRESS_CLAIM_PLUGIN,
+            event.group_id,
+            user_id,
+            body,
+            event.time,
+            self_id,
+            use_plaintext=True,
+        ):
+            if metrics:
+                record_ingress_claim(won=False)
+            raise IgnoredException("ingress bot claim lost")
         if metrics:
             record_ingress_claim(won=True)
         return
