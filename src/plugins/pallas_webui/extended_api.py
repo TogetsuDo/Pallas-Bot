@@ -564,6 +564,65 @@ def _find_online_onebot_v11_bot(self_id: str) -> tuple[str, object]:
     raise HTTPException(status_code=404, detail="指定账号当前未连接")
 
 
+def _console_bot_online_in_cluster(self_id: str) -> bool:
+    from src.common.bot_runtime.roles import is_sharded_hub
+    from src.common.shard.registry.config import is_sharding_active
+
+    if not (is_sharding_active() and is_sharded_hub()):
+        return False
+    target = str(self_id).strip()
+    if not target.isdigit():
+        return False
+    from src.common.shard.presence import get_cluster_online_bot_ids
+
+    return int(target) in get_cluster_online_bot_ids()
+
+
+def _console_bot_connection_meta(self_id: int) -> tuple[str, str]:
+    """分片 hub：无本地 Bot 时从 presence 取 connection_key / adapter。"""
+    target = str(int(self_id))
+    for key, bot in get_bots().items():
+        if str(getattr(bot, "self_id", "") or "") == target:
+            if not _is_onebot_v11_bot(bot):
+                raise HTTPException(status_code=400, detail="当前连接不是 OneBot V11")
+            return str(key), _bot_adapter_label(bot)
+    if _console_bot_online_in_cluster(target):
+        from src.common.shard.presence import read_presence_bots
+
+        rec = read_presence_bots().get(target, {})
+        return (
+            str(rec.get("connection_key") or target),
+            str(rec.get("adapter") or ""),
+        )
+    raise HTTPException(status_code=404, detail="指定账号当前未连接")
+
+
+async def _onebot_v11_api_call(self_id: int, api: str, **params: Any) -> Any:
+    target = str(int(self_id))
+    for bot in get_bots().values():
+        if str(getattr(bot, "self_id", "") or "") != target:
+            continue
+        if not _is_onebot_v11_bot(bot):
+            raise HTTPException(status_code=400, detail="当前连接不是 OneBot V11，无法调用协议接口")
+        try:
+            return await bot.call_api(api, **params)  # type: ignore[union-attr]
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=str(e)) from e
+    if _console_bot_online_in_cluster(target):
+        from src.common.shard.coord.bot_action import call_onebot_api_as_bot
+
+        ok, result = await call_onebot_api_as_bot(
+            int(self_id),
+            api,
+            dict(params),
+            timeout_sec=60.0,
+        )
+        if not ok:
+            raise HTTPException(status_code=502, detail=f"无法在 worker 上执行 {api}")
+        return result
+    raise HTTPException(status_code=404, detail="指定账号当前未连接")
+
+
 def _normalize_group_list_item(item: object) -> dict[str, Any] | None:
     if hasattr(item, "model_dump"):
         try:
@@ -619,20 +678,11 @@ def _normalize_friend_list_item(item: object) -> dict[str, Any] | None:
     }
 
 
-async def _call_get_group_list(
-    bot: object,
+def _parse_group_list_raw(
+    raw: object,
     *,
     limit: int,
 ) -> tuple[list[dict[str, Any]], str | None, bool]:
-    """OneBot V11 `get_group_list`；不同实现可能返回 list 或包在 dict 里。
-
-    返回 (groups, error, truncated)。
-    """
-    try:
-        raw = await bot.call_api("get_group_list")  # type: ignore[union-attr]
-    except Exception as e:  # noqa: BLE001
-        logger.warning("Pallas-Bot 控制台: get_group_list 调用失败: {}", e)
-        return [], str(e), False
     groups_raw: list[Any]
     if isinstance(raw, list):
         groups_raw = raw
@@ -664,19 +714,11 @@ async def _call_get_group_list(
     return out, None, truncated
 
 
-async def _call_get_friend_list(
-    bot: object,
+def _parse_friend_list_raw(
+    raw: object,
     *,
     limit: int,
 ) -> tuple[list[dict[str, Any]], str | None, bool]:
-    """OneBot V11 `get_friend_list`；不同实现可能返回 list 或包在 dict 里。
-
-    返回 (friends, error, truncated)。
-    """
-    try:
-        raw = await bot.call_api("get_friend_list")  # type: ignore[union-attr]
-    except Exception as e:  # noqa: BLE001
-        return [], str(e), False
     friends_raw: list[Any]
     if isinstance(raw, list):
         friends_raw = raw
@@ -699,6 +741,68 @@ async def _call_get_friend_list(
     if truncated:
         out = out[:limit]
     return out, None, truncated
+
+
+async def _call_get_group_list(
+    bot: object,
+    *,
+    limit: int,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
+    """OneBot V11 `get_group_list`；不同实现可能返回 list 或包在 dict 里。
+
+    返回 (groups, error, truncated)。
+    """
+    try:
+        raw = await bot.call_api("get_group_list")  # type: ignore[union-attr]
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Pallas-Bot 控制台: get_group_list 调用失败: {}", e)
+        return [], str(e), False
+    return _parse_group_list_raw(raw, limit=limit)
+
+
+async def _call_get_friend_list(
+    bot: object,
+    *,
+    limit: int,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
+    """OneBot V11 `get_friend_list`；不同实现可能返回 list 或包在 dict 里。
+
+    返回 (friends, error, truncated)。
+    """
+    try:
+        raw = await bot.call_api("get_friend_list")  # type: ignore[union-attr]
+    except Exception as e:  # noqa: BLE001
+        return [], str(e), False
+    return _parse_friend_list_raw(raw, limit=limit)
+
+
+async def _fetch_group_list_for_self_id(
+    self_id: int,
+    *,
+    limit: int,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
+    try:
+        raw = await _onebot_v11_api_call(int(self_id), "get_group_list")
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Pallas-Bot 控制台: get_group_list 调用失败 self_id={}: {}", self_id, e)
+        return [], str(e), False
+    return _parse_group_list_raw(raw, limit=limit)
+
+
+async def _fetch_friend_list_for_self_id(
+    self_id: int,
+    *,
+    limit: int,
+) -> tuple[list[dict[str, Any]], str | None, bool]:
+    try:
+        raw = await _onebot_v11_api_call(int(self_id), "get_friend_list")
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        return [], str(e), False
+    return _parse_friend_list_raw(raw, limit=limit)
 
 
 def _rows_from_doubt_friends_api(raw: object) -> list[dict[str, Any]]:
@@ -4043,18 +4147,11 @@ def register_extended_api(
             cache_key_bot = f"group_configs_bot:{int(self_id)}:{int(limit)}"
 
             async def _load_bot_merge() -> dict[str, Any]:
-                target_inner = str(int(self_id))
-                bot_inner = None
-                for b in get_bots().values():
-                    if str(getattr(b, "self_id", "") or "") == target_inner:
-                        bot_inner = b
-                        break
-                if bot_inner is None:
-                    raise HTTPException(status_code=404, detail="指定账号当前未连接")
-                if not _is_onebot_v11_bot(bot_inner):
-                    raise HTTPException(status_code=400, detail="当前连接不是 OneBot V11，无法拉取群列表")
-
-                groups_inner, err, truncated = await _call_get_group_list(bot_inner, limit=int(limit))
+                _console_bot_connection_meta(int(self_id))
+                groups_inner, err, truncated = await _fetch_group_list_for_self_id(
+                    int(self_id),
+                    limit=int(limit),
+                )
                 group_ids = [int(g["group_id"]) for g in groups_inner]
 
                 try:
@@ -4086,7 +4183,7 @@ def register_extended_api(
                     "rows": rows_inner,
                     "meta": {
                         "limit": limit,
-                        "self_id": target_inner,
+                        "self_id": str(int(self_id)),
                         "from_bot": True,
                         "error": err,
                         "truncated": truncated,
@@ -4445,23 +4542,12 @@ def register_extended_api(
 
         async def _load() -> dict[str, Any]:
             target = str(int(self_id))
-            bot = None
-            conn_key = ""
-            for key, b in get_bots().items():
-                if str(getattr(b, "self_id", "") or "") == target:
-                    bot = b
-                    conn_key = str(key)
-                    break
-            if bot is None:
-                raise HTTPException(status_code=404, detail="指定账号当前未连接")
-            if not _is_onebot_v11_bot(bot):
-                raise HTTPException(status_code=400, detail="当前连接不是 OneBot V11，无法拉取好友列表")
-
-            friends, err, truncated = await _call_get_friend_list(bot, limit=int(limit))
+            conn_key, adapter = _console_bot_connection_meta(int(self_id))
+            friends, err, truncated = await _fetch_friend_list_for_self_id(int(self_id), limit=int(limit))
             return {
                 "self_id": target,
                 "connection_key": conn_key,
-                "adapter": _bot_adapter_label(bot),
+                "adapter": adapter,
                 "friends": friends,
                 "truncated": truncated,
                 "limit": int(limit),
@@ -4487,23 +4573,12 @@ def register_extended_api(
 
         async def _load() -> dict[str, Any]:
             target = str(int(self_id))
-            bot = None
-            conn_key = ""
-            for key, b in get_bots().items():
-                if str(getattr(b, "self_id", "") or "") == target:
-                    bot = b
-                    conn_key = str(key)
-                    break
-            if bot is None:
-                raise HTTPException(status_code=404, detail="指定账号当前未连接")
-            if not _is_onebot_v11_bot(bot):
-                raise HTTPException(status_code=400, detail="当前连接不是 OneBot V11，无法拉取群列表")
-
-            groups, err, truncated = await _call_get_group_list(bot, limit=int(limit))
+            conn_key, adapter = _console_bot_connection_meta(int(self_id))
+            groups, err, truncated = await _fetch_group_list_for_self_id(int(self_id), limit=int(limit))
             return {
                 "self_id": target,
                 "connection_key": conn_key,
-                "adapter": _bot_adapter_label(bot),
+                "adapter": adapter,
                 "groups": groups,
                 "truncated": truncated,
                 "limit": int(limit),

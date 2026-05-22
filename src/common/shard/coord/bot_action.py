@@ -214,6 +214,15 @@ async def _execute_local(action: str, bot_qq: int, payload: dict[str, Any]) -> t
             )
             card = str(info.get("card") or info.get("nickname") or "").strip()
             return True, card
+        if action == "onebot_call_api":
+            api = str(payload.get("api") or "").strip()
+            if not api:
+                return False, None
+            params = payload.get("params")
+            if not isinstance(params, dict):
+                params = {}
+            result = await inst.call_api(api, **params)
+            return True, result
     except ActionFailed as err:
         logger.debug(f"bot_action local {action} qq={bot_qq}: {err}")
         return False, None
@@ -329,6 +338,23 @@ async def get_member_card_as_bot(
         timeout_sec=timeout_sec,
     )
     return str(result or "") if ok else ""
+
+
+async def call_onebot_api_as_bot(
+    bot_qq: int,
+    api: str,
+    params: dict[str, Any] | None = None,
+    *,
+    timeout_sec: float = 45.0,
+) -> tuple[bool, Any]:
+    """hub 控制台等：本进程无连接时经 coord 在持有该牛的 worker 上 call_api。"""
+    payload: dict[str, Any] = {"api": str(api).strip(), "params": dict(params or {})}
+    return await invoke_bot_action(
+        "onebot_call_api",
+        int(bot_qq),
+        payload,
+        timeout_sec=timeout_sec,
+    )
 
 
 async def _run_pending_request(path, local_ids: frozenset[str]) -> None:
