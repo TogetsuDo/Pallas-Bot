@@ -25,6 +25,8 @@ def _clear_shard_caches(monkeypatch, tmp_path):
 
 
 def test_assign_respects_bots_per_shard(monkeypatch):
+    monkeypatch.setenv("PALLAS_SHARD_BOTS_PER", "2")
+    get_shard_registry_settings.cache_clear()
     reg = ShardRegistry(bots_per_shard=2, worker_base_port=8090, ws_host="127.0.0.1")
     save_shard_registry(reg)
     clear_shard_registry_cache()

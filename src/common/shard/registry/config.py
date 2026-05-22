@@ -49,8 +49,8 @@ class ShardRegistrySettings(BaseModel):
     shard_id: int = Field(
         default=0,
         ge=0,
-        le=63,
-        description="worker 分片编号（0 起）；hub/unified 忽略。",
+        le=255,
+        description="worker 分片编号（0 起；test 分片可为 99 等）；hub/unified 忽略。",
     )
     bots_per_shard: int = Field(
         default=5,
@@ -78,6 +78,18 @@ class ShardRegistrySettings(BaseModel):
         default="",
         description="写入协议端账号的 WS 主机；留空则用 HOST/.env 或 127.0.0.1。",
     )
+    test_shard_id: int = Field(
+        default=99,
+        ge=0,
+        le=255,
+        description="测试 worker 分片编号（不参与自动负载均衡）。",
+    )
+    test_port: int = Field(
+        default=0,
+        ge=0,
+        le=65535,
+        description="测试 worker 端口；0 表示由注册表在 init 时自动选取。",
+    )
 
 
 @lru_cache(maxsize=1)
@@ -93,6 +105,8 @@ def get_shard_registry_settings() -> ShardRegistrySettings:
         worker_base_port=_env_int("PALLAS_SHARD_WORKER_BASE_PORT", 8090),
         ws_path=_env_str("PALLAS_SHARD_WS_PATH", "/onebot/v11/ws") or "/onebot/v11/ws",
         ws_host=_env_str("PALLAS_SHARD_WS_HOST", _env_str("HOST", "127.0.0.1")),
+        test_shard_id=_env_int("PALLAS_SHARD_TEST_ID", 99),
+        test_port=_env_int("PALLAS_SHARD_TEST_PORT", 0),
     )
 
 

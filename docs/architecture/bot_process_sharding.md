@@ -108,8 +108,26 @@ worker-1：`PALLAS_SHARD_ID=1`、`PORT=8091`，须与 `data/pallas_shard/registr
 ## 注册表
 
 - 路径：`data/pallas_shard/registry.json`
-- 新建协议端账号 / relogin「创建牛牛」时自动 `assign_bot_to_shard(qq)`，并写入该牛专属的 `ws_url`。
+- **顶层运行参数**（`bots_per_shard`、`worker_base_port`、`hub_port`、`ws_host` 等）在每次加载/保存注册表时会用 **`.env` / 进程环境** 覆盖，避免磁盘里残留的测试值（如 `bots_per_shard: 2`）影响生产。
+- 新建协议端账号 / relogin「创建牛牛」时自动 `assign_bot_to_shard(qq)`，并写入该牛专属的 `ws_url`（**不会**进入 `test` 分片）；保存时会**裁剪**无账号的空分片行。
+- 注册表异常膨胀时：`uv run python scripts/shard_registry_repair.py compact`；恢复生产 QQ 归属：`restore-production`（会备份当前文件）。
 - 跨进程 **claim**（`data/*/message_claims`）与 worker **`_ingress_gate`** 依赖共享 `data/`。
+
+### 测试 worker（`registry.test`）
+
+专用于用户自测：账号须**手动**迁入，不参与自动负载均衡。
+
+```bash
+./scripts/run_sharded_bot.sh test init
+./scripts/run_sharded_bot.sh test add <QQ> --sync-ws
+./scripts/run_sharded_bot.sh test start          # 仅启 worker-test
+./scripts/run_sharded_bot.sh test status
+./scripts/run_sharded_bot.sh test stop
+```
+
+也可使用快捷形式：`test-start`、`test-add <QQ>` 等（见 `./scripts/run_sharded_bot.sh -h`）。
+
+注册表字段 `test`：`enabled`、`shard_id`（默认 99）、`port`（0 为自动选取）、`auto_assign`（固定 false）。环境变量：`PALLAS_SHARD_TEST_ID`、`PALLAS_SHARD_TEST_PORT`。
 
 WebUI：`GET /pallas/api/shard-registry` 查看分片与 QQ 归属（需控制台 token）。日常运维仍只访问 **hub**：`http://<host>:8088/pallas/`。
 
