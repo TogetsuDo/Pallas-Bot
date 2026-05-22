@@ -432,9 +432,17 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State) -> None:
     a, b = str(pair[0]), str(pair[1])
     narrator = min(int(a), int(b))
     if is_sharding_active():
-        from src.common.shard.presence import bot_has_local_connection
+        from src.common.shard.presence import bot_has_local_connection, get_cluster_online_bot_ids
 
         if not bot_has_local_connection(narrator):
+            if narrator not in get_cluster_online_bot_ids():
+                if not await try_claim_duel_message(event):
+                    return
+                await send_duel_user_reply(
+                    cage_msg,
+                    event.group_id,
+                    "主持牛暂未连线，八角笼改日再战。",
+                )
             return
     elif int(event.self_id) != narrator:
         return

@@ -125,6 +125,59 @@ def _stable_deadline_from_session(data: dict[str, Any] | None, *, base: float) -
     return max(base, until + _POST_COLLECT_GRACE_SEC)
 
 
+def _ensure_cage_session(
+    path: Path,
+    *,
+    group_id: int,
+    user_id: int,
+    message_time: int,
+    seed: str,
+) -> None:
+    """同 claim_key 新消息须开新局；进行中的同一条消息仅延长 collect 窗口。"""
+    now = time.time()
+    incoming_mt = normalize_message_time(message_time)
+
+    def init(data: dict[str, Any]) -> None:
+        gid = data.get("group_id")
+        stored_mt = normalize_message_time(data.get("message_time") or 0)
+        collect_until = float(data.get("collect_until") or 0)
+        completed = bool(data.get("pair")) and now >= collect_until + _POST_COLLECT_GRACE_SEC
+        in_flight_same = (
+            gid == group_id
+            and stored_mt == incoming_mt
+            and not completed
+            and now < collect_until + _POST_COLLECT_GRACE_SEC + 30.0
+        )
+        if in_flight_same:
+            data["collect_until"] = max(collect_until, now + _COLLECT_SEC)
+            return
+        data.clear()
+        data.update({
+            "group_id": group_id,
+            "user_id": user_id,
+            "message_time": message_time,
+            "seed": seed,
+            "collect_until": now + _COLLECT_SEC,
+            "shards": {},
+            "pair": None,
+        })
+
+    _mutate_session(path, init)
+
+
+async def prune_stale_cage_duel_files(*, max_age_sec: float = 3600.0) -> None:
+    root = _coord_dir()
+    if not root.is_dir():
+        return
+    now = time.time()
+    for path in root.glob("*.json"):
+        try:
+            if now - path.stat().st_mtime > max_age_sec:
+                path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def _register_shard_bots(path: Path, shard_id: int, bot_ids: list[int]) -> None:
     key = str(shard_id)
 
@@ -273,22 +326,14 @@ async def run_shard_cage_duel_coord(
     t = normalize_message_time(message_time)
     seed = str(group_id * 1_000_000_007 + user_id * 1_000_003 + t)
 
-    now = time.time()
-
-    def init(data: dict[str, Any]) -> None:
-        if data.get("group_id"):
-            return
-        data.update({
-            "group_id": group_id,
-            "user_id": user_id,
-            "message_time": message_time,
-            "seed": seed,
-            "collect_until": now + _COLLECT_SEC,
-            "shards": {},
-            "pair": None,
-        })
-
-    await asyncio.to_thread(_mutate_session, path, init)
+    await asyncio.to_thread(
+        _ensure_cage_session,
+        path,
+        group_id=group_id,
+        user_id=user_id,
+        message_time=message_time,
+        seed=seed,
+    )
 
     shard_id = get_shard_registry_settings().shard_id
     await asyncio.to_thread(_register_shard_bots, path, shard_id, [self_bot_id])
