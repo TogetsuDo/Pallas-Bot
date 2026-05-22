@@ -1,27 +1,31 @@
 from __future__ import annotations
 
-from nonebot import get_app, get_bot, on_command, on_message
-from nonebot.adapters.onebot.v11 import (
-    Bot,
-    GroupMessageEvent,
-    Message,
-    MessageEvent,
-    PrivateMessageEvent,
-)
-from nonebot.params import CommandArg
+from nonebot import get_app, get_bot, on_message
+from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent, PrivateMessageEvent
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
 from src.common.cmd_perm import permission_for_command, private_message_permission_for_command
+from src.common.command_prefix import extract_command_tail_any, matches_text_prefix, peel_text_prefix
 from src.common.multi_bot.group import claim_group_handler
 
+from .command_match import (
+    BIND_COMMAND,
+    BIND_COMMAND_ALT,
+    CLEAR_QUEUE_COMMAND,
+    DEVICE_ALIAS_COMMAND,
+    RAW_TASK_COMMAND,
+    STATUS_COMMAND,
+    SWITCH_DEVICE_COMMAND,
+    maa_command_rule,
+)
 from .config import get_maa_config
 from .endpoints import resolve_maa_http_endpoints
 from .http_routes import remount_maa_http_routes
 from .store import NotifyTarget, maa_store
 from .tasks import (
-    COMMAND_TASK_MAP,
     MAA_RAW_TASK_PREFIX,
+    SETTINGS_STAGE_PREFIX,
     TASK_TYPES_WITHOUT_AUTO_SCREENSHOT,
     MaaTaskSpec,
     bind_device_id_error,
@@ -30,6 +34,7 @@ from .tasks import (
     format_maa_plugin_usage_brief,
     format_maa_raw_task_types_help,
     is_combat_control_command,
+    is_control_phrase_line,
     maa_raw_task_validate,
     normalize_device_id,
     parse_bind_command_args,
@@ -159,37 +164,36 @@ def format_pending_type_counts(counts: dict[str, int]) -> str:
     return "待拉取明细：" + "、".join(parts)
 
 
-bind_cmd = on_command(
-    "牛牛绑定MAA",
-    aliases={"牛牛绑定MAA设备"},
+bind_cmd = on_message(
+    maa_command_rule(BIND_COMMAND_ALT, BIND_COMMAND),
     priority=5,
     block=True,
     permission=private_message_permission_for_command("maa.bind"),
 )
 
-status_cmd = on_command(
-    "牛牛MAA状态",
+status_cmd = on_message(
+    maa_command_rule(STATUS_COMMAND),
     priority=5,
     block=True,
     permission=permission_for_command("maa.status"),
 )
 
-clear_queue_cmd = on_command(
-    "牛牛清空MAA队列",
+clear_queue_cmd = on_message(
+    maa_command_rule(CLEAR_QUEUE_COMMAND),
     priority=5,
     block=True,
     permission=permission_for_command("maa.control"),
 )
 
-switch_device_cmd = on_command(
-    "牛牛切换MAA设备",
+switch_device_cmd = on_message(
+    maa_command_rule(SWITCH_DEVICE_COMMAND),
     priority=5,
     block=True,
     permission=private_message_permission_for_command("maa.bind"),
 )
 
-device_alias_cmd = on_command(
-    "牛牛MAA设备名",
+device_alias_cmd = on_message(
+    maa_command_rule(DEVICE_ALIAS_COMMAND),
     priority=5,
     block=True,
     permission=private_message_permission_for_command("maa.bind"),
@@ -198,9 +202,9 @@ device_alias_cmd = on_command(
 
 async def is_maa_control_msg(event: MessageEvent) -> bool:
     text = event.get_plaintext().strip()
-    if text in COMMAND_TASK_MAP:
+    if is_control_phrase_line(text):
         return True
-    return text.startswith(("牛牛设置连接 ", "牛牛设置关卡 "))
+    return matches_text_prefix(text, "牛牛设置连接 ") or matches_text_prefix(text, SETTINGS_STAGE_PREFIX)
 
 
 maa_control_msg = on_message(
@@ -210,8 +214,8 @@ maa_control_msg = on_message(
     permission=permission_for_command("maa.control"),
 )
 
-maa_raw_task_cmd = on_command(
-    "牛牛MAA任务",
+maa_raw_task_cmd = on_message(
+    maa_command_rule(RAW_TASK_COMMAND),
     priority=5,
     block=True,
     permission=permission_for_command("maa.control"),
@@ -219,8 +223,9 @@ maa_raw_task_cmd = on_command(
 
 
 @bind_cmd.handle()
-async def handle_bind(event: PrivateMessageEvent, args: Message = CommandArg()):  # noqa: B008
-    raw_device, bind_alias = parse_bind_command_args(args.extract_plain_text())
+async def handle_bind(event: PrivateMessageEvent):
+    arg_text = extract_command_tail_any(event.get_plaintext() or "", BIND_COMMAND_ALT, BIND_COMMAND)
+    raw_device, bind_alias = parse_bind_command_args(arg_text)
     qq = str(event.get_user_id())
     from src.common.shard.coord.maa_route_registry import register_maa_user_route
 
@@ -307,14 +312,14 @@ async def handle_status(bot: Bot, event: MessageEvent):
 
 
 @clear_queue_cmd.handle()
-async def handle_clear_queue(bot: Bot, event: MessageEvent, args: Message = CommandArg()):  # noqa: B008
+async def handle_clear_queue(bot: Bot, event: MessageEvent):
     if not await ensure_maa_group_message_owner(event, bot):
         return
     qq = int(event.get_user_id())
-    scope = args.extract_plain_text().strip()
+    scope = extract_command_tail_any(event.get_plaintext() or "", CLEAR_QUEUE_COMMAND)
     device: str | None = None
     if scope:
-        if scope not in ("当前", "当前设备", "current"):
+        if scope.casefold() not in ("当前", "当前设备", "current"):
             await clear_queue_cmd.finish(
                 "用法：牛牛清空MAA队列（清空本账号全部待拉取）；或 牛牛清空MAA队列 当前（仅当前选用设备）"
             )
@@ -329,8 +334,8 @@ async def handle_clear_queue(bot: Bot, event: MessageEvent, args: Message = Comm
 
 
 @switch_device_cmd.handle()
-async def handle_switch_device(event: PrivateMessageEvent, args: Message = CommandArg()):  # noqa: B008
-    ref = args.extract_plain_text().strip()
+async def handle_switch_device(event: PrivateMessageEvent):
+    ref = extract_command_tail_any(event.get_plaintext() or "", SWITCH_DEVICE_COMMAND)
     if not ref:
         await switch_device_cmd.finish("用法：牛牛切换MAA设备 <设备标识符、别名或 id 前缀（至少 8 位）>")
     err = await store.set_active_device(int(event.get_user_id()), ref)
@@ -346,8 +351,8 @@ async def handle_switch_device(event: PrivateMessageEvent, args: Message = Comma
 
 
 @device_alias_cmd.handle()
-async def handle_device_alias(event: PrivateMessageEvent, args: Message = CommandArg()):  # noqa: B008
-    text = args.extract_plain_text().strip()
+async def handle_device_alias(event: PrivateMessageEvent):
+    text = extract_command_tail_any(event.get_plaintext() or "", DEVICE_ALIAS_COMMAND)
     if not text:
         await device_alias_cmd.finish("用法：牛牛MAA设备名 <设备> <别名>（别名为空则清除）")
     parts = text.split(maxsplit=1)
@@ -413,18 +418,18 @@ async def handle_control(bot: Bot, event: MessageEvent):
     specs = parse_command_specs(text)
     if not specs:
         return
-    if text.startswith("牛牛设置关卡 "):
-        stages = parse_stage_setting_values(text.removeprefix("牛牛设置关卡 "))
+    if matches_text_prefix(text, SETTINGS_STAGE_PREFIX):
+        stages = parse_stage_setting_values(peel_text_prefix(text, SETTINGS_STAGE_PREFIX))
         if stages:
             await store.set_stage_plan(int(event.get_user_id()), stages)
     await enqueue_and_reply(bot, event, specs, maa_control_msg, command_line=text)
 
 
 @maa_raw_task_cmd.handle()
-async def handle_raw_task(bot: Bot, event: MessageEvent, args: Message = CommandArg()):  # noqa: B008
+async def handle_raw_task(bot: Bot, event: MessageEvent):
     if not await ensure_maa_group_message_owner(event, bot):
         return
-    arg_text = args.extract_plain_text().strip()
+    arg_text = extract_command_tail_any(event.get_plaintext() or "", RAW_TASK_COMMAND)
     line = f"{MAA_RAW_TASK_PREFIX} {arg_text}".strip() if arg_text else MAA_RAW_TASK_PREFIX
     spec, err = maa_raw_task_validate(line)
     if err:

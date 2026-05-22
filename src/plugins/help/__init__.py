@@ -12,6 +12,7 @@ from src.common.cmd_perm.metadata_defaults import (
     PLUGIN_MENU_TEMPLATE,
 )
 from src.common.cmd_perm.metadata_text import SCENE_BOTH, SCENE_GROUP, join_usage, usage_line
+from src.common.command_prefix import matches_command_prefix
 from src.common.config import BotConfig, GroupConfig
 
 from .config import Config, get_help_config, plugin_config
@@ -26,7 +27,6 @@ from .help_args import (
     HELP_COMMAND,
     PLUGIN_DISABLE_COMMAND,
     PLUGIN_ENABLE_COMMAND,
-    matches_command_prefix,
     parse_plugin_toggle_args,
 )
 from .plugin_manager import get_help_menu_plugins

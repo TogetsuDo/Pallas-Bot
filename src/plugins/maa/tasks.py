@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
+
+from src.common.command_prefix import matches_text_prefix, peel_text_prefix
 
 # MAA 客户端常见为 32 位十六进制（无连字符）；协议示例亦可能出现标准 UUID
 _DEVICE_HEX32_RE = re.compile(r"^[0-9a-fA-F]{32}$")
@@ -201,6 +204,9 @@ MAA_CONTROL_COMMAND_HELPS: tuple[MaaControlCommandHelp, ...] = (
 
 COMMAND_TASK_MAP: dict[str, str] = {item.phrase: item.task_type for item in MAA_CONTROL_COMMAND_HELPS}
 
+SETTINGS_CONNECTION_PREFIX = "牛牛设置连接 "
+SETTINGS_STAGE_PREFIX = "牛牛设置关卡 "
+
 _MAA_SETTINGS_COMMAND_HELPS: tuple[MaaControlCommandHelp, ...] = (
     MaaControlCommandHelp(
         "牛牛设置连接 <值>",
@@ -307,8 +313,30 @@ def build_combat_prep_specs(stage_plan: list[str]) -> list[MaaTaskSpec]:
     return build_stage_setting_specs(stage_plan)
 
 
+@lru_cache(maxsize=1)
+def control_phrase_to_task_type() -> dict[str, str]:
+    return {phrase.casefold(): task_type for phrase, task_type in COMMAND_TASK_MAP.items()}
+
+
+def task_type_for_control_phrase(line: str) -> str | None:
+    return control_phrase_to_task_type().get((line or "").strip().casefold())
+
+
+def is_control_phrase_line(line: str) -> bool:
+    return task_type_for_control_phrase(line) is not None
+
+
+@lru_cache(maxsize=1)
+def canonical_remote_task_types() -> dict[str, str]:
+    return {t.casefold(): t for t in ALLOWED_REMOTE_TASK_TYPES}
+
+
+def canonical_remote_task_type(raw: str) -> str | None:
+    return canonical_remote_task_types().get((raw or "").strip().casefold())
+
+
 def is_combat_control_command(command_line: str, specs: list[MaaTaskSpec]) -> bool:
-    if (command_line or "").strip() == COMBAT_COMMAND_PHRASE:
+    if (command_line or "").strip().casefold() == COMBAT_COMMAND_PHRASE.casefold():
         return True
     return any(s.task_type in COMBAT_PREP_TASK_TYPES for s in specs)
 
@@ -350,19 +378,19 @@ def parse_command_specs(text: str) -> list[MaaTaskSpec] | None:
     if not line:
         return None
 
-    if line.startswith("牛牛设置连接 "):
-        value = line.removeprefix("牛牛设置连接 ").strip()
+    if matches_text_prefix(line, SETTINGS_CONNECTION_PREFIX):
+        value = peel_text_prefix(line, SETTINGS_CONNECTION_PREFIX)
         if value:
             return [MaaTaskSpec("Settings-ConnectionAddress", value)]
         return None
 
-    if line.startswith("牛牛设置关卡 "):
-        stages = parse_stage_setting_values(line.removeprefix("牛牛设置关卡 "))
+    if matches_text_prefix(line, SETTINGS_STAGE_PREFIX):
+        stages = parse_stage_setting_values(peel_text_prefix(line, SETTINGS_STAGE_PREFIX))
         if stages:
             return build_stage_setting_specs(stages)
         return None
 
-    task_type = COMMAND_TASK_MAP.get(line)
+    task_type = task_type_for_control_phrase(line)
     if task_type:
         return [MaaTaskSpec(task_type)]
     raw = parse_maa_raw_task(line)
@@ -372,15 +400,16 @@ def parse_command_specs(text: str) -> list[MaaTaskSpec] | None:
 def parse_maa_raw_task(text: str) -> MaaTaskSpec | None:
     """解析「牛牛MAA任务 <type> [params]」。"""
     line = (text or "").strip()
-    if not line.startswith(MAA_RAW_TASK_PREFIX):
+    if not matches_text_prefix(line, MAA_RAW_TASK_PREFIX):
         return None
-    rest = line.removeprefix(MAA_RAW_TASK_PREFIX).strip()
+    rest = peel_text_prefix(line, MAA_RAW_TASK_PREFIX)
     if not rest:
         return None
     parts = rest.split(maxsplit=1)
-    task_type = parts[0]
+    raw_type = parts[0]
     params = parts[1].strip() if len(parts) > 1 else None
-    if task_type not in ALLOWED_REMOTE_TASK_TYPES:
+    task_type = canonical_remote_task_type(raw_type)
+    if task_type is None:
         return None
     if task_type in SETTINGS_TYPES:
         if not params:
@@ -404,16 +433,17 @@ def maa_raw_task_usage_error() -> str:
 def maa_raw_task_validate(text: str) -> tuple[MaaTaskSpec | None, str | None]:
     """返回 (spec, error_message)。"""
     line = (text or "").strip()
-    if not line.startswith(MAA_RAW_TASK_PREFIX):
+    if not matches_text_prefix(line, MAA_RAW_TASK_PREFIX):
         return None, None
-    rest = line.removeprefix(MAA_RAW_TASK_PREFIX).strip()
+    rest = peel_text_prefix(line, MAA_RAW_TASK_PREFIX)
     if not rest:
         return None, maa_raw_task_usage_error()
     parts = rest.split(maxsplit=1)
-    task_type = parts[0]
+    raw_type = parts[0]
     params = parts[1].strip() if len(parts) > 1 else None
-    if task_type not in ALLOWED_REMOTE_TASK_TYPES:
-        return None, f"不支持的 type：{task_type}\n{maa_raw_task_usage_error()}"
+    task_type = canonical_remote_task_type(raw_type)
+    if task_type is None:
+        return None, f"不支持的 type：{raw_type}\n{maa_raw_task_usage_error()}"
     if task_type in SETTINGS_TYPES:
         if not params:
             return None, f"{task_type} 需要 params，例如：牛牛MAA任务 {task_type} <值>"

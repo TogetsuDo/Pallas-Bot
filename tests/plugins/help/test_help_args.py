@@ -1,8 +1,8 @@
+from src.common.command_prefix import matches_command_prefix
 from src.plugins.help.help_args import (
     PLUGIN_DISABLE_COMMAND,
     PLUGIN_ENABLE_COMMAND,
     extract_help_tail,
-    matches_command_prefix,
     parse_help_args,
     parse_plugin_toggle_args,
 )
