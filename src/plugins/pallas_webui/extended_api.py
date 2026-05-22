@@ -3130,6 +3130,14 @@ async def _collect_online_bot_profiles() -> dict[str, dict[str, Any]]:
     return out
 
 
+async def _doubt_friends_for_self_id_safe(self_id: int) -> list[dict[str, Any]]:
+    try:
+        return await _get_doubt_friends_for_self_id(self_id)
+    except Exception as e:  # noqa: BLE001
+        logger.debug("Pallas-Bot 控制台: 拉取可疑好友申请失败 self_id={}: {}", self_id, e)
+        return []
+
+
 async def _friend_requests_overview(
     *,
     self_id: str | None,
@@ -3161,8 +3169,18 @@ async def _friend_requests_overview(
     def _sort_key(s: str) -> tuple[int, str]:
         return (int(s), s) if s.isdigit() else (10**18, s)
 
+    sorted_ids = sorted(ids, key=_sort_key)
+    doubt_by_sid: dict[str, list[dict[str, Any]]] = {}
+    if include_doubt:
+        doubt_targets = [sid for sid in sorted_ids if sid in online_by_self and sid.isdigit()]
+        if doubt_targets:
+            pairs = await asyncio.gather(
+                *[_doubt_friends_for_self_id_safe(int(sid)) for sid in doubt_targets],
+            )
+            doubt_by_sid = dict(zip(doubt_targets, pairs, strict=True))
+
     rows: list[dict[str, Any]] = []
-    for sid in sorted(ids, key=_sort_key):
+    for sid in sorted_ids:
         pend_map = disk.get(sid, {})
         pending = [{"user_id": int(u), "flag": fl} for u, fl in pend_map.items() if u.isdigit()]
         doubt: list[dict[str, Any]] = []
@@ -3178,8 +3196,9 @@ async def _friend_requests_overview(
             if sid.isdigit():
                 sid_i = int(sid)
                 if include_doubt:
-                    doubt = await _get_doubt_friends_for_self_id(sid_i)
-                await _enrich_friend_request_rows_nicknames_for_self_id(sid_i, pending, doubt)
+                    doubt = list(doubt_by_sid.get(sid, []))
+                if pending or doubt:
+                    await _enrich_friend_request_rows_nicknames_for_self_id(sid_i, pending, doubt)
         rows.append({
             "self_id": sid,
             "connection_key": conn,
@@ -4842,17 +4861,22 @@ def register_extended_api(
         return JSONResponse({"ok": True, "data": payload})
 
     @router.get(f"{x}/request-overview", include_in_schema=True)
-    async def _request_overview() -> JSONResponse:
+    async def _request_overview(
+        self_id: int | None = Query(default=None, ge=1, description="仅查看指定 Bot QQ；不传则返回全部"),
+        doubt: bool = Query(default=True, description="是否对在线 OneBot V11 号尝试拉取被过滤的可疑好友申请"),
+    ) -> JSONResponse:
+        filter_sid = str(int(self_id)) if self_id is not None else None
+
         async def _load() -> dict[str, Any]:
-            friend = await _friend_requests_overview(self_id=None, include_doubt=True)
+            friend = await _friend_requests_overview(self_id=filter_sid, include_doubt=bool(doubt))
             group = _read_pending_group_requests_disk()
             by_self: dict[str, dict[str, Any]] = {}
             for row in friend.get("bots", []):
-                sid = str(row.get("self_id") or "")
-                if not sid:
+                row_sid = str(row.get("self_id") or "")
+                if not row_sid:
                     continue
-                by_self[sid] = {
-                    "self_id": sid,
+                by_self[row_sid] = {
+                    "self_id": row_sid,
                     "online": bool(row.get("online")),
                     "adapter": str(row.get("adapter") or ""),
                     "connection_key": row.get("connection_key"),
@@ -4860,11 +4884,14 @@ def register_extended_api(
                     "doubt_friend_requests": row.get("doubt_friend_requests") or [],
                     "pending_group_requests": [],
                 }
-            for sid, mp in group.items():
+            for gsid_raw, mp in group.items():
+                gsid = str(gsid_raw)
+                if filter_sid is not None and gsid != filter_sid:
+                    continue
                 row = by_self.setdefault(
-                    str(sid),
+                    gsid,
                     {
-                        "self_id": str(sid),
+                        "self_id": gsid,
                         "online": False,
                         "adapter": "",
                         "connection_key": None,
@@ -4882,8 +4909,9 @@ def register_extended_api(
             )
             return {"bots": rows}
 
+        cache_key = f"request_overview:{self_id or 'all'}:{int(doubt)}"
         try:
-            data = await _cached_read(key="request_overview", loader=_load, ttl_sec=1.2, stale_sec=15.0)
+            data = await _cached_read(key=cache_key, loader=_load, ttl_sec=1.2, stale_sec=15.0)
         except Exception as e:  # noqa: BLE001
             logger.exception("Pallas-Bot 控制台: 读取审批总览失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
