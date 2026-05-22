@@ -28,6 +28,8 @@ from src.common.multi_bot.dedup import (
     try_begin_group_owned_gate,
     try_claim_cross_bot_message,
     try_claim_cross_bot_message_memory,
+    try_claim_cross_shard_message,
+    try_claim_cross_shard_message_memory,
 )
 
 __all__ = [
@@ -44,4 +46,6 @@ __all__ = [
     "try_begin_group_owned_gate",
     "try_claim_cross_bot_message",
     "try_claim_cross_bot_message_memory",
+    "try_claim_cross_shard_message",
+    "try_claim_cross_shard_message_memory",
 ]

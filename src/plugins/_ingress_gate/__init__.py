@@ -10,13 +10,14 @@ from nonebot.message import event_preprocessor
 from src.common.bot_runtime.roles import is_hub_role
 from src.common.ingress.cage_plaintext import is_cage_plaintext
 from src.common.ingress.drink_plaintext import is_drink_plaintext
-from src.common.multi_bot.dedup import try_claim_cross_bot_message
+from src.common.multi_bot.dedup import try_claim_cross_bot_message, try_claim_cross_shard_message
 from src.common.multi_bot.fleet import fleet_bot_ids_contains, get_fleet_bot_ids
 from src.common.shard.coord.bot_count import should_skip_ingress_claim_for_shard_bot_count
 from src.common.shard.ingress_fanout import is_ingress_fanout_plaintext
-from src.common.shard.registry.config import is_sharding_active
+from src.common.shard.registry.config import get_shard_registry_settings, is_sharding_active
 
 INGRESS_CLAIM_PLUGIN = "ingress_gate"
+INGRESS_SHARD_CLAIM_PLUGIN = "ingress_gate_shard"
 driver = get_driver()
 
 
@@ -71,6 +72,20 @@ async def ingress_group_message_gate(bot, event) -> None:
         return
 
     body = plain or event.raw_message
+    if is_sharding_active():
+        shard_id = get_shard_registry_settings().shard_id
+        if not await try_claim_cross_shard_message(
+            INGRESS_SHARD_CLAIM_PLUGIN,
+            event.group_id,
+            user_id,
+            body,
+            event.time,
+            shard_id,
+            use_plaintext=True,
+        ):
+            raise IgnoredException("ingress shard claim lost")
+        return
+
     if not await try_claim_cross_bot_message(
         INGRESS_CLAIM_PLUGIN,
         event.group_id,

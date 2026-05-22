@@ -212,6 +212,11 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if not answers:
         return
 
+    from .fanout_reply import maybe_orchestrate_repeater_fanout
+
+    if await maybe_orchestrate_repeater_fanout(event, answers):
+        return
+
     await config.refresh_cooldown("repeat")
     delay = random.randint(2, 5)
     async for item in answers:

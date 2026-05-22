@@ -214,6 +214,11 @@ async def _execute_local(action: str, bot_qq: int, payload: dict[str, Any]) -> t
             )
             card = str(info.get("card") or info.get("nickname") or "").strip()
             return True, card
+        if action == "repeater_fanout_reply":
+            from src.plugins.repeater.fanout_reply import run_repeater_reply_for_bot
+
+            await run_repeater_reply_for_bot(int(bot_qq), payload)
+            return True, None
         if action == "onebot_call_api":
             api = str(payload.get("api") or "").strip()
             if not api:

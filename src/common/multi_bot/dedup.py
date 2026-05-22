@@ -137,6 +137,64 @@ async def try_claim_cross_bot_message(
     return await try_claim_message(plugin, group_id, claim_key, bot_id)
 
 
+async def try_claim_cross_shard_message_memory(
+    plugin: str,
+    group_id: int,
+    user_id: int,
+    message_body: str,
+    message_time: int,
+    shard_id: int,
+    *,
+    use_plaintext: bool = True,
+) -> bool:
+    sig = cross_bot_message_signature(
+        group_id,
+        user_id,
+        message_body,
+        message_time,
+        use_plaintext=use_plaintext,
+    )
+    key = (plugin, sig)
+    async with _cross_bot_claim_lock:
+        owner = _cross_bot_claim_owners.get(key)
+        if owner is None:
+            _cross_bot_claim_owners[key] = shard_id
+            _prune_cross_bot_claims()
+            return True
+        return owner == shard_id
+
+
+async def try_claim_cross_shard_message(
+    plugin: str,
+    group_id: int,
+    user_id: int,
+    message_body: str,
+    message_time: int,
+    shard_id: int,
+    *,
+    use_plaintext: bool = True,
+) -> bool:
+    """分片 ingress：全舰队每条消息仅一个 shard 通过；该 shard 上各牛不再互斥。"""
+    if not await try_claim_cross_shard_message_memory(
+        plugin,
+        group_id,
+        user_id,
+        message_body,
+        message_time,
+        shard_id,
+        use_plaintext=use_plaintext,
+    ):
+        return False
+    claim_key = cross_bot_group_message_key(
+        group_id,
+        user_id,
+        message_body,
+        message_time,
+        use_plaintext=use_plaintext,
+    )
+    return await try_claim_message(plugin, group_id, claim_key, shard_id)
+
+
 async def should_skip_duplicate_group_event(
     group_id: int,
     user_id: int,
