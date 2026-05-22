@@ -3353,6 +3353,25 @@ class _MongoAggregateBody(BaseModel):
     pipeline: list[Any] = Field(default_factory=list, max_length=16)
 
 
+class _DbBackupBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    output_parent: str | None = Field(
+        default=None,
+        max_length=1024,
+        description="备份父目录；空则使用仓库 backups/",
+    )
+    label: str = Field(default="", max_length=64, description="备份子目录名可选后缀")
+    scope: Literal["full", "important"] = Field(
+        default="full",
+        description="MongoDB：full=整库，important=关键集合",
+    )
+    pg_format: Literal["custom", "plain", "directory"] = Field(
+        default="custom",
+        description="PostgreSQL pg_dump 格式",
+    )
+
+
 class _DbTableRowUpsertBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -4080,6 +4099,53 @@ def register_extended_api(
             logger.exception("Pallas-Bot 控制台: 数据库概览失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": data})
+
+    @router.get(f"{x}/db/backup/info", include_in_schema=True)
+    async def _db_backup_info() -> JSONResponse:
+        from src.common.db.backup import backup_info
+
+        try:
+            data = backup_info()
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Pallas-Bot 控制台: 读取备份信息失败")
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": data})
+
+    @router.post(f"{x}/db/backup", include_in_schema=True)
+    async def _db_backup_run(
+        body: _DbBackupBody,
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        """对当前配置的数据库执行逻辑备份（mongodump / pg_dump）。"""
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        from src.common.db.backup import run_database_backup
+
+        try:
+            result = await asyncio.to_thread(
+                run_database_backup,
+                output_parent=body.output_parent,
+                label=body.label,
+                scope=body.scope,
+                pg_format=body.pg_format,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except RuntimeError as e:
+            raise HTTPException(status_code=502, detail=str(e)) from e
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Pallas-Bot 控制台: 数据库备份失败")
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        payload = {
+            "ok": result.ok,
+            "backend": result.backend,
+            "scope": result.scope,
+            "output_dir": result.output_dir,
+            "artifacts": result.artifacts,
+            "size_bytes": result.size_bytes,
+            "message": result.message,
+        }
+        return JSONResponse({"ok": True, "data": payload})
 
     @router.post(f"{x}/db/mongodb/aggregate", include_in_schema=True)
     async def _db_mongo_aggregate(

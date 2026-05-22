@@ -90,6 +90,10 @@ WHERE account = 3888888888;
 
 命令行工具也可使用仓库提供的 [`tools/config/config.mongodb`](../tools/config/config.mongodb) 等脚本（若你环境已配置好）；与直接改库等价，择一即可。
 
+### Q: 如何备份 MongoDB / PostgreSQL？
+
+A: **WebUI「数据库」页**有「数据库备份」面板；若未检测到 `mongodump` / `pg_dump`，页面会给出官方下载链接。也可在仓库根执行：`uv run python tools/scripts/backup_database.py`（按当前 `db_backend`），PostgreSQL 专用：`tools/scripts/backup_pg.py` 或 `sh tools/scripts/backup.sh -p`。
+
 ## 更新与版本
 
 ### Q: Docker 部署和 git clone 部署，更新方式有什么区别？
