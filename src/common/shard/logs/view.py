@@ -514,6 +514,17 @@ def cleanup_stale_shard_log_files(
         except OSError:
             pass
 
+    archive = root / "archive"
+    if archive.is_dir():
+        for path in archive.iterdir():
+            if not path.is_file():
+                continue
+            try:
+                if now - path.stat().st_mtime > rotated_max_age_days * 86400:
+                    try_remove(path)
+            except OSError:
+                pass
+
     for path in root.glob("*.bootstrap.log"):
         try:
             age = now - path.stat().st_mtime

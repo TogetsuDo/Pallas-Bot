@@ -24,6 +24,9 @@ def _plain_fingerprint(text: str) -> str:
 
 async def start_duel_pair(group_id: int, bot_a: int, bot_b: int) -> None:
     """登记群内决斗双牛，供 block 放行互见。"""
+    from src.common.shard.coord.duel_group import mark_duel_group_session
+
+    mark_duel_group_session(group_id, int(bot_a), int(bot_b))
     gc = GroupConfig(group_id)
     pair = {"a": int(bot_a), "b": int(bot_b), "until": time.time() + _PAIR_TTL_SEC}
     await gc._update_in_memory(_PAIR_KEY, pair)

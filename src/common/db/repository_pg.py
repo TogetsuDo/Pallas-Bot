@@ -603,9 +603,45 @@ class PgContextRepository:
             await session.commit()
 
 
+def row_to_message(row: MessageRow) -> Message:
+    from src.common.db.modules import Message
+
+    return Message.model_construct(
+        group_id=int(row.group_id),
+        user_id=int(row.user_id),
+        bot_id=int(row.bot_id),
+        raw_message=str(row.raw_message),
+        is_plain_text=bool(row.is_plain_text),
+        plain_text=str(row.plain_text),
+        keywords=str(row.keywords),
+        time=int(row.time),
+    )
+
+
 class PgMessageRepository:
     # MessageRow 有 8 列，asyncpg 单语句参数上限 32767，保守取 4000 行/批
     _BULK_BATCH_SIZE = 4000
+
+    async def find_recent_in_group(
+        self,
+        group_id: int,
+        *,
+        before_time: int | None = None,
+        user_id: int | None = None,
+        limit: int = 8,
+    ) -> list[Message]:
+        cap = max(1, min(int(limit), 32))
+        stmt = select(MessageRow).where(MessageRow.group_id == int(group_id))
+        if before_time is not None:
+            stmt = stmt.where(MessageRow.time < int(before_time))
+        if user_id is not None:
+            stmt = stmt.where(MessageRow.user_id == int(user_id))
+        stmt = stmt.order_by(MessageRow.time.desc()).limit(cap)
+        async with get_session() as session:
+            result = await session.execute(stmt)
+            rows = list(result.scalars().all())
+        rows.reverse()
+        return [row_to_message(r) for r in rows]
 
     async def bulk_insert(self, messages: list[Message]) -> None:
         if not messages:

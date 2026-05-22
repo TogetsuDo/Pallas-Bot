@@ -79,8 +79,11 @@ async def startup():
             port,
             s.shard_id,
         )
+    from src.common.coord.redis_settings import coord_redis_enabled, resolve_coord_redis_url
     from src.common.shard.coord.worker_poll import start_shard_coord_worker_watcher
 
+    if coord_redis_enabled():
+        nonebot.logger.info("bot_worker: cross-process claims via Redis ({})", resolve_coord_redis_url())
     start_shard_coord_worker_watcher()
     await ensure_voices()
 

@@ -174,6 +174,11 @@ any_msg = on_message(
 
 @any_msg.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
+    from .shard_opt import repeater_worker_handles_message
+
+    if not repeater_worker_handles_message(int(bot.self_id)):
+        return
+
     # 多账号登陆，且在同一群中时；避免一条消息被处理多次
     async with message_id_lock:
         message_id = event.message_id
@@ -187,6 +192,25 @@ async def _(bot: Bot, event: GroupMessageEvent):
     norm_raw = _normalize_group_raw_message(event.raw_message)
     if await _should_skip_duplicate_group_event(event.group_id, event.user_id, norm_raw, event.time):
         return
+
+    from src.common.shard.registry.config import is_sharding_active
+
+    if is_sharding_active():
+        from .fanout_reply import repeater_fanout_enabled
+
+        if not repeater_fanout_enabled():  # 配置关闭 fanout 时片内单牛 claim
+            from src.common.multi_bot.dedup import try_claim_cross_bot_message
+
+            if not await try_claim_cross_bot_message(
+                "repeater_reply",
+                event.group_id,
+                event.user_id,
+                event.get_plaintext(),
+                event.time,
+                int(bot.self_id),
+                use_plaintext=True,
+            ):
+                return
 
     if await is_message_scrub_blocked_async(plain_text=event.get_plaintext(), raw_message=norm_raw):
         pv = scrub_intercept_log_preview(event.get_plaintext(), norm_raw)
@@ -378,6 +402,10 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
 
 @scheduler.scheduled_job("interval", seconds=60)
 async def speak_up():
+    from .shard_opt import repeater_scheduler_runs_on_worker
+
+    if not repeater_scheduler_runs_on_worker():
+        return
     ret = await Chat.speak()
     if not ret:
         return

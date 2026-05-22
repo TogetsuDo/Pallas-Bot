@@ -182,6 +182,42 @@ async def test_null_byte_stripping(pg_engine):
 
 
 @pytest.mark.asyncio
+async def test_message_find_recent_in_group(pg_engine):
+    from src.common.db.modules import Message
+    from src.common.db.repository_pg import PgMessageRepository
+
+    repo = PgMessageRepository()
+    gid = 88001
+    await repo.bulk_insert([
+        Message.model_construct(
+            group_id=gid,
+            user_id=10,
+            bot_id=1,
+            raw_message="a",
+            is_plain_text=True,
+            plain_text="a",
+            keywords="a",
+            time=100,
+        ),
+        Message.model_construct(
+            group_id=gid,
+            user_id=20,
+            bot_id=1,
+            raw_message="b",
+            is_plain_text=True,
+            plain_text="b",
+            keywords="b",
+            time=200,
+        ),
+    ])
+    rows = await repo.find_recent_in_group(gid, before_time=250, limit=8)
+    assert [m.plain_text for m in rows] == ["a", "b"]
+    one = await repo.find_recent_in_group(gid, before_time=250, user_id=20, limit=1)
+    assert len(one) == 1
+    assert one[0].plain_text == "b"
+
+
+@pytest.mark.asyncio
 async def test_upsert_answer_handles_long_keywords(pg_engine):
     """answer.keywords 超出 btree 2704 字节上限时，UNIQUE 约束走 keywords_hash，不应触发 ProgramLimitExceededError。"""
     from src.common.db.modules import Context

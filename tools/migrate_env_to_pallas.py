@@ -105,17 +105,10 @@ def _bootstrap_from_env(env: dict[str, str]) -> dict:
     return boot
 
 
-def _toml_needs_quote(s: str) -> bool:
-    if not s:
-        return True
-    return not _RE_IDENT.match(s)
-
-
 def _toml_quote(s: str) -> str:
-    if _toml_needs_quote(s):
-        escaped = s.replace("\\", "\\\\").replace('"', '\\"')
-        return f'"{escaped}"'
-    return s
+    """字符串值一律加引号（tomllib 不接受 postgresql 等裸词）。"""
+    escaped = s.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
 
 
 def _write_toml(path: Path, bootstrap: dict) -> None:

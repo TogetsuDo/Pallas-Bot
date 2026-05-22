@@ -1,16 +1,10 @@
 """MAA 插件命令触发与正文前缀匹配。"""
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
-
+from nonebot.adapters import Event
 from nonebot.rule import Rule
+from nonebot.typing import T_State
 
 from src.common.command_prefix import matches_command_prefix
-
-if TYPE_CHECKING:
-    from nonebot.adapters import Event
-    from nonebot.typing import T_State
 
 BIND_COMMAND = "牛牛绑定MAA"
 BIND_COMMAND_ALT = "牛牛绑定MAA设备"

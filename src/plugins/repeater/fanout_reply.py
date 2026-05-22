@@ -14,6 +14,8 @@ if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
 
+from itertools import starmap
+
 from src.common.bot_runtime.send_unavailable import BOT_SEND_UNAVAILABLE_ERRORS, log_bot_send_unavailable
 from src.common.config import BotConfig
 from src.common.multi_bot.dedup import try_claim_cross_bot_message
@@ -37,15 +39,25 @@ class FanoutGate:
     bot_ids: tuple[int, ...] = ()
 
 
-def repeater_fanout_enabled() -> bool:
+async def count_fanout_capable_bots(group_id: int) -> int:
+    return len(await list_fanout_bot_ids(group_id))
 
+
+def repeater_fanout_enabled() -> bool:
     if not get_repeater_config().fanout_enabled:
         return False
+    if not is_sharding_active():
+        return len(get_bots()) > 1
+    return True
 
-    if is_sharding_active():
-        return True
 
-    return len(get_bots()) > 1
+async def repeater_fanout_enabled_for_group(group_id: int) -> bool:
+    """与单进程一致：仅当群内不少于 2 只可复读的在线牛时才 fanout。"""
+    if not repeater_fanout_enabled():
+        return False
+    if not is_sharding_active():
+        return len(get_bots()) > 1
+    return await count_fanout_capable_bots(group_id) >= 2
 
 
 def cap_fanout_bot_ids(bot_ids: list[int]) -> list[int]:
@@ -121,9 +133,17 @@ async def bot_may_repeater_reply(bot_id: int, group_id: int) -> bool:
 
 async def list_fanout_bot_ids(group_id: int) -> list[int]:
 
+    from src.common.shard.presence import get_cluster_online_bot_ids
     from src.plugins.duel.duel_bots import list_group_online_bot_ids
 
     ids = await list_group_online_bot_ids(group_id)
+
+    if not ids:
+        return []
+
+    if is_sharding_active():
+        online = get_cluster_online_bot_ids()
+        ids = [bid for bid in ids if bid in online]
 
     if not ids:
         return []
@@ -136,10 +156,11 @@ async def list_fanout_bot_ids(group_id: int) -> list[int]:
 async def resolve_fanout_gate(event: GroupMessageEvent) -> FanoutGate:
     """一次 list + claim；失败者 lost=True，成功者 won=True 并带上 bot_ids。"""
 
-    if not repeater_fanout_enabled():
+    group_id = int(event.group_id)
+    if not await repeater_fanout_enabled_for_group(group_id):
         return FanoutGate()
 
-    bot_ids = await list_fanout_bot_ids(int(event.group_id))
+    bot_ids = await list_fanout_bot_ids(group_id)
 
     if len(bot_ids) < 2:
         return FanoutGate()
@@ -256,31 +277,59 @@ async def dispatch_repeater_fanout(
     bot_ids: list[int] | tuple[int, ...],
     bundle: ReplyBundle,
 ) -> None:
-
     payload = fanout_payload_from_event(event, bundle)
-
     group_id = int(event.group_id)
-
     ids = list(bot_ids)
-
     stagger = 0.35
 
+    from src.common.shard.presence import bot_has_cluster_connection, bot_has_local_connection
+
+    local: list[tuple[int, int]] = []
+    remote: list[tuple[int, int]] = []
     for i, bid in enumerate(ids):
-        from src.common.shard.presence import bot_has_local_connection
-
+        if not bot_has_cluster_connection(bid):
+            logger.debug(f"repeater_fanout skip offline bot={bid} group={group_id}")
+            continue
         delay = i * stagger
-
         if bot_has_local_connection(bid):
-            asyncio.create_task(
-                _delayed_local_reply(delay, bid, payload),
-                name=f"repeater_fanout_{bid}_{group_id}",
-            )
-
+            local.append((bid, delay))
         elif is_sharding_active():
-            asyncio.create_task(
-                _delayed_remote_reply(delay, bid, payload),
-                name=f"repeater_fanout_remote_{bid}_{group_id}",
+            remote.append((bid, delay))
+
+    for bid, delay in local:
+        asyncio.create_task(
+            _delayed_local_reply(delay, bid, payload),
+            name=f"repeater_fanout_{bid}_{group_id}",
+        )
+
+    if remote:
+        asyncio.create_task(
+            _dispatch_remote_fanout_batch(remote, payload, group_id),
+            name=f"repeater_fanout_remote_batch_{group_id}",
+        )
+
+
+async def _dispatch_remote_fanout_batch(
+    remote: list[tuple[int, int]],
+    payload: dict[str, Any],
+    group_id: int,
+) -> None:
+    from src.common.shard.coord.bot_action import invoke_bot_action
+
+    async def one(bid: int, delay: float) -> None:
+        if delay > 0:
+            await asyncio.sleep(delay)
+        try:
+            await invoke_bot_action(
+                "repeater_fanout_reply",
+                int(bid),
+                payload,
+                timeout_sec=45.0,
             )
+        except Exception as e:
+            logger.warning("repeater_fanout remote bot={} failed: {}", bid, e)
+
+    await asyncio.gather(*starmap(one, remote))
 
 
 async def _delayed_local_reply(delay: float, bot_id: int, payload: dict[str, Any]) -> None:
@@ -293,22 +342,3 @@ async def _delayed_local_reply(delay: float, bot_id: int, payload: dict[str, Any
 
     except Exception as e:
         logger.warning("repeater_fanout local bot={} failed: {}", bot_id, e)
-
-
-async def _delayed_remote_reply(delay: float, bot_id: int, payload: dict[str, Any]) -> None:
-
-    if delay > 0:
-        await asyncio.sleep(delay)
-
-    from src.common.shard.coord.bot_action import invoke_bot_action
-
-    try:
-        await invoke_bot_action(
-            "repeater_fanout_reply",
-            int(bot_id),
-            payload,
-            timeout_sec=45.0,
-        )
-
-    except Exception as e:
-        logger.warning("repeater_fanout remote bot={} failed: {}", bot_id, e)

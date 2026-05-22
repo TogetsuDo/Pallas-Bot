@@ -2,7 +2,7 @@ import asyncio
 import contextlib
 import re
 
-from nonebot import get_driver, on_message
+from nonebot import get_driver, logger, on_message
 from nonebot.adapters import Bot
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment, permission
 from nonebot.plugin import PluginMetadata
@@ -191,6 +191,20 @@ async def send_duel_user_reply(matcher, group_id: int, message: str | Message) -
     await matcher.send(message)
 
 
+async def send_duel_user_reply_owned(
+    matcher,
+    group_id: int,
+    message: str | Message,
+    *,
+    message_claimed: bool,
+) -> bool:
+    """已抢占同条群消息时直接发送，避免广播占位被协调耗时耗尽。"""
+    if message_claimed or await try_claim_duel_user_reply(group_id):
+        await matcher.send(message)
+        return True
+    return False
+
+
 def duel_fight_start_message(a: str, b: str) -> Message:
     return (
         MessageSegment.text("战斗开始！")
@@ -226,6 +240,8 @@ async def run_duel_match(
 ) -> None:
     """开团：群级占用与指令 CD（多 Bot 共用）；command_gate=ok 表示入口已抢占。"""
     if not duel_handler_is_narrator(event, challenger_id, defender_id, dual_bot=dual_bot):
+        if command_gate == "ok":
+            end_duel_group(event.group_id)
         return
     if duel_narrator_bot_id(challenger_id, defender_id, dual_bot=dual_bot) is None:
         if not await try_claim_duel_message(event):
@@ -303,17 +319,20 @@ async def duel_bot_pair(
         return
     if gate == "cooldown":
         return
-    await matcher.send(duel_fight_start_message(a, b))
-    await run_duel_match(
-        matcher,
-        bot,
-        event,
-        a,
-        b,
-        dual_bot=True,
-        command_gate="ok",
-        total_rounds=total_rounds,
-    )
+    try:
+        await matcher.send(duel_fight_start_message(a, b))
+        await run_duel_match(
+            matcher,
+            bot,
+            event,
+            a,
+            b,
+            dual_bot=True,
+            command_gate="ok",
+            total_rounds=total_rounds,
+        )
+    finally:
+        end_duel_group(event.group_id)
 
 
 async def duel(matcher, bot: Bot, event: GroupMessageEvent, state: T_State) -> None:
@@ -382,6 +401,9 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State) -> None:
     from src.common.shard.registry.config import is_sharding_active
 
     if is_sharding_active():
+        from src.common.shard.local_representative import is_local_worker_representative
+
+        self_id = int(bot.self_id)
         if not await fleet_bot_confirmed_in_group(bot, event.group_id):
             return
         from src.common.shard.coord.cage_duel import (
@@ -389,7 +411,6 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State) -> None:
             update_shard_cage_duel_registration,
         )
 
-        self_id = int(bot.self_id)
         coord_task = asyncio.create_task(
             run_shard_cage_duel_coord(
                 group_id=event.group_id,
@@ -400,14 +421,15 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State) -> None:
             )
         )
         try:
-            probed = await list_local_fleet_bots_in_group(event.group_id)
-            await update_shard_cage_duel_registration(
-                group_id=event.group_id,
-                user_id=int(event.user_id),
-                message_time=int(event.time),
-                plaintext=plain,
-                bot_ids=sorted({self_id, *probed}),
-            )
+            if is_local_worker_representative(self_id):
+                probed = await list_local_fleet_bots_in_group(event.group_id)
+                await update_shard_cage_duel_registration(
+                    group_id=event.group_id,
+                    user_id=int(event.user_id),
+                    message_time=int(event.time),
+                    plaintext=plain,
+                    bot_ids=sorted({self_id, *probed}),
+                )
             pair = await coord_task
         except asyncio.CancelledError:
             raise
@@ -447,32 +469,60 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State) -> None:
                     "主持牛暂未连线，八角笼改日再战。",
                 )
             return
-    elif int(event.self_id) != narrator:
+    if int(event.self_id) != narrator:
         return
     if not await try_claim_duel_message(event):
+        logger.warning(
+            "duel.cage: message claim lost group={} narrator={} pair={}",
+            event.group_id,
+            narrator,
+            pair,
+        )
         return
+    from src.common.shard.coord.duel_group import try_reclaim_orphan_duel_group
+
+    await try_reclaim_orphan_duel_group(event.group_id)
     gate = await begin_duel_command(event.group_id)
     if gate == "busy":
-        await send_duel_user_reply(cage_msg, event.group_id, "此群台上正有决斗未散，且待战歌落幕。")
+        if not await send_duel_user_reply_owned(
+            cage_msg,
+            event.group_id,
+            "此群台上正有决斗未散，且待战歌落幕。",
+            message_claimed=True,
+        ):
+            logger.warning(
+                "duel.cage: busy but user reply slot lost group={} narrator={}",
+                event.group_id,
+                narrator,
+            )
         return
     if gate == "cooldown":
-        await send_duel_user_reply(
+        if not await send_duel_user_reply_owned(
             cage_msg,
             event.group_id,
             "博士，战鼓刚歇，稍待片刻再开八角笼。",
-        )
+            message_claimed=True,
+        ):
+            logger.warning(
+                "duel.cage: cooldown but user reply slot lost group={} narrator={}",
+                event.group_id,
+                narrator,
+            )
         return
-    await cage_msg.send(duel_fight_start_message(a, b))
-    await run_duel_match(
-        cage_msg,
-        bot,
-        event,
-        a,
-        b,
-        dual_bot=True,
-        command_gate="ok",
-        total_rounds=total_rounds,
-    )
+    try:
+        await cage_msg.send(duel_fight_start_message(a, b))
+        await run_duel_match(
+            cage_msg,
+            bot,
+            event,
+            a,
+            b,
+            dual_bot=True,
+            command_gate="ok",
+            total_rounds=total_rounds,
+        )
+    finally:
+        end_duel_group(event.group_id)
 
 
 @duel_qte_msg.handle()
