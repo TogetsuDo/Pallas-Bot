@@ -5,11 +5,11 @@ from src.common.cmd_perm.metadata_defaults import (
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.cmd_perm.metadata_text import SCENE_GROUP, join_usage, usage_line
+from src.common.cmd_perm.metadata_text import SCENE_BOTH, join_usage, usage_line
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛连通",
-    description="群内检测画画、MAA 与唱歌服务的连通性与延迟。",
+    description="群内或私聊检测画画、MAA 与唱歌服务的连通性与延迟。",
     usage=join_usage(
         usage_line("牛牛连通 / 牛牛网关", "并行探测上述服务并回报延迟"),
     ),
@@ -26,7 +26,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "牛牛连通",
                 "trigger_method": "on_cmd",
-                "trigger_scene": SCENE_GROUP,
+                "trigger_scene": SCENE_BOTH,
                 "trigger_condition": "牛牛连通 / 牛牛网关",
                 "command_permission": "connectivity.probe",
                 "brief_des": "检测画画、MAA 远控与唱歌服务延迟",

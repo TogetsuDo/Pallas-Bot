@@ -19,37 +19,50 @@ def format_probe_detail(result: ServiceProbeResult) -> str:
     return "不可用"
 
 
-def category_site_indent(category: str) -> int:
-    """首行「类别 + 空格」宽度，备线等与主网关列对齐。"""
-    name = (category or "").strip()
-    return len(f"{name} ") if name else 0
+def format_probe_site_line(result: ServiceProbeResult) -> str:
+    site = (result.site or "").strip() or "节点"
+    return f"· {site}：{format_probe_detail(result)}"
+
+
+def group_probe_results_by_category(
+    results: list[ServiceProbeResult],
+) -> list[tuple[str, list[ServiceProbeResult]]]:
+    groups: list[tuple[str, list[ServiceProbeResult]]] = []
+    index_by_category: dict[str, int] = {}
+    for result in results:
+        category = (result.category or "").strip() or "服务"
+        if category in index_by_category:
+            groups[index_by_category[category]][1].append(result)
+        else:
+            index_by_category[category] = len(groups)
+            groups.append((category, [result]))
+    return groups
+
+
+def format_probe_category_block(category: str, items: list[ServiceProbeResult]) -> list[str]:
+    lines = [f"【{category}】"]
+    lines.extend(format_probe_site_line(r) for r in items)
+    return lines
 
 
 def format_probe_line(
     result: ServiceProbeResult,
     *,
     show_category: bool = True,
-    indent: int = 0,
 ) -> str:
-    detail = format_probe_detail(result)
-    site = (result.site or "").strip()
     if show_category and (result.category or "").strip():
-        return f"{result.category.strip()} {site}：{detail}"
-    pad = " " * max(0, indent)
-    return f"{pad}{site}：{detail}"
+        return "\n".join(format_probe_category_block(result.category.strip(), [result]))
+    return format_probe_site_line(result)
 
 
 def format_probe_lines(results: list[ServiceProbeResult]) -> list[str]:
+    if not results:
+        return []
     lines: list[str] = []
-    prev_category: str | None = None
-    indent = 0
-    for result in results:
-        category = (result.category or "").strip()
-        show_category = category != prev_category
-        if show_category:
-            indent = category_site_indent(category)
-        lines.append(format_probe_line(result, show_category=show_category, indent=indent))
-        prev_category = category
+    for i, (category, items) in enumerate(group_probe_results_by_category(results)):
+        if i > 0:
+            lines.append("")
+        lines.extend(format_probe_category_block(category, items))
     return lines
 
 

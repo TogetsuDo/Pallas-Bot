@@ -1,6 +1,6 @@
 from nonebot import on_command
 from nonebot.adapters import Bot
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, permission
+from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent, permission
 from nonebot.internal.adapter import Event
 from nonebot.permission import Permission
 
@@ -13,9 +13,11 @@ from .probe_collect import probe_all_connectivity
 CONNECTIVITY_COOLDOWN_KEY = "connectivity_probe_command"
 
 
-def group_message_connectivity_permission() -> Permission:
+def connectivity_message_permission() -> Permission:
     async def _checker(bot: Bot, event: Event) -> bool:
-        if not await permission.GROUP(bot, event):
+        is_group = await permission.GROUP(bot, event)
+        is_private = await permission.PRIVATE(bot, event)
+        if not (is_group or is_private):
             return False
         return await satisfies_command_permission(
             bot,
@@ -30,14 +32,14 @@ connectivity_probe = on_command(
     "牛牛连通",
     priority=5,
     block=True,
-    permission=group_message_connectivity_permission(),
+    permission=connectivity_message_permission(),
 )
 
 connectivity_gateway_alias = on_command(
     "牛牛网关",
     priority=5,  # 与 pallas_image_min_priority 默认一致，避免加载期 import pallas_image
     block=True,
-    permission=group_message_connectivity_permission(),
+    permission=connectivity_message_permission(),
 )
 
 
@@ -48,19 +50,20 @@ async def run_connectivity_probe(matcher) -> None:
     await matcher.finish(format_probe_text(results))
 
 
+async def handle_connectivity_probe(event: MessageEvent, matcher) -> None:
+    if isinstance(event, GroupMessageEvent):
+        config = GroupConfig(event.group_id, cooldown=3)
+        if not await config.is_cooldown(CONNECTIVITY_COOLDOWN_KEY):
+            return
+        await config.refresh_cooldown(CONNECTIVITY_COOLDOWN_KEY)
+    await run_connectivity_probe(matcher)
+
+
 @connectivity_probe.handle()
-async def connectivity_probe_handle(event: GroupMessageEvent) -> None:
-    config = GroupConfig(event.group_id, cooldown=3)
-    if not await config.is_cooldown(CONNECTIVITY_COOLDOWN_KEY):
-        return
-    await config.refresh_cooldown(CONNECTIVITY_COOLDOWN_KEY)
-    await run_connectivity_probe(connectivity_probe)
+async def connectivity_probe_handle(event: MessageEvent) -> None:
+    await handle_connectivity_probe(event, connectivity_probe)
 
 
 @connectivity_gateway_alias.handle()
-async def connectivity_gateway_alias_handle(event: GroupMessageEvent) -> None:
-    config = GroupConfig(event.group_id, cooldown=3)
-    if not await config.is_cooldown(CONNECTIVITY_COOLDOWN_KEY):
-        return
-    await config.refresh_cooldown(CONNECTIVITY_COOLDOWN_KEY)
-    await run_connectivity_probe(connectivity_gateway_alias)
+async def connectivity_gateway_alias_handle(event: MessageEvent) -> None:
+    await handle_connectivity_probe(event, connectivity_gateway_alias)

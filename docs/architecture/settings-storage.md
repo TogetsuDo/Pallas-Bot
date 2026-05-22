@@ -13,7 +13,7 @@
 
 ## 合并顺序
 
-`pallas.toml` → `webui.json` → `.env` → `.env.{ENVIRONMENT}`（后者覆盖前者）。
+`pallas.toml` → `.env` → `.env.{ENVIRONMENT}` → `webui.json`（后者覆盖前者；WebUI 落盘最高）。
 
 读取：`merged_repo_settings_upper()` / `repo_env_raw_value()`（磁盘优先于 `os.environ`）。
 
@@ -55,7 +55,7 @@ uv run python -c "from src.common.config.webui_export_toml import export_webui_i
 uv run python tools/migrate_env_to_pallas.py
 ```
 
-迁移后请检查根目录是否仍保留旧 **`.env`**：合并顺序中 `.env` **晚于** `webui.json`，残留同名键会导致 WebUI 保存不生效。可删除已迁入 `pallas.toml` / `webui.json` 的项，或整份备份后移除 `.env`。
+迁移后建议清理根目录旧 **`.env`** 中与 `webui.json` 重复的插件键，避免两套配置并存难以辨认；运行时以 `webui.json` 为准。
 
 ## 实现
 

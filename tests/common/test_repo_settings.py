@@ -7,6 +7,19 @@ import pytest
 from src.common.config import repo_settings as rs
 
 
+def test_merged_prefers_webui_over_legacy_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    legacy = tmp_path / ".env"
+    legacy.write_text('FOO=from_dotenv\n', encoding="utf-8")
+    webui = tmp_path / "webui.json"
+    webui.write_text(json.dumps({"env": {"FOO": "from_webui"}}), encoding="utf-8")
+    monkeypatch.setattr(rs, "repo_config_path", lambda: tmp_path / "missing.toml")
+    monkeypatch.setattr(rs, "repo_webui_settings_path", lambda: webui)
+    monkeypatch.setattr(rs, "repo_env_path", lambda: legacy)
+    monkeypatch.setattr(rs, "_REPO_ROOT", tmp_path)
+    monkeypatch.setattr(rs, "nonebot_repo_dotenv_environment", lambda: "prod")
+    assert rs.merged_repo_settings_upper()["FOO"] == "from_webui"
+
+
 def test_merged_prefers_webui_over_toml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = tmp_path / "pallas.toml"
     cfg.write_text('[env]\nFOO = "from_toml"\n', encoding="utf-8")

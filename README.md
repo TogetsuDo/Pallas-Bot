@@ -243,7 +243,7 @@ uv run nb run
 | `config/pallas.webui.export.toml` | WebUI 保存后自动生成的只读快照，便于查阅 | 忽略 |
 | `.env` / `.env.prod` | 旧版键名；仍可被读取，但**优先级低于** `webui.json` | 建议迁移后删除或仅留备份 |
 
-**合并顺序**（后者覆盖前者）：`pallas.toml` → `webui.json` → `.env` → `.env.{ENVIRONMENT}`。细节见 [配置存储](docs/architecture/settings-storage.md)。
+**合并顺序**（后者覆盖前者）：`pallas.toml` → `.env` → `.env.{ENVIRONMENT}` → `webui.json`（WebUI 落盘最高）。细节见 [配置存储](docs/architecture/settings-storage.md)。
 
 - **单进程**：`uv run nb run`，改 `pallas.toml` 后重启进程。
 - **多进程分片**：`./scripts/run_sharded_bot.sh start`；`[env]` 可配 `REDIS_URL`（跨进程 claim，可选）、`PALLAS_SHARD_*` 等，见 [分片架构](docs/architecture/bot_process_sharding.md)。
@@ -266,7 +266,7 @@ uv run python tools/migrate_env_to_pallas.py
 
 1. **TOML 字符串必须加双引号**（例如 `db_backend = "postgresql"`、`user = "postgres"`；`postgresql` 裸写会导致 `tomllib` 解析失败，Bot 读不到任何配置）。
 2. **分片 / Redis**（可选）在 `pallas.toml` 增加 **`[env]`** 段，例如 `REDIS_URL = "redis://127.0.0.1:6379/0"`（见 `pallas.example.toml` 注释）。
-3. **清理旧 `.env`**：若保留 `.env`，其中与 WebUI 同名的键会**覆盖** `webui.json`，表现为「控制台改了不生效」。确认无误后备份并删除根目录 `.env`，或只删除已迁入的键。
+3. **清理旧 `.env`**：建议删除与 `webui.json` 重复的插件键，避免两套配置并存；运行时以 `webui.json` 为准。
 4. 校验：`uv run python -c "import tomllib; tomllib.load(open('config/pallas.toml','rb')); print('toml ok')"`。
 
 数据库从 Mongo 迁到 PostgreSQL 另见 [Migration-v3](docs/Migration-v3.md) 与 [`tools/migrate_mongo_to_pg.py`](tools/migrate_mongo_to_pg.py)（与 `.env` → TOML 迁移无关）。

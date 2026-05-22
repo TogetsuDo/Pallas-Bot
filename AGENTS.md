@@ -89,7 +89,7 @@ uv run ruff format --check src/
 
 - **主配置**：复制 [`config/pallas.example.toml`](config/pallas.example.toml) 为 **`config/pallas.toml`**（已 gitignore），填写 `[bootstrap]`（监听、数据库等）。
 - **WebUI 落盘**：插件与通用项写入 **`data/pallas_config/webui.json`**；只读快照 **`config/pallas.webui.export.toml`** 由保存自动生成。
-- **合并顺序**：`pallas.toml` → `webui.json` → 遗留 `.env` / `.env.{ENVIRONMENT}`（后者覆盖前者；**WebUI 不再写入 `.env`**）。
+- **合并顺序**：`pallas.toml` → 遗留 `.env` / `.env.{ENVIRONMENT}` → `webui.json`（后者覆盖前者；**WebUI 落盘最高**）。
 - **读取 API**：`src/common/config/repo_settings.py` 的 `repo_env_raw_value()` / `merged_repo_settings_upper()`；启动前 `apply_repo_settings_to_environ()`。
 - **从旧 `.env` 迁移**：`uv run python tools/migrate_env_to_pallas.py`（一次性）；迁移后请清理根目录残留 `.env` 同名键，避免覆盖 WebUI。
 - **分片可选 Redis**：在 `pallas.toml` 的 `[env]` 配置 `REDIS_URL`；`run_sharded_bot.sh` 自动探测。依赖：`uv sync --extra coord-redis`。
