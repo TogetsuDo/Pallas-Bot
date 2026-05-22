@@ -248,12 +248,15 @@ async def invoke_bot_action(
     timeout_sec: float = _DEFAULT_TIMEOUT,
 ) -> tuple[bool, Any]:
     """本进程有连接则本地执行；分片且牛在别片则写 coord 请求并等待。"""
-    from src.common.shard.presence import bot_has_local_connection
+    from src.common.shard.presence import bot_has_cluster_connection, bot_has_local_connection
 
     qq = int(bot_qq)
     if bot_has_local_connection(qq):
         return await _execute_local(action, qq, payload)
     if not is_sharding_active():
+        return False, None
+    if not bot_has_cluster_connection(qq):
+        logger.debug(f"bot_action skip: qq={qq} action={action} not connected in cluster")
         return False, None
 
     request_id = await asyncio.to_thread(
