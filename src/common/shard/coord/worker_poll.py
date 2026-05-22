@@ -49,7 +49,10 @@ async def shard_coord_worker_poll_loop() -> None:
                 local_ids = frozenset(get_bots().keys())
                 if local_ids:
                     await poll_bot_action_pending(local_ids)
-                    await poll_repeater_buffer_pending()
+                    try:
+                        await poll_repeater_buffer_pending()
+                    except Exception as buf_err:
+                        logger.debug(f"shard_coord repeater_buffer poll: {buf_err}")
                     if coord_dirs_have_pending_json():
                         await poll_duel_qte_pending(local_ids)
                 tick += 1

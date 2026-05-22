@@ -115,9 +115,9 @@ def _remember_event(event_id: str) -> None:
 
 
 def _registry_shard_ids() -> frozenset[int]:
-    from src.common.shard.registry.store import load_shard_registry
+    from src.common.shard.registry.store import get_shard_registry
 
-    reg = load_shard_registry()
+    reg = get_shard_registry()
     return frozenset(int(s.id) for s in reg.shards)
 
 

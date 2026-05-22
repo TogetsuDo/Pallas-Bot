@@ -227,3 +227,13 @@ def bot_has_local_connection(qq: int) -> bool:
     from nonebot import get_bots
 
     return str(int(qq)) in get_bots()
+
+
+def bot_has_cluster_connection(qq: int) -> bool:
+    """本 worker 已连接，或分片下 presence 记录里任意 worker 已连接。"""
+    bid = int(qq)
+    if bot_has_local_connection(bid):
+        return True
+    if not is_sharding_active():
+        return False
+    return bid in get_cluster_online_bot_ids()

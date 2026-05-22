@@ -133,9 +133,17 @@ async def bot_may_repeater_reply(bot_id: int, group_id: int) -> bool:
 
 async def list_fanout_bot_ids(group_id: int) -> list[int]:
 
+    from src.common.shard.presence import get_cluster_online_bot_ids
     from src.plugins.duel.duel_bots import list_group_online_bot_ids
 
     ids = await list_group_online_bot_ids(group_id)
+
+    if not ids:
+        return []
+
+    if is_sharding_active():
+        online = get_cluster_online_bot_ids()
+        ids = [bid for bid in ids if bid in online]
 
     if not ids:
         return []
@@ -274,11 +282,14 @@ async def dispatch_repeater_fanout(
     ids = list(bot_ids)
     stagger = 0.35
 
-    from src.common.shard.presence import bot_has_local_connection
+    from src.common.shard.presence import bot_has_cluster_connection, bot_has_local_connection
 
     local: list[tuple[int, int]] = []
     remote: list[tuple[int, int]] = []
     for i, bid in enumerate(ids):
+        if not bot_has_cluster_connection(bid):
+            logger.debug(f"repeater_fanout skip offline bot={bid} group={group_id}")
+            continue
         delay = i * stagger
         if bot_has_local_connection(bid):
             local.append((bid, delay))
