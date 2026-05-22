@@ -181,6 +181,24 @@ print_redis_status_block() {
   fi
 }
 
+print_observability_status_block() {
+  echo "  分片可观测"
+  local status_script="${SCRIPT_DIR}/shard_observability_status.py"
+  if [[ ! -f "${status_script}" ]]; then
+    echo "    （未找到 shard_observability_status.py）"
+    return
+  fi
+  local out=""
+  if out="$(uv run python "${status_script}" 2>/dev/null)"; then
+    while IFS= read -r line; do
+      [[ -n "${line}" ]] || continue
+      echo "    ${line}"
+    done <<< "${out}"
+  else
+    echo "    （读取失败；请确认 data/pallas_shard/stats 可访问）"
+  fi
+}
+
 shard_common_env() {
   (
     echo "PALLAS_SHARD_ENABLED=true"
@@ -809,6 +827,9 @@ cmd_status() {
   echo ""
 
   print_redis_status_block
+  echo ""
+
+  print_observability_status_block
   echo ""
 
   echo "  进程"
