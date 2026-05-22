@@ -86,6 +86,13 @@ class MessageStore:
         if should_sync:
             await MessageStore._sync(cur_time)
 
+        from src.common.shard.registry.config import is_sharding_active
+
+        if is_sharding_active():
+            from src.common.shard.coord.repeater_buffer import schedule_publish_repeater_buffer
+
+            schedule_publish_repeater_buffer(chat_data)
+
     @staticmethod
     async def _sync(cur_time: int | None = None):
         """

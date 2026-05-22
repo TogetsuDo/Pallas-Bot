@@ -22,7 +22,7 @@ def coord_dirs_have_pending_json() -> bool:
     root = Path(plugin_data_dir("pallas_shard", create=False)) / "coord"
     if not root.is_dir():
         return False
-    for sub in ("bot_action", "duel_qte"):
+    for sub in ("bot_action", "duel_qte", "repeater_buffer"):
         d = root / sub
         if d.is_dir() and any(d.glob("*.json")):
             return True
@@ -37,6 +37,10 @@ async def shard_coord_worker_poll_loop() -> None:
     from src.common.shard.coord.duel_qte import poll_duel_qte_pending, prune_stale_duel_qte_files
     from src.common.shard.coord.maa_pending_registry import prune_stale_maa_pending_files
     from src.common.shard.coord.maa_seen_registry import prune_stale_maa_seen_files
+    from src.common.shard.coord.repeater_buffer import (
+        poll_repeater_buffer_pending,
+        prune_stale_repeater_buffer_files,
+    )
 
     tick = 0
     while True:
@@ -45,6 +49,7 @@ async def shard_coord_worker_poll_loop() -> None:
                 local_ids = frozenset(get_bots().keys())
                 if local_ids:
                     await poll_bot_action_pending(local_ids)
+                    await poll_repeater_buffer_pending()
                     if coord_dirs_have_pending_json():
                         await poll_duel_qte_pending(local_ids)
                 tick += 1
@@ -52,6 +57,7 @@ async def shard_coord_worker_poll_loop() -> None:
                     tick = 0
                     await prune_stale_duel_qte_files()
                     await prune_stale_bot_action_files()
+                    await prune_stale_repeater_buffer_files()
                     await prune_stale_cage_duel_files()
                     await prune_stale_maa_seen_files()
                     await prune_stale_maa_pending_files()
