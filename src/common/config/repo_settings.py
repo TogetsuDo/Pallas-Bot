@@ -1,6 +1,7 @@
 """仓库配置：`config/pallas.toml` + WebUI 统一 `data/pallas_config/webui.json`。
 
-合并顺序（后者覆盖前者）：``pallas.toml`` → 遗留 ``.env`` → ``.env.{ENVIRONMENT}`` → ``webui.json`` 的 ``env``（WebUI 落盘最高）。
+合并顺序（后者覆盖前者）：``pallas.toml`` → 遗留 ``.env`` → ``.env.{ENVIRONMENT}`` →
+``webui.json`` 的 ``env``（WebUI 落盘最高）。
 ``repo_env_raw_value`` 以磁盘合并结果优先于 ``os.environ``；``apply_repo_settings_to_environ`` 在
 ``nonebot.init()`` 前把磁盘键写入环境变量，且不覆盖已存在的同名键（保留 Docker / 分片注入）。
 """
