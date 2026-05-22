@@ -5,6 +5,8 @@ from src.common.webui import install_hot_reload_config
 FIELD_TO_ENV: dict[str, str] = {
     "learn_concurrency": "PALLAS_REPEATER_LEARN_CONCURRENCY",
     "learn_queue_max_size": "PALLAS_REPEATER_LEARN_QUEUE_SIZE",
+    "fanout_enabled": "PALLAS_REPEATER_FANOUT_ENABLED",
+    "fanout_max_bots": "PALLAS_REPEATER_FANOUT_MAX_BOTS",
 }
 
 
@@ -88,6 +90,16 @@ class Config(BaseModel, extra="ignore"):
         ge=64,
         le=20000,
         description="待 learn 队列长度；WebUI 同段或 PALLAS_REPEATER_LEARN_QUEUE_SIZE，满则只丢 learn。",
+    )
+    fanout_enabled: bool = Field(
+        default=True,
+        description="多牛同群接话 fanout；关闭后仅单牛回复。环境变量 PALLAS_REPEATER_FANOUT_ENABLED。",
+    )
+    fanout_max_bots: int = Field(
+        default=0,
+        ge=0,
+        le=64,
+        description="fanout 每消息最多参与牛数，0 表示不限制。PALLAS_REPEATER_FANOUT_MAX_BOTS。",
     )
     enable_reaction: bool = Field(default=True, description="是否启用 QQ 表情回应（Reaction）能力。")
     enable_probability_reaction: bool = Field(

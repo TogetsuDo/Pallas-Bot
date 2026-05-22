@@ -200,11 +200,15 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     config = BotConfig(event.self_id, event.group_id)
     bundle = None
-    answers = None
+    fanout_gate = None
     if await config.is_cooldown("repeat"):
-        bundle = await chat.find_reply_bundle()
-        if bundle is not None:
-            answers = await chat.answer_from_bundle(bundle)
+        from .fanout_reply import resolve_fanout_gate
+
+        fanout_gate = await resolve_fanout_gate(event)
+        if fanout_gate.lost:
+            bundle = None
+        else:
+            bundle = await chat.find_reply_bundle()
 
     for seg in event.message:
         if seg.type == "image":
@@ -212,12 +216,17 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     await enqueue_repeater_learn(chat, event)
 
-    if bundle is None or not answers:
+    if bundle is None:
         return
 
-    from .fanout_reply import maybe_orchestrate_repeater_fanout
+    if fanout_gate is not None and fanout_gate.won:
+        from .fanout_reply import dispatch_repeater_fanout
 
-    if await maybe_orchestrate_repeater_fanout(event, bundle):
+        await dispatch_repeater_fanout(event, fanout_gate.bot_ids, bundle)
+        return
+
+    answers = await chat.answer_from_bundle(bundle)
+    if answers is None:
         return
 
     await config.refresh_cooldown("repeat")

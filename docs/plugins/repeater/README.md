@@ -20,13 +20,14 @@
 
 ## 配置
 
-见 [`config.py`](../../../src/plugins/repeater/config.py)（`answer_threshold`、`repeat_threshold`、`speak_threshold`、`enable_reaction` 等）。入库前清洗见 [message_scrub](../../common/message_scrub/README.md)。
+见 [`config.py`](../../../src/plugins/repeater/config.py)（`answer_threshold`、`repeat_threshold`、`speak_threshold`、`enable_reaction` 等）。多牛同群接话 fanout：`fanout_enabled` / `fanout_max_bots`（或 `PALLAS_REPEATER_FANOUT_*`）；协调牛只查一次 context，其余牛从 `message_pool` 轻量随机。入库前清洗见 [message_scrub](../../common/message_scrub/README.md)。
 
 ## 排障
 
 | 现象 | 处理 |
 | --- | --- |
 | 从不说话 / 话太多 | 调阈值；确认未被「不可以」或封禁限制 |
+| 多牛同群负载高 | `PALLAS_REPEATER_FANOUT_ENABLED=false` 或设 `PALLAS_REPEATER_FANOUT_MAX_BOTS` |
 | 不复读 | 检查 `repeat_threshold` 与连续相同句次数 |
 
 ## 实现

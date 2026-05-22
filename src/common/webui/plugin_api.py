@@ -16,6 +16,8 @@ from .registry import read_plugin_config, reload_plugin_config
 _REPEATER_FIELD_TO_ENV = {
     "learn_concurrency": "PALLAS_REPEATER_LEARN_CONCURRENCY",
     "learn_queue_max_size": "PALLAS_REPEATER_LEARN_QUEUE_SIZE",
+    "fanout_enabled": "PALLAS_REPEATER_FANOUT_ENABLED",
+    "fanout_max_bots": "PALLAS_REPEATER_FANOUT_MAX_BOTS",
 }
 
 
