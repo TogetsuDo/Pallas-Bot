@@ -1,4 +1,4 @@
-"""多牛同群：判定可接话时由舰队内各牛各自 answer 并发送（分片跨 worker）。"""
+"""多牛同群：判定可接话时由舰队内各牛各自发送（分片跨 worker）；context 只查一次。"""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from src.common.multi_bot.dedup import try_claim_cross_bot_message
 from src.common.shard.registry.config import is_sharding_active
 
 from .model import Chat, ChatData
+from .responder import ReplyBundle, Responder
 
 _FANOUT_PLUGIN = "repeater_fanout"
 
@@ -28,14 +29,37 @@ def repeater_fanout_enabled() -> bool:
     return len(get_bots()) > 1
 
 
-def fanout_payload_from_event(event: GroupMessageEvent) -> dict[str, Any]:
+def fanout_payload_from_event(event: GroupMessageEvent, bundle: ReplyBundle) -> dict[str, Any]:
     return {
         "group_id": int(event.group_id),
         "user_id": int(event.user_id),
         "raw_message": event.raw_message,
         "plain_text": (event.get_plaintext() or "").strip(),
         "time": int(event.time),
+        "reply_bundle": {
+            "answer_list": list(bundle.answer_list),
+            "answer_keywords": bundle.answer_keywords,
+            "message_pool": list(bundle.message_pool),
+        },
     }
+
+
+def bundle_from_payload(payload: dict[str, Any]) -> ReplyBundle | None:
+    raw = payload.get("reply_bundle")
+    if not isinstance(raw, dict):
+        return None
+    answer_list = raw.get("answer_list")
+    if not isinstance(answer_list, list) or not answer_list:
+        return None
+    keywords = str(raw.get("answer_keywords") or "")
+    pool = raw.get("message_pool")
+    if not isinstance(pool, list) or not pool:
+        pool = list(answer_list)
+    return ReplyBundle(
+        answer_list=[str(x) for x in answer_list],
+        answer_keywords=keywords,
+        message_pool=[str(x) for x in pool],
+    )
 
 
 async def bot_may_repeater_reply(bot_id: int, group_id: int) -> bool:
@@ -101,6 +125,9 @@ async def run_repeater_reply_for_bot(bot_id: int, payload: dict[str, Any]) -> No
     config = BotConfig(bot_id, group_id)
     if not await config.is_cooldown("repeat"):
         return
+    bundle = bundle_from_payload(payload)
+    if bundle is None:
+        return
     chat_data = ChatData(
         group_id=group_id,
         user_id=int(payload["user_id"]),
@@ -109,15 +136,16 @@ async def run_repeater_reply_for_bot(bot_id: int, payload: dict[str, Any]) -> No
         time=int(payload["time"]),
         bot_id=bot_id,
     )
+    plan = Responder.pick_fanout_plan(bundle)
     chat = Chat(chat_data)
-    answers = await chat.answer()
+    answers = await chat.answer_from_bundle(bundle, plan=plan)
     if not answers:
         return
     await send_repeater_answers(bot_id, group_id, answers)
 
 
-async def dispatch_repeater_fanout(event: GroupMessageEvent, bot_ids: list[int]) -> None:
-    payload = fanout_payload_from_event(event)
+async def dispatch_repeater_fanout(event: GroupMessageEvent, bot_ids: list[int], bundle: ReplyBundle) -> None:
+    payload = fanout_payload_from_event(event, bundle)
     group_id = int(event.group_id)
     stagger = 0.35
     for i, bid in enumerate(bot_ids):
@@ -155,9 +183,9 @@ async def _delayed_remote_reply(delay: float, bot_id: int, payload: dict[str, An
     )
 
 
-async def maybe_orchestrate_repeater_fanout(event: GroupMessageEvent, answers) -> bool:
+async def maybe_orchestrate_repeater_fanout(event: GroupMessageEvent, bundle: ReplyBundle | None) -> bool:
     """返回 True 表示已走 fanout，调用方勿再单牛发送。"""
-    if not repeater_fanout_enabled() or answers is None:
+    if not repeater_fanout_enabled() or bundle is None:
         return False
     bot_ids = await list_fanout_bot_ids(int(event.group_id))
     if len(bot_ids) < 2:
@@ -172,5 +200,5 @@ async def maybe_orchestrate_repeater_fanout(event: GroupMessageEvent, answers) -
         use_plaintext=True,
     ):
         return True
-    await dispatch_repeater_fanout(event, bot_ids)
+    await dispatch_repeater_fanout(event, bot_ids, bundle)
     return True
