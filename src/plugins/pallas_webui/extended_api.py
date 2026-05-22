@@ -4163,8 +4163,8 @@ def register_extended_api(
             data = await _cached_read(
                 key="db_overview",
                 loader=database_overview,
-                ttl_sec=1.5,
-                stale_sec=30.0,
+                ttl_sec=8.0,
+                stale_sec=120.0,
             )
         except Exception as e:  # noqa: BLE001
             logger.exception("Pallas-Bot 控制台: 数据库概览失败")

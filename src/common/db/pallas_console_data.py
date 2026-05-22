@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from src.common.db import get_db_backend
@@ -165,19 +166,32 @@ async def database_overview() -> dict[str, Any]:
             UserConfigModule,
         )
 
-        async def _cnt(model: type) -> int:
-            return int(await model.get_pymongo_collection().count_documents({}))
+        async def _cnt(model: type, *, estimated: bool) -> int:
+            coll = model.get_pymongo_collection()
+            if estimated:
+                return int(await coll.estimated_document_count())
+            return int(await coll.count_documents({}))
 
+        mongo_specs: list[tuple[str, str, type, bool]] = [
+            ("config", "BotConfigModule", BotConfigModule, False),
+            ("group_config", "GroupConfigModule", GroupConfigModule, False),
+            ("user_config", "UserConfigModule", UserConfigModule, False),
+            ("message", "Message", Message, True),
+            ("context", "Context", Context, True),
+            ("blacklist", "BlackList", BlackList, False),
+            ("image_cache", "ImageCache", ImageCache, True),
+        ]
+        counts = await asyncio.gather(*(_cnt(m, estimated=est) for _, _, m, est in mongo_specs))
         return {
             "backend": "mongodb",
             "collections": [
-                {"name": "config", "document": "BotConfigModule", "count": await _cnt(BotConfigModule)},
-                {"name": "group_config", "document": "GroupConfigModule", "count": await _cnt(GroupConfigModule)},
-                {"name": "user_config", "document": "UserConfigModule", "count": await _cnt(UserConfigModule)},
-                {"name": "message", "document": "Message", "count": await _cnt(Message)},
-                {"name": "context", "document": "Context", "count": await _cnt(Context)},
-                {"name": "blacklist", "document": "BlackList", "count": await _cnt(BlackList)},
-                {"name": "image_cache", "document": "ImageCache", "count": await _cnt(ImageCache)},
+                {
+                    "name": name,
+                    "document": doc,
+                    "count": count,
+                    "count_estimated": estimated,
+                }
+                for (name, doc, _, estimated), count in zip(mongo_specs, counts, strict=True)
             ],
         }
     if _is_pg_backend(backend):
@@ -203,11 +217,14 @@ async def database_overview() -> dict[str, Any]:
             ("blacklist", BlackListRow),
             ("image_cache", ImageCacheRow),
         ]
-        out: list[dict[str, Any]] = []
-        async with get_session() as session:
-            for name, model in tables:
+
+        async def _pg_count(model: type) -> int:
+            async with get_session() as session:
                 c = (await session.execute(select(func.count()).select_from(model))).scalar_one()
-                out.append({"table": name, "count": int(c)})
+                return int(c)
+
+        counts = await asyncio.gather(*(_pg_count(model) for _, model in tables))
+        out = [{"table": name, "count": c} for (name, _), c in zip(tables, counts, strict=True)]
         return {"backend": "postgres", "tables": out}
     return {"backend": backend, "note": "未实现该后端的概览"}
 
