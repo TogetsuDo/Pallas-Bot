@@ -1310,6 +1310,8 @@ def _collect_worker_console_stats_snapshot(*, include_hist: bool = False) -> dic
 def flush_worker_shard_console_stats_sync(*, include_hist: bool = False) -> None:
     from src.common.bot_runtime.roles import is_sharded_worker
     from src.common.shard.console_stats import write_worker_stats_sync
+    from src.common.shard.coord_pending import coord_pending_snapshot_sync
+    from src.common.shard.ingress_metrics import ingress_metrics_snapshot
     from src.common.shard.registry.config import get_shard_registry_settings
 
     if not is_sharded_worker():
@@ -1319,6 +1321,10 @@ def flush_worker_shard_console_stats_sync(*, include_hist: bool = False) -> None
         shard_id=shard_id,
         bots=_collect_worker_console_stats_snapshot(include_hist=include_hist),
         preserve_matcher_hist=not include_hist,
+        worker_meta={
+            "ingress": ingress_metrics_snapshot(),
+            "coord_pending": coord_pending_snapshot_sync(),
+        },
     )
 
 
@@ -3760,6 +3766,16 @@ def register_extended_api(
                 "summary": rebalance_hint(),
             },
         })
+
+    @router.get(f"{x}/shard-observability", include_in_schema=True)
+    async def _shard_observability() -> JSONResponse:
+        from src.common.shard.observability import aggregate_shard_observability
+
+        async def _load() -> dict[str, Any]:
+            return aggregate_shard_observability()
+
+        data = await _cached_read(key="shard-observability", loader=_load, ttl_sec=2.0, stale_sec=8.0)
+        return JSONResponse({"ok": True, "data": data})
 
     @router.get(f"{x}/message-stats", include_in_schema=True)
     async def _message_stats(

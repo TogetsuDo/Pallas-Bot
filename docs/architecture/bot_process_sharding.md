@@ -196,6 +196,7 @@ worker 由 `src/common/shard/coord/worker_poll.py` 轮询 `duel_qte`、`bot_acti
 
 - `GET /pallas/api/bots`：读 **worker_presence.json**（hub 无反向 WS）。
 - `GET /pallas/api/logs`：合并 `data/pallas_shard/logs/hub.log` 与各 `worker-*.log` 尾行（`sharded_logs: true`）。
+- `GET /pallas/api/shard-observability`：合并各 worker `stats/worker-*.json` 的 **ingress 命中率**、**coord 积压**（实时扫描 `coord/`）、**PG 连接池粗算**。
 - `plugin-run-stats` / `message-stats`：合并各 worker 的 `stats/worker-*.json`；ERROR 日志合并 worker/hub 落盘文件。
 - 实时 SSE 以 **hub 本进程** 为主；查全集群历史建议日志页轮询。
 
