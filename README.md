@@ -66,6 +66,8 @@
   - [功能列表](#功能列表)
   - [AI 扩展](#ai-扩展)
 - [配置要点](#配置要点)
+  - [当前配置与文件](#当前配置与文件)
+  - [从 .env 迁移（旧用户）](#从-env-迁移旧用户)
 - [文档与链接](#文档与链接)
 - [开发与贡献指南](#开发与贡献指南)
 - [社区与支持](#社区与支持)
@@ -110,7 +112,7 @@
 <a id="运维入口"></a>
 ## 🗂️ 运维入口
 
-以下路径中的 **`HOST`**、**`PORT`** 以 `.env` 为准（默认常为本机 **`8088`**）。
+以下路径中的 **`HOST`**、**`PORT`** 以 **`config/pallas.toml`** 的 `[bootstrap]` 为准（默认常为本机 **`8088`**）。
 
 | 入口 | URL 示例 |
 | --- | --- |
@@ -153,7 +155,12 @@ cd Pallas-Bot
 pip install uv          # 安装 uv
 uv sync                 # 安装依赖
 
-# 开始运行
+# 主配置（首次部署）
+cp config/pallas.example.toml config/pallas.toml
+# 编辑 [bootstrap]：监听、SUPERUSERS、DB_BACKEND、MONGO_* 或 PG_*
+# 若仍使用根目录 .env，见下方「从 .env 迁移」
+
+# 开始运行（单进程）
 uv run nb run
 ```
 > 完整部署细节请查看 [部署教程](docs/Deployment.md) 和 [Docker 部署](docs/DockerDeployment.md)。
@@ -221,8 +228,50 @@ uv run nb run
 <a id="配置要点"></a>
 ## ⚙️ 配置要点
 
-以下为启动前最常见的几项；**更多键名与默认值以各插件 Pydantic 配置为准**，推荐在 Web 控制台 **「插件」「通用配置」** 中修改（写入 `data/pallas_config/webui.json`），离线编辑主配置见 `config/pallas.example.toml` → `config/pallas.toml`，说明见 [配置存储](docs/architecture/settings-storage.md)。
+<a id="当前配置与文件"></a>
+### 当前配置与文件
 
+自 v3 起，运行配置以 **`config/pallas.toml`** 与 WebUI 落盘的 **`data/pallas_config/webui.json`** 为主；根目录 **`.env` 仅作遗留只读合并**，新部署与文档不再以 `.env` 为准。
+
+| 文件 | 用途 | Git |
+| --- | --- | --- |
+| [`config/pallas.example.toml`](config/pallas.example.toml) | 示例与注释（可复制为 `pallas.toml`） | 跟踪 |
+| `config/pallas.toml` | **本地主配置**：`[bootstrap]` 监听、超管、数据库；`[env]` 分片/协议端等扁平键 | **忽略（勿提交密钥）** |
+| `data/pallas_config/webui.json` | 控制台 **「插件」「通用配置」** 保存项（`env` + `sections`） | 随 `data/` 部署 |
+| `config/pallas.webui.export.toml` | WebUI 保存后自动生成的只读快照，便于查阅 | 忽略 |
+| `.env` / `.env.prod` | 旧版键名；仍可被读取，但**优先级低于** `webui.json` | 建议迁移后删除或仅留备份 |
+
+**合并顺序**（后者覆盖前者）：`pallas.toml` → `webui.json` → `.env` → `.env.{ENVIRONMENT}`。细节见 [配置存储](docs/architecture/settings-storage.md)。
+
+- **单进程**：`uv run nb run`，改 `pallas.toml` 后重启进程。
+- **多进程分片**：`./scripts/run_sharded_bot.sh start`；`[env]` 可配 `REDIS_URL`（跨进程 claim，可选）、`PALLAS_SHARD_*` 等，见 [分片架构](docs/architecture/bot_process_sharding.md)。
+- **PostgreSQL**：`db_backend = "postgresql"` 时需 `uv sync --extra pg`；**Redis claim** 需 `uv sync --extra coord-redis`（可与 pg 同写：`uv sync --extra pg --extra coord-redis`）。
+
+<a id="从-env-迁移旧用户"></a>
+### 从 .env 迁移（旧用户）
+
+若你仍在使用仓库根目录的 **`.env`** / **`.env.prod`**，建议一次性迁入 TOML + WebUI JSON：
+
+```bash
+# 在仓库根目录
+uv run python tools/migrate_env_to_pallas.py
+# 已存在 pallas.toml / webui.json 时：加 --force 覆盖（请先备份）
+```
+
+脚本会把 **bootstrap 相关键**（`HOST`、`PORT`、`SUPERUSERS`、`DB_BACKEND`、`MONGO_*`、`PG_*` 等）写入 `config/pallas.toml`，其余写入 `data/pallas_config/webui.json`。
+
+迁移后请逐项确认：
+
+1. **TOML 字符串必须加双引号**（例如 `db_backend = "postgresql"`、`user = "postgres"`；`postgresql` 裸写会导致 `tomllib` 解析失败，Bot 读不到任何配置）。
+2. **分片 / Redis**（可选）在 `pallas.toml` 增加 **`[env]`** 段，例如 `REDIS_URL = "redis://127.0.0.1:6379/0"`（见 `pallas.example.toml` 注释）。
+3. **清理旧 `.env`**：若保留 `.env`，其中与 WebUI 同名的键会**覆盖** `webui.json`，表现为「控制台改了不生效」。确认无误后备份并删除根目录 `.env`，或只删除已迁入的键。
+4. 校验：`uv run python -c "import tomllib; tomllib.load(open('config/pallas.toml','rb')); print('toml ok')"`。
+
+数据库从 Mongo 迁到 PostgreSQL 另见 [Migration-v3](docs/Migration-v3.md) 与 [`tools/migrate_mongo_to_pg.py`](tools/migrate_mongo_to_pg.py)（与 `.env` → TOML 迁移无关）。
+
+---
+
+以下为启动前最常见的几项；**更多键名与默认值以各插件 Pydantic 配置为准**，推荐在 Web 控制台 **「插件」「通用配置」** 中修改（写入 `webui.json`），离线编辑 bootstrap / `[env]` 见 `config/pallas.toml`。
 
 | 配置项 | 默认/示例 | 说明 | 必填 |
 | --- | --- | --- | --- |
@@ -251,7 +300,10 @@ uv run nb run
 | 命令权限 / 帮助菜单 | [docs/common/cmd_perm/README.md](docs/common/cmd_perm/README.md) |
 | 协议端 / 控制台 | [pallas_protocol](docs/plugins/pallas_protocol/README.md)、[pallas_webui](docs/plugins/pallas_webui/README.md) |
 | 变更记录 | [GitHub Releases](https://github.com/PallasBot/Pallas-Bot/releases) |
+| 配置存储 | [settings-storage](docs/architecture/settings-storage.md)、[pallas.example.toml](config/pallas.example.toml) |
+| `.env` → TOML | [`tools/migrate_env_to_pallas.py`](tools/migrate_env_to_pallas.py)（见 README [从 .env 迁移](#从-env-迁移旧用户)） |
 | 数据迁移 | [Mongo → PG 脚本](tools/migrate_mongo_to_pg.py)、[迁移说明（v3）](docs/Migration-v3.md) |
+| 多进程分片 | [bot_process_sharding](docs/architecture/bot_process_sharding.md)、[`run_sharded_bot.sh`](scripts/run_sharded_bot.sh) |
 | 历史分支 | [`archive/v2`](https://github.com/PallasBot/Pallas-Bot/tree/archive/v2)（仅 MongoDB 旧版参考） |
 
 <a id="开发与贡献指南"></a>
