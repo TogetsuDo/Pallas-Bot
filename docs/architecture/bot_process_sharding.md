@@ -10,6 +10,26 @@
 **适用场景**：生产环境多牛账号、希望降低单进程卡顿或便于按片扩容 worker。
 **不适用**：仅 1～2 只牛、无性能瓶颈时，继续使用 `uv run nb run` 单进程即可。
 
+### 插件加载（hub / worker）
+
+| 角色 | 来源 |
+|------|------|
+| **unified** | `nonebot.load_from_toml("pyproject.toml")`（`plugin_dirs` + `[tool.nonebot.plugins]`） |
+| **hub** | 代码白名单（WebUI、协议端、relogin 等）+ **`[tool.nonebot.plugins]`** 中的 pip 包（如 `nonebot-plugin-apscheduler`） |
+| **worker** | 扫描 **`src/plugins/`**（跳过 webui / protocol / relogin）+ **`pyproject.toml` 里额外的 `plugin_dirs`** + **`[tool.nonebot.plugins]`** |
+
+从别处下载的插件：用 `nb plugin install` 或 `pip` 安装后，在 **`pyproject.toml`** 声明，例如：
+
+```toml
+[tool.nonebot]
+plugin_dirs = ["src/plugins", "plugins"]   # plugins/ 为仓库外或自建目录
+
+[tool.nonebot.plugins]
+my-store-plugin = ["my_store_plugin"]      # pip 包对应的模块名
+```
+
+worker 会自动加载除 `src/plugins` 以外的 `plugin_dirs` 以及上表中的模块；**仅写在 WebUI / `pallas.toml` 而无目录或未写入 pyproject 的插件不会被 import**。实现见 `src/common/bot_runtime/plugin_loader.py`。
+
 部署入口见 [标准部署 · 多进程分片](../Deployment.md#多进程分片可选) 与 [Docker 部署 · 多进程分片](DockerDeployment.md#多进程分片可选)。
 
 ## 生产前提
