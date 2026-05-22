@@ -315,6 +315,51 @@ def get_bot_current_version() -> dict:
     return {"tag": tag, "commit": commit}
 
 
+def bot_git_head_and_release_shas(latest_tag: str) -> tuple[str, str] | None:
+    """解析 HEAD 与 latest_tag 对应 commit；无 git 或解析失败返回 None。"""
+    tag = (latest_tag or "").strip()
+    if not tag:
+        return None
+    root = _BOT_ROOT
+    if not (root / ".git").exists():
+        return None
+
+    def _git_rev_parse(ref: str) -> str:
+        import subprocess
+
+        return subprocess.check_output(
+            ["git", "rev-parse", ref],
+            cwd=root,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=8.0,
+        ).strip()
+
+    try:
+        latest_sha = _git_rev_parse(f"{tag}^{{commit}}")
+        head_sha = _git_rev_parse("HEAD")
+    except Exception:  # noqa: BLE001
+        return None
+    return head_sha, latest_sha
+
+
+def bot_git_rev_list_count(revision_range: str) -> int:
+    import subprocess
+
+    root = _BOT_ROOT
+    try:
+        out = subprocess.check_output(
+            ["git", "rev-list", "--count", revision_range],
+            cwd=root,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=8.0,
+        ).strip()
+    except Exception:  # noqa: BLE001
+        return 0
+    return int(out) if out.isdigit() else 0
+
+
 def bot_has_release_update(
     *,
     latest_tag: str,
@@ -329,48 +374,43 @@ def bot_has_release_update(
         return False
     if release_tags_equivalent(current_tag, tag):
         return False
-    root = _BOT_ROOT
-    git_dir = root / ".git"
-    if not git_dir.exists():
+    shas = bot_git_head_and_release_shas(tag)
+    if shas is None:
         cur = (current_tag or "").strip()
         return bool(cur) and not release_tags_equivalent(cur, tag)
-
-    def _git_rev_parse(ref: str) -> str:
-        import subprocess
-
-        return subprocess.check_output(
-            ["git", "rev-parse", ref],
-            cwd=root,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            timeout=8.0,
-        ).strip()
-
-    def _git_rev_list_count(revision_range: str) -> int:
-        import subprocess
-
-        out = subprocess.check_output(
-            ["git", "rev-list", "--count", revision_range],
-            cwd=root,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            timeout=8.0,
-        ).strip()
-        return int(out) if out.isdigit() else 0
-
-    try:
-        latest_sha = _git_rev_parse(f"{tag}^{{commit}}")
-        head_sha = _git_rev_parse("HEAD")
-    except Exception:  # noqa: BLE001
-        cur = (current_tag or "").strip()
-        return bool(cur) and not release_tags_equivalent(cur, tag)
-    if latest_sha == head_sha:
+    head_sha, latest_sha = shas
+    if head_sha == latest_sha:
         return False
-    try:
-        behind = _git_rev_list_count(f"{head_sha}..{latest_sha}")
-    except Exception:  # noqa: BLE001
+    return bot_git_rev_list_count(f"{head_sha}..{latest_sha}") > 0
+
+
+def bot_is_development_build(
+    *,
+    latest_tag: str,
+    current_tag: str = "",
+    current_commit: str = "",
+) -> bool:
+    """是否相对最新 release 为开发构建（超前 commit 或未打发行 tag）。"""
+    from src.common.utils.github_release import release_tags_equivalent
+
+    tag = (latest_tag or "").strip()
+    if not tag:
         return False
-    return behind > 0
+    if bot_has_release_update(
+        latest_tag=tag,
+        current_tag=current_tag,
+        current_commit=current_commit,
+    ):
+        return False
+    if release_tags_equivalent(current_tag, tag):
+        return False
+    shas = bot_git_head_and_release_shas(tag)
+    if shas is None:
+        return not (current_tag or "").strip()
+    head_sha, latest_sha = shas
+    if head_sha == latest_sha:
+        return False
+    return bot_git_rev_list_count(f"{latest_sha}..{head_sha}") > 0
 
 
 def get_pallas_bot_version_for_health() -> str:

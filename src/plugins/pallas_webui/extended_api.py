@@ -4829,7 +4829,12 @@ def register_extended_api(
     async def _bot_update_check() -> JSONResponse:
         from src.common.utils.format_exception import format_exception_for_log
 
-        from .manager import bot_has_release_update, fetch_latest_bot_release, get_bot_current_version
+        from .manager import (
+            bot_has_release_update,
+            bot_is_development_build,
+            fetch_latest_bot_release,
+            get_bot_current_version,
+        )
 
         github_token = str(getattr(plugin_config, "pallas_protocol_github_token", "") or "").strip()
         cache_key = f"update_check_bot:{bool(github_token)}"
@@ -4850,12 +4855,18 @@ def register_extended_api(
                     "current_commit": current_commit,
                     "latest_tag": None,
                     "has_update": False,
+                    "development_build": False,
                     "release_url": "",
                     "release_notes": "",
                     "error": err_msg,
                     "checked_at": time.time(),
                 }
             has_update = bot_has_release_update(
+                latest_tag=latest_tag,
+                current_tag=str(current_tag or ""),
+                current_commit=str(current_commit or ""),
+            )
+            development_build = bot_is_development_build(
                 latest_tag=latest_tag,
                 current_tag=str(current_tag or ""),
                 current_commit=str(current_commit or ""),
@@ -4872,6 +4883,7 @@ def register_extended_api(
                 "current_commit": current_commit,
                 "latest_tag": latest_tag,
                 "has_update": has_update,
+                "development_build": development_build,
                 "release_url": release_url,
                 "release_notes": release_notes,
                 "error": None,

@@ -20,6 +20,7 @@ from .config import Config, plugin_config
 from .extended_api import register_extended_api, set_console_meta
 from .manager import (
     bot_has_release_update,
+    bot_is_development_build,
     check_webui_exists,
     download_and_extract_dist_zip,
     fetch_latest_bot_release,
@@ -243,10 +244,18 @@ if not is_sharded_worker():
                         + (f" → {bot_release_url}" if bot_release_url else "")
                         + "，可在控制台查看更新"
                     )
+                elif bot_is_development_build(
+                    latest_tag=bot_latest_tag,
+                    current_tag=str(bot_current_tag or ""),
+                    current_commit=str(bot_current_commit or ""),
+                ):
+                    logger.info(
+                        f"Pallas-Bot 控制台: Bot 开发构建（超前于发行 {bot_latest_tag}），commit={bot_current_commit or '未知'}"
+                    )
                 elif bot_current_tag:
                     logger.info(f"Pallas-Bot 控制台: Bot 已是最新版本（{bot_current_tag}）")
                 else:
-                    logger.info(f"Pallas-Bot 控制台: Bot 开发构建，commit={bot_current_commit or '未知'}")
+                    logger.info(f"Pallas-Bot 控制台: Bot 版本 commit={bot_current_commit or '未知'}")
             except Exception as e:
                 logger.debug("Pallas-Bot 控制台: 检查 Bot 更新失败: {}", format_exception_for_log(e))
 
