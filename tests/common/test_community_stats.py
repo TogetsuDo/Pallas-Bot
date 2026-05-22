@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+from src.common.apscheduler_runtime import ensure_apscheduler_running, register_apscheduler_startup_hook
 from src.common.community_stats import config as cfg_mod
 from src.common.community_stats.endpoints import (
     FALLBACK_HEARTBEAT,
@@ -17,6 +18,7 @@ from src.common.community_stats.reporter import (
     send_community_stats_heartbeat,
     should_run_community_stats_reporter,
 )
+from src.common.community_stats.scheduler import start_community_stats_reporter
 from src.common.community_stats.stats_url import stats_url_from_endpoint
 from src.common.community_stats.store import community_stats_state_path, load_or_create_deployment_id
 
@@ -45,10 +47,7 @@ def test_auto_endpoint_custom_url_not_builtin(monkeypatch):
 
 
 def test_stats_url_from_heartbeat_endpoint():
-    assert (
-        stats_url_from_endpoint("https://stats.pallasbot.top/v1/heartbeat")
-        == "https://stats.pallasbot.top/v1/stats"
-    )
+    assert stats_url_from_endpoint("https://stats.pallasbot.top/v1/heartbeat") == "https://stats.pallasbot.top/v1/stats"
     assert stats_url_from_endpoint("") == "https://stats.pallasbot.top/v1/stats"
 
 
@@ -126,6 +125,49 @@ def test_should_not_run_on_worker(monkeypatch):
     cfg_mod.clear_community_stats_config_cache()
     with patch("src.common.community_stats.reporter.is_sharded_worker", return_value=True):
         assert should_run_community_stats_reporter() is False
+
+
+def test_ensure_apscheduler_running_starts_when_stopped():
+    mock_sched = MagicMock()
+    mock_sched.running = False
+    with patch("nonebot_plugin_apscheduler.scheduler", mock_sched):
+        ensure_apscheduler_running()
+    mock_sched.start.assert_called_once()
+
+
+def test_register_apscheduler_startup_hook_idempotent():
+    import sys
+
+    import src.common.apscheduler_runtime as mod
+
+    mod._HOOK_REGISTERED = False
+    mock_driver = MagicMock()
+    stub = MagicMock()
+    with (
+        patch.object(mod, "get_driver", return_value=mock_driver),
+        patch.dict(sys.modules, {"nonebot_plugin_apscheduler": stub}),
+    ):
+        register_apscheduler_startup_hook()
+        register_apscheduler_startup_hook()
+    assert mod._HOOK_REGISTERED is True
+    assert mock_driver.on_startup.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_start_community_stats_reporter_registers_job(monkeypatch):
+    mock_sched = MagicMock()
+    mock_sched.running = True
+    mock_sched.get_job.return_value = None
+    cfg_mod.clear_community_stats_config_cache()
+    with (
+        patch("src.common.community_stats.scheduler.scheduler", mock_sched),
+        patch(
+            "src.common.community_stats.scheduler.should_run_community_stats_reporter",
+            return_value=True,
+        ),
+    ):
+        await start_community_stats_reporter()
+    mock_sched.add_job.assert_called_once()
 
 
 @pytest.mark.asyncio

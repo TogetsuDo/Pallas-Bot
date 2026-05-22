@@ -7,6 +7,7 @@ import importlib.util
 import nonebot
 from nonebot import logger
 
+from src.common.apscheduler_runtime import register_apscheduler_startup_hook
 from src.common.bot_runtime.pyproject_plugins import (
     extra_plugin_dirs_for_role,
     parse_nonebot_plugin_config,
@@ -52,7 +53,10 @@ def _prioritize_scheduler_modules(module_paths: list[str]) -> list[str]:
 def load_apscheduler_plugin_first(*, role_label: str, loaded_short: set[str]) -> bool:
     if _short_name(_APSCHEDULER_MODULE) in loaded_short:
         return False
-    return _load_plugin_module(_APSCHEDULER_MODULE, role_label=role_label, loaded_short=loaded_short)
+    if _load_plugin_module(_APSCHEDULER_MODULE, role_label=role_label, loaded_short=loaded_short):
+        register_apscheduler_startup_hook()
+        return True
+    return False
 
 
 def _load_plugin_module(
@@ -152,6 +156,7 @@ def load_pyproject_extra_plugins(
 def load_plugins_for_role() -> None:
     if is_unified_role():
         nonebot.load_from_toml("pyproject.toml")
+        register_apscheduler_startup_hook()
         logger.info("bot_runtime: role=unified, load_from_toml(all plugins)")
         return
 
