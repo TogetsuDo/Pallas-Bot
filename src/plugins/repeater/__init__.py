@@ -174,6 +174,11 @@ any_msg = on_message(
 
 @any_msg.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
+    from .shard_opt import repeater_worker_handles_message
+
+    if not repeater_worker_handles_message(int(bot.self_id)):
+        return
+
     # 多账号登陆，且在同一群中时；避免一条消息被处理多次
     async with message_id_lock:
         message_id = event.message_id
@@ -193,7 +198,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if is_sharding_active():
         from .fanout_reply import repeater_fanout_enabled
 
-        if not repeater_fanout_enabled():
+        if not repeater_fanout_enabled():  # 配置关闭 fanout 时片内单牛 claim
             from src.common.multi_bot.dedup import try_claim_cross_bot_message
 
             if not await try_claim_cross_bot_message(
@@ -397,6 +402,10 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
 
 @scheduler.scheduled_job("interval", seconds=60)
 async def speak_up():
+    from .shard_opt import repeater_scheduler_runs_on_worker
+
+    if not repeater_scheduler_runs_on_worker():
+        return
     ret = await Chat.speak()
     if not ret:
         return

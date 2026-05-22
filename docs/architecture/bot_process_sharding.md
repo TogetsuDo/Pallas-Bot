@@ -213,7 +213,7 @@ worker 由 `src/common/shard/coord/worker_poll.py` 轮询 `duel_qte`、`bot_acti
 
 - **`_ingress_gate`**（worker）：全集群 fleet、@ 定向、ingress claim、greeting/报数 fanout。
 - **fanout 白名单**：WebUI「分片全员同响白名单」或 `PALLAS_INGRESS_FANOUT_GREETING`；**`牛牛报数` / `牛牛出列` 恒 fanout**；**喝酒酒/醒酒口令**（`牛牛喝酒` 等）见 `drink_plaintext` 恒 fanout。
-- **接话 / 主动发言**：ingress 为 **shard 级 claim**（每条消息一个 worker 片通过，该片上各牛可进 matcher）；复读可接话时由 `repeater_fanout` 协调**全舰队在线牛各发一条**（跨片经 `bot_action`）。主动发言仍为定时任务，各 worker 本地 `MessageStore` 仍只收录本片 ingress 通过后的消息。
+- **接话 / 主动发言**：ingress 为 **shard 级 claim**（每条消息一个 worker 片通过，该片上各牛可进 matcher）；复读由**本片代表牛**（最小 QQ）统一学习与接话判定；fanout 仅在群内 **≥2 只可复读在线牛** 时启用（与单进程一致），跨片经 `bot_action` 批量代发。主动发言定时任务仅代表牛 worker 执行。
 - **`duel` / 八角笼**：跨片 `coord/duel_group`、`bot_action`、`duel_qte`。
 - **`repeater`**：忽略全 fleet QQ；**`bot_status`**：建议 `bot_status_list_mode=auto`。
 
