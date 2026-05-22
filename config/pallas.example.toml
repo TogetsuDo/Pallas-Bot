@@ -31,3 +31,6 @@ db = "PallasBot"
 # REDIS_URL = "redis://127.0.0.1:6379/0"
 # PALLAS_COORD_REDIS_ENABLED = "auto"
 # PALLAS_COORD_REDIS_URL = "redis://127.0.0.1:6379/0"
+# PostgreSQL（db_backend=postgresql 时）：分片约 (worker+hub) 进程 × (pool+overflow)，建议单进程 ≤20
+# PG_POOL_SIZE = "12"
+# PG_MAX_OVERFLOW = "8"

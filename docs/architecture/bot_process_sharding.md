@@ -209,7 +209,9 @@ worker 由 `src/common/shard/coord/worker_poll.py` 轮询 `duel_qte`、`bot_acti
 
 同一 worker 上多只牛会各收到群消息；未抢到 ingress 的会话可能伴随 `asyncio.CancelledError`。若出现 **non-checked-in connection**，多为预处理器被取消时连接未归还（代码侧已 `shield` / `invalidate` 兜底）。
 
-生产请估算：**worker 数 × `PG_POOL_SIZE` < PostgreSQL `max_connections`**，并预留其他应用连接。
+生产请估算：**(worker + hub) 进程数 × (`PG_POOL_SIZE` + `PG_MAX_OVERFLOW`) < PostgreSQL `max_connections`**，并预留其他应用连接。分片下常见配置为每进程 `12+8`（峰值约 20/进程）；勿将单进程 `pool+overflow` 设为数百，否则多 worker 会打满数据库。
+
+启动后若配置过大，日志与 `GET /pallas/api/shard-observability` 的 `pg_pool.warning` 会提示。
 
 ## 多 Bot 同群行为摘要
 

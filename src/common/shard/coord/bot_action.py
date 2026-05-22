@@ -20,8 +20,10 @@ from src.common.shard.registry.config import is_sharding_active
 _PLUGIN = "pallas_shard"
 _POLL_SEC = 0.08
 _STALE_SEC = 180.0
+_OPEN_OVERDUE_GRACE_SEC = 5.0
 _DEFAULT_TIMEOUT = 18.0
 _inflight: set[str] = set()
+_last_stale_open_warn_at = 0.0
 
 
 def _coord_dir():
@@ -398,7 +400,10 @@ async def poll_bot_action_pending(local_ids: frozenset[str]) -> None:
     now = time.time()
     for path in coord.glob("*.json"):
         row = await asyncio.to_thread(_read, path)
-        if not row or not row.get("done"):
+        if not row:
+            continue
+        if not row.get("done"):
+            await _maybe_warn_stale_open(row, now=now)
             continue
         created = float(row.get("created_at") or 0)
         if now - created > _STALE_SEC:
@@ -408,14 +413,64 @@ async def poll_bot_action_pending(local_ids: frozenset[str]) -> None:
                 pass
 
 
-async def prune_stale_bot_action_files() -> None:
+def _maybe_warn_stale_open(row: dict[str, Any], *, now: float) -> None:
+    global _last_stale_open_warn_at
+    deadline = float(row.get("deadline") or 0)
+    if deadline <= 0 or now <= deadline + _OPEN_OVERDUE_GRACE_SEC:
+        return
+    if now - _last_stale_open_warn_at < 60.0:
+        return
+    _last_stale_open_warn_at = now
+    logger.warning(
+        "bot_action 未完成请求已过期 "
+        f"request_id={row.get('request_id')} action={row.get('action')} "
+        f"bot_qq={row.get('bot_qq')} overdue_s={now - deadline:.0f}"
+    )
+
+
+async def prune_stale_bot_action_files() -> dict[str, int]:
+    """清理 done 陈旧文件、deadline 后仍未完成的 open 请求及超期残留。"""
+    stats = {"removed_done": 0, "removed_overdue_open": 0, "removed_expired": 0}
     now = time.time()
     for path in _coord_dir().glob("*.json"):
+        if ".lock" in path.name:
+            continue
         row = await asyncio.to_thread(_read, path)
         if row is None:
-            continue
-        if now > float(row.get("deadline") or 0) + _STALE_SEC:
             try:
                 path.unlink(missing_ok=True)
             except OSError:
                 pass
+            stats["removed_expired"] += 1
+            continue
+        if row.get("done"):
+            created = float(row.get("created_at") or 0)
+            if now - created > _STALE_SEC:
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                else:
+                    stats["removed_done"] += 1
+            continue
+        deadline = float(row.get("deadline") or 0)
+        if now > deadline + _OPEN_OVERDUE_GRACE_SEC:
+            _maybe_warn_stale_open(row, now=now)
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            else:
+                stats["removed_overdue_open"] += 1
+            continue
+        if now > deadline + _STALE_SEC:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            else:
+                stats["removed_expired"] += 1
+    removed = sum(stats.values())
+    if removed:
+        logger.info(f"bot_action coord 清理: {stats}")
+    return stats
