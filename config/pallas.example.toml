@@ -25,11 +25,12 @@ db = "PallasBot"
 # db = "PallasBot"
 
 # 社区统计：升级含 community_stats 的 release 后默认自动上报，无需复制本段。
+# 正式域名为 stats.pallasbot.top；备案前自动回退 pallas.togetsudo.com，备案通过后自动切回，无需改 endpoint。
 # 仅关闭时取消注释并设 enabled = false（或环境变量 PALLAS_COMMUNITY_STATS_ENABLED=false）。
 # [community_stats]
 # enabled = false
-# endpoint = "https://stats.pallasbot.top/v1/heartbeat"
-# token = ""  # 公开 stats.pallasbot.top 可省略；自建中心若启用 HEARTBEAT_TOKEN 再填写
+# endpoint = "https://stats.pallasbot.top/v1/heartbeat"  # 仅自建/特殊地址时改；默认勿填
+# token = ""  # 公开中心可省略；自建中心若启用 HEARTBEAT_TOKEN 再填写
 # interval_sec = 300
 
 # 与历史 .env 同名的扁平项（键名大写）；也可只放 bootstrap，其余交给 WebUI。

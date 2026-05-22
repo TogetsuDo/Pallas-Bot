@@ -1,26 +1,37 @@
 # 社区统计上报（community_stats）
 
-向官方共用中心 **`https://stats.pallasbot.top`** 上报部署心跳（[Pallas-Bot-Community-Stats](https://github.com/TogetsuDo/Pallas-Bot-Community-Stats)），用于统计社区内自托管部署数与在线数。
+向官方共用中心上报部署心跳（[Pallas-Bot-Community-Stats](https://github.com/TogetsuDo/Pallas-Bot-Community-Stats)），用于统计社区内自托管部署数与在线数。
 
 **升级**：包含 `community_stats` 插件的 release 在 **hub / 单进程** 启动后**默认自动接入**，**不必**在 `pallas.toml` 增加 `[community_stats]` 或 `enabled = true`。仅 opt-out：显式 `enabled = false` 或 `PALLAS_COMMUNITY_STATS_ENABLED=false`。**无需向用户分发 token。**
+
+## 心跳地址（自动主备，无需用户改配置）
+
+| 优先级 | 地址 | 说明 |
+| --- | --- | --- |
+| 1 | `https://stats.pallasbot.top/v1/heartbeat` | 正式域名（备案通过后可用） |
+| 2 | `https://pallas.togetsudo.com/v1/heartbeat` | 运维反代备用；正式域名不可达时自动使用 |
+
+- 默认**先连正式域名**；失败则切备用，并写入 `data/pallas_config/community_stats.json` 的 `heartbeat_endpoint`。
+- 使用备用期间，每 **6 小时**再探测一次正式域名；备案恢复后**自动切回**，用户无需改 `pallas.toml`。
+- 仅当填写**非上述内置地址**的 `endpoint` 时，才固定单地址（自建私有中心等）。
 
 ## 配置（`[community_stats]`，均可省略）
 
 | 键 | 默认 | 说明 |
 | --- | --- | --- |
 | `enabled` | `true` | 省略整段 `[community_stats]` 亦为开启；仅 `false` 时不上报 |
-| `endpoint` | `https://stats.pallasbot.top/v1/heartbeat` | POST 地址 |
-| `token` | 空 | **共用中心 `stats.pallasbot.top` 留空即可**；仅自建私有中心且启用 token 时才填 |
+| `endpoint` | `https://stats.pallasbot.top/v1/heartbeat` | 内置主/备地址时走自动切换；改为其它 URL 则仅用该地址 |
+| `token` | 空 | **共用中心留空即可**；仅自建私有中心且启用 token 时填写 |
 | `interval_sec` | `300` | 周期上报间隔（60–3600） |
 
 等价环境变量：`PALLAS_COMMUNITY_STATS_*`。
 
 ## 行为
 
-- 首次启用时在 `data/pallas_config/community_stats.json` 生成 `deployment_id`（UUID）。
+- 首次启用时在 `data/pallas_config/community_stats.json` 生成 `deployment_id`（UUID），并可能记录当前生效的 `heartbeat_endpoint`。
 - **单进程 / hub** 上报；**分片 worker** 不上报（避免重复计数）。
-- `online_bots` 与控制台 **「在线 Bot」** 同源（分片为 presence 合并，单进程为 `get_bots()`）；首包在启动约 **60 秒** 后发送，之后按 `interval_sec`（默认 300 秒）刷新。
-- WebUI **「在线牛总和」** 为**全社区**各部署 `online_bots` 之和，不是本机实时数；本机以首页 **「在线 Bot」** 为准。
+- `online_bots` 与控制台 **「在线 Bot」** 同源；首包在启动约 **60 秒** 后发送，之后按 `interval_sec`（默认 300 秒）刷新。
+- WebUI **「在线牛总和」** 为全社区各部署 `online_bots` 之和；控制台拉取 stats 时同样走主备 URL。
 - 失败仅记日志，不影响 Bot 启动与消息处理。
 
 ## 隐私

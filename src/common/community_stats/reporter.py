@@ -10,13 +10,24 @@ from nonebot import logger
 from src.common.bot_runtime.roles import is_sharded_worker
 from src.common.cmd_perm.metadata_defaults import PLUGIN_EXTRA_VERSION
 from src.common.community_stats.config import CommunityStatsConfig, get_community_stats_config
-from src.common.community_stats.store import load_or_create_deployment_id
+from src.common.community_stats.endpoints import (
+    FALLBACK_HEARTBEAT,
+    PRIMARY_HEARTBEAT,
+    heartbeat_urls_for_config,
+    is_auto_endpoint_mode,
+)
+from src.common.community_stats.store import (
+    load_or_create_deployment_id,
+    save_heartbeat_endpoint,
+    touch_primary_probe_unix,
+)
 from src.common.message_scrub.quiet_http_loggers import scrub_http_log_noise
 from src.common.multi_bot.fleet import get_fleet_bot_ids
 from src.common.shard.registry.config import is_sharding_active
 from src.common.shard.registry.store import get_shard_registry, is_test_shard_record
 
 _HTTP_TIMEOUT_SEC = 15.0
+_PROBE_TIMEOUT_SEC = 8.0
 
 
 def should_run_community_stats_reporter() -> bool:
@@ -54,28 +65,52 @@ def _headers(cfg: CommunityStatsConfig) -> dict[str, str]:
     return headers
 
 
+async def _post_heartbeat(
+    client: httpx.AsyncClient,
+    endpoint: str,
+    *,
+    payload: dict[str, object],
+    cfg: CommunityStatsConfig,
+    timeout_sec: float,
+) -> bool:
+    resp = await client.post(endpoint, json=payload, headers=_headers(cfg), timeout=timeout_sec)
+    if resp.status_code == 200:
+        save_heartbeat_endpoint(endpoint)
+        logger.debug("community_stats: heartbeat ok deployment_id={} endpoint={}", payload["deployment_id"], endpoint)
+        return True
+    if resp.status_code == 429:
+        logger.warning("community_stats: heartbeat rate limited (429) endpoint={}", endpoint)
+    else:
+        logger.warning(
+            "community_stats: heartbeat HTTP {} endpoint={} body={}",
+            resp.status_code,
+            endpoint,
+            (resp.text or "")[:200],
+        )
+    return False
+
+
 async def send_community_stats_heartbeat() -> bool:
     cfg = get_community_stats_config()
-    endpoint = (cfg.endpoint or "").strip()
-    if not endpoint:
-        logger.warning("community_stats: endpoint 为空，跳过上报")
+    urls = heartbeat_urls_for_config(cfg)
+    if not urls:
+        logger.warning("community_stats: 无可用 endpoint，跳过上报")
         return False
+    if is_auto_endpoint_mode(cfg) and urls[0] == PRIMARY_HEARTBEAT:
+        touch_primary_probe_unix()
     payload = build_heartbeat_payload()
     try:
         async with scrub_http_log_noise():
             async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_SEC) as client:
-                resp = await client.post(endpoint, json=payload, headers=_headers(cfg))
-        if resp.status_code == 200:
-            logger.debug("community_stats: heartbeat ok deployment_id={}", payload["deployment_id"])
-            return True
-        if resp.status_code == 429:
-            logger.warning("community_stats: heartbeat rate limited (429)")
-        else:
-            logger.warning(
-                "community_stats: heartbeat HTTP {} body={}",
-                resp.status_code,
-                (resp.text or "")[:200],
-            )
+                for i, endpoint in enumerate(urls):
+                    timeout = _PROBE_TIMEOUT_SEC if i == 0 and len(urls) > 1 else _HTTP_TIMEOUT_SEC
+                    try:
+                        if await _post_heartbeat(client, endpoint, payload=payload, cfg=cfg, timeout_sec=timeout):
+                            if is_auto_endpoint_mode(cfg) and endpoint == FALLBACK_HEARTBEAT and i > 0:
+                                logger.info("community_stats: 正式域名暂不可用，已使用备用入口（备案通过后将自动切回）")
+                            return True
+                    except httpx.HTTPError as e:
+                        logger.warning(f"community_stats: heartbeat failed endpoint={endpoint}: {e}")
     except httpx.HTTPError as e:
         logger.warning(f"community_stats: heartbeat failed: {e}")
     return False

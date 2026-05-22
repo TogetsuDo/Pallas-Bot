@@ -1,15 +1,22 @@
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from src.common.community_stats import config as cfg_mod
+from src.common.community_stats.endpoints import (
+    FALLBACK_HEARTBEAT,
+    PRIMARY_HEARTBEAT,
+    heartbeat_urls_for_config,
+    is_auto_endpoint_mode,
+)
+from src.common.community_stats.public_stats import _parse_stats_body
 from src.common.community_stats.reporter import (
     build_heartbeat_payload,
     send_community_stats_heartbeat,
     should_run_community_stats_reporter,
 )
-from src.common.community_stats.public_stats import _parse_stats_body
 from src.common.community_stats.stats_url import stats_url_from_endpoint
 from src.common.community_stats.store import community_stats_state_path, load_or_create_deployment_id
 
@@ -19,6 +26,22 @@ def clear_config_cache():
     cfg_mod.clear_community_stats_config_cache()
     yield
     cfg_mod.clear_community_stats_config_cache()
+
+
+def test_auto_endpoint_mode_builtin_default(monkeypatch):
+    monkeypatch.delenv("PALLAS_COMMUNITY_STATS_ENDPOINT", raising=False)
+    cfg_mod.clear_community_stats_config_cache()
+    cfg = cfg_mod.get_community_stats_config()
+    assert is_auto_endpoint_mode(cfg) is True
+    assert heartbeat_urls_for_config(cfg)[:2] == [PRIMARY_HEARTBEAT, FALLBACK_HEARTBEAT]
+
+
+def test_auto_endpoint_custom_url_not_builtin(monkeypatch):
+    monkeypatch.setenv("PALLAS_COMMUNITY_STATS_ENDPOINT", "https://stats.example/v1/heartbeat")
+    cfg_mod.clear_community_stats_config_cache()
+    cfg = cfg_mod.get_community_stats_config()
+    assert is_auto_endpoint_mode(cfg) is False
+    assert heartbeat_urls_for_config(cfg) == ["https://stats.example/v1/heartbeat"]
 
 
 def test_stats_url_from_heartbeat_endpoint():
@@ -167,3 +190,43 @@ def test_build_payload_sharded():
         assert payload["online_bots"] == 2
         assert payload["catalog_bots"] == 3
         assert payload["shard_workers"] == 2
+
+
+@pytest.mark.asyncio
+async def test_send_heartbeat_fallback_after_primary_fails(monkeypatch, tmp_path):
+    monkeypatch.delenv("PALLAS_COMMUNITY_STATS_ENDPOINT", raising=False)
+    cfg_mod.clear_community_stats_config_cache()
+    state_path = tmp_path / "pallas_config" / "community_stats.json"
+    monkeypatch.setattr(
+        "src.common.community_stats.store.community_stats_state_path",
+        lambda: state_path,
+    )
+
+    calls: list[str] = []
+
+    async def fake_post(self, url, **kwargs):
+        calls.append(url)
+        mock = MagicMock()
+        if url == PRIMARY_HEARTBEAT:
+            raise httpx.ConnectError("ssl eof", request=MagicMock())
+        mock.status_code = 200
+        mock.text = '{"ok":true}'
+        return mock
+
+    with (
+        patch(
+            "src.common.community_stats.reporter.load_or_create_deployment_id",
+            return_value="550e8400-e29b-41d4-a716-446655440000",
+        ),
+        patch(
+            "src.common.shard.presence.count_connected_bots_for_reporting",
+            return_value=1,
+        ),
+        patch("src.common.community_stats.reporter.get_fleet_bot_ids", return_value=frozenset({1})),
+        patch.object(httpx.AsyncClient, "post", fake_post),
+    ):
+        assert await send_community_stats_heartbeat() is True
+    assert calls[0] == PRIMARY_HEARTBEAT
+    assert calls[1] == FALLBACK_HEARTBEAT
+    raw = json.loads(state_path.read_text(encoding="utf-8"))
+    assert raw["heartbeat_endpoint"] == FALLBACK_HEARTBEAT

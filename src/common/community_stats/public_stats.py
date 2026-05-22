@@ -8,7 +8,7 @@ import httpx
 from nonebot import logger
 
 from src.common.community_stats.config import get_community_stats_config
-from src.common.community_stats.stats_url import stats_url_from_endpoint
+from src.common.community_stats.endpoints import stats_urls_for_config
 from src.common.message_scrub.quiet_http_loggers import scrub_http_log_noise
 
 _HTTP_TIMEOUT_SEC = 12.0
@@ -36,17 +36,28 @@ def _parse_stats_body(body: Any, stats_url: str) -> dict[str, Any]:
 
 async def fetch_community_public_stats() -> dict[str, Any]:
     cfg = get_community_stats_config()
-    stats_url = stats_url_from_endpoint(cfg.endpoint)
+    urls = stats_urls_for_config(cfg)
+    if not urls:
+        raise ValueError("no community stats URL configured")
     scrub_http_log_noise()
+    last_err: Exception | None = None
     async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_SEC) as client:
-        resp = await client.get(stats_url)
-        resp.raise_for_status()
-        body = resp.json()
-    data = _parse_stats_body(body, stats_url)
-    logger.debug(
-        "community stats fetched: total={} online={} bots_sum={}",
-        data["deployments_total"],
-        data["deployments_online"],
-        data["bots_online_sum"],
-    )
-    return data
+        for stats_url in urls:
+            try:
+                resp = await client.get(stats_url)
+                resp.raise_for_status()
+                data = _parse_stats_body(resp.json(), stats_url)
+                logger.debug(
+                    "community stats fetched: total={} online={} bots_sum={} url={}",
+                    data["deployments_total"],
+                    data["deployments_online"],
+                    data["bots_online_sum"],
+                    stats_url,
+                )
+                return data
+            except (httpx.HTTPError, ValueError) as e:
+                last_err = e
+                logger.debug("community_stats: fetch stats failed url={}: {}", stats_url, e)
+    if last_err is not None:
+        raise last_err
+    raise ValueError("community stats fetch failed")
