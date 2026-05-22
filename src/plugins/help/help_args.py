@@ -11,14 +11,44 @@ PLUGIN_DISABLE_COMMAND = "牛牛关闭"
 _TAIL_WS_RE = re.compile(r"[\s\u3000]+")
 
 
+def strip_leading_command_marks(text: str) -> str:
+    """去掉 NoneBot ``command_start`` 与遗留 ``/`` 前缀。"""
+    stripped = (text or "").strip()
+    starts: tuple[str, ...] = ("/", "")
+    try:
+        from nonebot import get_driver
+
+        raw = get_driver().config.command_start
+        if raw:
+            starts = tuple(str(s) for s in raw)
+    except Exception:
+        pass
+    for start in sorted((s for s in starts if s), key=len, reverse=True):
+        if stripped.startswith(start):
+            return stripped[len(start) :].lstrip()
+    if stripped.startswith("/"):
+        return stripped[1:].lstrip()
+    return stripped
+
+
+def matches_command_prefix(plaintext: str, command: str) -> bool:
+    """命令前缀匹配（忽略大小写，便于参数中含英文）。"""
+    text = strip_leading_command_marks(plaintext)
+    cmd = (command or "").strip()
+    if not cmd or len(text) < len(cmd):
+        return False
+    return text[: len(cmd)].casefold() == cmd.casefold()
+
+
 def extract_command_tail(plaintext: str, command: str) -> str:
-    """去掉命令前缀（含可选 ``/``），返回命令后的剩余文本。"""
-    text = (plaintext or "").strip()
-    if text.startswith("/"):
-        text = text[1:].lstrip()
-    if not text.startswith(command):
+    """去掉命令前缀，返回命令后的剩余文本。"""
+    text = strip_leading_command_marks(plaintext)
+    cmd = (command or "").strip()
+    if not cmd or len(text) < len(cmd):
         return ""
-    return text[len(command) :].lstrip()
+    if text[: len(cmd)].casefold() != cmd.casefold():
+        return ""
+    return text[len(cmd) :].lstrip()
 
 
 def extract_help_tail(plaintext: str) -> str:

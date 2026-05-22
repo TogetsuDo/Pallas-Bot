@@ -2,6 +2,7 @@ from src.plugins.help.help_args import (
     PLUGIN_DISABLE_COMMAND,
     PLUGIN_ENABLE_COMMAND,
     extract_help_tail,
+    matches_command_prefix,
     parse_help_args,
     parse_plugin_toggle_args,
 )
@@ -34,6 +35,19 @@ def test_parse_compact_plugin_and_function_index() -> None:
 
 def test_parse_compact_plugin_name_without_space() -> None:
     assert parse_help_args("牛牛帮助MAA远控", plugin_count=10) == ["MAA远控"]
+    assert parse_help_args("牛牛帮助maa远控", plugin_count=10) == ["maa远控"]
+
+
+def test_matches_help_command_prefix_case_insensitive() -> None:
+    assert matches_command_prefix("牛牛帮助", "牛牛帮助")
+    assert matches_command_prefix("/牛牛帮助", "牛牛帮助")
+    assert matches_command_prefix("牛牛帮助 1", "牛牛帮助")
+    assert not matches_command_prefix("牛牛开启", "牛牛帮助")
+
+
+def test_extract_help_tail_preserves_arg_casing() -> None:
+    assert extract_help_tail("牛牛帮助 MAA远控") == "MAA远控"
+    assert extract_help_tail("牛牛帮助 maa远控") == "maa远控"
 
 
 def test_parse_compact_plugin_index_and_function_name() -> None:

@@ -12,6 +12,7 @@ from src.common.cmd_perm import (
 from .config import Config
 from .help_constants import HELP_STATUS_OFF, HELP_STATUS_ON, HELP_STATUS_PLACEHOLDER
 from .plugin_manager import find_plugin, get_help_menu_plugins, plugin_display_name
+from .plugin_match import normalize_help_key
 
 # 成图宽度与 pillowmd 默认版心大致对齐；总表「简介」列更窄
 _HELP_DETAIL_WRAP = 44
@@ -294,15 +295,16 @@ def generate_function_detail_markdown(plugin_name: str, function_name: str) -> t
     else:
         for index, item in enumerate(user_menu):
             func = item.get("func", "")
-            if func.lower() == function_name.lower():
+            if normalize_help_key(func) == normalize_help_key(function_name):
                 target_function = item
                 target_index = index + 1
                 break
 
         if not target_function:
+            arg_key = normalize_help_key(function_name)
             for index, item in enumerate(user_menu):
                 func = item.get("func", "")
-                if function_name.lower() in func.lower():
+                if arg_key and arg_key in normalize_help_key(func):
                     target_function = item
                     target_index = index + 1
                     break

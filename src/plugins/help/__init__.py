@@ -1,6 +1,8 @@
-from nonebot import on_command
+from nonebot import on_command, on_message
+from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, PrivateMessageEvent
 from nonebot.plugin import PluginMetadata
+from nonebot.rule import Rule
 from nonebot.typing import T_State
 
 from src.common.cmd_perm import permission_for_command
@@ -21,8 +23,10 @@ from .handlers import (
     handle_plugin_operation,
 )
 from .help_args import (
+    HELP_COMMAND,
     PLUGIN_DISABLE_COMMAND,
     PLUGIN_ENABLE_COMMAND,
+    matches_command_prefix,
     parse_plugin_toggle_args,
 )
 from .plugin_manager import get_help_menu_plugins
@@ -112,7 +116,24 @@ def refresh_style_cache(cfg: Config | None = None) -> None:
 refresh_style_cache()
 
 
-help_cmd = on_command("牛牛帮助", priority=5, block=True, permission=permission_for_command("help.help"))
+def help_command_rule() -> Rule:
+    async def _match_help_command(event: Event, state: T_State) -> bool:
+        del state
+        try:
+            plain = event.get_plaintext()
+        except Exception:
+            return False
+        return matches_command_prefix(plain, HELP_COMMAND)
+
+    return Rule(_match_help_command)
+
+
+help_cmd = on_message(
+    help_command_rule(),
+    priority=5,
+    block=True,
+    permission=permission_for_command("help.help"),
+)
 
 HELP_COOLDOWN_KEY = "help"
 
