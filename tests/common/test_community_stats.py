@@ -46,9 +46,37 @@ def test_parse_stats_body():
 
 def test_config_enabled_default_true(monkeypatch):
     monkeypatch.delenv("PALLAS_COMMUNITY_STATS_ENABLED", raising=False)
-    with patch.object(cfg_mod, "merged_repo_dotenv_upper", return_value={}):
+    with patch("src.common.community_stats.config.repo_env_raw_value", return_value=None):
         cfg_mod.clear_community_stats_config_cache()
         assert cfg_mod.get_community_stats_config().enabled is True
+
+
+def test_config_enabled_from_toml_without_section(tmp_path, monkeypatch):
+    cfg = tmp_path / "pallas.toml"
+    cfg.write_text('[bootstrap]\nhost = "127.0.0.1"\nport = 8080\n', encoding="utf-8")
+    monkeypatch.delenv("PALLAS_COMMUNITY_STATS_ENABLED", raising=False)
+    from src.common.config import repo_settings as rs
+
+    monkeypatch.setattr(rs, "repo_config_path", lambda: cfg)
+    monkeypatch.setattr(rs, "repo_webui_settings_path", lambda: tmp_path / "missing.json")
+    monkeypatch.setattr(rs, "repo_env_path", lambda: tmp_path / "missing.env")
+    monkeypatch.setattr(rs, "_REPO_ROOT", tmp_path)
+    cfg_mod.clear_community_stats_config_cache()
+    assert cfg_mod.get_community_stats_config().enabled is True
+
+
+def test_config_disabled_from_toml(tmp_path, monkeypatch):
+    cfg = tmp_path / "pallas.toml"
+    cfg.write_text("[community_stats]\nenabled = false\n", encoding="utf-8")
+    monkeypatch.delenv("PALLAS_COMMUNITY_STATS_ENABLED", raising=False)
+    from src.common.config import repo_settings as rs
+
+    monkeypatch.setattr(rs, "repo_config_path", lambda: cfg)
+    monkeypatch.setattr(rs, "repo_webui_settings_path", lambda: tmp_path / "missing.json")
+    monkeypatch.setattr(rs, "repo_env_path", lambda: tmp_path / "missing.env")
+    monkeypatch.setattr(rs, "_REPO_ROOT", tmp_path)
+    cfg_mod.clear_community_stats_config_cache()
+    assert cfg_mod.get_community_stats_config().enabled is False
 
 
 def test_config_can_disable(monkeypatch):

@@ -2,36 +2,35 @@
 
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.common.config.dotenv import merged_repo_dotenv_upper
+from src.common.config.repo_settings import repo_env_raw_value
 
 _PREFIX = "PALLAS_COMMUNITY_STATS_"
 
 
-def _env_str(name: str, default: str = "") -> str:
-    merged = merged_repo_dotenv_upper()
-    if name in os.environ:
-        return (os.environ.get(name, default) or "").strip()
-    return (merged.get(name) or default).strip()
+def _setting_str(name: str, default: str = "") -> str:
+    raw = repo_env_raw_value(name)
+    if raw is None:
+        return default
+    return (raw or "").strip() or default
 
 
-def _env_int(name: str, default: int) -> int:
-    raw = _env_str(name, str(default))
+def _setting_int(name: str, default: int) -> int:
+    raw = _setting_str(name, str(default))
     try:
         return int(raw)
     except ValueError:
         return default
 
 
-def _env_bool(name: str, default: bool) -> bool:
-    raw = _env_str(name, "").lower()
+def _setting_bool(name: str, default: bool) -> bool:
+    raw = _setting_str(name, "")
     if not raw:
         return default
-    return raw not in ("0", "false", "no", "off")
+    return raw.lower() not in ("0", "false", "no", "off")
 
 
 class CommunityStatsConfig(BaseModel):
@@ -52,10 +51,10 @@ class CommunityStatsConfig(BaseModel):
 @lru_cache(maxsize=1)
 def get_community_stats_config() -> CommunityStatsConfig:
     return CommunityStatsConfig(
-        enabled=_env_bool(f"{_PREFIX}ENABLED", True),
-        endpoint=_env_str(f"{_PREFIX}ENDPOINT", "https://stats.pallasbot.top/v1/heartbeat"),
-        token=_env_str(f"{_PREFIX}TOKEN", ""),
-        interval_sec=_env_int(f"{_PREFIX}INTERVAL_SEC", 300),
+        enabled=_setting_bool(f"{_PREFIX}ENABLED", True),
+        endpoint=_setting_str(f"{_PREFIX}ENDPOINT", "https://stats.pallasbot.top/v1/heartbeat"),
+        token=_setting_str(f"{_PREFIX}TOKEN", ""),
+        interval_sec=_setting_int(f"{_PREFIX}INTERVAL_SEC", 300),
     )
 
 

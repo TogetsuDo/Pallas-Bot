@@ -22,6 +22,8 @@
 [![onebot](https://img.shields.io/badge/OneBot-v11-black?style=social&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABABAMAAABYR2ztAAAAIVBMVEUAAAAAAAADAwMHBwceHh4UFBQNDQ0ZGRkoKCgvLy8iIiLWSdWYAAAAAXRSTlMAQObYZgAAAQVJREFUSMftlM0RgjAQhV+0ATYK6i1Xb+iMd0qgBEqgBEuwBOxU2QDKsjvojQPvkJ/ZL5sXkgWrFirK4MibYUdE3OR2nEpuKz1/q8CdNxNQgthZCXYVLjyoDQftaKuniHHWRnPh2GCUetR2/9HsMAXyUT4/3UHwtQT2AggSCGKeSAsFnxBIOuAggdh3AKTL7pDuCyABcMb0aQP7aM4AnAbc/wHwA5D2wDHTTe56gIIOUA/4YYV2e1sg713PXdZJAuncdZMAGkAukU9OAn40O849+0ornPwT93rphWF0mgAbauUrEOthlX8Zu7P5A6kZyKCJy75hhw1Mgr9RAUvX7A3csGqZegEdniCx30c3agAAAABJRU5ErkJggg==)](https://onebot.dev/)
 [![stars](https://img.shields.io/github/stars/PallasBot/Pallas-Bot?style=social)](https://github.com/PallasBot/Pallas-Bot/stargazers)
 [![ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/charliermarsh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![community-deployments](https://img.shields.io/badge/dynamic/json?url=https://stats.pallasbot.top/v1/stats&label=%E7%A4%BE%E5%8C%BA%E9%83%A8%E7%BD%B2&query=%24.deployments_online&suffix=%20%E5%A5%97%E5%9C%A8%E7%BA%BF&color=FE7D37)](https://stats.pallasbot.top)
+[![community-bots](https://img.shields.io/badge/dynamic/json?url=https://stats.pallasbot.top/v1/stats&label=%E5%9C%A8%E7%BA%BF%E7%89%9B&query=%24.bots_online_sum&color=FE7D37)](https://stats.pallasbot.top)
 
 [![maa-remote](https://img.shields.io/badge/Feature-MAA%20%E8%BF%9C%E6%8E%A7-FE7D37)](docs/plugins/maa/README.md)
 ![learning-repeater](https://img.shields.io/badge/Feature-%E5%AD%A6%E4%B9%A0%E5%9E%8B%E5%A4%8D%E8%AF%BB-8A2BE2)
@@ -314,6 +316,8 @@ uv run python tools/migrate_env_to_pallas.py
 
 <a id="社区与支持"></a>
 ## 🤝 社区与支持
+
+自托管部署数与在线情况见 **[stats.pallasbot.top](https://stats.pallasbot.top)**（页顶徽章实时读取）。升级到含 `community_stats` 的 release 后 **hub / 单进程默认自动上报**，无需改 `pallas.toml`；关闭方式见 [社区统计说明](docs/common/community_stats.md)。
 
 <a id="qq-群"></a>
 ### 💬 QQ 群
