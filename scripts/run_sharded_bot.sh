@@ -31,6 +31,7 @@ ALLOC_PORTS_SCRIPT="${SCRIPT_DIR}/apply_shard_worker_ports.py"
 STARTUP_PORTS_SCRIPT="${SCRIPT_DIR}/shard_startup_ports.py"
 WAIT_PORTS_SCRIPT="${SCRIPT_DIR}/wait_shard_worker_ports.py"
 SHARD_TEST_SCRIPT="${SCRIPT_DIR}/shard_test_worker.py"
+DETECT_REDIS_SCRIPT="${SCRIPT_DIR}/detect_shard_redis.py"
 PORT_RELEASE_TIMEOUT="${PALLAS_SHARD_PORT_RELEASE_TIMEOUT:-60}"
 PID_WORKER_TEST="${RUN_DIR}/worker-test.pid"
 TEST_SHARD_ID="${PALLAS_SHARD_TEST_ID:-99}"
@@ -90,6 +91,25 @@ usage() {
 运行日志目录: data/pallas_shard/logs/  （WebUI 日志页可查看各 worker）
 
 EOF
+}
+
+load_shard_redis_env() {
+  # 与 Pallas-Bot-AI 共用 REDIS_URL 时自动启用跨进程 claim（不可达则回退文件）
+  if [[ ! -f "${DETECT_REDIS_SCRIPT}" ]]; then
+    return 0
+  fi
+  while IFS= read -r line; do
+    [[ -n "${line}" ]] || continue
+    export "${line?}"
+  done < <("${START_CMD[@]}" "${DETECT_REDIS_SCRIPT}" 2>/dev/null || true)
+}
+
+shard_coord_backend_hint() {
+  if [[ "${PALLAS_COORD_REDIS_ENABLED:-}" == "true" && -n "${PALLAS_COORD_REDIS_URL:-}" ]]; then
+    echo "跨进程 claim：Redis"
+  else
+    echo "跨进程 claim：共享 data/ 文件"
+  fi
 }
 
 read_dotenv_port() {
@@ -397,6 +417,8 @@ cmd_test_start() {
   tport="$(registry_test_port)"
   print_title "Pallas-Bot 测试 worker · 启动"
   echo "  测试分片 id=${tsid}，WS 端口 ${tport}"
+  load_shard_redis_env
+  echo "  $(shard_coord_backend_hint)"
   echo ""
   local common=(
     PALLAS_SHARD_ENABLED=true
@@ -516,6 +538,13 @@ cmd_start() {
   echo "        worker 起点端口 ${WORKER_BASE_PORT}$(
     [[ "${SKIP_OCCUPIED_PORTS}" -eq 1 ]] && echo "（自动跳过占用）" || echo "（严格 起点+分片号）"
   )"
+  load_shard_redis_env
+  echo "        $(shard_coord_backend_hint)"
+  if [[ "${PALLAS_COORD_REDIS_ENABLED:-}" == "true" ]]; then
+    if ! uv run python -c "import redis" 2>/dev/null; then
+      echo "        提示：请执行 uv sync --extra coord-redis 以安装 redis 客户端" >&2
+    fi
+  fi
   echo ""
 
   wait_worker_ports_released "${workers}" || true

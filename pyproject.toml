@@ -40,6 +40,9 @@ pg = [
     "sqlalchemy[asyncio]>=2.0",
     "asyncpg>=0.29",
 ]
+coord-redis = [
+    "redis>=5.2,<6",
+]
 
 [dependency-groups]
 dev = [

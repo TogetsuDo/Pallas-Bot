@@ -60,39 +60,45 @@ uv run python scripts/sync_shard_protocol_ports.py --dry-run
 - 为 hub 与各 worker 分别配置 **systemd / supervisor**，并共享 `data/`；或
 - 宿主机 `bot_watchdog.py` **仅监护 hub** 时须 **`--no-spawn`**，且 worker 由同一套编排保证拉起（见 [进程守护脚本](../Deployment.md#进程守护脚本)）。
 
-## 环境变量
+## 配置与进程角色
 
-### Hub（`.env` 或编排注入）
+运行配置以 **`config/pallas.toml`** + **`data/pallas_config/webui.json`** 为主（见 [配置存储](settings-storage.md)）；根目录 **`.env` 仅遗留只读合并**，WebUI 不再写入。分片编排仍可用 `run_sharded_bot.sh` 的 `env KEY=val` 注入 **`PALLAS_BOT_ROLE`、`PALLAS_SHARD_ID`、`PORT`** 等，**优先于磁盘同名项**。
 
-```env
-PALLAS_SHARD_ENABLED=true
-PALLAS_BOT_ROLE=hub
-PORT=8088
-PALLAS_SHARD_HUB_PORT=8088
-PALLAS_SHARD_WORKER_BASE_PORT=8090
-PALLAS_SHARD_BOTS_PER=5
-PALLAS_SHARD_WS_HOST=127.0.0.1
-```
+### Hub / Worker 常用项
 
-`PALLAS_SHARD_WS_HOST`：写入注册表、供协议端连接的 worker 主机（Docker 内网或对外 IP 时改为实际可达地址）。
+写在 `pallas.toml` 的 `[env]`（或 WebUI「通用配置」），或由启动脚本注入：
 
-### Worker
+| 键 | Hub 示例 | Worker 示例 |
+|----|----------|-------------|
+| `PALLAS_SHARD_ENABLED` | `true` | `true` |
+| `PALLAS_BOT_ROLE` | `hub` | `worker` |
+| `PORT` / `PALLAS_SHARD_HUB_PORT` | `8088` | 见注册表 |
+| `PALLAS_SHARD_WORKER_BASE_PORT` | `8090` | — |
+| `PALLAS_SHARD_BOTS_PER` | `5` | — |
+| `PALLAS_SHARD_WS_HOST` | `127.0.0.1` | — |
+| `PALLAS_SHARD_ID` | — | `0`（worker-1 为 `1`…） |
 
-```env
-PALLAS_SHARD_ENABLED=true
-PALLAS_BOT_ROLE=worker
-PALLAS_SHARD_ID=0
-PORT=8090
-```
+`PALLAS_SHARD_WS_HOST`：写入注册表、供协议端连接的 worker 主机（Docker 内网或对外 IP 时改为实际可达地址）。worker 的 `PORT` 须与 `data/pallas_shard/registry.json` 中 `shards[].port` 一致。
 
-worker-1：`PALLAS_SHARD_ID=1`、`PORT=8091`，须与 `data/pallas_shard/registry.json` 中 `shards[].port` 一致。
+### 跨进程 claim（可选 Redis）
 
-### 配置是否共用
+与 **Pallas-Bot-AI** 共用 Redis 时，可减少 `data/*/message_claims` 的磁盘竞争（ingress / 插件抢占）。在 **`config/pallas.toml` 的 `[env]`** 中配置（勿再依赖根目录 `.env`）：
+
+| 键 | 说明 |
+|----|------|
+| `REDIS_URL` / `PALLAS_COORD_REDIS_URL` | 与 AI 相同，如 `redis://127.0.0.1:6379/0` |
+| `PALLAS_COORD_REDIS_ENABLED` | `auto`（默认）：可 ping 则启用；`true` 强制；`false` 禁用 |
+| `PALLAS_COORD_REDIS_CLAIM_TTL_SEC` | claim 键 TTL，默认 86400 |
+
+`./scripts/run_sharded_bot.sh start` 会读取 **`pallas.toml` / `webui.json`** 并调用 `detect_shard_redis.py` 自动探测；不可达时回退文件 claim。
+
+依赖：`uv sync --extra coord-redis`（仅在使用 Redis 时需要安装 `redis` 包）。
+
+### 共享路径
 
 | 项 | 说明 |
 |----|------|
-| **`config/pallas.toml`** | 各进程读取同一份（数据库、`HOST` 等 bootstrap；WebUI 项在共享 `data/pallas_config/webui.json`） |
-| **按进程覆盖** | `run_sharded_bot.sh` 用 `env KEY=val` 设置 `PALLAS_BOT_ROLE`、`PALLAS_SHARD_ID`、`PORT` 等，**优先于磁盘配置同名项** |
+| **`config/pallas.toml`** | 各进程同一份（`[bootstrap]` 数据库与监听；插件项多在 `webui.json`） |
 | **`data/`** | 必须同一路径；含 `pallas_shard/registry.json`、`coord/`、`accounts.json` 等 |
 
 ### Worker 端口
