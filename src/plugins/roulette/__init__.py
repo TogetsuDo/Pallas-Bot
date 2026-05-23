@@ -24,6 +24,7 @@ from src.common.cmd_perm.metadata_defaults import (
 )
 from src.common.cmd_perm.metadata_text import SCENE_GROUP, join_usage, usage_line
 from src.common.config import BotConfig, GroupConfig
+from src.common.multi_bot.dedup import try_claim_cross_bot_message
 
 from .config import JUDGMENT_CFG, RESCUE_CFG, SHOT_CFG
 from .player import PlayerList
@@ -91,6 +92,18 @@ timeout = 300
 role_cache = defaultdict(lambda: defaultdict(str))
 
 shot_lock = asyncio.Lock()
+_roulette_start_plugin = "roulette_start"
+
+
+async def bot_group_role(bot: Bot, event: GroupMessageEvent) -> str:
+    role = role_cache[event.self_id][event.group_id]
+    if not role:
+        role = await sync_role_cache(bot, event)
+    return role
+
+
+async def bot_is_group_admin(bot: Bot, event: GroupMessageEvent) -> bool:
+    return await bot_group_role(bot, event) in {"admin", "owner"}
 
 
 roulette_player = PlayerList()
@@ -156,6 +169,16 @@ async def participate_in_roulette(event: GroupMessageEvent) -> bool:
 
 
 async def roulette(messagae_handle, event: GroupMessageEvent):
+    if not await try_claim_cross_bot_message(
+        _roulette_start_plugin,
+        event.group_id,
+        event.user_id,
+        event.get_plaintext(),
+        event.time,
+        int(event.self_id),
+        use_plaintext=True,
+    ):
+        return
     rand = random.randint(1, 6)
     logger.info(f"bot [{event.self_id}] roulette started roll={rand} in group [{event.group_id}]")
     roulette_status[event.group_id] = rand
@@ -181,9 +204,7 @@ async def roulette(messagae_handle, event: GroupMessageEvent):
 async def is_roulette_type_msg(bot: Bot, event: GroupMessageEvent) -> bool:
     if event.get_plaintext().strip() in {"牛牛轮盘踢人", "牛牛轮盘禁言", "牛牛踢人轮盘", "牛牛禁言轮盘"}:
         if can_roulette_start(event.group_id):
-            if not role_cache[event.self_id][event.group_id]:
-                await sync_role_cache(bot, event)
-            return role_cache[event.self_id][event.group_id] in {"admin", "owner"}
+            return await bot_is_group_admin(bot, event)
     return False
 
 
@@ -212,9 +233,7 @@ async def _(event: GroupMessageEvent):
 async def is_roulette_msg(bot: Bot, event: GroupMessageEvent) -> bool:
     if event.get_plaintext().strip() == "牛牛轮盘":
         if can_roulette_start(event.group_id):
-            if not role_cache[event.self_id][event.group_id]:
-                await sync_role_cache(bot, event)
-            return role_cache[event.self_id][event.group_id] in {"admin", "owner"}
+            return await bot_is_group_admin(bot, event)
 
     return False
 
@@ -232,9 +251,9 @@ async def _(event: GroupMessageEvent):
     await roulette(roulette_msg, event)
 
 
-async def is_shot_msg(event: GroupMessageEvent) -> bool:
+async def is_shot_msg(bot: Bot, event: GroupMessageEvent) -> bool:
     if roulette_status[event.group_id] != 0 and event.get_plaintext().strip() == "牛牛开枪":
-        return role_cache[event.self_id][event.group_id] in {"admin", "owner"}
+        return await bot_is_group_admin(bot, event)
 
     return False
 
@@ -398,9 +417,9 @@ async def _(bot: Bot, event: GroupRequestEvent):
         await event.approve(bot)
 
 
-async def is_drink_msg(event: GroupMessageEvent) -> bool:
+async def is_drink_msg(bot: Bot, event: GroupMessageEvent) -> bool:
     if roulette_status[event.group_id] != 0 and event.get_plaintext().strip() in {"牛牛喝酒", "牛牛干杯", "牛牛继续喝"}:
-        return role_cache[event.self_id][event.group_id] in {"admin", "owner"}
+        return await bot_is_group_admin(bot, event)
     return False
 
 
@@ -417,10 +436,10 @@ async def _(event: GroupMessageEvent):
     roulette_player.append(event.user_id, event.group_id)
 
 
-async def is_rescue_or_judgment(event: GroupMessageEvent) -> bool:
+async def is_rescue_or_judgment(bot: Bot, event: GroupMessageEvent) -> bool:
     """检测是否为救一下或补一枪的消息"""
     plaintext = event.get_plaintext().strip()
-    if role_cache[event.self_id][event.group_id] not in {"admin", "owner"}:
+    if not await bot_is_group_admin(bot, event):
         return False
     if plaintext.startswith("牛牛补一枪"):
         return len(ban_players.get_user_ids(event.group_id)) > 0
