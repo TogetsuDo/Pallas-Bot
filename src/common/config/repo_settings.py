@@ -25,6 +25,28 @@ def repo_config_path() -> Path:
     return _REPO_ROOT / "config" / "pallas.toml"
 
 
+def read_bootstrap_extra_plugin_dirs() -> list[str]:
+    """``[bootstrap].extra_plugin_dirs``：站点自有插件目录（相对仓库根，如 ``local/plugins``）。"""
+    data = _load_toml_file(repo_config_path())
+    bootstrap = data.get("bootstrap")
+    if not isinstance(bootstrap, dict):
+        return []
+    raw = bootstrap.get("extra_plugin_dirs")
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        s = str(item).strip().replace("\\", "/").rstrip("/")
+        if s.startswith("./"):
+            s = s[2:]
+        if not s or s in seen:
+            continue
+        seen.add(s)
+        out.append(s)
+    return out
+
+
 def repo_webui_settings_path() -> Path:
     return _REPO_ROOT / "data" / "pallas_config" / "webui.json"
 

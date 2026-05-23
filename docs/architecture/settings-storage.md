@@ -8,6 +8,7 @@
 | `config/pallas.toml` | 本地主配置（bootstrap、可选 `[env]`） | **忽略** |
 | `data/pallas_config/webui.json` | WebUI 统一落盘（`env` 扁平键 + `sections` 按插件/通用配置分组） | 随 `data/` 部署卷 |
 | `config/pallas.webui.export.toml` | **自动生成、只读**，按段带注释标题的 TOML 快照 | **忽略**（勿手改） |
+| `local/plugins/` | 站点自有 NoneBot 插件（`extra_plugin_dirs`） | 跟踪 `.gitkeep`；插件文件 gitignore |
 
 遗留根目录 `.env` / `.env.{ENVIRONMENT}` 仍可**只读**合并，优先级低于 `webui.json`；WebUI 保存不再写入 `.env`。
 

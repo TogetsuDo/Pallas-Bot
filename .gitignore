@@ -230,3 +230,9 @@ test.py
 
 # AI orchestration internal data
 .sisyphus/
+
+# 站点自有插件（保留目录骨架；见 local/README.md）
+local/plugins/*
+!local/plugins/.gitkeep
+local/patches/*
+!local/patches/README.md

@@ -17,6 +17,7 @@ from src.common.bot_runtime.roles import (
     WORKER_SKIP_PLUGIN_NAMES,
     is_unified_role,
 )
+from src.common.config.repo_settings import read_bootstrap_extra_plugin_dirs
 from src.common.paths import PROJECT_ROOT
 
 _PLUGINS_ROOT = PROJECT_ROOT / "src" / "plugins"
@@ -130,12 +131,24 @@ def _load_toml_extra_plugin_dirs(
     return count
 
 
+def _append_bootstrap_plugin_dirs(plugin_dirs: list[str]) -> list[str]:
+    out = list(plugin_dirs)
+    seen = {d.strip().replace("\\", "/").rstrip("/") for d in out}
+    for d in read_bootstrap_extra_plugin_dirs():
+        norm = d.strip().replace("\\", "/").rstrip("/")
+        if norm and norm not in seen:
+            seen.add(norm)
+            out.append(d)
+    return out
+
+
 def load_pyproject_extra_plugins(
     *,
     role_label: str,
     skip_short: frozenset[str],
     loaded_short: set[str],
     include_extra_dirs: bool,
+    include_bootstrap_dirs: bool = True,
 ) -> int:
     """加载 pyproject [tool.nonebot.plugins] 与（可选）额外 plugin_dirs。"""
     module_paths, plugin_dirs = parse_nonebot_plugin_config(_PYPROJECT)
@@ -143,6 +156,8 @@ def load_pyproject_extra_plugins(
     total = 0
     if include_extra_dirs:
         extra_dirs = extra_plugin_dirs_for_role(plugin_dirs)
+        if include_bootstrap_dirs:
+            extra_dirs = _append_bootstrap_plugin_dirs(extra_dirs)
         total += _load_toml_extra_plugin_dirs(extra_dirs, role_label=role_label, loaded_short=loaded_short)
     total += _load_toml_module_plugins(
         module_paths,
@@ -157,6 +172,15 @@ def load_plugins_for_role() -> None:
     if is_unified_role():
         nonebot.load_from_toml("pyproject.toml")
         register_apscheduler_startup_hook()
+        bootstrap_dirs = read_bootstrap_extra_plugin_dirs()
+        if bootstrap_dirs:
+            loaded_short: set[str] = set()
+            n = _load_toml_extra_plugin_dirs(
+                bootstrap_dirs,
+                role_label="unified",
+                loaded_short=loaded_short,
+            )
+            logger.info("bot_runtime: role=unified, bootstrap extra plugin_dirs={} -> {}", bootstrap_dirs, n)
         logger.info("bot_runtime: role=unified, load_from_toml(all plugins)")
         return
 
@@ -195,12 +219,23 @@ def load_plugins_for_role() -> None:
     if gate_path.is_dir() and (gate_path / "__init__.py").is_file():
         _load_plugin_module(ingress_gate, role_label="worker", loaded_short=loaded_short)
 
+    bootstrap_dirs = read_bootstrap_extra_plugin_dirs()
+    bootstrap_loaded = 0
+    if bootstrap_dirs:
+        bootstrap_loaded = _load_toml_extra_plugin_dirs(
+            bootstrap_dirs,
+            role_label="worker",
+            loaded_short=loaded_short,
+        )
+
     loaded = 0
     for mod in _discover_plugin_modules():
         short = _short_name(mod)
         if short in WORKER_SKIP_PLUGIN_NAMES:
             continue
         if mod == ingress_gate:
+            continue
+        if short in loaded_short:
             continue
         if _load_plugin_module(mod, role_label="worker", loaded_short=loaded_short):
             loaded += 1
@@ -210,14 +245,16 @@ def load_plugins_for_role() -> None:
         skip_short=WORKER_SKIP_PLUGIN_NAMES,
         loaded_short=loaded_short,
         include_extra_dirs=True,
+        include_bootstrap_dirs=False,
     )
 
     from src.common.shard.registry.config import get_shard_registry_settings
 
     s = get_shard_registry_settings()
     logger.info(
-        "bot_runtime: role=worker shard_id={} src_plugins={} pyproject_extra={} skip={}",
+        "bot_runtime: role=worker shard_id={} local_plugins={} src_plugins={} pyproject_extra={} skip={}",
         s.shard_id,
+        bootstrap_loaded,
         loaded,
         extra,
         sorted(WORKER_SKIP_PLUGIN_NAMES),

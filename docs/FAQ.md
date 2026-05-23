@@ -106,11 +106,15 @@ A: **不能。**它只缓解「有未提交改动时 checkout/merge 被挡住」
 
 ### Q: 控制台「版本与更新」里 Bot 一键更新失败，提示不是 git 工作副本？
 
-A: 典型于 **Docker 镜像内运行**：容器里没有完整 `.git` 目录，此时请用 **镜像拉取** 更新 Bot，不要用该 git 按钮。若在 clone 目录运行仍失败，请根据返回的 **HTTP 详情原文**（或日志）排查：`git fetch` 网络、`fetch` 后仍无对应标签、工作区不干净（发布标签切换路径会拒绝）、或 **非快进**（开发路径使用 `pull --ff-only`）等。
+A: 典型于 **Docker 镜像内运行**：容器里没有完整 `.git` 目录，更新页会显示 **`deployment_mode: docker`**，请用 **镜像拉取** 更新 Bot。若在 clone 目录运行仍失败，请根据返回的 **HTTP 详情原文**（或日志）排查：`git fetch` 网络、`fetch` 后仍无对应标签、**stash pop 冲突**，或 **非快进**（开发路径使用 `pull --ff-only`）等。
 
 ### Q: 怎样减少以后 `git pull` 跟上游冲突？
 
-A: 尽量**不要**在仓库里直接改已跟踪源码；自定义用 **`config/pallas.toml`**、**`data/`**（含 WebUI 的 `webui.json`）、以及文档允许的挂载路径。若必须改源码，建议 **fork** 后维护自己的分支，并清楚合并策略，避免与主线长期分叉。
+A: 尽量**不要**在仓库里直接改已跟踪源码；自定义用 **`config/pallas.toml`**、**`data/`**（含 WebUI 的 `webui.json`）、**`local/plugins/`**（`extra_plugin_dirs`）以及文档允许的挂载路径。若必须改源码，建议 **fork** 后维护自己的分支。详见 [站点定制与更新](architecture/site-customization-and-updates.md)。
+
+### Q: 控制台更新页显示的 deployment_mode 是什么？
+
+A: **`docker`**：请用镜像更新；**`release_tag`** / **`release_tag_dirty`** / **`dev_clone`**：分别表示发布 tag 干净目录、tag 上有本地改动、开发分支克隆；后三者可用 WebUI git 更新（dirty 时会自动 stash）。见 [站点定制与更新](architecture/site-customization-and-updates.md)。
 
 ## 部署排障
 

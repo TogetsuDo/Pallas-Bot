@@ -5346,6 +5346,7 @@ def register_extended_api(
             bot_is_development_build,
             fetch_latest_bot_release,
             get_bot_current_version,
+            inspect_bot_deployment,
         )
 
         github_token = str(getattr(plugin_config, "pallas_protocol_github_token", "") or "").strip()
@@ -5372,6 +5373,7 @@ def register_extended_api(
                     "release_notes": "",
                     "error": err_msg,
                     "checked_at": time.time(),
+                    **inspect_bot_deployment(),
                 }
             has_update = bot_has_release_update(
                 latest_tag=latest_tag,
@@ -5400,6 +5402,7 @@ def register_extended_api(
                 "release_notes": release_notes,
                 "error": None,
                 "checked_at": time.time(),
+                **inspect_bot_deployment(),
             }
 
         data = await _cached_read(key=cache_key, loader=_load, ttl_sec=120.0, stale_sec=900.0)
