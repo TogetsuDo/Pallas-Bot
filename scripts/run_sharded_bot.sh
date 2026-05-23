@@ -6,6 +6,8 @@
 #   ./scripts/run_sharded_bot.sh stop
 #   ./scripts/run_sharded_bot.sh restart
 #   ./scripts/run_sharded_bot.sh restart --workers-only
+#   ./scripts/run_sharded_bot.sh start --hub-only
+#   ./scripts/run_sharded_bot.sh stop --hub-only
 
 set -euo pipefail
 
@@ -24,6 +26,7 @@ HUB_PORT="${PALLAS_SHARD_HUB_PORT:-${PORT:-8088}}"
 WORKER_BASE_PORT="${PALLAS_SHARD_WORKER_BASE_PORT:-8090}"
 WORKER_COUNT_OVERRIDE=""
 WORKERS_ONLY=0
+HUB_ONLY=0
 DRY_RUN=0
 SKIP_PORT_SYNC=0
 SKIP_OCCUPIED_PORTS=1
@@ -54,10 +57,10 @@ usage() {
 用法:  ./scripts/run_sharded_bot.sh <命令> [选项]
 
 命令:
-  start     启动控制台与全部牛牛 worker（后台运行）
-  stop      停止全部分片进程（可加 --workers-only 仅停 worker）
+  start     启动控制台与全部牛牛 worker（可加 --hub-only 仅启 hub）
+  stop      停止全部分片进程（可加 --workers-only 仅停 worker，或 --hub-only 仅停 hub）
   status    查看进程、端口、Redis 协调与配置摘要
-  restart   先 stop 再 start（可加 --workers-only 仅重启 worker，保留 hub）
+  restart   先 stop 再 start（可加 --workers-only 仅重启 worker，或 --hub-only 仅重启 hub）
 
 测试 worker（手动迁入账号，不参与自动负载）:
   test init              在 registry 中启用 test 分片并分配端口
@@ -72,6 +75,10 @@ usage() {
   ./scripts/run_sharded_bot.sh status
   ./scripts/run_sharded_bot.sh restart
   ./scripts/run_sharded_bot.sh restart --workers-only
+  ./scripts/run_sharded_bot.sh start --hub-only
+  ./scripts/run_sharded_bot.sh stop --hub-only
+  ./scripts/run_sharded_bot.sh restart --hub-only
+  ./scripts/run_sharded_bot.sh hub-start
   ./scripts/run_sharded_bot.sh test init
   ./scripts/run_sharded_bot.sh test add 123456789 --sync-ws
   ./scripts/run_sharded_bot.sh test start
@@ -85,6 +92,7 @@ usage() {
   --no-skip-occupied-ports
                        worker 严格使用 起点+N，不自动避开已占用端口
   --workers-only       仅操作生产 worker（不停/不启 hub；restart 时常用）
+  --hub-only           仅操作 hub 控制台（不停/不启 worker；restart 时常用）
   --dry-run            只显示将要执行的命令，不真正启动
   -h, --help           显示本帮助
 
@@ -373,6 +381,41 @@ stop_orphan_worker_processes() {
   pkill -TERM -f "${pat}" 2>/dev/null || true
   sleep 1
   pkill -KILL -f "${pat}" 2>/dev/null || true
+}
+
+stop_orphan_hub_processes() {
+  local pat="${REPO_ROOT}/.venv/bin/python3 bot_hub.py"
+  pkill -TERM -f "${pat}" 2>/dev/null || true
+  sleep 1
+  pkill -KILL -f "${pat}" 2>/dev/null || true
+}
+
+start_hub_process() {
+  local -a common
+  mapfile -t common < <(shard_common_env)
+  start_one hub "hub  控制台 :${HUB_PORT}" env \
+    "${common[@]}" \
+    PALLAS_BOT_ROLE=hub \
+    PORT="${HUB_PORT}" \
+    "${START_CMD[@]}" bot_hub.py
+}
+
+stop_hub_process() {
+  stop_one hub "hub  控制台"
+  stop_orphan_hub_processes
+}
+
+count_running_production_workers() {
+  local running=0 total=0 f
+  for f in "${RUN_DIR}"/worker-*.pid; do
+    [[ -e "${f}" ]] || continue
+    [[ "$(basename "${f}" .pid)" == "worker-test" ]] && continue
+    total=$((total + 1))
+    if is_running "${f}"; then
+      running=$((running + 1))
+    fi
+  done
+  echo "${running} ${total}"
 }
 
 stop_production_workers() {
@@ -699,11 +742,65 @@ dispatch_test_subcmd() {
   esac
 }
 
+cmd_start_hub_only() {
+  local hub_url="http://127.0.0.1:${HUB_PORT}"
+  local worker_counts
+  worker_counts="$(count_running_production_workers)"
+  local worker_running="${worker_counts%% *}"
+  local worker_total="${worker_counts##* }"
+
+  print_title "Pallas-Bot 分片模式 · 启动 hub（不启 worker）"
+  echo "  hub 端口   ${HUB_PORT}"
+  if [[ "${worker_total}" -gt 0 ]]; then
+    echo "  worker     保持现状（${worker_running}/${worker_total} 运行，本次不启动 worker）"
+  else
+    echo "  worker     本次不启动（需单独 start 或 restart --workers-only）"
+  fi
+  load_shard_redis_env
+  echo "  $(shard_coord_backend_hint)"
+  echo ""
+  echo "  正在启动 hub…"
+
+  start_hub_process
+
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    echo ""
+    echo "  （预览模式，未实际启动进程）"
+    return 0
+  fi
+
+  echo ""
+  echo "  正在确认 hub 是否就绪…"
+  local hub_ok=0
+  if is_running "${PID_HUB}"; then
+    hub_ok=1
+  else
+    echo "  · 控制台 hub 未在运行，请查看日志: ${LOG_DIR}/hub.log"
+  fi
+
+  print_title "hub 启动完成"
+  echo "  汇总       hub $([[ "${hub_ok}" -eq 1 ]] && echo 运行中 || echo 未就绪)"
+  if [[ "${hub_ok}" -eq 1 ]]; then
+    echo "  WebUI      ${hub_url}/pallas/"
+    echo "  协议端     ${hub_url}/protocol/console/"
+  fi
+  echo ""
+  echo "  常用命令"
+  echo "    status                  查看运行状态"
+  echo "    restart --workers-only  仅重启 worker"
+  echo "    restart --hub-only       仅重启 hub"
+  if [[ "${hub_ok}" -eq 0 ]]; then
+    return 1
+  fi
+}
+
 cmd_start() {
+  if [[ "${HUB_ONLY}" -eq 1 ]]; then
+    cmd_start_hub_only
+    return
+  fi
   local workers="${WORKER_COUNT_OVERRIDE:-$(calc_worker_count)}"
   local hub_url="http://127.0.0.1:${HUB_PORT}"
-  local -a common
-  mapfile -t common < <(shard_common_env)
 
   print_title "Pallas-Bot 分片模式 · 启动"
   print_config_summary "${workers}"
@@ -727,11 +824,7 @@ cmd_start() {
   echo ""
   echo "  正在启动进程…"
 
-  start_one hub "hub  控制台 :${HUB_PORT}" env \
-    "${common[@]}" \
-    PALLAS_BOT_ROLE=hub \
-    PORT="${HUB_PORT}" \
-    "${START_CMD[@]}" bot_hub.py
+  start_hub_process
 
   if [[ "${DRY_RUN}" -eq 0 ]]; then
     sleep 1
@@ -777,6 +870,7 @@ cmd_start() {
   echo "  常用命令"
   echo "    status              查看运行状态与 Redis"
   echo "    restart --workers-only   仅重启 worker（保留 hub）"
+  echo "    restart --hub-only       仅重启 hub（保留 worker）"
   echo "    test start          仅启测试 worker"
   echo "    tail -f ${LOG_DIR}/worker-0.log"
   if [[ "${worker_fail}" -gt 0 ]]; then
@@ -789,6 +883,33 @@ cmd_start() {
 }
 
 cmd_stop() {
+  if [[ "${WORKERS_ONLY}" -eq 1 && "${HUB_ONLY}" -eq 1 ]]; then
+    echo "  --workers-only 与 --hub-only 不能同时使用" >&2
+    return 1
+  fi
+  if [[ "${HUB_ONLY}" -eq 1 ]]; then
+    local worker_counts
+    worker_counts="$(count_running_production_workers)"
+    local worker_running="${worker_counts%% *}"
+    local worker_total="${worker_counts##* }"
+    print_title "Pallas-Bot 分片模式 · 停止 hub（保留 worker）"
+    if [[ "${worker_total}" -gt 0 ]]; then
+      echo "  worker     保持运行（${worker_running}/${worker_total}）"
+    else
+      echo "  worker     未运行"
+    fi
+    echo ""
+    if [[ "${DRY_RUN}" -eq 1 ]]; then
+      echo "  · hub  控制台：将停止（预览）"
+      echo ""
+      echo "  （预览模式，未实际停止进程）"
+      return 0
+    fi
+    stop_hub_process
+    echo ""
+    echo "  hub 已处理完毕（生产 worker 与测试 worker-test 未停止）。"
+    return 0
+  fi
   if [[ "${WORKERS_ONLY}" -eq 1 ]]; then
     print_title "Pallas-Bot 分片模式 · 停止 worker（保留 hub）"
     if is_running "${PID_HUB}"; then
@@ -805,7 +926,7 @@ cmd_stop() {
   print_title "Pallas-Bot 分片模式 · 停止"
   stop_one "worker-test" "测试 worker-test"
   stop_production_workers
-  stop_one hub "hub  控制台"
+  stop_hub_process
   stop_orphan_shard_processes
   echo ""
   echo "  全部分片进程已处理完毕。"
@@ -895,11 +1016,61 @@ cmd_status() {
       echo "    ./scripts/run_sharded_bot.sh restart --workers-only"
     else
       echo "    ./scripts/run_sharded_bot.sh restart"
+      echo "    ./scripts/run_sharded_bot.sh start --hub-only   # 仅启 WebUI 控制台"
     fi
   elif [[ "${running_workers}" -eq 0 ]] && ! is_running "${PID_HUB}"; then
     echo ""
     echo "  提示：当前无运行中的分片进程"
     echo "    ./scripts/run_sharded_bot.sh start"
+  elif [[ "${running_workers}" -gt 0 ]] && ! is_running "${PID_HUB}"; then
+    echo ""
+    echo "  提示：worker 在运行但 hub 未运行（WebUI 不可用）"
+    echo "    ./scripts/run_sharded_bot.sh start --hub-only"
+  fi
+}
+
+cmd_restart_hub_only() {
+  print_title "Pallas-Bot 分片模式 · 重启 hub（保留 worker）"
+  echo "  hub 端口   ${HUB_PORT}"
+  local worker_counts
+  worker_counts="$(count_running_production_workers)"
+  local worker_running="${worker_counts%% *}"
+  local worker_total="${worker_counts##* }"
+  if [[ "${worker_total}" -gt 0 ]]; then
+    echo "  worker     保持运行（${worker_running}/${worker_total}）"
+  else
+    echo "  worker     未运行"
+  fi
+  echo ""
+
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    echo "  · hub  控制台：将重启（预览）"
+    echo ""
+    echo "  （预览模式，未实际重启进程）"
+    return 0
+  fi
+
+  stop_hub_process
+  echo ""
+  echo "  正在启动 hub…"
+  start_hub_process
+
+  echo ""
+  echo "  正在确认 hub…"
+  local hub_ok=0
+  if is_running "${PID_HUB}"; then
+    hub_ok=1
+  else
+    echo "  · 控制台 hub 未在运行，请查看日志: ${LOG_DIR}/hub.log"
+  fi
+
+  print_title "hub 重启完成"
+  echo "  汇总       hub $([[ "${hub_ok}" -eq 1 ]] && echo 运行中 || echo 未就绪)"
+  if [[ "${hub_ok}" -eq 1 ]]; then
+    echo "  WebUI      http://127.0.0.1:${HUB_PORT}/pallas/"
+  fi
+  if [[ "${hub_ok}" -eq 0 ]]; then
+    return 1
   fi
 }
 
@@ -911,7 +1082,7 @@ cmd_restart_workers_only() {
   if is_running "${PID_HUB}"; then
     echo "  hub        保持运行（:${HUB_PORT}）"
   else
-    echo "  hub        未运行（仅 worker；WebUI 需单独 start hub）"
+    echo "  hub        未运行（仅 worker；WebUI 需单独 start --hub-only）"
   fi
   echo ""
 
@@ -956,6 +1127,14 @@ cmd_restart_workers_only() {
 }
 
 cmd_restart() {
+  if [[ "${WORKERS_ONLY}" -eq 1 && "${HUB_ONLY}" -eq 1 ]]; then
+    echo "  --workers-only 与 --hub-only 不能同时使用" >&2
+    return 1
+  fi
+  if [[ "${HUB_ONLY}" -eq 1 ]]; then
+    cmd_restart_hub_only
+    return
+  fi
   if [[ "${WORKERS_ONLY}" -eq 1 ]]; then
     cmd_restart_workers_only
     return
@@ -990,6 +1169,11 @@ while [[ $# -gt 0 ]]; do
       fi
       TEST_ARGS=("${sub}" "${@:2}")
       break
+      ;;
+    hub-start|hub-stop|hub-restart)
+      ACTION="${1#hub-}"
+      HUB_ONLY=1
+      shift
       ;;
     --workdir)
       REPO_ROOT="$(cd "$2" && pwd)"
@@ -1033,6 +1217,10 @@ while [[ $# -gt 0 ]]; do
       WORKERS_ONLY=1
       shift
       ;;
+    --hub-only)
+      HUB_ONLY=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -1050,6 +1238,11 @@ WORKER_BASE_PORT="${PALLAS_SHARD_WORKER_BASE_PORT:-$(read_dotenv_port PALLAS_SHA
 
 if [[ -z "${ACTION}" ]]; then
   usage >&2
+  exit 1
+fi
+
+if [[ "${WORKERS_ONLY}" -eq 1 && "${HUB_ONLY}" -eq 1 ]]; then
+  echo "  --workers-only 与 --hub-only 不能同时使用" >&2
   exit 1
 fi
 
