@@ -266,7 +266,7 @@ uv run python tools/migrate_env_to_pallas.py
 
 1. **TOML 字符串必须加双引号**（例如 `db_backend = "postgresql"`、`user = "postgres"`；`postgresql` 裸写会导致 `tomllib` 解析失败，Bot 读不到任何配置）。
 2. **分片 / Redis**（可选）在 `pallas.toml` 增加 **`[env]`** 段，例如 `REDIS_URL = "redis://127.0.0.1:6379/0"`（见 `pallas.example.toml` 注释）。
-3. **清理旧 `.env`**：建议删除与 `webui.json` 重复的插件键，避免两套配置并存；运行时以 `webui.json` 为准。
+3. **`.env` 与 nb 插件**：可复制 [`.env.example`](.env.example) 为 `.env`，专放 pip/nb 插件环境变量；与 `webui.json` 避免同名键重复（运行时以 `webui.json` 为准）。
 4. 校验：`uv run python -c "import tomllib; tomllib.load(open('config/pallas.toml','rb')); print('toml ok')"`。
 
 数据库从 Mongo 迁到 PostgreSQL 另见 [Migration-v3](docs/Migration-v3.md) 与 [`tools/migrate_mongo_to_pg.py`](tools/migrate_mongo_to_pg.py)（与 `.env` → TOML 迁移无关）。

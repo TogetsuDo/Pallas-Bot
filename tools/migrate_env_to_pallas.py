@@ -4,8 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import json
-import re
 import sys
 from pathlib import Path
 
@@ -13,140 +11,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from dotenv import dotenv_values  # noqa: E402
-
-from src.common.config.repo_settings import (  # noqa: E402
-    nonebot_repo_dotenv_environment,
-    repo_config_path,
-    repo_env_path,
-    repo_webui_settings_path,
+from src.common.config.migrate_env_to_pallas import (  # noqa: E402
+    EnvToPallasMigrationError,
+    apply_env_to_pallas_migration,
+    bootstrap_from_env,
+    merge_legacy_env,
 )
-
-_RE_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
-
-_BOOTSTRAP_KEYS = frozenset({
-    "HOST",
-    "PORT",
-    "SUPERUSERS",
-    "DB_BACKEND",
-    "ACCESS_TOKEN",
-    "ENVIRONMENT",
-    "LOG_LEVEL",
-    "MONGO_HOST",
-    "MONGO_PORT",
-    "MONGO_USER",
-    "MONGO_PASSWORD",
-    "MONGO_DB",
-    "MONGO_AUTH_SOURCE",
-    "PG_HOST",
-    "PG_PORT",
-    "PG_USER",
-    "PG_PASSWORD",
-    "PG_DB",
-})
-
-
-def _merge_legacy_env() -> dict[str, str]:
-    merged: dict[str, str] = {}
-    root = repo_env_path()
-    layered = REPO_ROOT / f".env.{nonebot_repo_dotenv_environment()}"
-    for path in (root, layered):
-        if not path.is_file():
-            continue
-        for k, v in (dotenv_values(path) or {}).items():
-            if k:
-                merged[str(k).upper()] = "" if v is None else str(v)
-    return merged
-
-
-def _bootstrap_from_env(env: dict[str, str]) -> dict:
-    boot: dict = {}
-    if "HOST" in env:
-        boot["host"] = env["HOST"]
-    if "PORT" in env:
-        boot["port"] = int(env["PORT"]) if str(env["PORT"]).isdigit() else env["PORT"]
-    if "SUPERUSERS" in env:
-        raw = env["SUPERUSERS"].strip()
-        if raw.startswith("["):
-            boot["superusers"] = json.loads(raw)
-        else:
-            boot["superusers"] = [x.strip() for x in raw.split(",") if x.strip()]
-    if "DB_BACKEND" in env:
-        boot["db_backend"] = env["DB_BACKEND"]
-    if "ACCESS_TOKEN" in env and env["ACCESS_TOKEN"]:
-        boot["access_token"] = env["ACCESS_TOKEN"]
-    mongo = {}
-    for ek, tk in (
-        ("MONGO_HOST", "host"),
-        ("MONGO_PORT", "port"),
-        ("MONGO_USER", "user"),
-        ("MONGO_PASSWORD", "password"),
-        ("MONGO_DB", "db"),
-        ("MONGO_AUTH_SOURCE", "auth_source"),
-    ):
-        if ek in env and env[ek]:
-            val = env[ek]
-            mongo[tk] = int(val) if ek == "MONGO_PORT" and str(val).isdigit() else val
-    if mongo:
-        boot["mongo"] = mongo
-    pg = {}
-    for ek, tk in (
-        ("PG_HOST", "host"),
-        ("PG_PORT", "port"),
-        ("PG_USER", "user"),
-        ("PG_PASSWORD", "password"),
-        ("PG_DB", "db"),
-    ):
-        if ek in env and env[ek]:
-            val = env[ek]
-            pg[tk] = int(val) if ek == "PG_PORT" and str(val).isdigit() else val
-    if pg:
-        boot["postgres"] = pg
-    return boot
-
-
-def _toml_quote(s: str) -> str:
-    """字符串值一律加引号（tomllib 不接受 postgresql 等裸词）。"""
-    escaped = s.replace("\\", "\\\\").replace('"', '\\"')
-    return f'"{escaped}"'
-
-
-def _write_toml(path: Path, bootstrap: dict) -> None:
-    lines = [
-        "# 由 tools/migrate_env_to_pallas.py 生成；WebUI 写入见 data/pallas_config/webui.json",
-        "",
-        "[bootstrap]",
-    ]
-    if "host" in bootstrap:
-        lines.append(f"host = {_toml_quote(str(bootstrap['host']))}")
-    if "port" in bootstrap:
-        lines.append(f"port = {bootstrap['port']}")
-    if "superusers" in bootstrap:
-        su = bootstrap["superusers"]
-        if isinstance(su, list):
-            inner = ", ".join(_toml_quote(str(x)) for x in su)
-            lines.append(f"superusers = [{inner}]")
-    if "db_backend" in bootstrap:
-        lines.append(f"db_backend = {_toml_quote(str(bootstrap['db_backend']))}")
-    if bootstrap.get("access_token"):
-        lines.append(f"access_token = {_toml_quote(str(bootstrap['access_token']))}")
-    for block_name in ("mongo", "postgres"):
-        block = bootstrap.get(block_name)
-        if not isinstance(block, dict):
-            continue
-        lines.extend(("", f"[bootstrap.{block_name}]"))
-        for k, v in block.items():
-            if v is None or v == "":
-                continue
-            key = k if _RE_IDENT.match(k) else f'"{k}"'
-            if isinstance(v, bool):
-                lines.append(f"{key} = {'true' if v else 'false'}")
-            elif isinstance(v, int):
-                lines.append(f"{key} = {v}")
-            else:
-                lines.append(f"{key} = {_toml_quote(str(v))}")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def main() -> int:
@@ -155,37 +25,51 @@ def main() -> int:
     parser.add_argument("--force", action="store_true", help="覆盖已存在的 pallas.toml / webui.json")
     args = parser.parse_args()
 
-    merged = _merge_legacy_env()
+    merged = merge_legacy_env()
     if not merged:
         print("未找到 .env 或 .env.{ENVIRONMENT}，无需迁移。", file=sys.stderr)
         return 1
 
-    bootstrap = _bootstrap_from_env(merged)
-    webui_env = {k: v for k, v in merged.items() if k not in _BOOTSTRAP_KEYS}
-
-    cfg_path = repo_config_path()
-    webui_path = repo_webui_settings_path()
+    bootstrap = bootstrap_from_env(merged)
+    webui_env = {
+        k: v
+        for k, v in merged.items()
+        if k
+        not in {
+            "HOST",
+            "PORT",
+            "SUPERUSERS",
+            "DB_BACKEND",
+            "ACCESS_TOKEN",
+            "ENVIRONMENT",
+            "LOG_LEVEL",
+            "MONGO_HOST",
+            "MONGO_PORT",
+            "MONGO_USER",
+            "MONGO_PASSWORD",
+            "MONGO_DB",
+            "MONGO_AUTH_SOURCE",
+            "PG_HOST",
+            "PG_PORT",
+            "PG_USER",
+            "PG_PASSWORD",
+            "PG_DB",
+        }
+    }
 
     if args.dry_run:
         print(f"bootstrap 字段: {len(bootstrap)} 组, webui env 键: {len(webui_env)}")
         return 0
 
-    if cfg_path.is_file() and not args.force:
-        print(f"已存在 {cfg_path}，加 --force 覆盖或手合并。", file=sys.stderr)
-        return 2
-    if webui_path.is_file() and not args.force:
-        print(f"已存在 {webui_path}，加 --force 覆盖或手合并。", file=sys.stderr)
-        return 2
+    try:
+        result = apply_env_to_pallas_migration(force=args.force)
+    except EnvToPallasMigrationError as e:
+        print(e.detail, file=sys.stderr)
+        return 2 if e.status_code == 409 else 1
 
-    _write_toml(cfg_path, bootstrap)
-    webui_path.parent.mkdir(parents=True, exist_ok=True)
-    webui_path.write_text(
-        json.dumps({"env": webui_env}, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    print(f"已写入 {cfg_path}")
-    print(f"已写入 {webui_path}（{len(webui_env)} 项）")
-    print("确认无误后可停用根目录 .env。")
+    print(f"已写入 {result.config_path}")
+    print(f"已写入 {result.webui_path}（{result.webui_env_key_count} 项）")
+    print("可保留 .env 专放 nb/pip 插件项；与 webui.json 避免同名键重复。示例见 .env.example。")
     return 0
 
 

@@ -5408,6 +5408,37 @@ def register_extended_api(
         data = await _cached_read(key=cache_key, loader=_load, ttl_sec=120.0, stale_sec=900.0)
         return JSONResponse({"ok": True, "data": data})
 
+    @router.get(f"{x}/update/bot/config-migration/check", include_in_schema=True)
+    async def _bot_config_migration_check() -> JSONResponse:
+        from src.common.config.migrate_env_to_pallas import inspect_env_to_pallas_migration
+
+        return JSONResponse({"ok": True, "data": inspect_env_to_pallas_migration()})
+
+    @router.post(f"{x}/update/bot/config-migration/apply", include_in_schema=True)
+    async def _bot_config_migration_apply(
+        force: bool = Query(default=False),
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        from src.common.config.migrate_env_to_pallas import (
+            EnvToPallasMigrationError,
+            apply_env_to_pallas_migration,
+            inspect_env_to_pallas_migration,
+        )
+        from src.common.utils.format_exception import format_exception_for_log
+
+        try:
+            result = apply_env_to_pallas_migration(force=force)
+            data = result.as_dict()
+            data["migration"] = inspect_env_to_pallas_migration()
+            return JSONResponse({"ok": True, "data": data})
+        except EnvToPallasMigrationError as e:
+            raise HTTPException(status_code=e.status_code, detail=e.detail) from e
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Pallas-Bot 控制台: .env 配置迁移失败")
+            raise HTTPException(status_code=500, detail=format_exception_for_log(e)) from e
+
     @router.post(f"{x}/update/bot/apply", include_in_schema=True)
     async def _bot_update_apply(
         token: str | None = Query(default=None),

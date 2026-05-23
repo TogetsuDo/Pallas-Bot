@@ -56,7 +56,7 @@ uv run python -c "from src.common.config.webui_export_toml import export_webui_i
 uv run python tools/migrate_env_to_pallas.py
 ```
 
-迁移后建议清理根目录旧 **`.env`** 中与 `webui.json` 重复的插件键，避免两套配置并存难以辨认；运行时以 `webui.json` 为准。
+迁移后 **`.env` 仍可保留**，专用于 nb/pip 插件环境变量（示例见仓库根 [`.env.example`](../.env.example)）；与 `webui.json` **避免同名键重复**，运行时以 `webui.json` 为准。
 
 ## 实现
 
