@@ -235,6 +235,10 @@ def _ensure_pg_user_config_maa_devices(connection) -> None:
         connection.execute(text("ALTER TABLE user_config ADD COLUMN maa_stage_plan JSONB NOT NULL DEFAULT '[]'::jsonb"))
 
 
+def is_pg_initialized() -> bool:
+    return _session_factory is not None
+
+
 @asynccontextmanager
 async def get_session():
     if _session_factory is None:

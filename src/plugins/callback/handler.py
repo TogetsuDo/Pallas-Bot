@@ -5,11 +5,30 @@ from __future__ import annotations
 import base64
 
 from fastapi import HTTPException, UploadFile
-from nonebot import get_bot
+from nonebot import get_bot, logger
+from nonebot.adapters.onebot.v11.exception import NetworkError
+from nonebot.exception import ActionFailed
 
 from src.common.config import GroupConfig, TaskManager
 from src.common.db import SingProgress
 from src.common.shard.coord.ai_task_registry import remove_ai_task
+
+_CALLBACK_SEND_ERRORS = (ActionFailed, NetworkError)
+
+
+async def send_group_message(bot, group_id: int, message: str) -> bool:
+    try:
+        await bot.call_api(
+            "send_group_msg",
+            **{
+                "message": message,
+                "group_id": group_id,
+            },
+        )
+        return True
+    except _CALLBACK_SEND_ERRORS as e:
+        logger.warning("AI callback send_group_msg failed group={}: {}", group_id, e)
+        return False
 
 
 async def run_ai_callback(
@@ -46,37 +65,35 @@ async def run_ai_callback(
     if status == "failed":
         await TaskManager.remove_task(task_id)
         remove_ai_task(task_id)
-        await bot.call_api(
-            "send_group_msg",
-            **{
-                "message": "我习惯了站着不动思考。有时候啊，也会被大家突然戳一戳，看看睡着了没有。",
-                "group_id": group_id,
-            },
-        )
+        if group_id:
+            await send_group_message(
+                bot,
+                group_id,
+                "我习惯了站着不动思考。有时候啊，也会被大家突然戳一戳，看看睡着了没有。",
+            )
         return {"message": "ok"}
 
     if status == "success":
-        if text:
-            await bot.call_api(
-                "send_group_msg",
-                **{
-                    "message": text,
-                    "group_id": group_id,
-                },
-            )
-        if file:
+        delivered = True
+        if text and group_id:
+            delivered = await send_group_message(bot, group_id, text) and delivered
+        if file and group_id:
             file_content = await file.read()
             base64_file = base64.b64encode(file_content).decode()
-            await bot.call_api(
-                "send_group_msg",
-                **{
-                    "message": f"[CQ:record,file=base64://{base64_file}]",
-                    "group_id": group_id,
-                },
-            )
+            try:
+                await bot.call_api(
+                    "send_group_msg",
+                    **{
+                        "message": f"[CQ:record,file=base64://{base64_file}]",
+                        "group_id": group_id,
+                    },
+                )
+            except _CALLBACK_SEND_ERRORS as e:
+                logger.warning("AI callback send voice failed group={}: {}", group_id, e)
+                delivered = False
 
         await TaskManager.remove_task(task_id)
         remove_ai_task(task_id)
-        return {"message": "ok"}
+        return {"message": "ok" if delivered else "failed"}
 
     raise HTTPException(status_code=400, detail="Invalid status")

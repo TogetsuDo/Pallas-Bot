@@ -5,12 +5,18 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from nonebot.log import LoguruHandler
 
 if TYPE_CHECKING:
     from logging import LogRecord
+
+_TRANSIENT_UVICORN_MESSAGES = (
+    "keepalive ping failed",
+    "data transfer failed",
+)
 
 
 def _stdlib_logger_channel_label(logger_name: str) -> str:
@@ -27,6 +33,9 @@ class ChannelLoguruHandler(LoguruHandler):
     def emit(self, record: LogRecord) -> None:
         text = record.getMessage()
         label = _stdlib_logger_channel_label(record.name)
+        if label == "uvicorn" and any(part in text for part in _TRANSIENT_UVICORN_MESSAGES):
+            record.levelno = logging.WARNING
+            record.levelname = "WARNING"
         record.msg = f"[{label}] {text}" if label else text
         record.args = ()
         super().emit(record)

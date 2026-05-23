@@ -70,6 +70,20 @@ def group_message_permission_for_command(command_id: str) -> Permission:
     return Permission(_checker)
 
 
+def group_or_private_message_permission_for_command(command_id: str) -> Permission:
+    """OneBot V11 群或私聊 + 可配置命令权限（单 checker，避免 Permission 组合）。"""
+    inner = permission_for_command(command_id)
+
+    async def _checker(bot: Bot, event: Event) -> bool:
+        is_group = await permission.GROUP(bot, event)
+        is_private = await permission.PRIVATE(bot, event)
+        if not (is_group or is_private):
+            return False
+        return await inner(bot, event)
+
+    return Permission(_checker)
+
+
 def private_message_permission_for_command(command_id: str) -> Permission:
     """OneBot V11 私聊消息 + 可配置命令权限。"""
     inner = permission_for_command(command_id)

@@ -94,6 +94,12 @@ async def is_plugin_disabled(
     """
     检查插件是否被禁用
     """
+    from src.common.db import get_db_backend
+    from src.common.db.repository_pg import is_pg_initialized
+
+    if get_db_backend() == "postgresql" and not is_pg_initialized():
+        logger.debug("help is_plugin_disabled skipped: PostgreSQL not ready plugin={}", plugin_name)
+        return False
     try:
         if not ignore_cache and (bot_id or group_id):
             disabled_names = await collect_disabled_plugin_names(bot_id, group_id)

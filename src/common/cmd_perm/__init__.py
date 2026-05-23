@@ -2,6 +2,7 @@
 
 from .check import (
     group_message_permission_for_command,
+    group_or_private_message_permission_for_command,
     permission_for_command,
     private_message_permission_for_command,
     satisfies_command_permission,
@@ -25,6 +26,7 @@ __all__ = [
     "clear_cmd_perm_cache",
     "get_cmd_perm_config",
     "group_message_permission_for_command",
+    "group_or_private_message_permission_for_command",
     "normalize_level",
     "permission_for_command",
     "private_message_permission_for_command",
