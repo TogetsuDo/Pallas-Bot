@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from operator import itemgetter
 
 from src.common.paths import plugin_data_dir
 
@@ -21,12 +22,18 @@ def _prune_old_claims(plugin: str, *, max_files: int = 500) -> None:
     root = plugin_data_dir(plugin) / "message_claims"
     if not root.is_dir():
         return
-    files = sorted(root.glob("*.claim"), key=lambda p: p.stat().st_mtime, reverse=True)
-    now = time.time()
-    for p in files[max_files:]:
+    ranked: list[tuple[float, object]] = []
+    for path in root.glob("*.claim"):
         try:
-            if now - p.stat().st_mtime > _CLAIM_MAX_AGE_SEC:
-                p.unlink(missing_ok=True)
+            ranked.append((path.stat().st_mtime, path))
+        except OSError:
+            continue
+    ranked.sort(key=itemgetter(0), reverse=True)
+    now = time.time()
+    for _, path in ranked[max_files:]:
+        try:
+            if now - path.stat().st_mtime > _CLAIM_MAX_AGE_SEC:
+                path.unlink(missing_ok=True)
         except OSError:
             pass
 

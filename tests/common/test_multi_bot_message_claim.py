@@ -33,3 +33,22 @@ def test_same_cross_bot_key_only_one_bot_claims(claim_plugin_data: Path) -> None
     assert claim_mod.try_claim_message_sync("pallas_image", gid, key, 111) is True
     assert claim_mod.try_claim_message_sync("pallas_image", gid, key, 222) is False
     assert claim_mod.try_claim_message_sync("pallas_image", gid, key, 111) is True
+
+
+def test_prune_tolerates_deleted_claim_file(claim_plugin_data: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    claims = claim_plugin_data / "message_claims"
+    claims.mkdir(parents=True)
+    kept = claims / "1_1.claim"
+    vanished = claims / "1_2.claim"
+    kept.write_text("111", encoding="utf-8")
+    vanished.write_text("222", encoding="utf-8")
+
+    real_stat = Path.stat
+
+    def stat(self: Path, *args, **kwargs):
+        if self == vanished:
+            raise FileNotFoundError(2, "No such file or directory", str(self))
+        return real_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", stat)
+    claim_mod._prune_old_claims("pallas_image", max_files=500)

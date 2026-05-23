@@ -82,3 +82,14 @@ def test_merge_today_row_overwrites_with_live() -> None:
     assert row["received"] == 9
     assert row["sent"] == 3
     assert row["matcher_runs"] == 7
+
+
+def test_atomic_write_uses_process_scoped_tmp(monkeypatch, tmp_path) -> None:
+    target = tmp_path / "console_daily_stats.json"
+    monkeypatch.setattr(daily_stats_store, "stats_file_path", lambda: target)
+    pids = iter([111, 222])
+    monkeypatch.setattr(daily_stats_store.os, "getpid", lambda: next(pids))
+    daily_stats_store._atomic_write({"v": 1, "by_day": {}})
+    daily_stats_store._atomic_write({"v": 1, "by_day": {"2026-05-23": {}}})
+    assert target.is_file()
+    assert not list(tmp_path.glob("console_daily_stats.*.tmp"))

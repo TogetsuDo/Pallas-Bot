@@ -414,21 +414,30 @@ async def speak_up():
 
     for msg in messages:
         logger.info(f"bot [{bot_id}] ready to speak [{msg}] to group [{group_id}]")
-        await get_bot(str(bot_id)).call_api(
-            "send_group_msg",
-            **{
-                "message": msg,
-                "group_id": group_id,
-            },
-        )
-        if target_id:
+        try:
             await get_bot(str(bot_id)).call_api(
-                "group_poke",
+                "send_group_msg",
                 **{
-                    "user_id": target_id,
+                    "message": msg,
                     "group_id": group_id,
                 },
             )
+            if target_id:
+                await get_bot(str(bot_id)).call_api(
+                    "group_poke",
+                    **{
+                        "user_id": target_id,
+                        "group_id": group_id,
+                    },
+                )
+        except ActionFailed as e:
+            logger.warning(
+                "bot [{}] speak_up send failed group [{}]: {}",
+                bot_id,
+                group_id,
+                e,
+            )
+            return
         await asyncio.sleep(random.randint(2, 5))
 
 

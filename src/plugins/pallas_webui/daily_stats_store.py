@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 from datetime import date, timedelta
 from operator import itemgetter
@@ -42,9 +43,16 @@ def _read_raw() -> dict[str, Any]:
 def _atomic_write(data: dict[str, Any]) -> None:
     p = stats_file_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(p)
+    tmp = p.with_name(f"{p.stem}.{os.getpid()}.{threading.get_ident()}.tmp")
+    payload = json.dumps(data, ensure_ascii=False, indent=2)
+    try:
+        tmp.write_text(payload, encoding="utf-8")
+        tmp.replace(p)
+    finally:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def _trim_old_days(by_day: dict[str, Any]) -> None:
