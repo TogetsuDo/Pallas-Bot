@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote, urlparse, urlunparse
@@ -462,20 +463,25 @@ def register_pallas_protocol_routes(
     ):
         cookie_token = request.cookies.get(page_cookie_name)
         _auth(x_pallas_protocol_token, token, cookie_token, request=request)
-        from src.common.web import (
-            install_nonebot_log_sink,
-            tail_nonebot_log_entries_scoped,
-            tail_nonebot_log_lines_scoped,
-        )
+        from src.common.web import install_nonebot_log_sink
 
         install_nonebot_log_sink()
 
         sc = scope if scope in ("all", "webui", "protocol") else "all"
-        return {
-            "logs": tail_nonebot_log_lines_scoped(lines, sc),
-            "entries": tail_nonebot_log_entries_scoped(lines, sc),
-            "scope": sc,
-        }
+
+        def _load() -> dict[str, object]:
+            from src.common.web import (
+                tail_nonebot_log_entries_scoped,
+                tail_nonebot_log_lines_scoped,
+            )
+
+            return {
+                "logs": tail_nonebot_log_lines_scoped(lines, sc),
+                "entries": tail_nonebot_log_entries_scoped(lines, sc),
+                "scope": sc,
+            }
+
+        return await asyncio.to_thread(_load)
 
     @app.get(f"{base}/api/nonebot-logs/stream")
     async def nonebot_logs_stream(
@@ -726,7 +732,8 @@ def register_pallas_protocol_routes(
         x_pallas_protocol_token: str | None = Header(default=None, alias="X-Pallas-Protocol-Token"),
     ):
         _auth(x_pallas_protocol_token, token)
-        return {"accounts": manager.list_accounts()}
+        accounts = await asyncio.to_thread(manager.list_accounts)
+        return {"accounts": accounts}
 
     @app.get(f"{base}/api/accounts/{{account_id}}")
     async def get_one_account(

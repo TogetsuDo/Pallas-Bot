@@ -29,6 +29,7 @@ def test_coord_pending_counts(tmp_path, monkeypatch):
     )
     snap = coord_pending_snapshot_sync()
     assert snap["total_json"] == 4
+    assert snap["actionable_total"] == 2
     assert snap["by_dir"]["bot_action"] == 3
     assert snap["bot_action_open"] == 2
     assert snap["bot_action_stale_open"] == 1

@@ -181,6 +181,26 @@ def end_duel_group(group_id: int) -> None:
     _mutate(path, release)
 
 
+async def prune_stale_duel_group_files(*, max_age_sec: float = 3600.0) -> int:
+    root = _coord_dir()
+    if not root.is_dir():
+        return 0
+    now = time.time()
+    removed = 0
+    for path in root.glob("*.json"):
+        try:
+            raw = _read(path)
+            if isinstance(raw, dict) and raw.get("busy") and float(raw.get("until") or 0) > now:
+                continue
+            if now - path.stat().st_mtime <= max_age_sec:
+                continue
+            path.unlink(missing_ok=True)
+            removed += 1
+        except OSError:
+            pass
+    return removed
+
+
 async def try_reclaim_orphan_duel_group(group_id: int) -> bool:
     """
     回收泄漏的群决斗占用：busy 较久且协调文件无有效 session_pair。

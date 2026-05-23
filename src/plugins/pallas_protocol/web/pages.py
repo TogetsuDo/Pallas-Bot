@@ -1609,6 +1609,13 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
       if (!document.getElementById("autoRefresh").checked) return;
       nbLoadInitial().catch(() => {{}});
     }}, 8000);
+    (function() {{
+      const poll = parseInt(localStorage.getItem("pallas-dashboard-poll-ms") || "10000", 10);
+      const ms = Number.isFinite(poll) ? Math.max(poll, 5000) : 10000;
+      setInterval(() => {{
+        refreshAccounts({{ silent: true }}).catch(() => {{}});
+      }}, ms);
+    }})();
   </script>
   <div id="statusbar" class="statusbar"></div>
 </body>

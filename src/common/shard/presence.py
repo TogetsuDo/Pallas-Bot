@@ -13,6 +13,7 @@ from src.common.shard.registry.config import get_shard_registry_settings, is_sha
 
 _PLUGIN = "pallas_shard"
 _PRESENCE_FILE = "worker_presence.json"
+_PRESENCE_STALE_SEC = 120.0
 
 
 def _presence_path():
@@ -99,6 +100,7 @@ def note_worker_bot_connected_sync(
 ) -> None:
     key = str(int(qq))
     nick = (nickname or "").strip()
+    now = time.time()
 
     def upd(data: dict[str, Any]) -> None:
         bots = data.setdefault("bots", {})
@@ -107,11 +109,81 @@ def note_worker_bot_connected_sync(
             "shard_id": int(shard_id),
             "connection_key": connection_key,
             "adapter": adapter,
-            "connected_at_unix": int(time.time()),
+            "connected_at_unix": int(now),
+            "last_seen_at": now,
             "nickname": nick,
         }
 
     _mutate(upd)
+
+
+def touch_worker_bot_presence_sync(*, qq: int) -> None:
+    key = str(int(qq))
+    now = time.time()
+
+    def upd(data: dict[str, Any]) -> None:
+        bots = data.get("bots")
+        if not isinstance(bots, dict):
+            return
+        rec = bots.get(key)
+        if isinstance(rec, dict):
+            rec["last_seen_at"] = now
+
+    _mutate(upd)
+
+
+def reconcile_local_worker_presence_sync(*, shard_id: int, local_qq_ids: set[int]) -> None:
+    """对齐本 worker 实际连接：移除已断开但仍留在 presence 的牛。"""
+    now = time.time()
+    sid = int(shard_id)
+
+    def upd(data: dict[str, Any]) -> None:
+        bots = data.get("bots")
+        if not isinstance(bots, dict):
+            return
+        for key in list(bots.keys()):
+            rec = bots.get(key)
+            if not isinstance(rec, dict):
+                bots.pop(key, None)
+                continue
+            if int(rec.get("shard_id") or -1) != sid:
+                continue
+            try:
+                qq = int(rec.get("qq") or key)
+            except (TypeError, ValueError):
+                bots.pop(key, None)
+                continue
+            if qq not in local_qq_ids:
+                bots.pop(key, None)
+            else:
+                rec["last_seen_at"] = now
+
+    _mutate(upd)
+
+
+def prune_stale_presence_entries_sync(*, max_age_sec: float = _PRESENCE_STALE_SEC) -> int:
+    """移除长时间未刷新的 presence（worker 崩溃或未正常 disconnect 时兜底）。"""
+    now = time.time()
+    removed = 0
+
+    def upd(data: dict[str, Any]) -> None:
+        nonlocal removed
+        bots = data.get("bots")
+        if not isinstance(bots, dict):
+            return
+        for key in list(bots.keys()):
+            rec = bots.get(key)
+            if not isinstance(rec, dict):
+                bots.pop(key, None)
+                removed += 1
+                continue
+            last = float(rec.get("last_seen_at") or rec.get("connected_at_unix") or 0)
+            if last <= 0 or now - last > max_age_sec:
+                bots.pop(key, None)
+                removed += 1
+
+    _mutate(upd)
+    return removed
 
 
 def note_worker_bot_disconnected_sync(*, qq: int) -> None:
@@ -169,6 +241,7 @@ async def note_worker_bot_disconnected(qq: int) -> None:
 def read_presence_bots() -> dict[str, dict[str, Any]]:
     if not is_sharding_active():
         return {}
+    prune_stale_presence_entries_sync()
     data = _read_data()
     bots = data.get("bots")
     if not isinstance(bots, dict):

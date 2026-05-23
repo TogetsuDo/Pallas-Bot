@@ -127,6 +127,9 @@ if not is_sharded_worker():
             "pallas_webui_dev_mode": bool(plugin_config.pallas_webui_dev_mode),
         })
         register_extended_api(app, api_base=api_base, plugin_config=plugin_config)
+        from .extended_api import _ensure_log_sink
+
+        _ensure_log_sink()
         register_routes(
             app,
             public_dir=public,

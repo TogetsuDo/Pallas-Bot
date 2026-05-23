@@ -476,7 +476,9 @@ def collect_cluster_log_errors(
         if jsonl_rows:
             return jsonl_rows
         if shard_errors_dir().is_dir() and errors_archive_prefers_jsonl_only():
-            return []
+            # 清空后 jsonl 已删：仍可从 worker-*.log 读新 ERROR；有 jsonl 文件但暂无行则不再扫大日志
+            if list(shard_errors_dir().glob("*.jsonl")):
+                return []
     except Exception:
         pass
     root = shard_logs_dir()

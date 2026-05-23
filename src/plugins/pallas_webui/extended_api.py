@@ -1235,6 +1235,70 @@ def _flush_today_console_daily_stats_disk() -> None:
         daily_stats_store.write_day_totals(today, sid, dr, ds, mr)
 
 
+def _msg_stats_shard_export(mem: dict[str, Any]) -> dict[str, Any]:
+    counts = mem.get("day_api_counts")
+    if not isinstance(counts, dict):
+        counts = {}
+    api_hist = mem.get("api_call_buckets")
+    if not isinstance(api_hist, list):
+        api_hist = []
+    traffic_hist = mem.get("msg_traffic_buckets")
+    if not isinstance(traffic_hist, list):
+        traffic_hist = []
+    day_api: dict[str, int] = {}
+    for k, v in counts.items():
+        key = str(k).strip()
+        if not key:
+            continue
+        try:
+            day_api[key] = int(v)
+        except (TypeError, ValueError):
+            continue
+    return {
+        "sent": int(mem.get("sent", 0)),
+        "received": int(mem.get("received", 0)),
+        "day_sent": int(mem.get("day_sent", 0)),
+        "day_received": int(mem.get("day_received", 0)),
+        "day_key": str(mem.get("day_key") or ""),
+        "day_api_total": int(mem.get("day_api_total", 0)),
+        "day_api_counts": day_api,
+        "api_call_buckets": [dict(x) for x in api_hist if isinstance(x, dict)],
+        "msg_traffic_buckets": [dict(x) for x in traffic_hist if isinstance(x, dict)],
+    }
+
+
+def _msg_stats_shard_import(msg: dict[str, Any], *, today: str) -> dict[str, Any]:
+    counts = msg.get("day_api_counts")
+    if not isinstance(counts, dict):
+        counts = {}
+    api_hist = msg.get("api_call_buckets")
+    if not isinstance(api_hist, list):
+        api_hist = []
+    traffic_hist = msg.get("msg_traffic_buckets")
+    if not isinstance(traffic_hist, list):
+        traffic_hist = []
+    day_api: dict[str, int] = {}
+    for k, v in counts.items():
+        key = str(k).strip()
+        if not key:
+            continue
+        try:
+            day_api[key] = int(v)
+        except (TypeError, ValueError):
+            continue
+    return {
+        "sent": int(msg.get("sent", 0)),
+        "received": int(msg.get("received", 0)),
+        "day_sent": int(msg.get("day_sent", 0)),
+        "day_received": int(msg.get("day_received", 0)),
+        "day_key": str(msg.get("day_key") or today),
+        "day_api_total": int(msg.get("day_api_total", 0)),
+        "day_api_counts": day_api,
+        "api_call_buckets": [dict(x) for x in api_hist if isinstance(x, dict)],
+        "msg_traffic_buckets": [dict(x) for x in traffic_hist if isinstance(x, dict)],
+    }
+
+
 def _serialize_bot_for_shard_stats(sid: str, *, include_hist: bool = False) -> dict[str, Any]:
     sid = str(sid).strip()
     pblock = _PLUGIN_RUN_STATS.get(sid)
@@ -1269,13 +1333,7 @@ def _serialize_bot_for_shard_stats(sid: str, *, include_hist: bool = False) -> d
             dur_log = [dict(x) for x in raw_log[-_MATCHER_DURATION_LOG_CAP:] if isinstance(x, dict)]
     msg: dict[str, Any] = {}
     if isinstance(mem, dict):
-        msg = {
-            "sent": int(mem.get("sent", 0)),
-            "received": int(mem.get("received", 0)),
-            "day_sent": int(mem.get("day_sent", 0)),
-            "day_received": int(mem.get("day_received", 0)),
-            "day_key": str(mem.get("day_key") or ""),
-        }
+        msg = _msg_stats_shard_export(mem)
     day_key = ""
     if isinstance(pblock, dict):
         day_key = str(pblock.get("day_key") or "")
@@ -1312,11 +1370,19 @@ def flush_worker_shard_console_stats_sync(*, include_hist: bool = False) -> None
     from src.common.shard.console_stats import write_worker_stats_sync
     from src.common.shard.coord_pending import coord_pending_snapshot_sync
     from src.common.shard.ingress_metrics import ingress_metrics_snapshot
+    from src.common.shard.presence import reconcile_local_worker_presence_sync
     from src.common.shard.registry.config import get_shard_registry_settings
 
     if not is_sharded_worker():
         return
     shard_id = int(get_shard_registry_settings().shard_id)
+    try:
+        from nonebot import get_bots
+
+        local_qq = {int(k) for k in get_bots().keys() if str(k).isdigit()}
+        reconcile_local_worker_presence_sync(shard_id=shard_id, local_qq_ids=local_qq)
+    except Exception:
+        pass
     write_worker_stats_sync(
         shard_id=shard_id,
         bots=_collect_worker_console_stats_snapshot(include_hist=include_hist),
@@ -1360,17 +1426,7 @@ def _restore_worker_console_stats_from_shard_file() -> None:
             bucket["matcher_duration_log"] = [dict(x) for x in log[-_MATCHER_DURATION_LOG_CAP:] if isinstance(x, dict)]
         msg = rec.get("msg")
         if isinstance(msg, dict):
-            _MSG_STATS[sid] = {
-                "sent": int(msg.get("sent", 0)),
-                "received": int(msg.get("received", 0)),
-                "day_sent": int(msg.get("day_sent", 0)),
-                "day_received": int(msg.get("day_received", 0)),
-                "day_key": str(msg.get("day_key") or today),
-                "day_api_total": 0,
-                "day_api_counts": {},
-                "api_call_buckets": [],
-                "msg_traffic_buckets": [],
-            }
+            _MSG_STATS[sid] = _msg_stats_shard_import(msg, today=today)
         _CONSOLE_CAL_DAY[sid] = str(bucket.get("day_key") or today)
 
 
@@ -1784,17 +1840,7 @@ def _message_stats_mem_from_shard_blob(rec: dict[str, Any]) -> dict[str, Any]:
     msg = rec.get("msg")
     if not isinstance(msg, dict):
         msg = {}
-    return {
-        "sent": int(msg.get("sent", 0)),
-        "received": int(msg.get("received", 0)),
-        "day_sent": int(msg.get("day_sent", 0)),
-        "day_received": int(msg.get("day_received", 0)),
-        "day_key": str(msg.get("day_key") or ""),
-        "day_api_total": 0,
-        "day_api_counts": {},
-        "api_call_buckets": [],
-        "msg_traffic_buckets": [],
-    }
+    return _msg_stats_shard_import(msg, today=str(msg.get("day_key") or ""))
 
 
 async def _message_stats_overview(*, self_id: str | None) -> dict[str, Any]:
@@ -1951,10 +1997,17 @@ def _plugin_run_plugin_row(sid: str, plugin: str) -> dict[str, Any]:
     return row
 
 
-def _avg_duration_ms(ms_sum: int, count: int) -> int | None:
+def _avg_duration_ms(ms_sum: int | float, count: int) -> float | None:
     if count <= 0:
         return None
-    return int(round(int(ms_sum) / int(count)))
+    return round(float(ms_sum) / int(count), 2)
+
+
+def _duration_ms_float(value: object) -> float:
+    try:
+        return max(0.0, round(float(value or 0), 2))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _matcher_elapsed_ms(started: float | None) -> float:
@@ -1965,14 +2018,14 @@ def _matcher_elapsed_ms(started: float | None) -> float:
 
 
 def _record_plugin_run_duration(sid: str, plugin: str, elapsed_ms: int | float) -> None:
-    ms = max(0, int(round(float(elapsed_ms))))
+    ms = _duration_ms_float(elapsed_ms)
     row = _plugin_run_plugin_row(sid, plugin)
-    row["duration_ms_sum"] = int(row["duration_ms_sum"]) + ms
+    row["duration_ms_sum"] = round(_duration_ms_float(row["duration_ms_sum"]) + ms, 2)
     row["duration_count"] = int(row["duration_count"]) + 1
-    row["duration_ms_max"] = max(int(row["duration_ms_max"]), ms)
-    row["day_duration_ms_sum"] = int(row["day_duration_ms_sum"]) + ms
+    row["duration_ms_max"] = max(_duration_ms_float(row["duration_ms_max"]), ms)
+    row["day_duration_ms_sum"] = round(_duration_ms_float(row["day_duration_ms_sum"]) + ms, 2)
     row["day_duration_count"] = int(row["day_duration_count"]) + 1
-    row["day_duration_ms_max"] = max(int(row["day_duration_ms_max"]), ms)
+    row["day_duration_ms_max"] = max(_duration_ms_float(row["day_duration_ms_max"]), ms)
 
 
 def _append_matcher_error_log(sid: str, plugin: str, exception: BaseException) -> None:
@@ -2453,10 +2506,10 @@ async def _scheduled_cleanup_matcher_error_logs() -> None:
     )
 
 
-def _matcher_hist_bump(sid: str, plugin: str, had_error: bool, *, duration_ms: int = 0) -> None:
+def _matcher_hist_bump(sid: str, plugin: str, had_error: bool, *, duration_ms: int | float = 0) -> None:
     """Matcher 执行按时间桶、按插件名记录（与 plugin-run-stats 插件维度一致）。"""
     pname = str(plugin).strip() or "_"
-    dur = max(0, int(duration_ms))
+    dur = _duration_ms_float(duration_ms)
     rec = _plugin_run_bot_bucket(sid)
     hist = rec.setdefault("matcher_hist", [])
     if not isinstance(hist, list):
@@ -2491,12 +2544,11 @@ def _matcher_hist_bump(sid: str, plugin: str, had_error: bool, *, duration_ms: i
                 hist[-1]["plugins"] = {}
                 plugs = hist[-1]["plugins"]
             plugs[pname] = int(plugs.get(pname, 0)) + 1
-            if dur > 0:
-                durs = hist[-1].setdefault("plugin_duration_ms", {})
-                if not isinstance(durs, dict):
-                    hist[-1]["plugin_duration_ms"] = {}
-                    durs = hist[-1]["plugin_duration_ms"]
-                durs[pname] = int(durs.get(pname, 0)) + dur
+            durs = hist[-1].setdefault("plugin_duration_ms", {})
+            if not isinstance(durs, dict):
+                hist[-1]["plugin_duration_ms"] = {}
+                durs = hist[-1]["plugin_duration_ms"]
+            durs[pname] = round(_duration_ms_float(durs.get(pname, 0)) + dur, 2)
             if had_error:
                 errs = hist[-1].setdefault("plugin_errors", {})
                 if not isinstance(errs, dict):
@@ -2504,9 +2556,7 @@ def _matcher_hist_bump(sid: str, plugin: str, had_error: bool, *, duration_ms: i
                     errs = hist[-1]["plugin_errors"]
                 errs[pname] = int(errs.get(pname, 0)) + 1
             return
-    entry: dict[str, Any] = {"at": bucket, "plugins": {pname: 1}}
-    if dur > 0:
-        entry["plugin_duration_ms"] = {pname: dur}
+    entry: dict[str, Any] = {"at": bucket, "plugins": {pname: 1}, "plugin_duration_ms": {pname: dur}}
     if had_error:
         entry["plugin_errors"] = {pname: 1}
     hist.append(entry)
@@ -2581,11 +2631,11 @@ def _matcher_duration_hist_series_public(
     by_plugin = rec.get("by_plugin")
     if isinstance(by_plugin, dict) and by_plugin:
 
-        def _day_dur_sum(plugin_key: str) -> int:
+        def _day_dur_sum(plugin_key: str) -> float:
             prow = by_plugin.get(plugin_key)
             if not isinstance(prow, dict):
-                return 0
-            return int(prow.get("day_duration_ms_sum", 0))
+                return 0.0
+            return _duration_ms_float(prow.get("day_duration_ms_sum", 0))
 
         ranked = sorted(by_plugin.keys(), key=lambda k: -_day_dur_sum(k))
         ranked = [str(k) for k in ranked if str(k).strip() and not _is_console_stats_excluded_plugin(str(k))][:limit]
@@ -2622,20 +2672,17 @@ def _matcher_duration_hist_series_public(
                 except (TypeError, ValueError):
                     runs = 0
             durs = it.get("plugin_duration_ms")
-            ms = 0
+            ms = 0.0
             if isinstance(durs, dict):
-                try:
-                    ms = int(durs.get(pname, 0))
-                except (TypeError, ValueError):
-                    ms = 0
+                ms = _duration_ms_float(durs.get(pname, 0))
             if ms <= 0 and runs <= 0:
                 continue
             ms_pts.append({"at": at, "total": ms})
             if runs > 0 and ms > 0:
-                avg_pts.append({"at": at, "total": int(round(ms / runs))})
-        if sum(int(x.get("total", 0) or 0) for x in ms_pts):
+                avg_pts.append({"at": at, "total": round(ms / runs, 2)})
+        if sum(float(x.get("total", 0) or 0) for x in ms_pts):
             ms_out.append({"plugin": pname, "points": ms_pts})
-        if sum(int(x.get("total", 0) or 0) for x in avg_pts):
+        if sum(float(x.get("total", 0) or 0) for x in avg_pts):
             avg_out.append({"plugin": pname, "points": avg_pts})
     return {
         "matcher_duration_ms_by_plugin": ms_out,
@@ -2695,8 +2742,7 @@ def _init_plugin_run_tracking() -> None:
                 row["errors"] = int(row["errors"]) + 1
                 row["day_errors"] = int(row["day_errors"]) + 1
                 _append_matcher_error_log(sid, plugin, exception)
-            if elapsed_ms > 0:
-                _record_plugin_run_duration(sid, plugin, elapsed_ms)
+            _record_plugin_run_duration(sid, plugin, elapsed_ms)
             _append_matcher_duration_log(
                 sid,
                 plugin,
@@ -2707,7 +2753,7 @@ def _init_plugin_run_tracking() -> None:
                 sid,
                 plugin,
                 exception is not None,
-                duration_ms=int(round(elapsed_ms)),
+                duration_ms=elapsed_ms,
             )
         except Exception:  # noqa: BLE001
             pass
@@ -2732,12 +2778,12 @@ def _plugin_run_stats_bot_row(
         e = int(prow.get("errors", 0))
         rt = int(prow.get("day_runs", 0))
         et = int(prow.get("day_errors", 0))
-        dsum = int(prow.get("duration_ms_sum", 0))
+        dsum = _duration_ms_float(prow.get("duration_ms_sum", 0))
         dcnt = int(prow.get("duration_count", 0))
-        dmax = int(prow.get("duration_ms_max", 0))
-        dsum_t = int(prow.get("day_duration_ms_sum", 0))
+        dmax = _duration_ms_float(prow.get("duration_ms_max", 0))
+        dsum_t = _duration_ms_float(prow.get("day_duration_ms_sum", 0))
         dcnt_t = int(prow.get("day_duration_count", 0))
-        dmax_t = int(prow.get("day_duration_ms_max", 0))
+        dmax_t = _duration_ms_float(prow.get("day_duration_ms_max", 0))
         plugins_list.append({
             "name": str(pname),
             "runs": r,

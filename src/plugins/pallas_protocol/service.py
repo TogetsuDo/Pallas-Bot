@@ -1069,7 +1069,7 @@ class PallasProtocolService:
     def list_accounts(self) -> list[dict]:
         out: list[dict] = []
         for account_id, account in self._accounts.items():
-            out.append(self._compose_account_state(account_id, account))
+            out.append(self._compose_account_state(account_id, account, brief=True))
         return out
 
     def has_account(self, account_id: str) -> bool:
@@ -1909,7 +1909,7 @@ class PallasProtocolService:
             else:
                 runtime.process = None
 
-    def _compose_account_state(self, account_id: str, account: dict) -> dict:
+    def _compose_account_state(self, account_id: str, account: dict, *, brief: bool = False) -> dict:
         be = self._protocol_runtime_backend(account)
         be.apply_defaults(account, self._resolve_qq)
         runtime = self._runtimes.get(account_id)
@@ -1941,14 +1941,18 @@ class PallasProtocolService:
                     # SnowLuma 仅使用根地址（无 /webui/、无 ?token=）；初始口令见日志或预置 webui.json
                     native_webui = f"http://{bind}:{p}/"
                     snowluma_webui_default_user = "admin"
-                    tail_logs = self.tail_logs(account_id, 900)
-                    snowluma_runtime_webui_password = resolve_snowluma_webui_temp_password(account, tail_logs)
-                    native_webui_auth_note = ""
-                    if not snowluma_runtime_webui_password:
-                        native_webui_auth_note = (
-                            "未从日志解析到初始口令：请查看进程日志中的 "
-                            "「initial credentials: user=admin password=…」（旧版为「临时密码」）。"
-                        )
+                    if brief:
+                        snowluma_runtime_webui_password = None
+                        native_webui_auth_note = "列表页不解析日志口令；进入账号控制台查看。"
+                    else:
+                        tail_logs = self.tail_logs(account_id, 900)
+                        snowluma_runtime_webui_password = resolve_snowluma_webui_temp_password(account, tail_logs)
+                        native_webui_auth_note = ""
+                        if not snowluma_runtime_webui_password:
+                            native_webui_auth_note = (
+                                "未从日志解析到初始口令：请查看进程日志中的 "
+                                "「initial credentials: user=admin password=…」（旧版为「临时密码」）。"
+                            )
                 else:
                     base = f"http://{bind}:{p}/webui/"
                     native_webui = f"{base}?token={quote(wtok, safe='')}" if wtok else base

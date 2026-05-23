@@ -407,7 +407,15 @@ async def poll_bot_action_pending(local_ids: frozenset[str]) -> None:
         if not row:
             continue
         if not row.get("done"):
-            await _maybe_warn_stale_open(row, now=now)
+            deadline = float(row.get("deadline") or 0)
+            if deadline > 0 and now > deadline + _OPEN_OVERDUE_GRACE_SEC:
+                _maybe_warn_stale_open(row, now=now)
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            else:
+                _maybe_warn_stale_open(row, now=now)
             continue
         created = float(row.get("created_at") or 0)
         if now - created > _DONE_RETAIN_SEC:

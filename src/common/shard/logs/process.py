@@ -51,7 +51,7 @@ def install_shard_process_logging() -> str | None:
         enqueue=True,
     )
 
-    if role == "worker":
+    if role in ("hub", "worker"):
         from src.common.web import set_log_error_capture
 
         def capture(text: str, record: Any) -> None:

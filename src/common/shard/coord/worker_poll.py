@@ -33,7 +33,9 @@ async def shard_coord_worker_poll_loop() -> None:
     from nonebot import get_bots
 
     from src.common.shard.coord.bot_action import poll_bot_action_pending, prune_stale_bot_action_files
+    from src.common.shard.coord.bot_count import prune_stale_bot_count_files
     from src.common.shard.coord.cage_duel import prune_stale_cage_duel_files
+    from src.common.shard.coord.duel_group import prune_stale_duel_group_files
     from src.common.shard.coord.duel_qte import poll_duel_qte_pending, prune_stale_duel_qte_files
     from src.common.shard.coord.maa_pending_registry import prune_stale_maa_pending_files
     from src.common.shard.coord.maa_seen_registry import prune_stale_maa_seen_files
@@ -62,6 +64,8 @@ async def shard_coord_worker_poll_loop() -> None:
                     await prune_stale_bot_action_files()
                     await prune_stale_repeater_buffer_files()
                     await prune_stale_cage_duel_files()
+                    await prune_stale_bot_count_files()
+                    await prune_stale_duel_group_files()
                     await prune_stale_maa_seen_files()
                     await prune_stale_maa_pending_files()
         except Exception as err:

@@ -44,6 +44,7 @@ from src.common.shard.registry import get_shard_registry, worker_port_for_shard
 from src.common.shard.registry.config import get_shard_registry_settings
 from src.common.shard.registry.listen_port import apply_listen_port
 from src.common.utils.voice_downloader import ensure_voices
+from src.common.web import install_nonebot_log_sink
 
 apply_stdlib_logging_channel_prefix()
 nonebot.init()
@@ -54,6 +55,7 @@ apply_listen_port(
     )
 )
 install_shard_process_logging()
+install_nonebot_log_sink()
 driver = nonebot.get_driver()
 driver.register_adapter(ONEBOT_V11Adapter)
 

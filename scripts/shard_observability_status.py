@@ -41,6 +41,8 @@ def main() -> int:
     )
     print(
         f"coord JSON                total={coord.get('total_json', 0)}  "
+        f"actionable={coord.get('actionable_total', coord.get('bot_action_open', 0))}  "
+        f"historical={coord.get('historical_retained', 0)}  "
         f"bot_action_open={coord.get('bot_action_open', 0)}  "
         f"stale_open={coord.get('bot_action_stale_open', 0)}"
     )

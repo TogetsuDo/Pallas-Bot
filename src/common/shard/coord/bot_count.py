@@ -55,6 +55,23 @@ def _coord_dir():
     return root
 
 
+async def prune_stale_bot_count_files(*, max_age_sec: float = 3600.0) -> int:
+    root = _coord_dir()
+    if not root.is_dir():
+        return 0
+    now = time.time()
+    removed = 0
+    for path in root.glob("*.json"):
+        try:
+            if now - path.stat().st_mtime <= max_age_sec:
+                continue
+            path.unlink(missing_ok=True)
+            removed += 1
+        except OSError:
+            pass
+    return removed
+
+
 def _session_path(group_id: int, claim_key: int) -> Path:
     return Path(_coord_dir()) / f"{group_id}_{claim_key}.json"
 

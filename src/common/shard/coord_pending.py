@@ -64,6 +64,8 @@ def coord_pending_snapshot_sync() -> dict[str, Any]:
             open_bot_action, stale_bot_action = _bot_action_open_counts(files)
     return {
         "total_json": total,
+        "actionable_total": open_bot_action,
+        "historical_retained": by_dir.get("bot_count", 0) + by_dir.get("duel_group", 0),
         "by_dir": by_dir,
         "bot_action_open": open_bot_action,
         "bot_action_stale_open": stale_bot_action,

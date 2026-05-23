@@ -40,7 +40,9 @@ async def main() -> int:
     )
     args = parser.parse_args()
     from src.common.shard.coord.bot_action import prune_stale_bot_action_files
+    from src.common.shard.coord.bot_count import prune_stale_bot_count_files
     from src.common.shard.coord.cage_duel import prune_stale_cage_duel_files
+    from src.common.shard.coord.duel_group import prune_stale_duel_group_files
     from src.common.shard.coord.duel_qte import prune_stale_duel_qte_files
     from src.common.shard.coord.repeater_buffer import prune_stale_repeater_buffer_files
     from src.common.shard.coord_pending import coord_pending_snapshot_sync
@@ -53,6 +55,8 @@ async def main() -> int:
     await prune_stale_duel_qte_files()
     await prune_stale_repeater_buffer_files()
     await prune_stale_cage_duel_files()
+    await prune_stale_bot_count_files()
+    await prune_stale_duel_group_files()
     after = coord_pending_snapshot_sync()
     out = {"before": before, "bot_action": bot_stats, "after": after}
     json.dump(out, sys.stdout, ensure_ascii=False, indent=2)
