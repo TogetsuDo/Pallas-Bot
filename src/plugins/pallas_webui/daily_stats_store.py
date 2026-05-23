@@ -5,16 +5,60 @@ from __future__ import annotations
 import json
 import os
 import threading
+from contextlib import contextmanager
 from datetime import date, timedelta
 from operator import itemgetter
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from pathlib import Path
 
 _STORE_VER = 1
 _MAX_RETAIN_DAYS = 500
 _LOCK = threading.RLock()
+
+
+@contextmanager
+def interprocess_stats_lock():
+    """跨 hub/worker 进程互斥；分片下仅 hub 写盘，单进程亦可用。"""
+    p = stats_file_path().with_suffix(".json.lock")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(p), os.O_CREAT | os.O_RDWR)
+    try:
+        import fcntl
+
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            import fcntl
+
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        os.close(fd)
+
+
+def merge_day_bot_record(
+    existing: dict[str, Any] | None,
+    received: int,
+    sent: int,
+    matcher_runs: int,
+) -> dict[str, int]:
+    dr = max(0, int(received))
+    ds = max(0, int(sent))
+    mr = max(0, int(matcher_runs))
+    if isinstance(existing, dict):
+        prev_dr = max(0, int(existing.get("received", 0)))
+        prev_ds = max(0, int(existing.get("sent", 0)))
+        prev_mr = max(0, int(existing.get("matcher_runs", 0)))
+        if dr == ds == mr == 0 and (prev_dr or prev_ds or prev_mr):
+            return {"received": prev_dr, "sent": prev_ds, "matcher_runs": prev_mr}
+        dr = max(dr, prev_dr)
+        ds = max(ds, prev_ds)
+        mr = max(mr, prev_mr)
+    return {"received": dr, "sent": ds, "matcher_runs": mr}
 
 
 def stats_file_path() -> Path:
@@ -65,27 +109,45 @@ def _trim_old_days(by_day: dict[str, Any]) -> None:
 
 def write_day_totals(day: str, self_id: str, received: int, sent: int, matcher_runs: int) -> None:
     """写入或覆盖某日某账号的汇总"""
-    sid = str(self_id).strip()
-    if not sid or len(str(day).strip()) < 10:
+    write_batch_day_totals([(day, self_id, received, sent, matcher_runs)])
+
+
+def write_batch_day_totals(entries: Iterable[tuple[str, str, int, int, int]]) -> None:
+    """批量写入；单次读改写，避免分片多进程交错覆盖 by_day。"""
+    pending: dict[tuple[str, str], tuple[int, int, int]] = {}
+    for day, self_id, received, sent, matcher_runs in entries:
+        sid = str(self_id).strip()
+        day_key = str(day).strip()[:10]
+        if not sid or len(day_key) < 10:
+            continue
+        key = (day_key, sid)
+        dr = max(0, int(received))
+        ds = max(0, int(sent))
+        mr = max(0, int(matcher_runs))
+        prev = pending.get(key)
+        if prev is not None:
+            dr = max(dr, prev[0])
+            ds = max(ds, prev[1])
+            mr = max(mr, prev[2])
+        pending[key] = (dr, ds, mr)
+    if not pending:
         return
-    day_key = str(day).strip()[:10]
     with _LOCK:
-        data = _read_raw()
-        days = data.setdefault("by_day", {})
-        if not isinstance(days, dict):
-            data["by_day"] = {}
-            days = data["by_day"]
-        bots = days.setdefault(day_key, {})
-        if not isinstance(bots, dict):
-            days[day_key] = {}
-            bots = days[day_key]
-        bots[sid] = {
-            "received": max(0, int(received)),
-            "sent": max(0, int(sent)),
-            "matcher_runs": max(0, int(matcher_runs)),
-        }
-        _trim_old_days(days)
-        _atomic_write(data)
+        with interprocess_stats_lock():
+            data = _read_raw()
+            days = data.setdefault("by_day", {})
+            if not isinstance(days, dict):
+                data["by_day"] = {}
+                days = data["by_day"]
+            for (day_key, sid), (dr, ds, mr) in pending.items():
+                bots = days.setdefault(day_key, {})
+                if not isinstance(bots, dict):
+                    days[day_key] = {}
+                    bots = days[day_key]
+                prev_rec = bots.get(sid) if isinstance(bots.get(sid), dict) else None
+                bots[sid] = merge_day_bot_record(prev_rec, dr, ds, mr)
+            _trim_old_days(days)
+            _atomic_write(data)
 
 
 def _parse_iso_day(s: str) -> date | None:

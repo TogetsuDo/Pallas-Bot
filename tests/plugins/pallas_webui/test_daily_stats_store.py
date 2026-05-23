@@ -93,3 +93,43 @@ def test_atomic_write_uses_process_scoped_tmp(monkeypatch, tmp_path) -> None:
     daily_stats_store._atomic_write({"v": 1, "by_day": {"2026-05-23": {}}})
     assert target.is_file()
     assert not list(tmp_path.glob("console_daily_stats.*.tmp"))
+
+
+def test_write_batch_day_totals_merges_same_day(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(daily_stats_store, "stats_file_path", lambda: tmp_path / "console_daily_stats.json")
+    daily_stats_store.write_batch_day_totals([
+        ("2026-05-23", "111", 10, 2, 5),
+        ("2026-05-23", "111", 8, 1, 7),
+    ])
+    rows, _, _ = daily_stats_store.load_range(
+        self_id="111",
+        start_day="2026-05-23",
+        end_day="2026-05-23",
+    )
+    assert len(rows) == 1
+    assert rows[0]["received"] == 10
+    assert rows[0]["sent"] == 2
+    assert rows[0]["matcher_runs"] == 7
+
+
+def test_write_batch_keeps_disk_when_live_zero(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(daily_stats_store, "stats_file_path", lambda: tmp_path / "console_daily_stats.json")
+    daily_stats_store.write_day_totals("2026-05-23", "111", 100, 2, 50)
+    daily_stats_store.write_batch_day_totals([("2026-05-23", "111", 0, 0, 0)])
+    rows, _, _ = daily_stats_store.load_range(
+        self_id="111",
+        start_day="2026-05-23",
+        end_day="2026-05-23",
+    )
+    assert rows[0]["received"] == 100
+    assert rows[0]["matcher_runs"] == 50
+
+
+def test_merge_day_bot_record_prefers_higher_counts() -> None:
+    merged = daily_stats_store.merge_day_bot_record(
+        {"received": 5, "sent": 1, "matcher_runs": 3},
+        9,
+        0,
+        2,
+    )
+    assert merged == {"received": 9, "sent": 1, "matcher_runs": 3}

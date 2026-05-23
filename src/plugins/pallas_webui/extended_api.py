@@ -1178,6 +1178,100 @@ def _sum_matcher_day_runs(sid: str) -> int:
     return n
 
 
+def _console_daily_stats_disk_enabled() -> bool:
+    """分片 worker 不写 console_daily_stats.json，由 hub 合并 worker 快照落盘。"""
+    from src.common.bot_runtime.roles import is_sharded_worker
+
+    return not is_sharded_worker()
+
+
+def _day_totals_from_cluster_bot_blob(rec: dict[str, Any], *, fallback_day: str) -> tuple[str, int, int, int]:
+    msg = rec.get("msg")
+    if not isinstance(msg, dict):
+        msg = {}
+    day_key = str(rec.get("day_key") or msg.get("day_key") or fallback_day).strip()[:10]
+    if len(day_key) < 10:
+        day_key = fallback_day
+    dr = int(msg.get("day_received", 0)) if isinstance(msg, dict) else 0
+    ds = int(msg.get("day_sent", 0)) if isinstance(msg, dict) else 0
+    mr = 0
+    bp = rec.get("by_plugin")
+    if isinstance(bp, dict):
+        for prow in bp.values():
+            if isinstance(prow, dict):
+                mr += int(prow.get("day_runs", 0))
+    return day_key, dr, ds, mr
+
+
+def _merge_console_daily_flush_entry(
+    bucket: dict[tuple[str, str], tuple[int, int, int]],
+    *,
+    day: str,
+    self_id: str,
+    received: int,
+    sent: int,
+    matcher_runs: int,
+) -> None:
+    sid = str(self_id).strip()
+    day_key = str(day).strip()[:10]
+    if not sid or len(day_key) < 10:
+        return
+    key = (day_key, sid)
+    dr = max(0, int(received))
+    ds = max(0, int(sent))
+    mr = max(0, int(matcher_runs))
+    prev = bucket.get(key)
+    if prev is not None:
+        dr = max(dr, prev[0])
+        ds = max(ds, prev[1])
+        mr = max(mr, prev[2])
+    bucket[key] = (dr, ds, mr)
+
+
+def _collect_console_daily_flush_entries(today: str) -> list[tuple[str, str, int, int, int]]:
+    """hub 定时刷盘：分片下合并各 worker stats 文件 + 本进程内存计数。"""
+    from src.common.bot_runtime.roles import is_sharded_hub
+    from src.common.shard.registry.config import is_sharding_active
+
+    bucket: dict[tuple[str, str], tuple[int, int, int]] = {}
+
+    if is_sharding_active() and is_sharded_hub():
+        from src.common.shard.console_stats import load_cluster_console_stats_by_sid
+
+        for sid, blob in load_cluster_console_stats_by_sid().items():
+            if not isinstance(blob, dict):
+                continue
+            day_key, dr, ds, mr = _day_totals_from_cluster_bot_blob(blob, fallback_day=today)
+            _merge_console_daily_flush_entry(
+                bucket,
+                day=day_key,
+                self_id=str(sid),
+                received=dr,
+                sent=ds,
+                matcher_runs=mr,
+            )
+
+    for sid in set(_MSG_STATS.keys()) | set(_PLUGIN_RUN_STATS.keys()):
+        sid = str(sid).strip()
+        if not sid:
+            continue
+        _rollover_console_day_if_needed(sid, today)
+        mem = _MSG_STATS.get(sid)
+        dr = int(mem.get("day_received", 0)) if isinstance(mem, dict) else 0
+        ds = int(mem.get("day_sent", 0)) if isinstance(mem, dict) else 0
+        mr = _sum_matcher_day_runs(sid)
+        _merge_console_daily_flush_entry(
+            bucket,
+            day=today,
+            self_id=sid,
+            received=dr,
+            sent=ds,
+            matcher_runs=mr,
+        )
+
+    return [(day, sid, dr, ds, mr) for (day, sid), (dr, ds, mr) in sorted(bucket.items())]
+
+
 def _rollover_console_day_if_needed(sid: str, today: str) -> None:
     """跨自然日时把上一日的消息收/发与 Matcher 当日计数写入磁盘并清零当日字段。"""
     from src.plugins.pallas_webui import daily_stats_store
@@ -1195,7 +1289,8 @@ def _rollover_console_day_if_needed(sid: str, today: str) -> None:
     dr = int(mem.get("day_received", 0)) if isinstance(mem, dict) else 0
     ds = int(mem.get("day_sent", 0)) if isinstance(mem, dict) else 0
     mr = _sum_matcher_day_runs(sid)
-    daily_stats_store.write_day_totals(cur, sid, dr, ds, mr)
+    if _console_daily_stats_disk_enabled():
+        daily_stats_store.write_day_totals(cur, sid, dr, ds, mr)
     if isinstance(mem, dict):
         mem["day_key"] = today
         mem["day_sent"] = 0
@@ -1219,20 +1314,14 @@ def _rollover_console_day_if_needed(sid: str, today: str) -> None:
 
 def _flush_today_console_daily_stats_disk() -> None:
     """定时刷盘：当前自然日内累计值写入磁盘（不按桶）。"""
+    if not _console_daily_stats_disk_enabled():
+        return
     from src.plugins.pallas_webui import daily_stats_store
 
     today = time.strftime("%Y-%m-%d", time.localtime())
-    sids = set(_MSG_STATS.keys()) | set(_PLUGIN_RUN_STATS.keys()) | set(_CONSOLE_CAL_DAY.keys())
-    for sid in sids:
-        sid = str(sid).strip()
-        if not sid:
-            continue
-        _rollover_console_day_if_needed(sid, today)
-        mem = _MSG_STATS.get(sid)
-        dr = int(mem.get("day_received", 0)) if isinstance(mem, dict) else 0
-        ds = int(mem.get("day_sent", 0)) if isinstance(mem, dict) else 0
-        mr = _sum_matcher_day_runs(sid)
-        daily_stats_store.write_day_totals(today, sid, dr, ds, mr)
+    entries = _collect_console_daily_flush_entries(today)
+    if entries:
+        daily_stats_store.write_batch_day_totals(entries)
 
 
 def _msg_stats_shard_export(mem: dict[str, Any]) -> dict[str, Any]:
