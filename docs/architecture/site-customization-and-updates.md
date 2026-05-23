@@ -24,9 +24,9 @@
 extra_plugin_dirs = ["local/plugins"]
 ```
 
-3. 重启 Bot（分片需重启对应 worker）。  
-   - **unified / worker** 会加载该目录；hub 仍只加载内置 hub 模块 + `pyproject` 中的 pip 插件。
-4. **覆盖主仓同名插件（仅 worker）**：若 `local/plugins/pallas_image/` 与 `src/plugins/pallas_image/` 同名，worker 会**先加载 local**，再跳过 `src` 中同名项。适合「整包 fork 式定制」；改几个文件的小补丁见下文「改动主仓已有插件」。
+3. 重启 Bot（分片需重启 **hub 与对应 worker**）。  
+   - **hub / worker / unified** 均会加载 `extra_plugin_dirs`；与 `src/plugins/` 或 hub 内置模块**同名时优先 local**（如 `help`、`callback`）。
+4. **覆盖主仓同名插件**：若 `local/plugins/pallas_image/` 与 `src/plugins/pallas_image/` 同名，会**先加载 local**，再跳过 `src` 中同名项。适合「整包 fork 式定制」；只改少量核心文件见下文「改动主仓已有插件」。
 
 也可在 `pyproject.toml` 的 `[tool.nonebot] plugin_dirs` 追加目录，但改 `pyproject.toml` 本身会被 git 跟踪；**推荐只用 `pallas.toml`**。
 
@@ -56,7 +56,7 @@ extra_plugin_dirs = ["local/plugins"]
 
 | 方式 | 适用 | 更新后 |
 |------|------|--------|
-| **整包放入 `local/plugins/<原名>/`** | 改动多、行为差分大 | worker 优先用 local；主仓 `src/plugins/<原名>/` 保持上游干净 |
+| **整包放入 `local/plugins/<原名>/`** | 改动多、行为差分大 | hub/worker 优先用 local；主仓 `src/plugins/<原名>/` 保持上游干净 |
 | **`local/patches/*.patch` 记录 diff** | 只改少量核心文件（`src/common/*`、`bot.py`） | 更新后 `git apply` 或手工合并；见 `local/patches/README.md` |
 | **提 PR / 维护 fork** | 希望长期与上游合并 | 从 fork 拉取 |
 

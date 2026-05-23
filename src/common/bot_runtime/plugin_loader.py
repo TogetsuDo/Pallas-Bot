@@ -194,6 +194,14 @@ def load_plugins_for_role() -> None:
 
     if is_hub_role():
         load_apscheduler_plugin_first(role_label="hub", loaded_short=loaded_short)
+        bootstrap_dirs = read_bootstrap_extra_plugin_dirs()
+        bootstrap_loaded = 0
+        if bootstrap_dirs:
+            bootstrap_loaded = _load_toml_extra_plugin_dirs(
+                bootstrap_dirs,
+                role_label="hub",
+                loaded_short=loaded_short,
+            )
         loaded = 0
         for mod in HUB_PLUGIN_MODULES:
             if _load_plugin_module(mod, role_label="hub", loaded_short=loaded_short):
@@ -205,7 +213,8 @@ def load_plugins_for_role() -> None:
             include_extra_dirs=False,
         )
         logger.info(
-            "bot_runtime: role=hub, loaded {}/{} hub modules, +{} from pyproject.plugins",
+            "bot_runtime: role=hub, local_plugins={} loaded {}/{} hub modules, +{} from pyproject.plugins",
+            bootstrap_loaded,
             loaded,
             len(HUB_PLUGIN_MODULES),
             extra,
