@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from src.plugins.pallas_webui import daily_stats_store
 
 
@@ -33,3 +35,50 @@ def test_load_range_filter_self_id(monkeypatch, tmp_path) -> None:
     )
     assert len(rows) == 1
     assert rows[0]["self_id"] == "222"
+
+
+def test_merge_today_row_keeps_disk_when_live_zero() -> None:
+    by_key: dict[tuple[str, str], dict[str, Any]] = {
+        ("2026-05-23", "111"): {
+            "date": "2026-05-23",
+            "self_id": "111",
+            "received": 100,
+            "sent": 2,
+            "matcher_runs": 50,
+        },
+    }
+    daily_stats_store.merge_today_row(
+        by_key,
+        day="2026-05-23",
+        self_id="111",
+        received=0,
+        sent=0,
+        matcher_runs=0,
+    )
+    row = by_key[("2026-05-23", "111")]
+    assert row["received"] == 100
+    assert row["matcher_runs"] == 50
+
+
+def test_merge_today_row_overwrites_with_live() -> None:
+    by_key: dict[tuple[str, str], dict[str, Any]] = {
+        ("2026-05-23", "111"): {
+            "date": "2026-05-23",
+            "self_id": "111",
+            "received": 1,
+            "sent": 0,
+            "matcher_runs": 1,
+        },
+    }
+    daily_stats_store.merge_today_row(
+        by_key,
+        day="2026-05-23",
+        self_id="111",
+        received=9,
+        sent=3,
+        matcher_runs=7,
+    )
+    row = by_key[("2026-05-23", "111")]
+    assert row["received"] == 9
+    assert row["sent"] == 3
+    assert row["matcher_runs"] == 7

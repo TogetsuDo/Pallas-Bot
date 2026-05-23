@@ -131,3 +131,41 @@ def load_range(
         cur += timedelta(days=1)
     rows.sort(key=itemgetter("date", "self_id"))
     return rows, start_eff, end_eff
+
+
+def merge_today_row(
+    by_key: dict[tuple[str, str], dict[str, Any]],
+    *,
+    day: str,
+    self_id: str,
+    received: int,
+    sent: int,
+    matcher_runs: int,
+) -> None:
+    """合并今日一行；live 全 0 时不覆盖磁盘已有非零值。"""
+    sid = str(self_id).strip()
+    day_key = str(day).strip()[:10]
+    if not sid or len(day_key) < 10:
+        return
+    k = (day_key, sid)
+    dr = max(0, int(received))
+    ds = max(0, int(sent))
+    mr = max(0, int(matcher_runs))
+    if k in by_key:
+        prev = by_key[k]
+        if dr == ds == mr == 0 and (
+            int(prev.get("received", 0)) or int(prev.get("sent", 0)) or int(prev.get("matcher_runs", 0))
+        ):
+            return
+        row = by_key[k]
+        row["received"] = dr
+        row["sent"] = ds
+        row["matcher_runs"] = mr
+        return
+    by_key[k] = {
+        "date": day_key,
+        "self_id": sid,
+        "received": dr,
+        "sent": ds,
+        "matcher_runs": mr,
+    }

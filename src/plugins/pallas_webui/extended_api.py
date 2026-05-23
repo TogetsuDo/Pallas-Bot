@@ -2940,6 +2940,7 @@ def _console_daily_stats_payload(
     from src.common.bot_runtime.roles import is_sharded_hub
     from src.common.shard.registry.config import is_sharding_active
 
+    shard_cluster_sids: set[str] = set()
     if is_sharding_active() and is_sharded_hub():
         from src.common.shard.console_stats import load_cluster_console_stats_by_sid
 
@@ -2947,6 +2948,7 @@ def _console_daily_stats_payload(
             sid = str(sid).strip()
             if not sid or (sid_f is not None and sid != sid_f):
                 continue
+            shard_cluster_sids.add(sid)
             msg = blob.get("msg") if isinstance(blob, dict) else {}
             dr = int(msg.get("day_received", 0)) if isinstance(msg, dict) else 0
             ds = int(msg.get("day_sent", 0)) if isinstance(msg, dict) else 0
@@ -2958,24 +2960,21 @@ def _console_daily_stats_payload(
                         mr += int(prow.get("day_runs", 0))
             live_out[sid] = {"received": dr, "sent": ds, "matcher_runs": mr}
             if start_d <= today_d <= end_d:
-                k = (clock_today, sid)
-                if k in by_key:
-                    by_key[k]["received"] = dr
-                    by_key[k]["sent"] = ds
-                    by_key[k]["matcher_runs"] = mr
-                else:
-                    by_key[k] = {
-                        "date": clock_today,
-                        "self_id": sid,
-                        "received": dr,
-                        "sent": ds,
-                        "matcher_runs": mr,
-                    }
+                daily_stats_store.merge_today_row(
+                    by_key,
+                    day=clock_today,
+                    self_id=sid,
+                    received=dr,
+                    sent=ds,
+                    matcher_runs=mr,
+                )
     for sid in set(_MSG_STATS.keys()) | set(_PLUGIN_RUN_STATS.keys()):
         sid = str(sid).strip()
         if not sid:
             continue
         if sid_f is not None and sid != sid_f:
+            continue
+        if is_sharding_active() and is_sharded_hub() and sid in shard_cluster_sids:
             continue
         _rollover_console_day_if_needed(sid, clock_today)
         mem = _MSG_STATS.get(sid)
@@ -2984,19 +2983,14 @@ def _console_daily_stats_payload(
         mr = _sum_matcher_day_runs(sid)
         live_out[sid] = {"received": dr, "sent": ds, "matcher_runs": mr}
         if start_d <= today_d <= end_d:
-            k = (clock_today, sid)
-            if k in by_key:
-                by_key[k]["received"] = dr
-                by_key[k]["sent"] = ds
-                by_key[k]["matcher_runs"] = mr
-            else:
-                by_key[k] = {
-                    "date": clock_today,
-                    "self_id": sid,
-                    "received": dr,
-                    "sent": ds,
-                    "matcher_runs": mr,
-                }
+            daily_stats_store.merge_today_row(
+                by_key,
+                day=clock_today,
+                self_id=sid,
+                received=dr,
+                sent=ds,
+                matcher_runs=mr,
+            )
     merged = sorted(by_key.values(), key=itemgetter("date", "self_id"))
     return {
         "start": s1,
