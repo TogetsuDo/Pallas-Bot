@@ -60,7 +60,7 @@ def test_worker_glob_excludes_bootstrap(tmp_path, monkeypatch):
     assert not any("CancelledError" in row for row in merged)
 
 
-def test_collect_cluster_log_errors_fallback_after_cleanup(tmp_path, monkeypatch):
+def test_collect_cluster_log_errors_no_log_rescan_after_cleanup(tmp_path, monkeypatch):
     log_dir = tmp_path / "logs"
     err_dir = log_dir / "errors"
     err_dir.mkdir(parents=True)
@@ -75,8 +75,7 @@ def test_collect_cluster_log_errors_fallback_after_cleanup(tmp_path, monkeypatch
 
     cleanup_shard_error_archives_sync()
     rows = collect_cluster_log_errors(per_file=50, limit=10)
-    assert len(rows) >= 1
-    assert any(r.get("exc_type") == "ModuleNotFoundError" for r in rows)
+    assert rows == []
 
 
 def test_collect_cluster_log_errors(tmp_path, monkeypatch):

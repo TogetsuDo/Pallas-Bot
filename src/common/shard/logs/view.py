@@ -498,8 +498,8 @@ def collect_cluster_log_errors(
         jsonl_rows = collect_cluster_log_errors_from_jsonl(limit=max(limit * 2, 80))
         skip_log_scan = False
         if shard_errors_dir().is_dir() and errors_archive_prefers_jsonl_only():
-            if list(shard_errors_dir().glob("*.jsonl")) and not jsonl_rows:
-                skip_log_scan = True
+            # 已进入 jsonl 归档模式：只读 errors/*.jsonl，清理后勿再扫主日志
+            skip_log_scan = True
     except Exception:
         skip_log_scan = False
     log_rows: list[dict[str, Any]] = []
