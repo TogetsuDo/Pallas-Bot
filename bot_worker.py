@@ -35,7 +35,6 @@ pin_worker_listen_port()
 import nonebot
 from nonebot.adapters.onebot.v11 import Adapter as ONEBOT_V11Adapter
 
-from src.common.adapters import register_onebot_v11_custom_events
 from src.common.ban_gate.snapshot import start_ban_gate_snapshot, stop_ban_gate_snapshot
 from src.common.bot_runtime import load_plugins_for_role
 from src.common.db import init_db
@@ -59,7 +58,6 @@ install_shard_process_logging()
 install_nonebot_log_sink()
 driver = nonebot.get_driver()
 driver.register_adapter(ONEBOT_V11Adapter)
-register_onebot_v11_custom_events()
 
 
 @driver.on_startup
