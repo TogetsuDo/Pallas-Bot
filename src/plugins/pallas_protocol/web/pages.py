@@ -544,6 +544,35 @@ def _render_common_api_js() -> str:
       return false;
     }
 
+    let protoMainScrollActive = false;
+    let protoMainScrollTimer = null;
+    const protoScrollEndHooks = [];
+    function isProtoMainInnerScrolling() {
+      return protoMainScrollActive;
+    }
+    function onProtoMainInnerScrollEnd(fn) {
+      if (typeof fn === "function") protoScrollEndHooks.push(fn);
+    }
+    function wireProtoMainInnerScrollPause() {
+      const el = document.querySelector(".proto-shell__main-inner");
+      if (!el || el.dataset.protoScrollBound) return;
+      el.dataset.protoScrollBound = "1";
+      el.addEventListener("scroll", () => {
+        protoMainScrollActive = true;
+        clearTimeout(protoMainScrollTimer);
+        protoMainScrollTimer = setTimeout(() => {
+          protoMainScrollActive = false;
+          protoScrollEndHooks.forEach((hook) => {
+            try { hook(); } catch (e) {}
+          });
+        }, 400);
+      }, { passive: true });
+    }
+    try {
+      document.addEventListener("DOMContentLoaded", wireProtoMainInnerScrollPause);
+    } catch (e) {}
+    try { wireProtoMainInnerScrollPause(); } catch (e) {}
+
     function copyPlainStrToast(msg, level) {
       if (typeof notify === "function") notify(msg, level);
       else alert(msg);
@@ -1093,6 +1122,29 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
     let accountRows = [];
     let viewMode = "card";
     const selectedAccountIds = new Set();
+    let lastAccountsRenderSig = "";
+    let pendingSilentAccountsDom = false;
+    function accountsListSignature(rows) {{
+      return (rows || []).map((a) => {{
+        const id = String(a.id ?? a.qq ?? "").trim();
+        const qq = String(a.qq ?? "").trim();
+        const connected = a.connected ? "1" : "0";
+        const running = (a.process_running || a.running) ? "1" : "0";
+        return `${{id}}:${{qq}}:${{connected}}:${{running}}`;
+      }}).join("|");
+    }}
+    function flushPendingAccountsDom() {{
+      if (!pendingSilentAccountsDom) return;
+      pendingSilentAccountsDom = false;
+      const sig = accountsListSignature(accountRows);
+      if (sig === lastAccountsRenderSig) return;
+      lastAccountsRenderSig = sig;
+      renderKpis(accountRows);
+      pruneSelectedAccountIds();
+      renderAccounts();
+      updateToggleAllButton();
+    }}
+    onProtoMainInnerScrollEnd(flushPendingAccountsDom);
     function setBusy(el, busy, idleText = "刷新", busyText = "刷新中...") {{
       if (!el) return;
       el.disabled = !!busy;
@@ -1176,6 +1228,30 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
         return `<div class="sl-runlog-row"><span class="sl-runlog-t">${{t}}</span><span class="sl-runlog-lv ${{lc}}">${{lv}}</span><span class="sl-runlog-sc">[${{sc}}]</span><span class="sl-runlog-msg">${{msg}}</span></div>`;
       }}).join("");
     }}
+    let nbLogRenderDeferred = false;
+    let nbRenderScheduled = 0;
+    function scheduleNbRender() {{
+      if (nbRenderScheduled) return;
+      if (isProtoMainInnerScrolling() || nbShouldPauseDom()) {{
+        nbLogRenderDeferred = true;
+        return;
+      }}
+      nbRenderScheduled = requestAnimationFrame(() => {{
+        nbRenderScheduled = 0;
+        if (nbShouldPauseDom()) {{
+          nbLogRenderDeferred = true;
+          return;
+        }}
+        nbRender();
+        nbScrollToEnd();
+      }});
+    }}
+    function flushDeferredNbLogRender() {{
+      if (!nbLogRenderDeferred) return;
+      nbLogRenderDeferred = false;
+      scheduleNbRender();
+    }}
+    onProtoMainInnerScrollEnd(flushDeferredNbLogRender);
     function nbScrollToEnd() {{
       if (nbLogPaused) return;
       if (nbShouldPauseDom()) return;
@@ -1245,8 +1321,7 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
           if (!row || typeof row.id !== "number") return;
           if (nbLogPaused) return;
           nbLogEntries = [...nbLogEntries.filter((it) => it.id !== row.id), row].slice(-1000);
-          nbRender();
-          nbScrollToEnd();
+          scheduleNbRender();
         }} catch (e) {{}}
       }};
     }}
@@ -1490,11 +1565,20 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
     }}
     async function refreshAccounts(opts) {{
       const silent = !!(opts && opts.silent);
+      const force = !!(opts && opts.force) || !silent;
       const btn = document.getElementById("btnRefresh");
       if (!silent) setBusy(btn, true, "刷新", "刷新中...");
       try {{
         const data = await api("/api/accounts");
         accountRows = sortAccountsOnlineFirst(data.accounts || []);
+        const sig = accountsListSignature(accountRows);
+        if (!force && sig === lastAccountsRenderSig) return;
+        if (silent && isProtoMainInnerScrolling()) {{
+          pendingSilentAccountsDom = true;
+          return;
+        }}
+        pendingSilentAccountsDom = false;
+        lastAccountsRenderSig = sig;
         renderKpis(accountRows);
         pruneSelectedAccountIds();
         renderAccounts();
@@ -1609,12 +1693,14 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
     }}, 350);
     setInterval(() => {{
       if (!document.getElementById("autoRefresh").checked) return;
+      if (document.hidden || isProtoMainInnerScrolling()) return;
       nbLoadInitial().catch(() => {{}});
     }}, 8000);
     (function() {{
       const poll = parseInt(localStorage.getItem("pallas-dashboard-poll-ms") || "10000", 10);
       const ms = Number.isFinite(poll) ? Math.max(poll, 5000) : 10000;
       setInterval(() => {{
+        if (document.hidden || isProtoMainInnerScrolling()) return;
         refreshAccounts({{ silent: true }}).catch(() => {{}});
       }}, ms);
     }})();
