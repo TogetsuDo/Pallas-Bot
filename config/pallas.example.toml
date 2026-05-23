@@ -8,6 +8,8 @@ port = 8088
 # superusers = ["123456789"]
 db_backend = "mongodb"
 # access_token = ""
+# 站点自有 NoneBot 插件（相对仓库根；见 docs/architecture/site-customization-and-updates.md）
+# extra_plugin_dirs = ["local/plugins"]
 
 [bootstrap.mongo]
 host = "127.0.0.1"
@@ -34,8 +36,6 @@ db = "PallasBot"
 # interval_sec = 300
 
 # 与历史 .env 同名的扁平项（键名大写）；也可只放 bootstrap，其余交给 WebUI。
-# 站点自有 NoneBot 插件目录（相对仓库根；更新主仓时通常不受影响，见 docs/architecture/site-customization-and-updates.md）
-# extra_plugin_dirs = ["local/plugins"]
 # [env]
 # PALLAS_PROTOCOL_ENABLED = true
 # 分片跨进程 claim（与 Pallas-Bot-AI 共用时可填同一 REDIS_URL；run_sharded_bot.sh 自动探测）

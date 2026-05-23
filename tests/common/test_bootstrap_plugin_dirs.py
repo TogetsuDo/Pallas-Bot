@@ -23,3 +23,17 @@ extra_plugin_dirs = ["local/plugins", "./local/plugins", "plugins/custom"]
     )
     monkeypatch.setattr("src.common.config.repo_settings._REPO_ROOT", root)
     assert read_bootstrap_extra_plugin_dirs() == ["local/plugins", "plugins/custom"]
+
+
+def test_read_bootstrap_extra_plugin_dirs_top_level_fallback(tmp_path, monkeypatch) -> None:
+    root = tmp_path / "repo"
+    cfg = root / "config" / "pallas.toml"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text(
+        """
+extra_plugin_dirs = ["local/plugins"]
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("src.common.config.repo_settings._REPO_ROOT", root)
+    assert read_bootstrap_extra_plugin_dirs() == ["local/plugins"]

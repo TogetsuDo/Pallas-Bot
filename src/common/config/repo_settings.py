@@ -9,12 +9,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import tomllib
 from pathlib import Path
 from typing import Any
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
+_log = logging.getLogger(__name__)
 
 
 def repo_root() -> Path:
@@ -28,18 +30,24 @@ def repo_config_path() -> Path:
 def read_bootstrap_extra_plugin_dirs() -> list[str]:
     """``[bootstrap].extra_plugin_dirs``：站点自有插件目录（相对仓库根，如 ``local/plugins``）。"""
     data = _load_toml_file(repo_config_path())
+    raw: object | None = None
     bootstrap = data.get("bootstrap")
-    if not isinstance(bootstrap, dict):
-        return []
-    raw = bootstrap.get("extra_plugin_dirs")
+    if isinstance(bootstrap, dict):
+        raw = bootstrap.get("extra_plugin_dirs")
+    if not isinstance(raw, list):
+        top = data.get("extra_plugin_dirs")
+        if isinstance(top, list):
+            _log.warning(
+                "config/pallas.toml: extra_plugin_dirs 应写在 [bootstrap] 段内，"
+                "当前写在文件顶层仍会被读取，请迁入 [bootstrap] 以免后续版本不再兼容"
+            )
+            raw = top
     if not isinstance(raw, list):
         return []
     out: list[str] = []
     seen: set[str] = set()
     for item in raw:
-        s = str(item).strip().replace("\\", "/").rstrip("/")
-        if s.startswith("./"):
-            s = s[2:]
+        s = str(item).strip().replace("\\", "/").rstrip("/").removeprefix("./")
         if not s or s in seen:
             continue
         seen.add(s)

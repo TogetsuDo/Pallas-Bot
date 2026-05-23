@@ -114,20 +114,41 @@ def _load_toml_extra_plugin_dirs(
         if not root.is_dir():
             logger.warning("bot_runtime: {} plugin_dir missing: {}", role_label, rel_dir)
             continue
-        try:
-            found = nonebot.load_plugins(rel_dir)
-        except Exception as e:
-            logger.warning("bot_runtime: {} load_plugins({}) failed: {}", role_label, rel_dir, e)
-            continue
-        for plugin in found:
-            mod = getattr(plugin, "module", None)
-            if mod is None:
+        dir_loaded = 0
+        entries = sorted(root.iterdir(), key=lambda p: p.name)
+        for entry in entries:
+            if not entry.is_dir() or entry.name.startswith("."):
                 continue
-            name = getattr(mod, "__name__", "") or ""
-            if name:
-                loaded_short.add(_short_name(name))
-        count += len(found)
-        logger.info("bot_runtime: {} load_plugins({}) -> {} plugin(s)", role_label, rel_dir, len(found))
+            if not (entry / "__init__.py").is_file():
+                continue
+            sub_rel = f"{rel_dir.rstrip('/')}/{entry.name}"
+            pkg_path = PROJECT_ROOT / sub_rel
+            try:
+                plugin = nonebot.load_plugin(pkg_path)
+                found = [plugin] if plugin is not None else []
+            except Exception as e:
+                logger.warning(
+                    "bot_runtime: {} load_plugin({}) failed: {}",
+                    role_label,
+                    sub_rel,
+                    e,
+                )
+                continue
+            for plugin in found:
+                mod = getattr(plugin, "module", None)
+                if mod is None:
+                    continue
+                name = getattr(mod, "__name__", "") or ""
+                if name:
+                    loaded_short.add(_short_name(name))
+            dir_loaded += len(found)
+            count += len(found)
+        logger.info(
+            "bot_runtime: {} load_plugins({}) -> {} plugin(s)",
+            role_label,
+            rel_dir,
+            dir_loaded,
+        )
     return count
 
 

@@ -11,6 +11,8 @@ from src.common.paths import PROJECT_ROOT
 
 _PLUGINS_ROOT = PROJECT_ROOT / "src" / "plugins"
 
+PluginSourceKind = str  # "main" | "local" | "pip"
+
 _INFRA_NAME_PREFIXES = (
     "nonebot",
     "nonebot_plugin",
@@ -26,6 +28,9 @@ _INFRA_EXACT = frozenset({
     "nonebot_plugin_alconna",
 })
 
+# 以下以 _ 开头但仍纳入 WebUI 插件目录（含中文 metadata）
+_CATALOG_UNDERSCORE_PACKAGES = frozenset({"_ingress_gate"})
+
 
 def discover_plugin_packages() -> list[str]:
     if not _PLUGINS_ROOT.is_dir():
@@ -34,10 +39,91 @@ def discover_plugin_packages() -> list[str]:
     for entry in sorted(_PLUGINS_ROOT.iterdir()):
         if not entry.is_dir() or entry.name.startswith("."):
             continue
+        if entry.name.startswith("_") and entry.name not in _CATALOG_UNDERSCORE_PACKAGES:
+            continue
         if not (entry / "__init__.py").is_file():
             continue
         out.append(entry.name)
     return out
+
+
+def discover_extra_plugin_packages() -> dict[str, Path]:
+    """站点 ``extra_plugin_dirs`` 下的插件包：目录名 → 包根路径。"""
+    from src.common.config.repo_settings import read_bootstrap_extra_plugin_dirs
+
+    out: dict[str, Path] = {}
+    for rel in read_bootstrap_extra_plugin_dirs():
+        root = (PROJECT_ROOT / rel).resolve()
+        if not root.is_dir():
+            continue
+        for entry in sorted(root.iterdir()):
+            if not entry.is_dir() or entry.name.startswith("."):
+                continue
+            if not (entry / "__init__.py").is_file():
+                continue
+            out[entry.name] = entry
+    return out
+
+
+def plugin_source_from_module_path(mod_file: str) -> PluginSourceKind | None:
+    if not mod_file:
+        return None
+    try:
+        rel = Path(mod_file).resolve().relative_to(PROJECT_ROOT.resolve()).as_posix()
+    except ValueError:
+        return "pip"
+    if rel.startswith("local/"):
+        return "local"
+    if rel.startswith("src/plugins/"):
+        return "main"
+    return "pip"
+
+
+def module_dir_rel(mod_file: str) -> str | None:
+    if not mod_file:
+        return None
+    try:
+        return Path(mod_file).resolve().parent.relative_to(PROJECT_ROOT.resolve()).as_posix()
+    except (ValueError, OSError):
+        return None
+
+
+def infer_plugin_source(
+    package: str,
+    loaded: object | None,
+    *,
+    extra_pkgs: dict[str, Path],
+) -> tuple[PluginSourceKind, str | None]:
+    if loaded is not None:
+        mod = getattr(loaded, "module", None)
+        module_name = getattr(mod, "__name__", "") if mod is not None else ""
+        file_path = getattr(mod, "__file__", "") if mod is not None else ""
+        src = plugin_source_from_module_path(file_path)
+        if src == "local":
+            return "local", module_dir_rel(file_path) or _package_dir_posix(extra_pkgs.get(package))
+        if src == "main":
+            return "main", module_dir_rel(file_path) or f"src/plugins/{package}"
+        if src == "pip":
+            return "pip", None
+        if module_name.startswith("src.plugins."):
+            return "main", f"src/plugins/{package}"
+        if extra_pkgs.get(package) is not None:
+            return "local", _package_dir_posix(extra_pkgs.get(package))
+    local_root = extra_pkgs.get(package)
+    if local_root is not None:
+        return "local", _package_dir_posix(local_root)
+    if (_PLUGINS_ROOT / package / "__init__.py").is_file():
+        return "main", f"src/plugins/{package}"
+    return "pip", None
+
+
+def _package_dir_posix(path: Path | None) -> str | None:
+    if path is None:
+        return None
+    try:
+        return path.resolve().relative_to(PROJECT_ROOT.resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 def _parse_plugin_metadata_stub(init_path: Path) -> dict[str, Any] | None:
@@ -81,6 +167,8 @@ def package_load_role(package: str) -> str:
 
     if is_unified_role() or not is_sharding_active():
         return "both"
+    if package == "pallas_console_metrics":
+        return "internal"
     if package.startswith("_"):
         return "worker" if package == "_ingress_gate" else "internal"
     hub_short = {m.rsplit(".", 1)[-1] for m in HUB_PLUGIN_MODULES}
@@ -99,8 +187,9 @@ def is_infrastructure_plugin_name(name: str, module_name: str) -> bool:
     return any(n.startswith(p) or m.startswith(p) for p in _INFRA_NAME_PREFIXES)
 
 
-def package_has_config_module(package: str) -> bool:
-    return (_PLUGINS_ROOT / package / "config.py").is_file()
+def package_has_config_module(package: str, *, package_root: Path | None = None) -> bool:
+    root = package_root if package_root is not None else (_PLUGINS_ROOT / package)
+    return (root / "config.py").is_file()
 
 
 def _loaded_plugin_index() -> tuple[dict[str, Any], dict[str, Any]]:
@@ -150,6 +239,7 @@ def build_plugin_catalog_rows(
     ignored = ignored or set()
     hidden = hidden or set()
     _, by_package = _loaded_plugin_index()
+    extra_pkgs = discover_extra_plugin_packages()
     rows: list[dict[str, Any]] = []
     seen_packages: set[str] = set()
 
@@ -160,9 +250,15 @@ def build_plugin_catalog_rows(
         visible = not ign and not hid
         return visible, ign, hid
 
-    for package in discover_plugin_packages():
+    all_packages = sorted(set(discover_plugin_packages()) | set(extra_pkgs.keys()))
+    for package in all_packages:
         seen_packages.add(package)
-        init_path = _PLUGINS_ROOT / package / "__init__.py"
+        local_root = extra_pkgs.get(package)
+        main_root = _PLUGINS_ROOT / package
+        disk_root = local_root if local_root is not None else main_root
+        if not (disk_root / "__init__.py").is_file():
+            continue
+        init_path = disk_root / "__init__.py"
         stub = _parse_plugin_metadata_stub(init_path)
         loaded = package in by_package
         p = by_package.get(package)
@@ -178,6 +274,7 @@ def build_plugin_catalog_rows(
             meta = stub
         role = package_load_role(package)
         visible, ign, hid = _help_flags(nb_name, package)
+        plugin_source, plugin_source_dir = infer_plugin_source(package, p, extra_pkgs=extra_pkgs)
         rows.append({
             "name": package,
             "nb_plugin_name": nb_name,
@@ -185,10 +282,12 @@ def build_plugin_catalog_rows(
             "metadata": meta,
             "load_role": role,
             "loaded_in_process": loaded,
-            "has_config": package_has_config_module(package),
+            "has_config": package_has_config_module(package, package_root=disk_root),
             "help_visible": visible,
             "help_ignored": ign,
             "help_hidden": hid,
+            "plugin_source": plugin_source,
+            "plugin_source_dir": plugin_source_dir,
         })
 
     from nonebot import get_loaded_plugins
@@ -216,14 +315,21 @@ def build_plugin_catalog_rows(
             "help_visible": visible,
             "help_ignored": ign,
             "help_hidden": hid,
+            "plugin_source": "pip",
+            "plugin_source_dir": None,
         })
 
     rows.sort(key=lambda x: (x.get("load_role") != "infra", (x.get("metadata") or {}).get("name") or x["name"]))
     return rows
 
 
+def _package_dir_to_module_id(package_root: Path) -> str:
+    rel = package_root.resolve().relative_to(PROJECT_ROOT.resolve())
+    return rel.as_posix().replace("/", ".")
+
+
 def resolve_catalog_plugin_module(plugin_name: str) -> str | None:
-    """按目录名或 NoneBot 插件名解析 ``src.plugins.*`` 模块路径。"""
+    """按目录名或 NoneBot 插件名解析插件模块路径（含 local/plugins 覆盖）。"""
     target = (plugin_name or "").strip()
     if not target:
         return None
@@ -232,6 +338,9 @@ def resolve_catalog_plugin_module(plugin_name: str) -> str | None:
     if p is not None:
         mod = getattr(p, "module", None)
         return getattr(mod, "__name__", "") if mod is not None else None
+    extra_pkgs = discover_extra_plugin_packages()
+    if target in extra_pkgs:
+        return _package_dir_to_module_id(extra_pkgs[target])
     if (_PLUGINS_ROOT / target / "__init__.py").is_file():
         return f"src.plugins.{target}"
     return None

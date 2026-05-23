@@ -6,8 +6,14 @@ from nonebot import get_driver, logger
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.exception import IgnoredException
 from nonebot.message import event_preprocessor
+from nonebot.plugin import PluginMetadata
 
 from src.common.bot_runtime.roles import is_hub_role
+from src.common.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
 from src.common.ingress.cage_plaintext import is_cage_plaintext
 from src.common.ingress.drink_plaintext import is_drink_plaintext
 from src.common.ingress.roulette_plaintext import is_roulette_plaintext
@@ -27,6 +33,23 @@ from src.common.shard.registry.config import get_shard_registry_settings, is_sha
 INGRESS_CLAIM_PLUGIN = "ingress_gate"
 INGRESS_SHARD_CLAIM_PLUGIN = "ingress_gate_shard"
 driver = get_driver()
+
+__plugin_meta__ = PluginMetadata(
+    name="分片入站网关",
+    description=(
+        "Worker 群消息预处理：牛牛舰队识别、@ 定向、跨 Bot/分片 claim、"
+        "问候与报数 fanout，避免同条消息被多个进程重复处理。"
+    ),
+    usage="（内部）无用户命令；分片 Worker 启动时自动注册 event_preprocessor。",
+    type="application",
+    homepage=PLUGIN_HOMEPAGE,
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
+        "help_audience": "maintainer",
+    },
+)
 
 
 def ingress_gate_active() -> bool:

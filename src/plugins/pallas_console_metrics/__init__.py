@@ -3,8 +3,28 @@
 from __future__ import annotations
 
 from nonebot import get_driver
+from nonebot.plugin import PluginMetadata
 
+from src.common.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
 from src.common.shard.registry.config import is_sharding_active
+
+__plugin_meta__ = PluginMetadata(
+    name="控制台运行指标",
+    description="分片 Worker 采集 Matcher 与消息处理指标，写入共享统计文件，由 Hub 侧 WebUI 合并展示运行概况。",
+    usage="（内部）无用户命令；分片模式下 Worker 启动时自动挂载指标钩子。",
+    type="application",
+    homepage=PLUGIN_HOMEPAGE,
+    supported_adapters={"~onebot.v11"},
+    extra={
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
+        "help_audience": "maintainer",
+    },
+)
 
 driver = get_driver()
 
