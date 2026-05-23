@@ -173,16 +173,91 @@ def _run_checked(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
         raise RuntimeError(f"{err}（命令: {cmd_hint}）")
 
 
+def is_backup_run_dir(path: Path) -> bool:
+    name = path.name
+    return name.startswith(("postgres_", "mongodb_"))
+
+
+def backup_run_backend(path: Path) -> str:
+    return "postgres" if path.name.startswith("postgres_") else "mongodb"
+
+
+def assert_deletable_backup_run(target: Path, parent: Path) -> None:
+    """校验目标为 parent 下的合法备份子目录。"""
+    resolved = target.resolve()
+    parent_resolved = parent.resolve()
+    if resolved == parent_resolved:
+        raise ValueError("不能删除备份父目录本身")
+    try:
+        resolved.relative_to(parent_resolved)
+    except ValueError as e:
+        raise ValueError("备份路径不在允许的父目录内") from e
+    if not resolved.is_dir():
+        raise ValueError("备份目录不存在")
+    if not is_backup_run_dir(resolved):
+        raise ValueError("不是合法的备份目录")
+
+
+def list_backup_runs(*, output_parent: str | None = None) -> list[dict[str, Any]]:
+    parent = resolve_backup_parent(output_parent)
+    if not parent.is_dir():
+        return []
+    entries: list[dict[str, Any]] = []
+    for child in parent.iterdir():
+        if not child.is_dir() or not is_backup_run_dir(child):
+            continue
+        try:
+            mtime = child.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        entries.append({
+            "name": child.name,
+            "path": str(child.resolve()),
+            "backend": backup_run_backend(child),
+            "size_bytes": dir_size_bytes(child),
+            "modified_at": datetime.fromtimestamp(mtime).isoformat(timespec="seconds"),
+        })
+    entries.sort(key=lambda row: row.get("modified_at") or "", reverse=True)
+    return entries
+
+
+def delete_backup_runs(
+    paths: list[str],
+    *,
+    output_parent: str | None = None,
+) -> dict[str, Any]:
+    if not paths:
+        raise ValueError("未指定要删除的备份")
+    parent = resolve_backup_parent(output_parent)
+    deleted: list[str] = []
+    for raw in paths:
+        target = Path(raw.strip())
+        if not raw.strip():
+            continue
+        assert_deletable_backup_run(target, parent)
+        shutil.rmtree(target.resolve())
+        deleted.append(str(target.resolve()))
+    if not deleted:
+        raise ValueError("未指定要删除的备份")
+    return {"deleted": deleted, "count": len(deleted)}
+
+
 def run_postgres_backup(
     *,
     output_parent: str | None = None,
     label: str = "",
     pg_format: PgFormat = "custom",
+    run_dir: Path | None = None,
 ) -> BackupResult:
     if not tool_on_path("pg_dump"):
         raise RuntimeError(missing_tool_message("pg_dump"))
     parent = resolve_backup_parent(output_parent)
-    run_dir = make_backup_run_dir(parent, "postgres", label=label)
+    if run_dir is None:
+        run_dir = make_backup_run_dir(parent, "postgres", label=label)
+    else:
+        run_dir = run_dir.resolve()
+        if not run_dir.is_dir():
+            raise ValueError("备份输出目录不存在")
     host = _pg_host()
     port = str(int(_cfg("PG_PORT", "5432")))
     user = _cfg("PG_USER", "").strip()
@@ -224,11 +299,17 @@ def run_mongodb_backup(
     output_parent: str | None = None,
     label: str = "",
     scope: MongoScope = "full",
+    run_dir: Path | None = None,
 ) -> BackupResult:
     if not tool_on_path("mongodump"):
         raise RuntimeError(missing_tool_message("mongodump"))
     parent = resolve_backup_parent(output_parent)
-    run_dir = make_backup_run_dir(parent, "mongodb", label=label)
+    if run_dir is None:
+        run_dir = make_backup_run_dir(parent, "mongodb", label=label)
+    else:
+        run_dir = run_dir.resolve()
+        if not run_dir.is_dir():
+            raise ValueError("备份输出目录不存在")
     out_root = run_dir / "mongodb"
     host = _cfg("MONGO_HOST", "127.0.0.1")
     port = str(int(_cfg("MONGO_PORT", "27017")))
@@ -271,6 +352,7 @@ def run_database_backup(
     label: str = "",
     scope: MongoScope = "full",
     pg_format: PgFormat = "custom",
+    run_dir: Path | None = None,
 ) -> BackupResult:
     backend = get_db_backend()
     if backend in ("postgres", "postgresql", "pg"):
@@ -278,9 +360,23 @@ def run_database_backup(
             output_parent=output_parent,
             label=label,
             pg_format=pg_format,
+            run_dir=run_dir,
         )
     return run_mongodb_backup(
         output_parent=output_parent,
         label=label,
         scope=scope,
+        run_dir=run_dir,
     )
+
+
+def prepare_database_backup_run_dir(
+    *,
+    output_parent: str | None = None,
+    label: str = "",
+) -> Path:
+    """创建本次备份输出目录（异步任务在 dump 前调用，便于轮询体积）。"""
+    backend = get_db_backend()
+    parent = resolve_backup_parent(output_parent)
+    backend_name = "postgres" if backend in ("postgres", "postgresql", "pg") else "mongodb"
+    return make_backup_run_dir(parent, backend_name, label=label)

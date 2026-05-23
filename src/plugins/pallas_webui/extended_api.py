@@ -3440,6 +3440,17 @@ class _DbBackupBody(BaseModel):
     )
 
 
+class _DbBackupDeleteBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    paths: list[str] = Field(min_length=1, max_length=64)
+    output_parent: str | None = Field(
+        default=None,
+        max_length=1024,
+        description="备份父目录；用于校验 paths 均在目录内",
+    )
+
+
 class _DbTableRowUpsertBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -4216,36 +4227,90 @@ def register_extended_api(
         token: str | None = Query(default=None),
         x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
     ) -> JSONResponse:
-        """对当前配置的数据库执行逻辑备份（mongodump / pg_dump）。"""
+        """异步发起数据库逻辑备份；返回 job_id，进度见 GET /db/backup/jobs/{job_id}。"""
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
-        from src.common.db.backup import run_database_backup
+        from src.common.db.backup_jobs import backup_job_status_payload, run_backup_job_sync, start_backup_job
 
         try:
-            result = await asyncio.to_thread(
-                run_database_backup,
+            job = start_backup_job(
                 output_parent=body.output_parent,
                 label=body.label,
                 scope=body.scope,
                 pg_format=body.pg_format,
             )
+        except RuntimeError as e:
+            raise HTTPException(status_code=409, detail=str(e)) from e
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
-        except RuntimeError as e:
-            # 工具缺失、mongodump/pg_dump 失败等，非网关故障
+
+        job_id = job.job_id
+        asyncio.create_task(asyncio.to_thread(run_backup_job_sync, job_id))
+        return JSONResponse({"ok": True, "data": backup_job_status_payload(job)})
+
+    @router.get(f"{x}/db/backup/jobs/active", include_in_schema=True)
+    async def _db_backup_job_active() -> JSONResponse:
+        from src.common.db.backup_jobs import active_backup_job, backup_job_status_payload
+
+        job = active_backup_job()
+        return JSONResponse({"ok": True, "data": backup_job_status_payload(job) if job else None})
+
+    @router.get(f"{x}/db/backup/jobs/{{job_id}}", include_in_schema=True)
+    async def _db_backup_job_status(job_id: str) -> JSONResponse:
+        from src.common.db.backup_jobs import backup_job_status_payload, get_backup_job
+
+        job = get_backup_job(job_id.strip())
+        if job is None:
+            raise HTTPException(status_code=404, detail="备份任务不存在")
+        return JSONResponse({"ok": True, "data": backup_job_status_payload(job)})
+
+    @router.get(f"{x}/db/backup/runs", include_in_schema=True)
+    async def _db_backup_runs(
+        output_parent: str | None = Query(default=None, max_length=1024),
+    ) -> JSONResponse:
+        from src.common.db.backup import list_backup_runs
+
+        try:
+            rows = await asyncio.to_thread(list_backup_runs, output_parent=output_parent)
+        except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:  # noqa: BLE001
-            logger.exception("Pallas-Bot 控制台: 数据库备份失败")
+            logger.exception("Pallas-Bot 控制台: 列举备份目录失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
-        payload = {
-            "ok": result.ok,
-            "backend": result.backend,
-            "scope": result.scope,
-            "output_dir": result.output_dir,
-            "artifacts": result.artifacts,
-            "size_bytes": result.size_bytes,
-            "message": result.message,
-        }
-        return JSONResponse({"ok": True, "data": payload})
+        return JSONResponse({"ok": True, "data": {"runs": rows}})
+
+    @router.post(f"{x}/db/backup/runs/delete", include_in_schema=True)
+    async def _db_backup_runs_delete(
+        body: _DbBackupDeleteBody,
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        from src.common.db.backup import delete_backup_runs
+        from src.common.db.backup_jobs import active_backup_job
+
+        def check_active_delete_conflict() -> None:
+            active = active_backup_job()
+            if not active or not active.output_dir:
+                return
+            active_path = str(Path(active.output_dir).resolve())
+            for raw in body.paths:
+                if str(Path(raw.strip()).resolve()) == active_path:
+                    raise HTTPException(status_code=409, detail="无法删除进行中的备份目录")
+
+        await asyncio.to_thread(check_active_delete_conflict)
+
+        try:
+            data = await asyncio.to_thread(
+                delete_backup_runs,
+                body.paths,
+                output_parent=body.output_parent,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Pallas-Bot 控制台: 删除备份目录失败")
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": data})
 
     @router.post(f"{x}/db/mongodb/aggregate", include_in_schema=True)
     async def _db_mongo_aggregate(
