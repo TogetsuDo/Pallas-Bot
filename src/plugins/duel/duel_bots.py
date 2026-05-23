@@ -5,12 +5,20 @@ from __future__ import annotations
 import asyncio
 import random
 import re
-import time
 from typing import TYPE_CHECKING, Any
 
 from nonebot import get_bots, logger
 
 from src.common.multi_bot.dedup import normalize_message_time
+from src.common.multi_bot.group_online_cache import (
+    GROUP_ONLINE_TTL_SEC,
+    NS_FLEET,
+    NS_LOCAL_CONNECTED,
+    clear_group_online_cache,
+    get_cached_group_bot_ids,
+    resolve_local_connected_bots_in_group,
+    store_cached_group_bot_ids,
+)
 from src.plugins.block import is_fleet_bot_qq
 
 if TYPE_CHECKING:
@@ -20,14 +28,12 @@ _AT_CQ_RE = re.compile(r"\[CQ:at,qq=(\d+)")
 _ROUND_COUNT_RE = re.compile(r"(\d{1,2})\s*(?:幕|回合)")
 
 # 复读 fanout / 决斗等高频路径：按群缓存在线 fleet 牛，避免 member API 异常时反复全舰队 probe
-_GROUP_ONLINE_BOTS_TTL_SEC = 45.0
-_GROUP_ONLINE_BOTS_CACHE_MAX = 512
-_group_online_bots_cache: dict[int, tuple[float, tuple[int, ...]]] = {}
-_group_online_bots_lock = asyncio.Lock()
+_GROUP_ONLINE_BOTS_TTL_SEC = GROUP_ONLINE_TTL_SEC
 
 
 def clear_group_online_bot_ids_cache() -> None:
-    _group_online_bots_cache.clear()
+    clear_group_online_cache(NS_FLEET)
+    clear_group_online_cache(NS_LOCAL_CONNECTED)
 
 
 def normalize_onebot_api_payload(raw: Any) -> Any:
@@ -110,22 +116,12 @@ async def probe_fleet_bots_in_group(caller: Any, group_id: int, catalog: frozens
 async def list_group_online_bot_ids(group_id: int) -> list[int]:
     """已连接且能查到本群资料的牛牛 QQ；分片时含其它 worker 上在线的 fleet 牛。"""
     gid = int(group_id)
-    now = time.time()
-    cached = _group_online_bots_cache.get(gid)
-    if cached is not None and cached[0] > now:
-        return list(cached[1])
+    cached = get_cached_group_bot_ids(gid, namespace=NS_FLEET)
+    if cached is not None:
+        return cached
 
     result = await resolve_shard_group_online_bot_ids(gid)
-
-    async with _group_online_bots_lock:
-        if len(_group_online_bots_cache) >= _GROUP_ONLINE_BOTS_CACHE_MAX:
-            expired = [k for k, (exp, _) in _group_online_bots_cache.items() if exp <= now]
-            for k in expired:
-                _group_online_bots_cache.pop(k, None)
-            if len(_group_online_bots_cache) >= _GROUP_ONLINE_BOTS_CACHE_MAX:
-                _group_online_bots_cache.clear()
-        _group_online_bots_cache[gid] = (now + _GROUP_ONLINE_BOTS_TTL_SEC, tuple(result))
-
+    await store_cached_group_bot_ids(gid, result, namespace=NS_FLEET)
     return result
 
 
@@ -161,20 +157,7 @@ async def resolve_unified_group_online_bot_ids(group_id: int) -> list[int]:
     probed = await probe_fleet_bots_in_group(caller, group_id, local)
     if len(probed) >= 2:
         return probed
-    connected: list[int] = []
-    for key in sorted(bots.keys(), key=lambda x: int(x) if str(x).isdigit() else 0):
-        try:
-            bid = int(key)
-        except ValueError:
-            continue
-        if bid not in catalog:
-            continue
-        try:
-            await bots[key].get_group_member_info(group_id=group_id, user_id=bid, no_cache=True)
-        except Exception:
-            continue
-        connected.append(bid)
-    return sorted(connected)
+    return await resolve_local_connected_bots_in_group(group_id)
 
 
 async def resolve_shard_group_online_bot_ids(group_id: int) -> list[int]:

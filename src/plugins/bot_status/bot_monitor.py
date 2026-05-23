@@ -150,19 +150,9 @@ async def check_bot_still_offline(bot_id: int, nickname: str) -> None:
 
 async def list_connected_bots_in_group(group_id: int) -> list[int]:
     """本进程已连接且能查到该群成员资料的牛牛 QQ。"""
-    bots = get_bots()
-    out: list[int] = []
-    for key in sorted(bots.keys(), key=lambda x: int(x) if str(x).isdigit() else 0):
-        try:
-            bid = int(key)
-        except ValueError:
-            continue
-        try:
-            await bots[key].get_group_member_info(group_id=group_id, user_id=bid, no_cache=True)
-        except Exception:
-            continue
-        out.append(bid)
-    return out
+    from src.common.multi_bot.group_online_cache import resolve_local_connected_bots_in_group
+
+    return await resolve_local_connected_bots_in_group(group_id)
 
 
 async def get_bot_status_info() -> tuple[dict[int, str], dict[int, str]]:
