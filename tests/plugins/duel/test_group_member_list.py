@@ -100,3 +100,27 @@ async def test_list_group_online_bot_ids_uses_cache(monkeypatch) -> None:
     assert first == [111, 222]
     assert second == [111, 222]
     assert list_calls == [626266904]
+
+
+async def test_unified_group_online_bot_ids(monkeypatch) -> None:
+    mod.clear_group_online_bot_ids_cache()
+
+    class FakeBot:
+        def __init__(self, qq: int) -> None:
+            self.self_id = str(qq)
+
+        async def get_group_member_list(self, *, group_id: int, no_cache: bool):
+            return [{"user_id": 111}, {"user_id": 222}]
+
+        async def get_group_member_info(self, *, group_id: int, user_id: int, no_cache: bool):
+            if user_id not in {111, 222}:
+                raise RuntimeError("not in group")
+
+    bots = {str(qq): FakeBot(qq) for qq in (111, 222, 333)}
+
+    monkeypatch.setattr("src.common.shard.registry.config.is_sharding_active", lambda: False)
+    monkeypatch.setattr("src.common.multi_bot.fleet.get_catalog_bot_ids", lambda: frozenset({111, 222, 333}))
+    monkeypatch.setattr(mod, "get_bots", lambda: bots)
+
+    ids = await list_group_online_bot_ids(626266905)
+    assert ids == [111, 222]

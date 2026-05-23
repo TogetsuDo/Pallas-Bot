@@ -129,6 +129,54 @@ async def list_group_online_bot_ids(group_id: int) -> list[int]:
     return result
 
 
+async def resolve_unified_group_online_bot_ids(group_id: int) -> list[int]:
+    """单进程多账号：本进程已连接 fleet 牛 ∩ 本群成员。"""
+    from src.common.multi_bot.fleet import get_catalog_bot_ids
+
+    catalog = get_catalog_bot_ids()
+    if not catalog:
+        return []
+    bots = get_bots()
+    caller = None
+    for key in sorted(bots.keys(), key=lambda x: int(x) if str(x).isdigit() else 0):
+        try:
+            bid = int(key)
+        except ValueError:
+            continue
+        if bid in catalog:
+            caller = bots[key]
+            break
+    if caller is None:
+        return []
+    local = frozenset(int(k) for k in bots if str(k).isdigit()) & catalog
+    member_ids: set[int] = set()
+    try:
+        raw = await caller.get_group_member_list(group_id=group_id, no_cache=True)  # type: ignore[union-attr]
+        member_ids = parse_group_member_list_user_ids(raw)
+        out = sorted(q for q in local if q in member_ids)
+        if len(out) >= 2:
+            return out
+    except Exception:
+        pass
+    probed = await probe_fleet_bots_in_group(caller, group_id, local)
+    if len(probed) >= 2:
+        return probed
+    connected: list[int] = []
+    for key in sorted(bots.keys(), key=lambda x: int(x) if str(x).isdigit() else 0):
+        try:
+            bid = int(key)
+        except ValueError:
+            continue
+        if bid not in catalog:
+            continue
+        try:
+            await bots[key].get_group_member_info(group_id=group_id, user_id=bid, no_cache=True)
+        except Exception:
+            continue
+        connected.append(bid)
+    return sorted(connected)
+
+
 async def resolve_shard_group_online_bot_ids(group_id: int) -> list[int]:
     """分片：解析本群可用 fleet 牛（无进程内 TTL 缓存）。"""
     from src.common.multi_bot.fleet import get_catalog_bot_ids
@@ -136,7 +184,7 @@ async def resolve_shard_group_online_bot_ids(group_id: int) -> list[int]:
     from src.common.shard.registry.config import is_sharding_active
 
     if not is_sharding_active():
-        return []
+        return await resolve_unified_group_online_bot_ids(group_id)
 
     caller = pick_local_query_bot()
     if caller is None:
