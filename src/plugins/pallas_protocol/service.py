@@ -1075,11 +1075,11 @@ class PallasProtocolService:
     def has_account(self, account_id: str) -> bool:
         return account_id in self._accounts
 
-    def get_account(self, account_id: str) -> dict | None:
+    def get_account(self, account_id: str, *, brief: bool = False) -> dict | None:
         account = self._accounts.get(account_id)
         if not account:
             return None
-        return self._compose_account_state(account_id, account)
+        return self._compose_account_state(account_id, account, brief=brief)
 
     def snowluma_webui_http_base(self, account: dict) -> str:
         h = str(getattr(self._config, "pallas_protocol_bind_host", "127.0.0.1") or "127.0.0.1").strip()

@@ -5,9 +5,10 @@ from __future__ import annotations
 import json
 import threading
 import time
+import traceback
 from typing import Any
 
-from src.common.shard.logs.view import shard_logs_dir
+from src.common.shard.logs.view import _exc_type_and_message_from_traceback, shard_logs_dir
 
 _ERRORS_DIR_NAME = "errors"
 # 存在时表示仅认 errors/*.jsonl，清空后勿再扫 hub.log / worker-*.log（避免 WebUI 清理后旧 ERROR 复现）
@@ -43,7 +44,16 @@ def _dotted_module_short_name(module_name: str) -> str:
     return str(module_name or "") or "unknown"
 
 
-def _tb_and_exc_type_from_log_record(record: Any) -> tuple[str, str, str]:
+def _traceback_from_log_text(text: str) -> str:
+    raw = str(text or "")
+    idx = raw.find("Traceback (most recent call last):")
+    if idx < 0:
+        return ""
+    return raw[idx:].strip()
+
+
+def parse_log_error_from_record(text: str, record: Any) -> tuple[str, str, str]:
+    """从 loguru record（及 sink 格式化行）取 (exc_type, message, traceback)。"""
     try:
         msg = str(record["message"])
     except Exception:
@@ -51,18 +61,48 @@ def _tb_and_exc_type_from_log_record(record: Any) -> tuple[str, str, str]:
     exc_type = "LogError"
     tb = ""
     try:
-        exc = record["exception"]
+        ex = record["exception"]
     except Exception:
-        exc = None
-    if exc is not None:
+        ex = None
+    if ex:
+        et = val = tb_obj = None
         try:
-            import traceback
-
-            exc_type = type(exc.value).__name__
-            tb = "".join(traceback.format_exception(type(exc.value), exc.value, exc.traceback))
+            if hasattr(ex, "type"):
+                et = ex.type
+                val = getattr(ex, "value", None)
+                tb_obj = getattr(ex, "traceback", None)
+            elif isinstance(ex, tuple) and len(ex) >= 3:
+                et, val, tb_obj = ex[0], ex[1], ex[2]
         except Exception:
-            tb = str(exc)
+            et = val = tb_obj = None
+        if val is not None:
+            exc_type = type(val).__name__
+        elif et is not None:
+            exc_type = getattr(et, "__name__", str(et))
+        try:
+            tb = "".join(traceback.format_exception(et, val, tb_obj))
+        except Exception:
+            tb = str(val) if val is not None else ""
+    text_tb = _traceback_from_log_text(text)
+    if len(text_tb) > len(tb):
+        tb = text_tb
+    if tb:
+        parsed_exc, parsed_msg = _exc_type_and_message_from_traceback(tb)
+        if parsed_exc != "LogError":
+            exc_type = parsed_exc
+        if parsed_msg and (not msg.strip() or msg.startswith("Failed to import")):
+            msg = parsed_msg or msg
+    if msg.startswith("Failed to import") and exc_type in ("LogError", "ImportError"):
+        exc_type = "ModuleNotFoundError"
+    if not msg.strip():
+        msg = (text or "")[:_MSG_MAX]
+        if len(text or "") > _MSG_MAX:
+            msg = msg + "…"
     return exc_type, msg, tb
+
+
+def _tb_and_exc_type_from_log_record(record: Any) -> tuple[str, str, str]:
+    return parse_log_error_from_record("", record)
 
 
 def _plugin_label_for_record(stem: str, record: Any) -> str:
@@ -100,15 +140,11 @@ def append_shard_log_error(entry: dict[str, Any], *, stem: str) -> None:
 
 
 def append_shard_log_error_from_sink(text: str, record: Any, *, stem: str) -> None:
-    exc_type, msg, tb = _tb_and_exc_type_from_log_record(record)
+    exc_type, msg, tb = parse_log_error_from_record(text, record)
     if len(tb) > _TB_MAX:
         tb = tb[:_TB_MAX] + "\n…(truncated)"
     if len(msg) > _MSG_MAX:
         msg = msg[:_MSG_MAX] + "…"
-    if not msg.strip():
-        msg = (text or "")[:_MSG_MAX]
-        if len(text or "") > _MSG_MAX:
-            msg = msg + "…"
     append_shard_log_error(
         {
             "at": int(time.time()),
@@ -158,6 +194,7 @@ def collect_cluster_log_errors_from_jsonl(*, limit: int = 120) -> list[dict[str,
     deduped: list[dict[str, Any]] = []
     for it in bucket:
         key = (
+            str(it.get("at") or 0),
             str(it.get("plugin") or ""),
             str(it.get("exc_type") or ""),
             str(it.get("message") or "")[:300],

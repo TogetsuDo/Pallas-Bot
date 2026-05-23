@@ -470,14 +470,16 @@ def register_pallas_protocol_routes(
         sc = scope if scope in ("all", "webui", "protocol") else "all"
 
         def _load() -> dict[str, object]:
+            from src.common.bot_runtime.roles import is_sharded_hub
             from src.common.web import (
                 tail_nonebot_log_entries_scoped,
                 tail_nonebot_log_lines_scoped,
             )
 
+            cap = min(lines, 220) if is_sharded_hub() else lines
             return {
-                "logs": tail_nonebot_log_lines_scoped(lines, sc),
-                "entries": tail_nonebot_log_entries_scoped(lines, sc),
+                "logs": tail_nonebot_log_lines_scoped(cap, sc),
+                "entries": tail_nonebot_log_entries_scoped(cap, sc),
                 "scope": sc,
             }
 
@@ -738,11 +740,12 @@ def register_pallas_protocol_routes(
     @app.get(f"{base}/api/accounts/{{account_id}}")
     async def get_one_account(
         account_id: str,
+        brief: bool = Query(default=False, description="列表/轮询用：跳过 SnowLuma 日志口令解析等重操作"),
         token: str | None = Query(default=None),
         x_pallas_protocol_token: str | None = Header(default=None, alias="X-Pallas-Protocol-Token"),
     ):
         _auth(x_pallas_protocol_token, token)
-        acc = manager.get_account(account_id)
+        acc = await asyncio.to_thread(manager.get_account, account_id, brief=brief)
         if acc is None:
             raise HTTPException(status_code=404, detail="账号不存在")
         return {"account": acc}
@@ -859,7 +862,8 @@ def register_pallas_protocol_routes(
         if not manager.has_account(account_id):
             raise HTTPException(status_code=404, detail="账号不存在")
         await manager.ensure_docker_logs_if_needed(account_id)
-        return {"logs": manager.tail_logs(account_id, lines=lines)}
+        logs = await asyncio.to_thread(manager.tail_logs, account_id, lines)
+        return {"logs": logs}
 
     @app.get(f"{base}/api/accounts/{{account_id}}/configs")
     async def get_account_configs(

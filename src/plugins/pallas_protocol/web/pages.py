@@ -1202,7 +1202,7 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
     async function nbLoadInitial() {{
       const scopeEl = document.getElementById("nbLogScope");
       const sc = scopeEl ? scopeEl.value : "all";
-      const data = await api(`/api/nonebot-logs?lines=500&scope=${{encodeURIComponent(sc)}}`);
+      const data = await api(`/api/nonebot-logs?lines=180&scope=${{encodeURIComponent(sc)}}`);
       nbLogEntries = Array.isArray(data.entries) ? data.entries.slice() : [];
       nbRender();
       nbScrollToEnd();
@@ -1604,7 +1604,9 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
     }}
     refreshAccounts({{ silent: true }}).catch((e) => notify(e.message || e, "err"));
     nbWireRunlogUi();
-    nbLoadInitial().then(() => nbStartSse()).catch((e) => notify(e.message || e, "err"));
+    setTimeout(() => {{
+      nbLoadInitial().then(() => nbStartSse()).catch((e) => notify(e.message || e, "err"));
+    }}, 350);
     setInterval(() => {{
       if (!document.getElementById("autoRefresh").checked) return;
       nbLoadInitial().catch(() => {{}});
@@ -3217,7 +3219,7 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
     async function accNbLoadInitial() {{
       const scopeEl = document.getElementById("accNbLogScope");
       const sc = scopeEl ? scopeEl.value : "all";
-      const data = await api(`/api/nonebot-logs?lines=500&scope=${{encodeURIComponent(sc)}}`);
+      const data = await api(`/api/nonebot-logs?lines=180&scope=${{encodeURIComponent(sc)}}`);
       accNbLogEntries = Array.isArray(data.entries) ? data.entries.slice() : [];
       accNbRender();
       accNbScrollToEnd();
@@ -3296,8 +3298,10 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
       const q = "tab=" + encodeURIComponent(name);
       history.replaceState(null, "", `${{basePath}}/account/${{encodeURIComponent(accountId)}}?${{q}}`);
       if (name === "overview") {{
-        accNbLoadInitial().catch(() => {{}});
-        accNbStartSse();
+        setTimeout(() => {{
+          accNbLoadInitial().catch(() => {{}});
+          accNbStartSse();
+        }}, 400);
       }} else {{
         accNbStopSse();
       }}
@@ -3420,10 +3424,12 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
         document.getElementById("onebotHint").textContent = String(err.message || err);
       }}
     }}
-    async function loadAccount() {{
+    async function loadAccount(opts) {{
       const ov = document.getElementById("ovBody");
+      const brief = !!(opts && opts.brief);
+      const q = brief ? "?brief=1" : "";
       try {{
-        const data = await api(`/api/accounts/${{encodeURIComponent(accountId)}}`);
+        const data = await api(`/api/accounts/${{encodeURIComponent(accountId)}}${{q}}`);
         const a = data.account;
         accountProcessRunning = !!a.process_running;
       let st = "";
@@ -3520,7 +3526,7 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
     }}
     async function pollAccLogs() {{
       try {{
-        const data = await api(`/api/accounts/${{encodeURIComponent(accountId)}}/logs?lines=900`);
+        const data = await api(`/api/accounts/${{encodeURIComponent(accountId)}}/logs?lines=280`);
         const el = document.getElementById("accLogs");
         if (shouldPauseLiveLogDomWrite(el)) return;
         const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
@@ -3718,14 +3724,14 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
       tab(["overview","settings","configs"].includes(tabn) ? tabn : "overview");
     }})();
     loadHints().catch(() => {{}});
-    loadAccount().catch((e) => alert(e.message));
+    loadAccount({{ brief: false }}).catch((e) => alert(e.message));
     loadJsonCfgs().catch(() => {{}});
     setInterval(() => {{
-      if (activeTab === "overview") loadAccount().catch(() => {{}});
-    }}, 4000);
+      if (activeTab === "overview") loadAccount({{ brief: true }}).catch(() => {{}});
+    }}, 8000);
     setInterval(() => {{
       if (activeTab === "overview") pollAccLogs();
-    }}, 1800);
+    }}, 5000);
   </script>
   <div id="pageOverlay" class="page-overlay">
     <div class="page-overlay-inner">

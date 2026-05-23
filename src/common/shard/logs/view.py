@@ -263,6 +263,8 @@ def merge_cluster_log_lines(
     paths = _iter_shard_log_paths(source)
     file_count = max(len(paths) + (1 if want in ("all", "hub") else 0), 1)
     per_file = min(max(n // file_count, 40), 1500)
+    if file_count >= 6:
+        per_file = min(per_file, max(48, n // max(file_count, 1)))
     keyed_bucket: list[tuple[str, tuple[str, str, int]]] = []
     if want in ("all", "hub"):
         hub_lines: list[str] = []
@@ -457,14 +459,35 @@ def _scan_log_file_errors(path, source: str, *, max_lines: int) -> list[dict[str
     return out
 
 
+def merge_error_rows_prefer_longer_tb(*rows: dict[str, Any]) -> list[dict[str, Any]]:
+    merged: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    for it in rows:
+        if not isinstance(it, dict):
+            continue
+        key = (
+            str(it.get("at") or 0),
+            str(it.get("plugin") or ""),
+            str(it.get("exc_type") or ""),
+            str(it.get("message") or "")[:300],
+        )
+        prev = merged.get(key)
+        if prev is None or len(str(it.get("traceback") or "")) > len(str(prev.get("traceback") or "")):
+            merged[key] = dict(it)
+    out = list(merged.values())
+    out.sort(key=lambda x: int(x.get("at") or 0))
+    return out
+
+
 def collect_cluster_log_errors(
     *,
     per_file: int = 600,
     limit: int = 120,
 ) -> list[dict[str, Any]]:
-    """合并分片 ERROR：优先 errors/*.jsonl；已启用 jsonl 归档且清空后不再扫落盘日志。"""
+    """合并分片 ERROR：jsonl 与落盘日志互补，traceback 取更长的一份。"""
     if limit <= 0:
         return []
+    jsonl_rows: list[dict[str, Any]] = []
+    skip_log_scan = False
     try:
         from src.common.shard.logs.errors import (
             collect_cluster_log_errors_from_jsonl,
@@ -472,42 +495,28 @@ def collect_cluster_log_errors(
             shard_errors_dir,
         )
 
-        jsonl_rows = collect_cluster_log_errors_from_jsonl(limit=limit)
-        if jsonl_rows:
-            return jsonl_rows
+        jsonl_rows = collect_cluster_log_errors_from_jsonl(limit=max(limit * 2, 80))
+        skip_log_scan = False
         if shard_errors_dir().is_dir() and errors_archive_prefers_jsonl_only():
-            # 清空后 jsonl 已删：仍可从 worker-*.log 读新 ERROR；有 jsonl 文件但暂无行则不再扫大日志
-            if list(shard_errors_dir().glob("*.jsonl")):
-                return []
+            if list(shard_errors_dir().glob("*.jsonl")) and not jsonl_rows:
+                skip_log_scan = True
     except Exception:
-        pass
-    root = shard_logs_dir()
-    if not root.is_dir():
+        skip_log_scan = False
+    log_rows: list[dict[str, Any]] = []
+    if not skip_log_scan:
+        root = shard_logs_dir()
+        if root.is_dir():
+            paths = sorted(root.glob("worker-*.log"))
+            hub_log = root / "hub.log"
+            if hub_log.is_file():
+                paths = [hub_log, *paths]
+            for path in paths:
+                source = "hub-file" if path.name == "hub.log" else path.stem
+                log_rows.extend(_scan_log_file_errors(path, source, max_lines=per_file))
+    merged = merge_error_rows_prefer_longer_tb(*jsonl_rows, *log_rows)
+    if not merged:
         return []
-    bucket: list[dict[str, Any]] = []
-    paths = sorted(root.glob("worker-*.log"))
-    hub_log = root / "hub.log"
-    if hub_log.is_file():
-        paths = [hub_log, *paths]
-    for path in paths:
-        source = "hub-file" if path.name == "hub.log" else path.stem
-        bucket.extend(_scan_log_file_errors(path, source, max_lines=per_file))
-    if not bucket:
-        return []
-    seen: set[tuple[str, str, str]] = set()
-    deduped: list[dict[str, Any]] = []
-    for it in bucket:
-        key = (
-            str(it.get("plugin") or ""),
-            str(it.get("exc_type") or ""),
-            str(it.get("message") or "")[:300],
-        )
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(it)
-    deduped.sort(key=lambda x: int(x.get("at") or 0))
-    return deduped[-limit:]
+    return merged[-limit:]
 
 
 def cleanup_stale_shard_log_files(

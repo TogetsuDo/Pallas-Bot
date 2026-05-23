@@ -2241,48 +2241,9 @@ def _dotted_module_short_name(module_name: str) -> str:
 
 
 def _tb_and_exc_type_from_log_record(record: Any) -> tuple[str, str, str]:
-    """从 loguru record 取 (exc_type, message, traceback 文本)。"""
-    try:
-        msg = str(record["message"])
-    except Exception:  # noqa: BLE001
-        msg = ""
-    exc_type = "LogError"
-    tb = ""
-    try:
-        ex = record["exception"]
-    except Exception:  # noqa: BLE001
-        return exc_type, msg, tb
-    if not ex:
-        return exc_type, msg, tb
-    et = val = tb_obj = None
-    try:
-        if hasattr(ex, "type"):
-            et = ex.type
-            val = getattr(ex, "value", None)
-            tb_obj = getattr(ex, "traceback", None)
-        elif isinstance(ex, tuple) and len(ex) >= 3:
-            et, val, tb_obj = ex[0], ex[1], ex[2]
-    except Exception:  # noqa: BLE001
-        return exc_type, msg, tb
-    if val is not None:
-        exc_type = type(val).__name__
-    elif et is not None:
-        exc_type = getattr(et, "__name__", str(et))
-    try:
-        tb = "".join(traceback.format_exception(et, val, tb_obj))
-    except Exception:  # noqa: BLE001
-        tb = str(val) if val is not None else ""
-    if tb:
-        from src.common.shard.logs.view import _exc_type_and_message_from_traceback
+    from src.common.shard.logs.errors import parse_log_error_from_record
 
-        parsed_exc, parsed_msg = _exc_type_and_message_from_traceback(tb)
-        if parsed_exc != "LogError":
-            exc_type = parsed_exc
-        if parsed_msg and (not msg.strip() or msg.startswith("Failed to import")):
-            msg = parsed_msg or msg
-    if msg.startswith("Failed to import") and exc_type in ("LogError", "ImportError"):
-        exc_type = "ModuleNotFoundError"
-    return exc_type, msg, tb
+    return parse_log_error_from_record("", record)
 
 
 def _append_console_log_error(entry: dict[str, Any]) -> None:
@@ -2306,7 +2267,9 @@ def _append_console_log_error(entry: dict[str, Any]) -> None:
 
 
 def _append_log_error_from_sink(text: str, record: Any) -> None:
-    exc_type, msg, tb = _tb_and_exc_type_from_log_record(record)
+    from src.common.shard.logs.errors import parse_log_error_from_record
+
+    exc_type, msg, tb = parse_log_error_from_record(text, record)
     try:
         full_name = str(record["name"] or "")
     except Exception:  # noqa: BLE001

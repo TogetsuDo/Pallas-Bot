@@ -1,6 +1,6 @@
 import random
 
-from nonebot import get_bot, logger, on_notice
+from nonebot import get_bots, logger, on_notice
 from nonebot.adapters import Bot
 from nonebot.adapters.onebot.v11 import NoticeEvent, permission
 from nonebot.exception import ActionFailed
@@ -85,10 +85,11 @@ async def run_change_name():
         target_user_id = target_msg.user_id
         logger.info(f"bot [{bot_id}] ready to change name by using [{target_user_id}] in group [{group_id}]")
 
-        bot = get_bot(str(bot_id))
-        if not bot:
-            logger.error(f"bot [{bot_id}] take_name get_bot returned None")
+        bot_key = str(bot_id)
+        local_bots = get_bots()
+        if bot_key not in local_bots:
             continue
+        bot = local_bots[bot_key]
 
         try:
             # 获取群友昵称
