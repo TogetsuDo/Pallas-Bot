@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from src.plugins.duel import duel_bots as mod
 from src.plugins.duel.duel_bots import list_group_online_bot_ids, parse_group_member_list_user_ids
 
 
@@ -36,6 +37,8 @@ def test_parse_member_list_empty_list() -> None:
 
 
 async def test_shard_empty_member_list_prefers_presence(monkeypatch) -> None:
+    mod.clear_group_online_bot_ids_cache()
+
     class FakeCaller:
         async def get_group_member_list(self, *, group_id: int, no_cache: bool):
             return []
@@ -50,3 +53,50 @@ async def test_shard_empty_member_list_prefers_presence(monkeypatch) -> None:
 
     ids = await list_group_online_bot_ids(626266902)
     assert ids == [111, 222, 333]
+
+
+async def test_shard_empty_member_list_skips_fleet_probe(monkeypatch) -> None:
+    mod.clear_group_online_bot_ids_cache()
+    probe_calls: list[int] = []
+
+    class FakeCaller:
+        async def get_group_member_list(self, *, group_id: int, no_cache: bool):
+            return []
+
+    async def fake_probe(_caller, group_id: int, catalog):
+        probe_calls.append(group_id)
+        return []
+
+    monkeypatch.setattr("src.common.shard.registry.config.is_sharding_active", lambda: True)
+    monkeypatch.setattr("src.common.multi_bot.fleet.get_catalog_bot_ids", lambda: frozenset({111, 222}))
+    monkeypatch.setattr("src.common.shard.presence.pick_local_query_bot", lambda: FakeCaller())
+    monkeypatch.setattr(
+        "src.common.shard.presence.get_cluster_online_bot_ids",
+        lambda: {111, 222},
+    )
+    monkeypatch.setattr(mod, "probe_fleet_bots_in_group", fake_probe)
+
+    ids = await list_group_online_bot_ids(626266903)
+    assert ids == [111, 222]
+    assert probe_calls == []
+
+
+async def test_list_group_online_bot_ids_uses_cache(monkeypatch) -> None:
+    mod.clear_group_online_bot_ids_cache()
+    list_calls: list[int] = []
+
+    class FakeCaller:
+        async def get_group_member_list(self, *, group_id: int, no_cache: bool):
+            list_calls.append(group_id)
+            return [{"user_id": 111}, {"user_id": 222}]
+
+    monkeypatch.setattr("src.common.shard.registry.config.is_sharding_active", lambda: True)
+    monkeypatch.setattr("src.common.multi_bot.fleet.get_catalog_bot_ids", lambda: frozenset({111, 222, 333}))
+    monkeypatch.setattr("src.common.shard.presence.pick_local_query_bot", lambda: FakeCaller())
+
+    first = await list_group_online_bot_ids(626266904)
+    second = await list_group_online_bot_ids(626266904)
+
+    assert first == [111, 222]
+    assert second == [111, 222]
+    assert list_calls == [626266904]

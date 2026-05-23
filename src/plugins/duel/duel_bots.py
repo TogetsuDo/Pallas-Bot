@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import random
 import re
+import time
 from typing import TYPE_CHECKING, Any
 
 from nonebot import get_bots, logger
@@ -17,6 +18,16 @@ if TYPE_CHECKING:
 
 _AT_CQ_RE = re.compile(r"\[CQ:at,qq=(\d+)")
 _ROUND_COUNT_RE = re.compile(r"(\d{1,2})\s*(?:幕|回合)")
+
+# 复读 fanout / 决斗等高频路径：按群缓存在线 fleet 牛，避免 member API 异常时反复全舰队 probe
+_GROUP_ONLINE_BOTS_TTL_SEC = 45.0
+_GROUP_ONLINE_BOTS_CACHE_MAX = 512
+_group_online_bots_cache: dict[int, tuple[float, tuple[int, ...]]] = {}
+_group_online_bots_lock = asyncio.Lock()
+
+
+def clear_group_online_bot_ids_cache() -> None:
+    _group_online_bots_cache.clear()
 
 
 def normalize_onebot_api_payload(raw: Any) -> Any:
@@ -98,97 +109,144 @@ async def probe_fleet_bots_in_group(caller: Any, group_id: int, catalog: frozens
 
 async def list_group_online_bot_ids(group_id: int) -> list[int]:
     """已连接且能查到本群资料的牛牛 QQ；分片时含其它 worker 上在线的 fleet 牛。"""
-    from src.common.shard.presence import pick_local_query_bot
+    gid = int(group_id)
+    now = time.time()
+    cached = _group_online_bots_cache.get(gid)
+    if cached is not None and cached[0] > now:
+        return list(cached[1])
+
+    result = await resolve_shard_group_online_bot_ids(gid)
+
+    async with _group_online_bots_lock:
+        if len(_group_online_bots_cache) >= _GROUP_ONLINE_BOTS_CACHE_MAX:
+            expired = [k for k, (exp, _) in _group_online_bots_cache.items() if exp <= now]
+            for k in expired:
+                _group_online_bots_cache.pop(k, None)
+            if len(_group_online_bots_cache) >= _GROUP_ONLINE_BOTS_CACHE_MAX:
+                _group_online_bots_cache.clear()
+        _group_online_bots_cache[gid] = (now + _GROUP_ONLINE_BOTS_TTL_SEC, tuple(result))
+
+    return result
+
+
+async def resolve_shard_group_online_bot_ids(group_id: int) -> list[int]:
+    """分片：解析本群可用 fleet 牛（无进程内 TTL 缓存）。"""
+    from src.common.multi_bot.fleet import get_catalog_bot_ids
+    from src.common.shard.presence import get_cluster_online_bot_ids, pick_local_query_bot
     from src.common.shard.registry.config import is_sharding_active
 
-    if is_sharding_active():
-        from src.common.multi_bot.fleet import get_catalog_bot_ids
+    if not is_sharding_active():
+        return []
 
-        caller = pick_local_query_bot()
-        if caller is None:
-            return []
-        catalog = get_catalog_bot_ids()
-        out: list[int] = []
-        member_ids: set[int] = set()
-        list_err: str | None = None
-        list_empty = False
-        raw: Any = None
-        try:
-            raw = await caller.get_group_member_list(group_id=group_id, no_cache=True)  # type: ignore[union-attr]
-            member_ids = parse_group_member_list_user_ids(raw)
-            if isinstance(raw, list) and len(raw) == 0:
-                list_empty = True
-            else:
-                out = sorted(q for q in catalog if q in member_ids)
-        except Exception as err:
-            list_err = str(err)
+    caller = pick_local_query_bot()
+    if caller is None:
+        return []
+
+    catalog = get_catalog_bot_ids()
+    out: list[int] = []
+    member_ids: set[int] = set()
+    list_err: str | None = None
+    list_empty = False
+    member_api_unusable = False
+    raw: Any = None
+    try:
+        raw = await caller.get_group_member_list(group_id=group_id, no_cache=True)  # type: ignore[union-attr]
+        member_ids = parse_group_member_list_user_ids(raw)
+        if isinstance(raw, list) and len(raw) == 0:
             list_empty = True
+            member_api_unusable = True
+        elif not member_ids:
+            member_api_unusable = True
+        else:
+            out = sorted(q for q in catalog if q in member_ids)
+    except Exception as err:
+        list_err = str(err)
+        list_empty = True
+        member_api_unusable = True
 
-        if len(out) < 2:
-            probed = await probe_fleet_bots_in_group(caller, group_id, catalog)
-            if len(probed) >= 2:
-                if list_err:
-                    logger.warning(
-                        "duel: get_group_member_list failed group={} per-bot probe (found={}): {}",
-                        group_id,
-                        len(probed),
-                        list_err,
-                    )
-                elif list_empty or not member_ids:
-                    logger.warning(
-                        "duel: member list empty/unparsed group={} per-bot probe (found={})",
-                        group_id,
-                        len(probed),
-                    )
-                return probed
-
-            from src.common.shard.presence import get_cluster_online_bot_ids
-
-            relaxed = sorted(q for q in catalog if q in get_cluster_online_bot_ids())
-            if len(relaxed) >= 2:
-                logger.warning(
-                    "duel: group {} member API unusable, use presence-online fleet (n={})",
-                    group_id,
-                    len(relaxed),
-                )
-                return relaxed
-
-            if list_err:
-                logger.warning(
-                    "duel: get_group_member_list failed group={} fallback per-bot probe (found={}): {}",
-                    group_id,
-                    len(probed),
-                    list_err,
-                )
-            elif list_empty or not member_ids:
-                sample = repr(raw)
-                if len(sample) > 400:
-                    sample = sample[:400] + "..."
-                logger.warning(
-                    "duel: member list empty/unparsed group={} type={} sample={} probe_found={}",
-                    group_id,
-                    type(raw).__name__,
-                    sample,
-                    len(probed),
-                )
-            else:
-                logger.warning(
-                    "duel: group {} fleet∩member_list={} catalog={} per-bot probe (found={})",
-                    group_id,
-                    len(out),
-                    len(catalog),
-                    len(probed),
-                )
-            out = probed
-            if len(out) < 2:
-                logger.warning(
-                    "duel: group {} has {} fleet bot(s) after probe (catalog={}, presence={})",
-                    group_id,
-                    len(out),
-                    len(catalog),
-                    len(relaxed),
-                )
+    if len(out) >= 2:
         return out
+
+    relaxed = sorted(q for q in catalog if q in get_cluster_online_bot_ids())
+    # member list 不可用且 presence 足够：跳过全 catalog 逐号 probe
+    if member_api_unusable and len(relaxed) >= 2:
+        logger.warning(
+            "duel: group {} member API unusable, use presence-online fleet (n={})",
+            group_id,
+            len(relaxed),
+        )
+        return relaxed
+
+    probed = await probe_fleet_bots_in_group(caller, group_id, catalog)
+    if len(probed) >= 2:
+        if list_err:
+            logger.warning(
+                "duel: get_group_member_list failed group={} per-bot probe (found={}): {}",
+                group_id,
+                len(probed),
+                list_err,
+            )
+        elif list_empty or not member_ids:
+            logger.warning(
+                "duel: member list empty/unparsed group={} per-bot probe (found={})",
+                group_id,
+                len(probed),
+            )
+        else:
+            logger.warning(
+                "duel: group {} fleet∩member_list={} catalog={} per-bot probe (found={})",
+                group_id,
+                len(out),
+                len(catalog),
+                len(probed),
+            )
+        return probed
+
+    if len(relaxed) >= 2:
+        logger.warning(
+            "duel: group {} member API unusable, use presence-online fleet (n={})",
+            group_id,
+            len(relaxed),
+        )
+        return relaxed
+
+    if list_err:
+        logger.warning(
+            "duel: get_group_member_list failed group={} fallback per-bot probe (found={}): {}",
+            group_id,
+            len(probed),
+            list_err,
+        )
+    elif list_empty or not member_ids:
+        sample = repr(raw)
+        if len(sample) > 400:
+            sample = sample[:400] + "..."
+        logger.warning(
+            "duel: member list empty/unparsed group={} type={} sample={} probe_found={}",
+            group_id,
+            type(raw).__name__,
+            sample,
+            len(probed),
+        )
+    elif probed:
+        logger.warning(
+            "duel: group {} fleet∩member_list={} catalog={} per-bot probe (found={})",
+            group_id,
+            len(out),
+            len(catalog),
+            len(probed),
+        )
+
+    out = probed
+    if len(out) < 2:
+        logger.warning(
+            "duel: group {} has {} fleet bot(s) after probe (catalog={}, presence={})",
+            group_id,
+            len(out),
+            len(catalog),
+            len(relaxed),
+        )
+    return out
 
 
 async def fleet_bot_confirmed_in_group(bot: Any, group_id: int) -> bool:
