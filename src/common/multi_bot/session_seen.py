@@ -87,6 +87,11 @@ def _load_cluster_seen_ids() -> set[int]:
     return out
 
 
+def load_cluster_session_seen_ids() -> frozenset[int]:
+    """分片共享文件中的曾连 WS QQ（不含本进程内存）。"""
+    return frozenset(_load_cluster_seen_ids())
+
+
 def note_cluster_session_seen_sync(*, qq: int) -> None:
     """分片：任意 worker 连上牛时写入共享名册。"""
     key = str(int(qq))
@@ -116,10 +121,13 @@ def note_bot_session_seen(qq: int) -> None:
 
 
 def get_session_seen_bot_ids() -> frozenset[int]:
-    """全集群/单进程：本次部署以来曾连过 WS 的 QQ（不含 registry 幽灵号）。"""
-    from src.common.multi_bot.fleet import get_process_session_connected_ids
+    """全集群/单进程：曾连 WS 且协议 enabled 的 QQ（无 accounts 时仅按 session）。"""
+    from src.common.multi_bot.fleet import get_enabled_protocol_bot_ids, get_process_session_connected_ids
 
     ids = set(get_process_session_connected_ids())
     if is_sharding_active():
         ids.update(_load_cluster_seen_ids())
+    enabled = get_enabled_protocol_bot_ids()
+    if enabled:
+        ids &= set(enabled)
     return frozenset(ids)

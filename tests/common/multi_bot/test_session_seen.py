@@ -6,6 +6,8 @@ from src.common.multi_bot import session_seen as mod
 
 
 def test_note_and_load_cluster_seen(tmp_path, monkeypatch):
+    from src.common.multi_bot import fleet as fleet_mod
+
     shard_dir = tmp_path / "pallas_shard"
     shard_dir.mkdir()
     monkeypatch.setattr(
@@ -14,6 +16,7 @@ def test_note_and_load_cluster_seen(tmp_path, monkeypatch):
         lambda name, create=False: shard_dir if name == "pallas_shard" else tmp_path,
     )
     monkeypatch.setattr(mod, "is_sharding_active", lambda: True)
+    monkeypatch.setattr(fleet_mod, "get_enabled_protocol_bot_ids", lambda: frozenset({111, 222}))
 
     mod.note_cluster_session_seen_sync(qq=111)
     mod.note_cluster_session_seen_sync(qq=222)
@@ -29,7 +32,21 @@ def test_unified_session_seen_from_fleet_memory(monkeypatch):
     from src.common.multi_bot import fleet as fleet_mod
 
     monkeypatch.setattr(mod, "is_sharding_active", lambda: False)
+    monkeypatch.setattr(fleet_mod, "get_enabled_protocol_bot_ids", lambda: frozenset({999}))
     fleet_mod.invalidate_fleet_bot_cache()
     fleet_mod.note_fleet_bot_session_connected(999)
 
     assert mod.get_session_seen_bot_ids() == frozenset({999})
+
+
+def test_session_seen_intersects_enabled_protocol(monkeypatch):
+    from src.common.multi_bot import fleet as fleet_mod
+
+    monkeypatch.setattr(mod, "is_sharding_active", lambda: False)
+    monkeypatch.setattr(fleet_mod, "get_enabled_protocol_bot_ids", lambda: frozenset({100}))
+    fleet_mod._session_connected.clear()
+    fleet_mod.note_fleet_bot_session_connected(100)
+    fleet_mod.note_fleet_bot_session_connected(200)
+
+    assert mod.get_session_seen_bot_ids() == frozenset({100})
+    fleet_mod._session_connected.clear()

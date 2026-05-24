@@ -69,24 +69,43 @@ def fleet_bot_ids_contains(qq: int | str) -> bool:
         return False
 
 
+def get_enabled_protocol_bot_ids() -> frozenset[int]:
+    """协议端 accounts.json 中 enabled 的 QQ。"""
+    return frozenset(_load_enabled_account_qq())
+
+
+def _registry_qq_allowed(qq: int, *, enabled: set[int], session_extra: set[int]) -> bool:
+    """registry 条目须对应协议 enabled 或曾连 WS，避免纯 registry 幽灵号进名册。"""
+    return qq in enabled or qq in session_extra
+
+
 def _load_fleet_bot_ids() -> set[int]:
-    ids: set[int] = set()
+    enabled = _load_enabled_account_qq()
+    ids: set[int] = set(enabled)
     if is_sharding_active():
         try:
+            from src.common.multi_bot.session_seen import load_cluster_session_seen_ids
             from src.common.shard.registry.store import get_shard_registry
 
             reg = get_shard_registry()
+            session_extra = set(load_cluster_session_seen_ids())
+            with _lock:
+                session_extra.update(_session_connected)
+
+            def merge_reg_qq(raw: str) -> None:
+                if not str(raw).isdigit():
+                    return
+                qq = int(raw)
+                if _registry_qq_allowed(qq, enabled=enabled, session_extra=session_extra):
+                    ids.add(qq)
+
             for key in reg.assignments:
-                if str(key).isdigit():
-                    ids.add(int(key))
+                merge_reg_qq(str(key))
             for shard in reg.shards:
                 for bid in shard.bot_ids:
-                    if str(bid).isdigit():
-                        ids.add(int(bid))
+                    merge_reg_qq(str(bid))
         except Exception:
             pass
-    ids.update(_load_enabled_account_qq())
-    if is_sharding_active():
         with _lock:
             ids.update(_session_connected)
     return ids
