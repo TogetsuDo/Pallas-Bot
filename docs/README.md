@@ -39,7 +39,19 @@
 
 ## 同步 Web 文档
 
-主仓 `docs/` 变更后，可在仓库根执行：
+主仓 `docs/` 为**权威来源**；[PallasBot/Pallas-Bot-Docs](https://github.com/PallasBot/Pallas-Bot-Docs) 的 VitePress 内容由同步脚本生成，在线站点：<https://PallasBot.github.io/Pallas-Bot-Docs/>。
+
+### 自动同步（推荐）
+
+向 **`main`** 或 **`docs`** 分支合并/推送且变更涉及 `docs/**` 或 `tools/scripts/sync_docs_to_web.py` 时，GitHub Actions 工作流 [`.github/workflows/sync-docs-to-web.yml`](../.github/workflows/sync-docs-to-web.yml) 会：
+
+1. 运行 `sync_docs_to_web.py` 写入 Pallas-Bot-Docs 的 `src/`
+2. 提交并 push 到 **Pallas-Bot-Docs `main`**（随后 GitHub Pages 自动部署）
+3. 若 push 来自 **`main`**，同时将 `main` 合并进本仓 **`docs`** 分支，保持文档分支与主线一致
+
+可在 Actions 页手动 **Run workflow** 触发全量同步。
+
+### 本地同步
 
 ```bash
 uv run python tools/scripts/sync_docs_to_web.py
