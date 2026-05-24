@@ -324,7 +324,7 @@ def _pallas_webui_payload_extras() -> dict[str, Any]:
                     "pallas_webui_cors",
                     "pallas_webui_allowed_origins",
                 ],
-                "plugin_config_path": "/common-config/pallas_webui",
+                "plugin_config_path": "/plugins/pallas_webui",
             },
             {
                 "id": "deploy",
@@ -337,13 +337,13 @@ def _pallas_webui_payload_extras() -> dict[str, Any]:
                     "pallas_webui_dist_zip_tag",
                     "pallas_webui_dist_zip_asset",
                 ],
-                "plugin_config_path": "/common-config/pallas_webui",
+                "plugin_config_path": "/plugins/pallas_webui",
             },
             {
                 "id": "runtime",
                 "title": "运行时",
                 "field_names": ["pallas_webui_log_lines_max"],
-                "plugin_config_path": "/common-config/pallas_webui",
+                "plugin_config_path": "/plugins/pallas_webui",
             },
         ],
     }
