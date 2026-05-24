@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextvars
 import copy
 import json
 import os
@@ -149,10 +148,8 @@ def _is_console_stats_excluded_plugin(plugin: str) -> bool:
     return bool(key) and key in resolve_console_stats_excluded_plugin_names()
 
 
-_MATCHER_RUN_STARTED: contextvars.ContextVar[float | None] = contextvars.ContextVar(
-    "matcher_run_started",
-    default=None,
-)
+# NoneBot run_preprocessor 在 task group 子任务内执行，ContextVar 无法回写到父任务。
+_MATCHER_RUN_STARTED_ATTR = "_pallas_matcher_run_started_pc"
 _MATCHER_ERROR_LOG_CAP = 80
 _MATCHER_DURATION_LOG_CAP = 150
 _MATCHER_DURATION_LOG_PER_PLUGIN_CAP = 30
@@ -2110,6 +2107,19 @@ def _duration_ms_float(value: object) -> float:
         return 0.0
 
 
+def mark_matcher_run_started(matcher: object) -> None:
+    setattr(matcher, _MATCHER_RUN_STARTED_ATTR, time.perf_counter())
+
+
+def take_matcher_run_started(matcher: object) -> float | None:
+    started = getattr(matcher, _MATCHER_RUN_STARTED_ATTR, None)
+    if hasattr(matcher, _MATCHER_RUN_STARTED_ATTR):
+        delattr(matcher, _MATCHER_RUN_STARTED_ATTR)
+    if isinstance(started, (int, float)):
+        return float(started)
+    return None
+
+
 def _matcher_elapsed_ms(started: float | None) -> float:
     """Matcher 墙钟耗时（毫秒，保留 _MATCHER_DURATION_MS_DECIMALS 位小数）。"""
     if started is None:
@@ -2813,7 +2823,7 @@ def _init_plugin_run_tracking() -> None:
         sid = str(getattr(bot, "self_id", "") or "").strip()
         if not sid:
             return
-        _MATCHER_RUN_STARTED.set(time.perf_counter())
+        mark_matcher_run_started(matcher)
 
     @run_postprocessor
     async def _count_plugin_matcher_run(
@@ -2828,7 +2838,7 @@ def _init_plugin_run_tracking() -> None:
         sid = str(getattr(bot, "self_id", "") or "").strip()
         if not sid:
             return
-        started = _MATCHER_RUN_STARTED.get()
+        started = take_matcher_run_started(matcher)
         elapsed_ms = _matcher_elapsed_ms(started)
         try:
             row = _plugin_run_plugin_row(sid, plugin)
@@ -2853,8 +2863,6 @@ def _init_plugin_run_tracking() -> None:
             )
         except Exception:  # noqa: BLE001
             pass
-        finally:
-            _MATCHER_RUN_STARTED.set(None)
 
 
 def _plugin_run_stats_bot_row(
