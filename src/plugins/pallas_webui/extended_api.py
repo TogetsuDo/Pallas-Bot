@@ -173,6 +173,11 @@ def set_console_meta(d: dict[str, Any] | None) -> None:
         _CONSOLE_EXTRA.update(d)
 
 
+def patch_console_meta(**kwargs: Any) -> None:
+    """增量更新控制台元信息（配置热重载后同步 dev_mode 等）。"""
+    _CONSOLE_EXTRA.update(kwargs)
+
+
 def _ensure_log_sink() -> None:
     global _INIT_LOG_SINK
     from src.common.web import install_nonebot_log_sink, set_log_error_capture

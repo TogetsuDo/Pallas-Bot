@@ -51,10 +51,30 @@ class Config(BaseModel):
     )
     pallas_webui_dev_mode: bool = Field(
         default=False,
-        description="开发联调：跳过控制台 JSON API 与会话页鉴权（生产环境务必关闭）",
+        description=(
+            "开发联调：跳过控制台 JSON API 与静态页会话鉴权；"
+            "可在 WebUI 首页或通用配置中切换并热重载（生产环境务必关闭）"
+        ),
     )
 
 
-plugin_webui = install_hot_reload_config(Config, config_module=__name__)
+def on_pallas_webui_config_reload(cfg: Config) -> None:
+    from nonebot import logger
+
+    from .extended_api import patch_console_meta
+
+    dev_mode = bool(cfg.pallas_webui_dev_mode)
+    patch_console_meta(pallas_webui_dev_mode=dev_mode)
+    if dev_mode:
+        logger.warning("Pallas-Bot 控制台: 已关闭 API 与静态页鉴权（仅限本机开发）")
+    else:
+        logger.info("Pallas-Bot 控制台: 已恢复控制台 API 与静态页鉴权")
+
+
+plugin_webui = install_hot_reload_config(
+    Config,
+    config_module=__name__,
+    on_reload=on_pallas_webui_config_reload,
+)
 get_pallas_webui_config = plugin_webui.get
 plugin_config = plugin_config_proxy(get_pallas_webui_config)

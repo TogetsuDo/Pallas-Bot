@@ -55,6 +55,10 @@ def test_pallas_webui_section_payload_env_keys_uppercase():
     data = webui_env_section_payload("pallas_webui")
     assert data["plugin"] == "pallas_webui"
     assert data["module"] == "src.plugins.pallas_webui"
+    assert data.get("dev_mode_hot_reload") is True
+    groups = {g["id"]: g for g in data.get("field_groups") or []}
+    assert "security" in groups
+    assert "pallas_webui_dev_mode" in groups["security"]["field_names"]
     for f in data["fields"]:
         assert f["env_key"] == f["name"].upper()
 

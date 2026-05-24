@@ -307,7 +307,46 @@ def webui_env_section_payload(
     if section_id == "cmd_perm":
         perm_src = s.model_cls.model_validate(current_values) if current_values is not None else cfg_obj
         base.update(_cmd_perm_payload_extras(perm_src))
+    elif section_id == "pallas_webui":
+        base.update(_pallas_webui_payload_extras())
     return base
+
+
+def _pallas_webui_payload_extras() -> dict[str, Any]:
+    return {
+        "dev_mode_hot_reload": True,
+        "field_groups": [
+            {
+                "id": "security",
+                "title": "安全与联调",
+                "field_names": [
+                    "pallas_webui_dev_mode",
+                    "pallas_webui_cors",
+                    "pallas_webui_allowed_origins",
+                ],
+                "plugin_config_path": "/common-config/pallas_webui",
+            },
+            {
+                "id": "deploy",
+                "title": "挂载与静态资源",
+                "field_names": [
+                    "pallas_webui_enabled",
+                    "pallas_webui_http_base",
+                    "pallas_webui_dist_zip_url",
+                    "pallas_webui_dist_zip_repo",
+                    "pallas_webui_dist_zip_tag",
+                    "pallas_webui_dist_zip_asset",
+                ],
+                "plugin_config_path": "/common-config/pallas_webui",
+            },
+            {
+                "id": "runtime",
+                "title": "运行时",
+                "field_names": ["pallas_webui_log_lines_max"],
+                "plugin_config_path": "/common-config/pallas_webui",
+            },
+        ],
+    }
 
 
 def _cmd_perm_payload_extras(cfg_obj: Any) -> dict[str, Any]:

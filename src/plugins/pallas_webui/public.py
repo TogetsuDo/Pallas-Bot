@@ -59,7 +59,9 @@ def register_routes(
     if not base.startswith("/"):
         base = "/" + base
     base = base.rstrip("/")
-    dev_mode = bool(getattr(plugin_config, "pallas_webui_dev_mode", False))
+
+    def dev_mode_active() -> bool:
+        return bool(getattr(plugin_config, "pallas_webui_dev_mode", False))
 
     root_resolved = public_dir.resolve()
     legacy_page_cookie = "pallas_webui_page_token"
@@ -198,7 +200,7 @@ def register_routes(
     @router.get(f"{base}/", include_in_schema=False, response_model=None)
     async def _index(request: Request, token: str | None = Query(default=None)) -> FileResponse | HTMLResponse:
         got = ""
-        if not dev_mode:
+        if not dev_mode_active():
             got = _request_token(request, token)
             if not got:
                 return _login_redirect(str(request.url.path))
@@ -247,7 +249,7 @@ def register_routes(
         target = _pick_static_target(path)
         if target is not None:
             if target.suffix.lower() == ".html":
-                if dev_mode:
+                if dev_mode_active():
                     return FileResponse(target)
                 got = _request_token(request, token)
                 if _is_token_valid(got):
@@ -258,7 +260,7 @@ def register_routes(
             return FileResponse(target)
         fallback = _pick_index_fallback()
         if fallback is not None:
-            if dev_mode:
+            if dev_mode_active():
                 return FileResponse(fallback)
             got = _request_token(request, token)
             if _is_token_valid(got):
