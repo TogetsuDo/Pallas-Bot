@@ -9,8 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from src.common.paths import plugin_data_dir
+from src.common.shard.coord.maa_route_registry import current_worker_port
 from src.common.shard.registry import get_shard_registry, worker_port_for_shard
-from src.common.shard.registry.config import is_sharding_active
+from src.common.shard.registry.config import get_shard_registry_settings, is_sharding_active
 from src.common.shard.registry.store import assign_bot_to_shard
 
 _PLUGIN = "pallas_shard"
@@ -90,10 +91,15 @@ def register_ai_task(task_id: str, task_status: dict[str, Any]) -> None:
     if not bot_id.isdigit():
         return
     reg = get_shard_registry()
-    sid = reg.shard_for_bot(bot_id)
-    if sid is None:
-        sid = assign_bot_to_shard(bot_id, registry=reg)
-    port = worker_port_for_shard(int(sid), registry=reg)
+    local_port = current_worker_port()
+    if local_port is not None:
+        sid = int(get_shard_registry_settings().shard_id)
+        port = int(local_port)
+    else:
+        sid = reg.shard_for_bot(bot_id)
+        if sid is None:
+            sid = assign_bot_to_shard(bot_id, registry=reg)
+        port = worker_port_for_shard(int(sid), registry=reg)
     path = _task_path(task_id)
     lk = _lock_path(path)
     fd = _acquire_lock(lk)
@@ -125,7 +131,7 @@ def remove_ai_task(task_id: str) -> None:
         pass
 
 
-def resolve_worker_port_for_task(task_id: str) -> int | None:
+def get_ai_task_record(task_id: str) -> dict[str, Any] | None:
     if not is_sharding_active():
         return None
     path = _task_path(task_id)
@@ -135,6 +141,13 @@ def resolve_worker_port_for_task(task_id: str) -> int | None:
             path.unlink(missing_ok=True)
         except OSError:
             pass
+        return None
+    return rec
+
+
+def resolve_worker_port_for_task(task_id: str) -> int | None:
+    rec = get_ai_task_record(task_id)
+    if not rec:
         return None
     try:
         return int(rec["worker_port"])

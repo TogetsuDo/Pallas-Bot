@@ -3,7 +3,10 @@ from __future__ import annotations
 import json
 import time
 
+from src.common.shard.registry.config import get_shard_registry_settings
+
 from src.common.shard.coord.ai_task_registry import (
+    get_ai_task_record,
     register_ai_task,
     remove_ai_task,
     resolve_worker_port_for_task,
@@ -32,6 +35,8 @@ def test_register_and_resolve_worker_port(tmp_path, monkeypatch):
     )
     monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
     monkeypatch.setenv("PALLAS_BOT_ROLE", "worker")
+    monkeypatch.setenv("PALLAS_SHARD_ID", "2")
+    get_shard_registry_settings.cache_clear()
     monkeypatch.setattr(
         "src.common.shard.registry.store._registry_path",
         lambda: shard_root / "registry.json",
@@ -46,7 +51,11 @@ def test_register_and_resolve_worker_port(tmp_path, monkeypatch):
         task_id,
         {"bot_id": "10001", "group_id": 12345, "start_time": time.time()},
     )
-    assert resolve_worker_port_for_task(task_id) == 7971
+    assert resolve_worker_port_for_task(task_id) == 7972
+    rec = get_ai_task_record(task_id)
+    assert rec is not None
+    assert rec["shard_id"] == 2
+    assert rec["worker_port"] == 7972
 
     remove_ai_task(task_id)
     assert resolve_worker_port_for_task(task_id) is None

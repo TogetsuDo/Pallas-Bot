@@ -11,7 +11,7 @@ from nonebot.exception import ActionFailed
 
 from src.common.config import GroupConfig, TaskManager
 from src.common.db import SingProgress
-from src.common.shard.coord.ai_task_registry import remove_ai_task
+from src.common.shard.coord.ai_task_registry import get_ai_task_record, remove_ai_task
 
 _CALLBACK_SEND_ERRORS = (ActionFailed, NetworkError)
 
@@ -42,6 +42,13 @@ async def run_ai_callback(
     file: UploadFile | None = None,
 ) -> dict[str, str]:
     task = await TaskManager.get_task(task_id)
+    if not task:
+        rec = get_ai_task_record(task_id)
+        if rec:
+            task = {
+                "bot_id": rec.get("bot_id"),
+                "group_id": rec.get("group_id"),
+            }
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
