@@ -2,6 +2,8 @@ from src.common.webui.plugin_catalog import (
     build_plugin_catalog_rows,
     discover_extra_plugin_packages,
     discover_plugin_packages,
+    discover_pyproject_plugin_modules,
+    expected_loaded_in_catalog_process,
     infer_plugin_source,
     package_load_role,
     plugin_source_from_module_path,
@@ -27,6 +29,14 @@ def test_package_load_role_sharded(monkeypatch):
     assert package_load_role("callback") == "hub"
 
 
+def test_expected_loaded_in_catalog_hub_vs_worker():
+    assert expected_loaded_in_catalog_process("worker", "hub") is False
+    assert expected_loaded_in_catalog_process("hub", "hub") is True
+    assert expected_loaded_in_catalog_process("infra", "hub") is True
+    assert expected_loaded_in_catalog_process("worker", "worker") is True
+    assert expected_loaded_in_catalog_process("hub", "worker") is False
+
+
 def test_catalog_lists_worker_plugin(monkeypatch):
     monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
     monkeypatch.setenv("PALLAS_BOT_ROLE", "hub")
@@ -43,6 +53,10 @@ def test_catalog_lists_worker_plugin(monkeypatch):
     assert by_name["pallas_image"]["load_role"] == "worker"
     assert by_name["pallas_image"]["metadata"] is not None
     assert by_name["pallas_image"]["plugin_source"] == "main"
+    assert by_name["pallas_image"]["catalog_process_role"] == "hub"
+    assert by_name["pallas_image"]["expected_in_catalog_process"] is False
+    assert by_name["pallas_image"]["loaded_in_process"] is False
+    assert by_name["pallas_webui"]["expected_in_catalog_process"] is True
 
 
 def test_infer_plugin_source_local_dir(tmp_path, monkeypatch) -> None:
@@ -68,6 +82,29 @@ def test_plugin_source_from_main_path() -> None:
     main_py = PROJECT_ROOT / "src" / "plugins" / "callback" / "handler.py"
     if main_py.is_file():
         assert plugin_source_from_module_path(str(main_py)) == "main"
+
+
+def test_discover_pyproject_includes_status():
+    modules = discover_pyproject_plugin_modules()
+    assert "nonebot_plugin_status" in modules
+
+
+def test_catalog_lists_pyproject_status_on_hub(monkeypatch):
+    monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
+    monkeypatch.setenv("PALLAS_BOT_ROLE", "hub")
+    monkeypatch.setattr(
+        "src.common.config.repo_settings.read_bootstrap_extra_plugin_dirs",
+        lambda: [],
+    )
+    from src.common.shard.registry.config import get_shard_registry_settings
+
+    get_shard_registry_settings.cache_clear()
+    rows = build_plugin_catalog_rows()
+    by_name = {r["name"]: r for r in rows}
+    assert "nonebot_plugin_status" in by_name
+    row = by_name["nonebot_plugin_status"]
+    assert row["plugin_source"] == "pip"
+    assert row["load_role"] == "infra"
 
 
 def test_resolve_catalog_prefers_local_pallas_image(tmp_path, monkeypatch) -> None:

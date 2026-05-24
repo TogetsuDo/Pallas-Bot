@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import importlib
+import importlib.util
 from pathlib import Path  # noqa: TC003
 from typing import Any
 
@@ -45,6 +46,14 @@ def discover_plugin_packages() -> list[str]:
             continue
         out.append(entry.name)
     return out
+
+
+def discover_pyproject_plugin_modules() -> list[str]:
+    """pyproject [tool.nonebot.plugins] 声明的 pip/外部模块（相对仓库根）。"""
+    from src.common.bot_runtime.pyproject_plugins import parse_nonebot_plugin_config
+
+    modules, _dirs = parse_nonebot_plugin_config()
+    return list(modules)
 
 
 def discover_extra_plugin_packages() -> dict[str, Path]:
@@ -213,6 +222,57 @@ def _loaded_plugin_index() -> tuple[dict[str, Any], dict[str, Any]]:
     return by_nb_name, by_package
 
 
+def _module_short_name(module_path: str) -> str:
+    return (module_path or "").rsplit(".", 1)[-1]
+
+
+def _pip_plugin_metadata_stub(module_path: str) -> dict[str, Any] | None:
+    """未加载时从已安装包 __init__.py 解析 __plugin_meta__（不 import 插件模块）。"""
+    try:
+        spec = importlib.util.find_spec(module_path)
+    except (ImportError, ModuleNotFoundError, ValueError):
+        return None
+    if spec is None:
+        return None
+    origin = getattr(spec, "origin", None) or ""
+    if not origin or origin.endswith("__init__.py"):
+        init_path = Path(origin) if origin else None
+    else:
+        init_path = Path(origin).parent / "__init__.py"
+    if init_path is None or not init_path.is_file():
+        sub = getattr(spec, "submodule_search_locations", None)
+        if sub:
+            init_path = Path(sub[0]) / "__init__.py"
+    if init_path is None or not init_path.is_file():
+        return None
+    return _parse_plugin_metadata_stub(init_path)
+
+
+def resolve_catalog_process_role() -> str:
+    """当前响应插件目录的 NoneBot 进程角色（WebUI 分片下为 hub）。"""
+    from src.common.bot_runtime.roles import is_sharded_hub, is_sharded_worker, is_unified_role
+
+    if is_unified_role():
+        return "unified"
+    if is_sharded_hub():
+        return "hub"
+    if is_sharded_worker():
+        return "worker"
+    return "unified"
+
+
+def expected_loaded_in_catalog_process(load_role: str, catalog_role: str) -> bool:
+    """该插件是否应在 catalog_process_role 对应进程中加载。"""
+    role = (load_role or "").strip()
+    if catalog_role == "unified":
+        return True
+    if catalog_role == "hub":
+        return role in ("hub", "infra", "both")
+    if catalog_role == "worker":
+        return role in ("worker", "internal")
+    return True
+
+
 def metadata_to_dict(meta: object | None) -> dict[str, Any] | None:
     if meta is None:
         return None
@@ -250,6 +310,34 @@ def build_plugin_catalog_rows(
         visible = not ign and not hid
         return visible, ign, hid
 
+    def _append_row(
+        *,
+        package: str,
+        module_name: str,
+        nb_name: str,
+        meta: dict[str, Any] | None,
+        loaded: bool,
+        role: str,
+        plugin_source: PluginSourceKind,
+        plugin_source_dir: str | None,
+        has_config: bool,
+    ) -> None:
+        visible, ign, hid = _help_flags(nb_name, package)
+        rows.append({
+            "name": package,
+            "nb_plugin_name": nb_name,
+            "module": module_name,
+            "metadata": meta,
+            "load_role": role,
+            "loaded_in_process": loaded,
+            "has_config": has_config,
+            "help_visible": visible,
+            "help_ignored": ign,
+            "help_hidden": hid,
+            "plugin_source": plugin_source,
+            "plugin_source_dir": plugin_source_dir,
+        })
+
     all_packages = sorted(set(discover_plugin_packages()) | set(extra_pkgs.keys()))
     for package in all_packages:
         seen_packages.add(package)
@@ -273,22 +361,45 @@ def build_plugin_catalog_rows(
         elif stub:
             meta = stub
         role = package_load_role(package)
-        visible, ign, hid = _help_flags(nb_name, package)
         plugin_source, plugin_source_dir = infer_plugin_source(package, p, extra_pkgs=extra_pkgs)
-        rows.append({
-            "name": package,
-            "nb_plugin_name": nb_name,
-            "module": module_name,
-            "metadata": meta,
-            "load_role": role,
-            "loaded_in_process": loaded,
-            "has_config": package_has_config_module(package, package_root=disk_root),
-            "help_visible": visible,
-            "help_ignored": ign,
-            "help_hidden": hid,
-            "plugin_source": plugin_source,
-            "plugin_source_dir": plugin_source_dir,
-        })
+        _append_row(
+            package=package,
+            module_name=module_name,
+            nb_name=nb_name,
+            meta=meta,
+            loaded=loaded,
+            role=role,
+            plugin_source=plugin_source,
+            plugin_source_dir=plugin_source_dir,
+            has_config=package_has_config_module(package, package_root=disk_root),
+        )
+
+    for module_path in discover_pyproject_plugin_modules():
+        package = _module_short_name(module_path)
+        if not package or package in seen_packages:
+            continue
+        seen_packages.add(package)
+        p = by_package.get(package)
+        loaded = p is not None
+        nb_name = str(getattr(p, "name", "") or "") if p is not None else package
+        module_name = module_path
+        if p is not None:
+            mod = getattr(p, "module", None)
+            module_name = getattr(mod, "__name__", "") or module_name
+        meta = metadata_to_dict(getattr(p, "metadata", None)) if p is not None else None
+        if meta is None:
+            meta = _pip_plugin_metadata_stub(module_path)
+        _append_row(
+            package=package,
+            module_name=module_name,
+            nb_name=nb_name,
+            meta=meta,
+            loaded=loaded,
+            role="infra",
+            plugin_source="pip",
+            plugin_source_dir=None,
+            has_config=False,
+        )
 
     from nonebot import get_loaded_plugins
 
@@ -303,21 +414,27 @@ def build_plugin_catalog_rows(
             continue
         if not is_infrastructure_plugin_name(nb_name, module_name):
             continue
-        visible, ign, hid = _help_flags(nb_name, short or nb_name)
-        rows.append({
-            "name": nb_name,
-            "nb_plugin_name": nb_name,
-            "module": module_name,
-            "metadata": metadata_to_dict(getattr(p, "metadata", None)),
-            "load_role": "infra",
-            "loaded_in_process": True,
-            "has_config": False,
-            "help_visible": visible,
-            "help_ignored": ign,
-            "help_hidden": hid,
-            "plugin_source": "pip",
-            "plugin_source_dir": None,
-        })
+        pkg_key = short or nb_name
+        seen_packages.add(pkg_key)
+        _append_row(
+            package=pkg_key,
+            module_name=module_name,
+            nb_name=nb_name,
+            meta=metadata_to_dict(getattr(p, "metadata", None)),
+            loaded=True,
+            role="infra",
+            plugin_source="pip",
+            plugin_source_dir=None,
+            has_config=False,
+        )
+
+    catalog_role = resolve_catalog_process_role()
+    for row in rows:
+        row["catalog_process_role"] = catalog_role
+        row["expected_in_catalog_process"] = expected_loaded_in_catalog_process(
+            str(row.get("load_role") or ""),
+            catalog_role,
+        )
 
     rows.sort(key=lambda x: (x.get("load_role") != "infra", (x.get("metadata") or {}).get("name") or x["name"]))
     return rows
