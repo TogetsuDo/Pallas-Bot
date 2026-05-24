@@ -49,7 +49,27 @@
 2. 提交并 push 到 **Pallas-Bot-Docs `main`**（随后 GitHub Pages 自动部署）
 3. 若 push 来自 **`main`**，同时将 `main` 合并进本仓 **`docs`** 分支，保持文档分支与主线一致
 
+**维护者一次性配置**（见下方「如何启用自动更新」）：在 Pallas-Bot 仓库 Actions Secrets 添加 `DOCS_SYNC_TOKEN`。
+
 可在 Actions 页手动 **Run workflow** 触发全量同步。
+
+### 如何启用自动更新
+
+1. **创建 PAT**（Personal Access Token）
+   - GitHub → **Settings → Developer settings → Personal access tokens**
+   - Fine-grained：Resource owner 选组织/用户，Repository access 仅 **`PallasBot/Pallas-Bot-Docs`**，Permissions → **Contents: Read and write**
+   - 或 Classic：勾选 **`repo`**（若文档仓为 private 则必需；public 仓用 fine-grained 更稳妥）
+2. **写入 Secret**
+   - 打开 [PallasBot/Pallas-Bot](https://github.com/PallasBot/Pallas-Bot) → **Settings → Secrets and variables → Actions → New repository secret**
+   - Name：`DOCS_SYNC_TOKEN`
+   - Value：上一步生成的 token
+3. **推送工作流**（若尚未在远端 `main`）
+   - 将含 `.github/workflows/sync-docs-to-web.yml` 的 commit push 到 `origin/main`
+4. **验证**
+   - Actions → **Sync docs to Pallas-Bot-Docs** → **Run workflow** 手动跑一次
+   - 成功后在 [Pallas-Bot-Docs](https://github.com/PallasBot/Pallas-Bot-Docs/commits/main) 应出现 `docs: 同步主仓 Pallas-Bot@…` 提交，数分钟内 [GitHub Pages](https://PallasBot.github.io/Pallas-Bot-Docs/) 更新
+
+之后只需在主仓 **`docs/`** 改文档并合并到 **`main`**（或 **`docs`**），无需再手跑同步脚本。
 
 ### 本地同步
 
