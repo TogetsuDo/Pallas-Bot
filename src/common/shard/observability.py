@@ -23,7 +23,8 @@ def pg_pool_estimate() -> dict[str, Any]:
     pool_size = cfg("PG_POOL_SIZE", "10")
     max_overflow = cfg("PG_MAX_OVERFLOW", "20")
     per_process_max = pool_size + max_overflow
-    recommended_per_process = 20
+    recommended_per_process = 32
+    peak_warn_threshold = 500
     worker_count = 0
     if is_sharding_active():
         reg = get_shard_registry()
@@ -33,7 +34,7 @@ def pg_pool_estimate() -> dict[str, Any]:
         process_count = 1
     peak = per_process_max * process_count
     warning = None
-    if per_process_max > recommended_per_process or peak > 300:
+    if per_process_max > recommended_per_process or peak > peak_warn_threshold:
         warning = (
             f"PG 连接池偏大：单进程最多 {per_process_max}，"
             f"约 {process_count} 进程峰值 {peak}；"

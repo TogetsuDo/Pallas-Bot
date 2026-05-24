@@ -196,8 +196,13 @@ print_observability_status_block() {
     echo "    （未找到 shard_observability_status.py）"
     return
   fi
+  local -a obs_env=()
+  while IFS= read -r line; do
+    [[ -n "${line}" ]] || continue
+    obs_env+=("${line}")
+  done < <(shard_common_env)
   local out=""
-  if out="$(uv run python "${status_script}" 2>/dev/null)"; then
+  if out="$(env "${obs_env[@]}" uv run python "${status_script}" 2>/dev/null)"; then
     while IFS= read -r line; do
       [[ -n "${line}" ]] || continue
       echo "    ${line}"
