@@ -156,6 +156,7 @@ _MATCHER_RUN_STARTED: contextvars.ContextVar[float | None] = contextvars.Context
 _MATCHER_ERROR_LOG_CAP = 80
 _MATCHER_DURATION_LOG_CAP = 150
 _MATCHER_DURATION_LOG_PER_PLUGIN_CAP = 30
+_MATCHER_DURATION_MS_DECIMALS = 3
 _MATCHER_ERROR_MSG_MAX = 2000
 _MATCHER_ERROR_TB_MAX = 50_000
 _MATCHER_ERROR_JSONL_LOCK = threading.Lock()
@@ -2092,33 +2093,37 @@ def _plugin_run_plugin_row(sid: str, plugin: str) -> dict[str, Any]:
     return row
 
 
+def _round_duration_ms(value: float) -> float:
+    return max(0.0, round(float(value), _MATCHER_DURATION_MS_DECIMALS))
+
+
 def _avg_duration_ms(ms_sum: int | float, count: int) -> float | None:
     if count <= 0:
         return None
-    return round(float(ms_sum) / int(count), 2)
+    return _round_duration_ms(float(ms_sum) / int(count))
 
 
 def _duration_ms_float(value: object) -> float:
     try:
-        return max(0.0, round(float(value or 0), 2))
+        return _round_duration_ms(float(value or 0))
     except (TypeError, ValueError):
         return 0.0
 
 
 def _matcher_elapsed_ms(started: float | None) -> float:
-    """Matcher 墙钟耗时（毫秒，保留两位小数；极短执行可能为 0.0）。"""
+    """Matcher 墙钟耗时（毫秒，保留 _MATCHER_DURATION_MS_DECIMALS 位小数）。"""
     if started is None:
         return 0.0
-    return max(0.0, round((time.perf_counter() - started) * 1000, 2))
+    return _round_duration_ms((time.perf_counter() - started) * 1000)
 
 
 def _record_plugin_run_duration(sid: str, plugin: str, elapsed_ms: int | float) -> None:
     ms = _duration_ms_float(elapsed_ms)
     row = _plugin_run_plugin_row(sid, plugin)
-    row["duration_ms_sum"] = round(_duration_ms_float(row["duration_ms_sum"]) + ms, 2)
+    row["duration_ms_sum"] = _round_duration_ms(_duration_ms_float(row["duration_ms_sum"]) + ms)
     row["duration_count"] = int(row["duration_count"]) + 1
     row["duration_ms_max"] = max(_duration_ms_float(row["duration_ms_max"]), ms)
-    row["day_duration_ms_sum"] = round(_duration_ms_float(row["day_duration_ms_sum"]) + ms, 2)
+    row["day_duration_ms_sum"] = _round_duration_ms(_duration_ms_float(row["day_duration_ms_sum"]) + ms)
     row["day_duration_count"] = int(row["day_duration_count"]) + 1
     row["day_duration_ms_max"] = max(_duration_ms_float(row["day_duration_ms_max"]), ms)
 
@@ -2185,7 +2190,7 @@ def _rewrite_matcher_durations_jsonl() -> None:
                 "self_id": str(sid),
                 "at": int(it.get("at") or 0),
                 "plugin": str(it.get("plugin") or ""),
-                "duration_ms": max(0.0, round(float(it.get("duration_ms") or 0), 2)),
+                "duration_ms": _duration_ms_float(it.get("duration_ms") or 0),
                 "had_error": bool(it.get("had_error")),
             }
             lines.append(json.dumps(line_obj, ensure_ascii=False))
@@ -2225,7 +2230,7 @@ def _load_matcher_duration_logs_from_disk() -> None:
         except (TypeError, ValueError):
             at = 0
         try:
-            duration_ms = max(0.0, round(float(obj.get("duration_ms") or 0), 2))
+            duration_ms = _duration_ms_float(obj.get("duration_ms") or 0)
         except (TypeError, ValueError):
             duration_ms = 0.0
         by_sid[sid].append({
@@ -2287,7 +2292,7 @@ def _append_matcher_duration_log(
     entry: dict[str, Any] = {
         "at": int(time.time()),
         "plugin": plugin,
-        "duration_ms": max(0.0, round(float(duration_ms), 2)),
+        "duration_ms": _duration_ms_float(duration_ms),
         "had_error": bool(had_error),
     }
     try:
@@ -2323,7 +2328,7 @@ def _matcher_duration_log_public(
         except (TypeError, ValueError):
             at = 0
         try:
-            duration_ms = max(0.0, round(float(it.get("duration_ms") or 0), 2))
+            duration_ms = _duration_ms_float(it.get("duration_ms") or 0)
         except (TypeError, ValueError):
             duration_ms = 0.0
         out.append({
@@ -2639,7 +2644,7 @@ def _matcher_hist_bump(sid: str, plugin: str, had_error: bool, *, duration_ms: i
             if not isinstance(durs, dict):
                 hist[-1]["plugin_duration_ms"] = {}
                 durs = hist[-1]["plugin_duration_ms"]
-            durs[pname] = round(_duration_ms_float(durs.get(pname, 0)) + dur, 2)
+            durs[pname] = _round_duration_ms(_duration_ms_float(durs.get(pname, 0)) + dur)
             if had_error:
                 errs = hist[-1].setdefault("plugin_errors", {})
                 if not isinstance(errs, dict):
@@ -2770,7 +2775,7 @@ def _matcher_duration_hist_series_public(
                 continue
             ms_pts.append({"at": at, "total": ms})
             if runs > 0 and ms > 0:
-                avg_pts.append({"at": at, "total": round(ms / runs, 2)})
+                avg_pts.append({"at": at, "total": _round_duration_ms(ms / runs)})
         if sum(float(x.get("total", 0) or 0) for x in ms_pts):
             ms_out.append({"plugin": pname, "points": ms_pts})
         if sum(float(x.get("total", 0) or 0) for x in avg_pts):
