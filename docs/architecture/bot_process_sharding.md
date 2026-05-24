@@ -109,6 +109,7 @@ uv run python scripts/sync_shard_protocol_ports.py --dry-run
 | `REDIS_URL` / `PALLAS_COORD_REDIS_URL` | 与 AI 相同，如 `redis://127.0.0.1:6379/0` |
 | `PALLAS_COORD_REDIS_ENABLED` | `auto`（默认）：可 ping 则启用；`true` 强制；`false` 禁用 |
 | `PALLAS_COORD_REDIS_CLAIM_TTL_SEC` | claim 键 TTL，默认 86400 |
+| `pallas:presence:bots` | （自动）worker 在线状态 HASH；Redis 不可用时仍用 `worker_presence.json` |
 
 `./scripts/run_sharded_bot.sh start` 会读取 **`pallas.toml` / `webui.json`** 并调用 `detect_shard_redis.py` 自动探测；不可达时回退文件 claim。
 

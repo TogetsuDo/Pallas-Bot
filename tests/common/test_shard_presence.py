@@ -2,8 +2,18 @@ from __future__ import annotations
 
 import json
 import time
+from unittest.mock import MagicMock
 
+import pytest
+
+from src.common.coord import redis_presence as rp
 from src.common.shard import presence as mod
+
+
+@pytest.fixture(autouse=True)
+def force_file_presence(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(rp, "presence_uses_redis_only", lambda: False)
+    monkeypatch.setattr(rp, "get_presence_redis_client", lambda: None)
 
 
 def test_presence_roundtrip(tmp_path, monkeypatch):
@@ -14,7 +24,8 @@ def test_presence_roundtrip(tmp_path, monkeypatch):
     mod.note_worker_bot_connected_sync(qq=222, connection_key="222", adapter="OneBot V11", shard_id=1)
 
     online = mod.get_cluster_online_bot_ids()
-    assert 111 in online and 222 in online
+    assert 111 in online
+    assert 222 in online
 
     rows = mod.list_connected_bots_for_webui()
     assert len(rows) == 2
@@ -35,3 +46,83 @@ def test_presence_stale_pruned(tmp_path, monkeypatch):
     path.write_text(json.dumps(data), encoding="utf-8")
 
     assert 333 not in mod.get_cluster_online_bot_ids()
+
+
+def test_presence_redis_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
+    store: dict[str, str] = {}
+    meta: dict[str, str] = {}
+
+    client = MagicMock()
+
+    def hset(name, key, value):
+        store[str(key)] = value
+
+    def hget(name, key):
+        return store.get(str(key))
+
+    def hgetall(name):
+        return dict(store)
+
+    def hdel(name, key):
+        store.pop(str(key), None)
+
+    def hlen(name):
+        return len(store)
+
+    def get(key):
+        return meta.get(str(key))
+
+    def set_(key, value):
+        meta[str(key)] = str(value)
+
+    client.hset.side_effect = hset
+    client.hget.side_effect = hget
+    client.hgetall.side_effect = hgetall
+    client.hdel.side_effect = hdel
+    client.hlen.side_effect = hlen
+    client.get.side_effect = get
+    client.set.side_effect = set_
+    client.pipeline.return_value = client
+    client.execute.return_value = None
+
+    monkeypatch.setattr(rp, "get_presence_redis_client", lambda: client)
+    monkeypatch.setattr(rp, "presence_uses_redis_only", lambda: True)
+    monkeypatch.setattr(mod, "is_sharding_active", lambda: True)
+    monkeypatch.setattr(mod, "_read_file_bots", lambda: {})
+
+    mod.note_worker_bot_connected_sync(qq=111, connection_key="111", adapter="OneBot V11", shard_id=0)
+    assert mod.get_cluster_online_bot_ids() == frozenset({111})
+
+    mod.note_worker_bot_disconnected_sync(qq=111)
+    assert mod.get_cluster_online_bot_ids() == frozenset()
+
+
+def test_presence_imports_file_when_redis_empty(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(mod, "plugin_data_dir", lambda name, create=True: tmp_path / name)
+    monkeypatch.setattr(mod, "is_sharding_active", lambda: True)
+
+    mod.note_worker_bot_connected_sync(qq=444, connection_key="444", adapter="OneBot V11", shard_id=2)
+    file_bots = mod._read_file_bots()
+    assert "444" in file_bots
+
+    store: dict[str, str] = {}
+
+    client = MagicMock()
+    client.hgetall.side_effect = lambda _name: dict(store)
+    client.hlen.side_effect = lambda _name: len(store)
+    client.get.return_value = None
+
+    def hset(name, key, value):
+        store[str(key)] = value
+
+    client.hset.side_effect = hset
+    client.pipeline.return_value = client
+    client.execute.return_value = None
+    client.set.return_value = True
+
+    monkeypatch.setattr(rp, "get_presence_redis_client", lambda: client)
+    monkeypatch.setattr(rp, "presence_uses_redis_only", lambda: True)
+
+    loaded = mod._load_presence_bots()
+    assert "444" in loaded
+    assert loaded["444"]["shard_id"] == 2

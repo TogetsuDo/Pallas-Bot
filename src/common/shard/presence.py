@@ -1,4 +1,4 @@
-"""各 worker WS 连接状态写入共享文件，供 hub WebUI 展示全集群在线牛。"""
+"""各 worker WS 连接状态：Redis HASH 或共享文件，供 hub WebUI 展示全集群在线牛。"""
 
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ def _write_atomic(data: dict[str, Any]) -> None:
     tmp.replace(path)
 
 
-def _mutate(fn) -> None:
+def _mutate_file(fn) -> None:
     fd = _acquire_lock()
     if fd is None:
         return
@@ -90,6 +90,45 @@ def _mutate(fn) -> None:
         _release_lock(fd)
 
 
+def _read_file_bots() -> dict[str, dict[str, Any]]:
+    data = _read_data()
+    bots = data.get("bots")
+    if not isinstance(bots, dict):
+        return {}
+    return {str(k): v for k, v in bots.items() if isinstance(v, dict)}
+
+
+def _maybe_import_file_to_redis() -> None:
+    from src.common.coord.redis_presence import import_file_presence_to_redis_sync
+
+    file_bots = _read_file_bots()
+    if file_bots:
+        import_file_presence_to_redis_sync(file_bots)
+
+
+def _load_presence_bots() -> dict[str, dict[str, Any]]:
+    from src.common.coord.redis_presence import (
+        presence_uses_redis_only,
+        read_presence_bots_redis_sync,
+    )
+
+    file_bots = _read_file_bots()
+    redis_bots = read_presence_bots_redis_sync()
+    if redis_bots is not None:
+        if not redis_bots:
+            if file_bots:
+                _maybe_import_file_to_redis()
+                redis_bots = read_presence_bots_redis_sync()
+        if redis_bots:
+            return redis_bots
+        # worker 仍写文件、hub 已读 Redis 时：Redis 空则回退文件，避免 WebUI 全离线
+        if file_bots:
+            return file_bots
+        if presence_uses_redis_only():
+            return {}
+    return file_bots
+
+
 def note_worker_bot_connected_sync(
     *,
     qq: int,
@@ -98,6 +137,22 @@ def note_worker_bot_connected_sync(
     shard_id: int,
     nickname: str = "",
 ) -> None:
+    from src.common.coord.redis_presence import (
+        note_worker_bot_connected_redis_sync,
+        presence_uses_redis_only,
+    )
+
+    if note_worker_bot_connected_redis_sync(
+        qq=qq,
+        connection_key=connection_key,
+        adapter=adapter,
+        shard_id=shard_id,
+        nickname=nickname,
+    ):
+        return
+    if presence_uses_redis_only():
+        return
+
     key = str(int(qq))
     nick = (nickname or "").strip()
     now = time.time()
@@ -114,10 +169,20 @@ def note_worker_bot_connected_sync(
             "nickname": nick,
         }
 
-    _mutate(upd)
+    _mutate_file(upd)
 
 
 def touch_worker_bot_presence_sync(*, qq: int) -> None:
+    from src.common.coord.redis_presence import (
+        presence_uses_redis_only,
+        touch_worker_bot_presence_redis_sync,
+    )
+
+    if touch_worker_bot_presence_redis_sync(qq=qq):
+        return
+    if presence_uses_redis_only():
+        return
+
     key = str(int(qq))
     now = time.time()
 
@@ -129,11 +194,21 @@ def touch_worker_bot_presence_sync(*, qq: int) -> None:
         if isinstance(rec, dict):
             rec["last_seen_at"] = now
 
-    _mutate(upd)
+    _mutate_file(upd)
 
 
 def reconcile_local_worker_presence_sync(*, shard_id: int, local_qq_ids: set[int]) -> None:
     """对齐本 worker 实际连接：移除已断开但仍留在 presence 的牛。"""
+    from src.common.coord.redis_presence import (
+        presence_uses_redis_only,
+        reconcile_local_worker_presence_redis_sync,
+    )
+
+    if reconcile_local_worker_presence_redis_sync(shard_id=shard_id, local_qq_ids=local_qq_ids):
+        return
+    if presence_uses_redis_only():
+        return
+
     now = time.time()
     sid = int(shard_id)
 
@@ -158,16 +233,27 @@ def reconcile_local_worker_presence_sync(*, shard_id: int, local_qq_ids: set[int
             else:
                 rec["last_seen_at"] = now
 
-    _mutate(upd)
+    _mutate_file(upd)
 
 
 def prune_stale_presence_entries_sync(*, max_age_sec: float = _PRESENCE_STALE_SEC) -> int:
     """移除长时间未刷新的 presence（worker 崩溃或未正常 disconnect 时兜底）。"""
+    from src.common.coord.redis_presence import (
+        presence_uses_redis_only,
+        prune_stale_presence_entries_redis_sync,
+    )
+
+    removed = prune_stale_presence_entries_redis_sync(max_age_sec=max_age_sec)
+    if removed is not None:
+        return removed
+    if presence_uses_redis_only():
+        return 0
+
     now = time.time()
-    removed = 0
+    file_removed = 0
 
     def upd(data: dict[str, Any]) -> None:
-        nonlocal removed
+        nonlocal file_removed
         bots = data.get("bots")
         if not isinstance(bots, dict):
             return
@@ -175,18 +261,28 @@ def prune_stale_presence_entries_sync(*, max_age_sec: float = _PRESENCE_STALE_SE
             rec = bots.get(key)
             if not isinstance(rec, dict):
                 bots.pop(key, None)
-                removed += 1
+                file_removed += 1
                 continue
             last = float(rec.get("last_seen_at") or rec.get("connected_at_unix") or 0)
             if last <= 0 or now - last > max_age_sec:
                 bots.pop(key, None)
-                removed += 1
+                file_removed += 1
 
-    _mutate(upd)
-    return removed
+    _mutate_file(upd)
+    return file_removed
 
 
 def note_worker_bot_disconnected_sync(*, qq: int) -> None:
+    from src.common.coord.redis_presence import (
+        note_worker_bot_disconnected_redis_sync,
+        presence_uses_redis_only,
+    )
+
+    if note_worker_bot_disconnected_redis_sync(qq=qq):
+        return
+    if presence_uses_redis_only():
+        return
+
     key = str(int(qq))
 
     def upd(data: dict[str, Any]) -> None:
@@ -194,7 +290,7 @@ def note_worker_bot_disconnected_sync(*, qq: int) -> None:
         if isinstance(bots, dict):
             bots.pop(key, None)
 
-    _mutate(upd)
+    _mutate_file(upd)
 
 
 async def note_worker_bot_connected(bot) -> None:
@@ -242,11 +338,7 @@ def read_presence_bots() -> dict[str, dict[str, Any]]:
     if not is_sharding_active():
         return {}
     prune_stale_presence_entries_sync()
-    data = _read_data()
-    bots = data.get("bots")
-    if not isinstance(bots, dict):
-        return {}
-    return {str(k): v for k, v in bots.items() if isinstance(v, dict)}
+    return _load_presence_bots()
 
 
 def get_cluster_online_bot_ids() -> frozenset[int]:
@@ -276,9 +368,10 @@ def list_connected_bots_for_webui() -> list[dict[str, Any]]:
     from src.common.webui.protocol_accounts import protocol_account_display_names
 
     names = protocol_account_display_names()
+    bots = read_presence_bots()
     rows: list[dict[str, Any]] = []
-    for key in sorted(read_presence_bots().keys(), key=lambda x: int(x) if str(x).isdigit() else 0):
-        rec = read_presence_bots()[key]
+    for key in sorted(bots.keys(), key=lambda x: int(x) if str(x).isdigit() else 0):
+        rec = bots[key]
         qq = str(rec.get("qq") or key)
         nick = str(rec.get("nickname") or "").strip() or names.get(qq, "")
         rows.append({
