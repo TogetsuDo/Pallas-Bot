@@ -103,17 +103,46 @@ def _extract_line_dt(body: str) -> str | None:
     return None
 
 
+def _is_log_header_body(body: str) -> bool:
+    raw = body.strip()
+    if _LOG_LINE_RE.match(raw):
+        return True
+    if _NONE_BOT_ERROR_RE.match(raw):
+        return True
+    if _STDIO_MIRROR_RE.match(raw):
+        return True
+    if _STDERR_ERROR_RE.match(raw):
+        return True
+    if _TS_BRACKET.match(raw):
+        return True
+    if _TS_ISO.match(raw):
+        return True
+    return False
+
+
 def _is_log_continuation_body(body: str) -> bool:
     s = body.strip()
     if not s:
         return True
+    if _is_log_header_body(s):
+        return False
     if s.startswith("Traceback"):
         return True
     if s.startswith(("  File ", "    ", "\t")):
         return True
     if re.match(r"^[A-Z][a-zA-Z0-9_]*(?:Error|Exception):", s):
         return True
-    return s.startswith("During handling of the above exception")
+    if s.startswith("During handling of the above exception"):
+        return True
+    if re.match(r"^[\|└├╭╰─]", s):
+        return True
+    if re.match(r"^\|\s", s) or " L " in s[:16] or s.startswith("L "):
+        return True
+    if s.startswith("..."):
+        return True
+    if re.match(r"^\s+\S", s):
+        return True
+    return False
 
 
 def _line_sort_key(line: str) -> tuple[str, str, int]:

@@ -78,3 +78,37 @@ def test_fill_time_on_exception_continuation():
     ]
     out = fill_missing_log_entry_times(rows)
     assert out[1]["time"] == out[0]["time"]
+
+
+def test_merge_log_line_continuations_tree_dump():
+    from src.common.web.bot_web import merge_log_line_continuations
+
+    lines = [
+        "[worker-99] 05-24 20:49:06 | INFO     | nonebot:178 - Event will be handled",
+        "[worker-99] |  L <class 'collections.abc.Awaitable'>",
+        "[worker-99] |  L {'bot': Bot(type='OneBot V11')}",
+        "[worker-99] 05-24 20:49:07 | DEBUG    | nonebot:178 - next",
+    ]
+    merged = merge_log_line_continuations(lines)
+    assert len(merged) == 2
+    assert "Awaitable" in merged[0]
+    assert "Bot(type=" in merged[0]
+    assert merged[1].endswith("next")
+
+
+def test_merge_log_entry_continuations():
+    from src.common.web.bot_web import merge_log_entry_continuations
+
+    rows = fill_missing_log_entry_times(
+        [
+            parse_nonebot_log_line(
+                "[worker-99] 05-24 20:49:06 | INFO     | nonebot:178 - payload",
+            ),
+            parse_nonebot_log_line("[worker-99] |  L {'k': 1}"),
+            parse_nonebot_log_line("[worker-99] |  L {'k': 2}"),
+        ],
+    )
+    merged = merge_log_entry_continuations(rows)
+    assert len(merged) == 1
+    assert "|  L {'k': 1}" in merged[0]["message"]
+    assert "|  L {'k': 2}" in merged[0]["message"]

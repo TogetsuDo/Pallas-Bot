@@ -181,13 +181,50 @@ def fill_missing_log_entry_times(entries: list[dict[str, Any]]) -> list[dict[str
     return entries
 
 
+def merge_log_line_continuations(lines: list[str]) -> list[str]:
+    """合并 traceback / pretty-print 等多行续行，避免结构化视图拆成多条 info。"""
+    from src.common.shard.logs.view import _is_log_continuation_body
+
+    out: list[str] = []
+    for line in lines:
+        raw = line.rstrip("\n")
+        if not raw.strip():
+            continue
+        _, body = _strip_shard_log_prefix(raw)
+        if out and _is_log_continuation_body(body):
+            out[-1] = f"{out[-1]}\n{raw}"
+        else:
+            out.append(raw)
+    return out
+
+
+def merge_log_entry_continuations(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    from src.common.shard.logs.view import _is_log_continuation_body
+
+    out: list[dict[str, Any]] = []
+    rank = {"debug": 0, "info": 1, "success": 2, "warn": 3, "error": 4}
+    for e in entries:
+        msg = str(e.get("message") or "")
+        if out and _is_log_continuation_body(msg):
+            prev = out[-1]
+            prev_msg = str(prev.get("message") or "")
+            prev["message"] = f"{prev_msg}\n{msg}" if prev_msg else msg
+            pl = str(prev.get("level") or "info")
+            cl = str(e.get("level") or "info")
+            if rank.get(cl, 1) > rank.get(pl, 1):
+                prev["level"] = cl
+            continue
+        out.append(dict(e))
+    return out
+
+
 def tail_nonebot_log_entries_scoped(
     n: int,
     scope: LogScope,
     *,
     source: str | None = None,
 ) -> list[dict[str, Any]]:
-    lines = tail_nonebot_log_lines_scoped(n, scope, source=source)
+    lines = merge_log_line_continuations(tail_nonebot_log_lines_scoped(n, scope, source=source))
     out: list[dict[str, Any]] = []
     for i, line in enumerate(lines):
         out.append(parse_nonebot_log_line(line, entry_id=-(i + 1)))

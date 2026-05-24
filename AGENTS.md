@@ -127,6 +127,14 @@ uv run ruff format --check src/
 - 与维护者/PR 描述可用 **中文**；**代码标识符、配置键名、路径、命令** 保持仓库既有习惯（多为英文键名，勿强行翻译）。
 - 修改 **配置、文档、CI/自动化** 时，可补充**简短注释**说明用途即可，不必在注释里长篇解释动机（动机放在 PR/对话里）。
 
+### WebUI 与控制台页面（窄屏）
+
+改动 **Pallas-Bot-WebUI** 或主仓内嵌控制台 HTML/CSS（如 `src/plugins/pallas_protocol/web/static/`）时：
+
+- **必须考虑窄屏（≤560px）**：面板标题栏、「添加到侧栏」、表格与批量操作在窄屏下仍须可用、布局不杂乱。
+- WebUI 约定见 **Pallas-Bot-WebUI** 仓库根目录 `AGENTS.md`（窄屏自检清单与参考页面）；全局断点与 override 在 WebUI `src/styles/app.css` 的 `@media (max-width: 560px)`。
+- 勿只验证桌面宽屏即认为 UI 已完成。
+
 ### 插件命令权限与帮助文案（cmd_perm）
 
 接入可配置命令权限的插件时：
