@@ -1781,6 +1781,27 @@ class PallasProtocolService:
         runtime = self._runtime(account_id)
         return list(runtime.logs)[-lines:]
 
+    def account_qrcode_path(self, account_id: str) -> Path | None:
+        account = self._accounts.get(account_id)
+        if not account:
+            return None
+        cache_qr = Path(str(account.get("account_data_dir", "")).strip()) / "cache" / "qrcode.png"
+        return cache_qr if cache_qr.is_file() else None
+
+    def account_qrcode_meta(self, account_id: str) -> dict:
+        path = self.account_qrcode_path(account_id)
+        if path is None:
+            return {"exists": False}
+        try:
+            st = path.stat()
+        except OSError:
+            return {"exists": False}
+        return {
+            "exists": True,
+            "updated_at": int(st.st_mtime),
+            "size": int(st.st_size),
+        }
+
     def get_account_configs(self, account_id: str) -> dict:
         account = self._accounts.get(account_id)
         if not account:

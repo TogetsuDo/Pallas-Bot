@@ -496,23 +496,36 @@ def _render_common_api_js() -> str:
     }
 
     async function api(path, options = {}) {
+      const timeoutMs = typeof options.timeoutMs === "number" ? options.timeoutMs : 35000;
+      const fetchOpts = { ...options };
+      delete fetchOpts.timeoutMs;
       const token = getSessionToken();
-      const headers = options.headers || {};
+      const headers = fetchOpts.headers || {};
       if (token) headers["X-Pallas-Protocol-Token"] = token;
-      const res = await fetch(`${basePath}${path}`, {
-        ...options,
-        headers,
-        credentials: options.credentials || "same-origin",
-      });
-      if (res.status === 401) {
-        sessionStorage.removeItem("pallas_protocol_token_session");
-        const loc = location.pathname + location.search + location.hash;
-        const next = encodeURIComponent(loc || `${basePath}/`);
-        location.href = `${basePath}/login?next=${next}&reason=${encodeURIComponent("登录已失效或 Token 无效，请重新登录")}`;
-        throw new Error("Unauthorized");
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      try {
+        const res = await fetch(`${basePath}${path}`, {
+          ...fetchOpts,
+          headers,
+          signal: ctrl.signal,
+          credentials: fetchOpts.credentials || "same-origin",
+        });
+        if (res.status === 401) {
+          sessionStorage.removeItem("pallas_protocol_token_session");
+          const loc = location.pathname + location.search + location.hash;
+          const next = encodeURIComponent(loc || `${basePath}/`);
+          location.href = `${basePath}/login?next=${next}&reason=${encodeURIComponent("登录已失效或 Token 无效，请重新登录")}`;
+          throw new Error("Unauthorized");
+        }
+        if (!res.ok) throw new Error((await res.text()) || res.status);
+        return res.json();
+      } catch (e) {
+        if (e && e.name === "AbortError") throw new Error("请求超时，请稍后重试");
+        throw e;
+      } finally {
+        clearTimeout(timer);
       }
-      if (!res.ok) throw new Error((await res.text()) || res.status);
-      return res.json();
     }
 
     document.addEventListener("click", (e) => {
@@ -538,6 +551,7 @@ def _render_common_api_js() -> str:
     function shouldPauseLiveLogDomWrite(el) {
       if (!el) return false;
       if (isLogElementUserSelecting(el)) return true;
+      if (el.id === "accLogs") return false;
       try {
         if (typeof el.matches === "function" && el.matches(":focus-within")) return true;
       } catch (e) { }
@@ -734,14 +748,16 @@ def _render_common_api_js() -> str:
     )
 
 
-def _render_hidden_token_sync_js(back_button_id: str = "backDash") -> str:
+def _render_hidden_token_sync_js(back_button_id: str = "backDash", *, page_session: str = "") -> str:
     back_id_js = json.dumps(back_button_id)
+    page_sess_js = json.dumps(page_session)
     return f"""
     (function initTokenSync() {{
       const u = new URL(location.href);
       const fromQs = (u.searchParams.get("token") || "").trim();
+      const fromBootstrap = ({page_sess_js} || "").trim();
       const fromSession = (sessionStorage.getItem("pallas_protocol_token_session") || "").trim();
-      const t = fromQs || fromSession;
+      const t = fromQs || fromBootstrap || fromSession;
       if (t) sessionStorage.setItem("pallas_protocol_token_session", t);
       const tokenEl = document.getElementById("token");
       if (tokenEl) tokenEl.value = t;
@@ -1124,6 +1140,71 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
     const selectedAccountIds = new Set();
     let lastAccountsRenderSig = "";
     let pendingSilentAccountsDom = false;
+    const PALLAS_FAV_BOT_ACCOUNTS_KEY = "pallas_fav_bot_accounts_v1";
+    let botFavoriteAccounts = readBotFavoriteAccounts();
+    function readBotFavoriteAccounts() {{
+      try {{
+        const raw = localStorage.getItem(PALLAS_FAV_BOT_ACCOUNTS_KEY);
+        if (!raw) return new Set();
+        const data = JSON.parse(raw);
+        if (!Array.isArray(data)) return new Set();
+        const s = new Set();
+        for (const x of data) {{
+          const n = typeof x === "number" ? x : parseInt(String(x), 10);
+          if (Number.isFinite(n) && n > 0) s.add(Math.floor(n));
+        }}
+        return s;
+      }} catch (e) {{
+        return new Set();
+      }}
+    }}
+    function writeBotFavoriteAccounts(s) {{
+      try {{
+        localStorage.setItem(PALLAS_FAV_BOT_ACCOUNTS_KEY, JSON.stringify([...s].sort((a, b) => a - b)));
+      }} catch (e) {{}}
+    }}
+    function accountFavoriteNumber(a) {{
+      const q = parseInt(String(a?.qq ?? a?.id ?? "").replace(/\\s/g, ""), 10);
+      if (Number.isFinite(q) && q > 0) return Math.floor(q);
+      return null;
+    }}
+    function isFavoriteAccount(a) {{
+      const n = accountFavoriteNumber(a);
+      return n != null && botFavoriteAccounts.has(n);
+    }}
+    function toggleFavoriteAccountById(id, ev) {{
+      if (ev) {{
+        ev.preventDefault();
+        ev.stopPropagation();
+      }}
+      const a = (accountRows || []).find((x) => String(x.id) === String(id));
+      if (!a) return;
+      const n = accountFavoriteNumber(a);
+      if (n == null) return;
+      const s = new Set(botFavoriteAccounts);
+      if (s.has(n)) s.delete(n);
+      else s.add(n);
+      botFavoriteAccounts = s;
+      writeBotFavoriteAccounts(s);
+      accountRows = sortAccountsDashboard(accountRows);
+      renderAccounts();
+    }}
+    if (typeof window !== "undefined") {{
+      window.addEventListener("storage", (ev) => {{
+        if (ev.key !== PALLAS_FAV_BOT_ACCOUNTS_KEY) return;
+        botFavoriteAccounts = readBotFavoriteAccounts();
+        accountRows = sortAccountsDashboard(accountRows);
+        renderAccounts();
+      }});
+    }}
+    function accountFavStarHtml(a) {{
+      const n = accountFavoriteNumber(a);
+      if (n == null) return "";
+      const on = botFavoriteAccounts.has(n);
+      const id = escHtmlDash(String(a.id));
+      const title = on ? "取消收藏" : "收藏";
+      return `<button type="button" class="inst-fav-star" aria-pressed="${{on ? "true" : "false"}}" title="${{title}}" onclick="toggleFavoriteAccountById('${{id}}', event)">★</button>`;
+    }}
     function accountsListSignature(rows) {{
       return (rows || []).map((a) => {{
         const id = String(a.id ?? a.qq ?? "").trim();
@@ -1494,6 +1575,7 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
             <td data-label="操作" class="acc-td-actions">
               <div class="row">
                 <button class="btn acc-card-console-btn" type="button" onclick="openAccount('${{a.id}}')">控制台</button>
+                ${{accountFavStarHtml(a)}}
                 ${{startStopBtn}}
                 <button class="btn secondary" type="button" onclick="restartAccount('${{a.id}}',this)">重启</button>
               </div>
@@ -1542,6 +1624,7 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
               <h3 class="acc-card-hd">${{a.display_name || a.id}}</h3>
               <div class="acc-card-status"><span class="tag ${{cls}}">${{st}}</span></div>
             </div>
+            ${{accountFavStarHtml(a)}}
             <button class="btn acc-card-console-btn" type="button" onclick="openAccount('${{a.id}}')">控制台</button>
           </div>
           <p class="acc-card-meta">QQ：${{a.qq || a.id}}</p>
@@ -1570,7 +1653,7 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
       if (!silent) setBusy(btn, true, "刷新", "刷新中...");
       try {{
         const data = await api("/api/accounts");
-        accountRows = sortAccountsOnlineFirst(data.accounts || []);
+        accountRows = sortAccountsDashboard(data.accounts || []);
         const sig = accountsListSignature(accountRows);
         if (!force && sig === lastAccountsRenderSig) return;
         if (silent && isProtoMainInnerScrolling()) {{
@@ -1602,14 +1685,21 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
     function isAccountRunning(a) {{
       return !!(a && a.process_running);
     }}
-    function sortAccountsOnlineFirst(rows) {{
+    function sortAccountsDashboard(rows) {{
       return [...(rows || [])].sort((a, b) => {{
-        const ao = isAccountRunning(a) ? 1 : 0;
-        const bo = isAccountRunning(b) ? 1 : 0;
-        if (ao !== bo) return bo - ao;
+        const fa = accountFavoriteNumber(a);
+        const fb = accountFavoriteNumber(b);
+        const favA = fa != null && botFavoriteAccounts.has(fa) ? 1 : 0;
+        const favB = fb != null && botFavoriteAccounts.has(fb) ? 1 : 0;
+        if (favA !== favB) return favB - favA;
+        const ca = a.connected === true ? 1 : 0;
+        const cb = b.connected === true ? 1 : 0;
+        if (ca !== cb) return cb - ca;
         const an = String(a?.display_name || a?.qq || a?.id || "");
         const bn = String(b?.display_name || b?.qq || b?.id || "");
-        return an.localeCompare(bn, "zh-CN", {{ sensitivity: "base", numeric: true }});
+        const cmp = an.localeCompare(bn, "zh-CN", {{ sensitivity: "base", numeric: true }});
+        if (cmp !== 0) return cmp;
+        return String(a?.qq ?? a?.id ?? "").localeCompare(String(b?.qq ?? b?.id ?? ""), "zh-CN", {{ numeric: true }});
       }});
     }}
     function updateToggleAllButton() {{
@@ -3038,13 +3128,19 @@ def render_protocol_assets_page(base_path: str, pallas_console_http_base: str = 
 """
 
 
-def render_account_workspace(base_path: str, account_id: str, pallas_console_http_base: str = "/pallas") -> str:
+def render_account_workspace(
+    base_path: str,
+    account_id: str,
+    pallas_console_http_base: str = "/pallas",
+    *,
+    page_session: str = "",
+) -> str:
     path = base_path.rstrip("/") or resolve_public_mount_path(path_override="", implementation_slug="")
     p = json.dumps(path)
     aid = json.dumps(account_id)
     aid_h = html_escape(account_id, quote=True)
     common_api_js = _render_common_api_js()
-    token_sync_js = _render_hidden_token_sync_js("backDash")
+    token_sync_js = _render_hidden_token_sync_js("backDash", page_session=page_session)
     shell_open = render_protocol_shell_open(
         path,
         pallas_console_http_base,
@@ -3085,19 +3181,38 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
               <span class="muted" style="font-size:0.82rem;line-height:1.5">SnowLuma 需在<strong>自带 WebUI</strong>中对 QQ 进程<strong>首次手动加载/注入</strong>后，进程列表才会显示 UIN；请先使用上方「打开原生 WebUI」登录并完成首次注入。</span>
             </div>
           </div>
+          <div class="card acc-qr-card" id="accQrCard" hidden style="margin-top:12px">
+            <div class="acc-qr-card__hd row" style="justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:10px">
+              <div>
+                <h3 style="margin:0">登录二维码</h3>
+                <p class="muted acc-qr-card__hint" id="accQrHint" style="margin:4px 0 0;font-size:0.82rem">协议端已生成 PNG，可直接扫码登录</p>
+              </div>
+              <div class="row-actions acc-qr-card__actions">
+                <a class="btn secondary" id="accQrOpenLink" href="#" target="_blank" rel="noopener noreferrer">新标签打开</a>
+                <button class="btn secondary" type="button" onclick="pollAccQrcode(true)">刷新</button>
+              </div>
+            </div>
+            <div class="acc-qr-card__body">
+              <img id="accQrImg" class="acc-qr-card__img" alt="登录二维码" decoding="async" />
+            </div>
+          </div>
           <div class="card" style="margin-top:12px">
             <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px">
               <h3 style="margin:0">协议端进程</h3>
               <button class="btn secondary" type="button" onclick="copyLogText('accLogs')">复制</button>
             </div>
-            <pre class="logs logs-protocol" id="accLogs" tabindex="0" title="可鼠标框选复制；框选或聚焦本区域时暂停自动刷新"></pre>
+            <pre class="logs logs-protocol" id="accLogs" title="可鼠标框选复制">正在加载进程日志…</pre>
           </div>
           <div class="card" style="margin-top:12px">
-            <p class="muted" style="margin:0 0 10px">与仪表盘同源（结构化 + SSE），NoneBot 主进程日志。</p>
-            <div class="sl-runlog" id="accNbLogCard" style="max-height:min(40vh,520px);min-height:220px">
+            <div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">
+              <p class="muted" style="margin:0">NoneBot 主进程日志（分片下数据量大，按需展开）</p>
+              <button type="button" class="btn secondary" id="accNbToggleBtn">展开日志</button>
+            </div>
+            <div id="accNbLogSection" hidden>
+            <div class="sl-runlog sl-runlog--account" id="accNbLogCard">
               <div class="sl-runlog-hd">
                 <div class="sl-runlog-titles">
-                  <h2 style="margin:0;font-size:1.05rem">运行日志<span class="sl-runlog-bad wait" id="accNbLogStreamBadge">连接中</span></h2>
+                  <h2 style="margin:0;font-size:1.05rem">运行日志<span class="sl-runlog-bad wait" id="accNbLogStreamBadge">未启用</span></h2>
                   <p style="margin:4px 0 0;font-size:0.78rem;color:var(--muted)" id="accNbLogSubLine">
                     最近 <span id="accNbLogFilteredN">0</span> / <span id="accNbLogTotalN">0</span> 条 · SSE
                   </p>
@@ -3116,9 +3231,10 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
                 </div>
               </div>
               <div class="sl-runlog-levels" id="accNbLogLevels"></div>
-              <div class="sl-runlog-viewport" id="accNbLogViewport" tabindex="0" title="可框选复制；框选或聚焦时暂停自动滚动">
+              <div class="sl-runlog-viewport" id="accNbLogViewport" title="可框选复制">
                 <div class="sl-runlog-inner" id="accNbLogRows"></div>
               </div>
+            </div>
             </div>
           </div>
         </section>
@@ -3221,6 +3337,11 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
     let accNbLogFilter = "";
     let accNbLogLevels = new Set(ACC_NB_LEVELS);
     let accNbLogEs = null;
+    let accNbLogExpanded = false;
+    let accNbLogLoading = false;
+    let accNbLogRenderDeferred = false;
+    let accNbRenderScheduled = 0;
+    const ACC_NB_MAX_ENTRIES = 80;
     function accNbFormatTime(iso) {{
       try {{
         const d = new Date(iso);
@@ -3256,7 +3377,8 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
     function accNbShouldPauseDom() {{
       const vp = document.getElementById("accNbLogViewport");
       if (!vp) return false;
-      return shouldPauseLiveLogDomWrite(vp);
+      if (isLogElementUserSelecting(vp)) return true;
+      return false;
     }}
     function accNbRender() {{
       const rows = document.getElementById("accNbLogRows");
@@ -3270,7 +3392,7 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
         rows.innerHTML = '<div class="sl-runlog-empty">暂无日志</div>';
         return;
       }}
-      rows.innerHTML = list.map((x) => {{
+      rows.innerHTML = list.slice(-ACC_NB_MAX_ENTRIES).map((x) => {{
         const lv = String(x.level || "").toUpperCase();
         const t = accNbFormatTime(x.time);
         const sc = escHtml(x.scope || "");
@@ -3279,11 +3401,55 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
         return `<div class="sl-runlog-row"><span class="sl-runlog-t">${{t}}</span><span class="sl-runlog-lv ${{lc}}">${{lv}}</span><span class="sl-runlog-sc">[${{sc}}]</span><span class="sl-runlog-msg">${{msg}}</span></div>`;
       }}).join("");
     }}
+    function flushDeferredAccNbLogRender() {{
+      if (!accNbLogRenderDeferred || !accNbLogExpanded) return;
+      accNbLogRenderDeferred = false;
+      scheduleAccNbRender();
+    }}
+    function scheduleAccNbRender() {{
+      if (!accNbSnapshotExpanded()) return;
+      if (accNbRenderScheduled) return;
+      if (accNbShouldPauseDom()) {{
+        accNbLogRenderDeferred = true;
+        return;
+      }}
+      accNbRenderScheduled = requestAnimationFrame(() => {{
+        accNbRenderScheduled = 0;
+        if (accNbShouldPauseDom()) {{
+          accNbLogRenderDeferred = true;
+          return;
+        }}
+        accNbRender();
+        accNbSyncViewportLayout();
+        accNbScrollToEnd();
+      }});
+    }}
+    function accNbSnapshotExpanded() {{
+      return accNbLogExpanded;
+    }}
     function accNbScrollToEnd() {{
       if (accNbLogPaused) return;
       if (accNbShouldPauseDom()) return;
       const vp = document.getElementById("accNbLogViewport");
       if (vp) vp.scrollTop = vp.scrollHeight;
+    }}
+    function accNbSyncViewportLayout() {{
+      const card = document.getElementById("accNbLogCard");
+      const vp = document.getElementById("accNbLogViewport");
+      if (!card || !vp || !accNbLogExpanded) return;
+      const cardStyle = getComputedStyle(card);
+      const gap = parseFloat(cardStyle.rowGap || cardStyle.gap || "10") || 10;
+      const padY = parseFloat(cardStyle.paddingTop) + parseFloat(cardStyle.paddingBottom);
+      let siblings = 0;
+      let siblingCount = 0;
+      for (const el of card.children) {{
+        if (el === vp) continue;
+        siblings += el.getBoundingClientRect().height;
+        siblingCount += 1;
+      }}
+      const avail = card.clientHeight - padY - gap * siblingCount - siblings;
+      if (avail > 72) vp.style.height = `${{Math.floor(avail)}}px`;
+      else vp.style.height = "";
     }}
     function accNbInitLevelPills() {{
       const host = document.getElementById("accNbLogLevels");
@@ -3298,17 +3464,32 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
           else accNbLogLevels.add(lv);
           btn.classList.toggle("on", accNbLogLevels.has(lv));
           btn.classList.toggle("off", !accNbLogLevels.has(lv));
-          accNbRender();
+          scheduleAccNbRender();
         }});
       }});
+    }}
+    async function accNbEnsureStarted() {{
+      if (!accNbLogExpanded || accNbLogLoading) return;
+      accNbLogLoading = true;
+      try {{
+        await accNbLoadInitial();
+        accNbStartSse();
+      }} finally {{
+        accNbLogLoading = false;
+      }}
     }}
     async function accNbLoadInitial() {{
       const scopeEl = document.getElementById("accNbLogScope");
       const sc = scopeEl ? scopeEl.value : "all";
-      const data = await api(`/api/nonebot-logs?lines=180&scope=${{encodeURIComponent(sc)}}`);
-      accNbLogEntries = Array.isArray(data.entries) ? data.entries.slice() : [];
-      accNbRender();
-      accNbScrollToEnd();
+      const data = await api(`/api/nonebot-logs?lines=60&scope=${{encodeURIComponent(sc)}}`);
+      accNbLogEntries = Array.isArray(data.entries) ? data.entries.slice(-ACC_NB_MAX_ENTRIES) : [];
+      if (accNbLogExpanded) {{
+        accNbRender();
+        accNbSyncViewportLayout();
+        accNbScrollToEnd();
+      }} else {{
+        scheduleAccNbRender();
+      }}
     }}
     function accNbClear() {{
       if (!confirm("清空当前日志视图？仅影响浏览器展示，不清服务端缓冲。")) return;
@@ -3347,9 +3528,8 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
           if (row && row.type === "ready") return;
           if (!row || typeof row.id !== "number") return;
           if (accNbLogPaused) return;
-          accNbLogEntries = [...accNbLogEntries.filter((it) => it.id !== row.id), row].slice(-1000);
-          accNbRender();
-          accNbScrollToEnd();
+          accNbLogEntries = [...accNbLogEntries.filter((it) => it.id !== row.id), row].slice(-ACC_NB_MAX_ENTRIES);
+          scheduleAccNbRender();
         }} catch (e) {{}}
       }};
     }}
@@ -3357,7 +3537,7 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
       accNbInitLevelPills();
       document.getElementById("accNbLogFilter")?.addEventListener("input", (e) => {{
         accNbLogFilter = (e.target && e.target.value) || "";
-        accNbRender();
+        scheduleAccNbRender();
       }});
       document.getElementById("accNbLogPauseBtn")?.addEventListener("click", () => {{
         accNbLogPaused = !accNbLogPaused;
@@ -3371,8 +3551,35 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
       document.getElementById("accNbLogClearBtn")?.addEventListener("click", accNbClear);
       document.getElementById("accNbLogCopyBtn")?.addEventListener("click", accNbCopy);
       document.getElementById("accNbLogScope")?.addEventListener("change", () => {{
-        accNbLoadInitial().catch(() => {{}});
-        accNbStartSse();
+        if (!accNbLogExpanded) return;
+        accNbStopSse();
+        accNbEnsureStarted().catch((e) => notify(String(e.message || e), "err"));
+      }});
+      document.getElementById("accNbToggleBtn")?.addEventListener("click", () => {{
+        accNbLogExpanded = !accNbLogExpanded;
+        const sec = document.getElementById("accNbLogSection");
+        const btn = document.getElementById("accNbToggleBtn");
+        if (sec) sec.hidden = !accNbLogExpanded;
+        if (btn) btn.textContent = accNbLogExpanded ? "收起日志" : "展开日志";
+        if (accNbLogExpanded) {{
+          accNbEnsureStarted().then(() => {{
+            flushDeferredAccNbLogRender();
+            accNbRender();
+            requestAnimationFrame(() => {{
+              accNbSyncViewportLayout();
+              requestAnimationFrame(() => accNbScrollToEnd());
+            }});
+          }}).catch((e) => notify(String(e.message || e), "err"));
+        }} else {{
+          accNbStopSse();
+          accNbStreamBadge("未启用", "wait");
+          const vp = document.getElementById("accNbLogViewport");
+          if (vp) vp.style.height = "";
+        }}
+      }});
+      window.addEventListener("resize", () => {{
+        if (!accNbLogExpanded) return;
+        accNbSyncViewportLayout();
       }});
     }}
     let activeTab = "overview";
@@ -3383,12 +3590,7 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
       document.querySelectorAll(".side a[data-tab]").forEach((a) => a.classList.toggle("active", a.dataset.tab === name));
       const q = "tab=" + encodeURIComponent(name);
       history.replaceState(null, "", `${{basePath}}/account/${{encodeURIComponent(accountId)}}?${{q}}`);
-      if (name === "overview") {{
-        setTimeout(() => {{
-          accNbLoadInitial().catch(() => {{}});
-          accNbStartSse();
-        }}, 400);
-      }} else {{
+      if (name !== "overview") {{
         accNbStopSse();
       }}
       if (name === "settings") loadHints();
@@ -3413,6 +3615,76 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
     }});
     function escHtml(s) {{
       return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }}
+    let accQrLastUpdated = 0;
+    let accQrObjectUrl = "";
+    function accQrcodeFetchUrl(ts) {{
+      let url = `${{basePath}}/api/accounts/${{encodeURIComponent(accountId)}}/qrcode`;
+      const q = [];
+      const tok = getSessionToken();
+      if (tok) q.push(`token=${{encodeURIComponent(tok)}}`);
+      if (ts) q.push(`t=${{encodeURIComponent(String(ts))}}`);
+      if (q.length) url += "?" + q.join("&");
+      return url;
+    }}
+    async function loadAccQrcodeImage(ts) {{
+      const img = document.getElementById("accQrImg");
+      const hint = document.getElementById("accQrHint");
+      const link = document.getElementById("accQrOpenLink");
+      const url = accQrcodeFetchUrl(ts);
+      if (link) link.href = url;
+      if (!img) return;
+      const headers = {{}};
+      const tok = getSessionToken();
+      if (tok) headers["X-Pallas-Protocol-Token"] = tok;
+      const res = await fetch(url, {{ credentials: "same-origin", headers }});
+      if (!res.ok) throw new Error((await res.text()) || String(res.status));
+      const blob = await res.blob();
+      if (accQrObjectUrl) {{
+        try {{ URL.revokeObjectURL(accQrObjectUrl); }} catch (e) {{}}
+      }}
+      accQrObjectUrl = URL.createObjectURL(blob);
+      img.src = accQrObjectUrl;
+      img.onerror = () => {{
+        if (hint) hint.textContent = "二维码加载失败，请点「刷新」重试";
+      }};
+    }}
+    async function pollAccQrcode(force) {{
+      const card = document.getElementById("accQrCard");
+      const hint = document.getElementById("accQrHint");
+      try {{
+        const meta = await api(`/api/accounts/${{encodeURIComponent(accountId)}}/qrcode/meta`);
+        const pngNow = !!(meta && meta.exists);
+        if (!pngNow) {{
+          if (card) card.hidden = true;
+          accQrLastUpdated = 0;
+          return;
+        }}
+        const ts = meta.updated_at || 0;
+        if (force || ts !== accQrLastUpdated) {{
+          accQrLastUpdated = ts;
+          if (card) card.hidden = false;
+          await loadAccQrcodeImage(ts);
+          if (hint && ts) {{
+            try {{
+              hint.textContent = "更新于 " + new Date(ts * 1000).toLocaleString() + " · 可直接扫码";
+            }} catch (e) {{}}
+          }}
+        }}
+      }} catch (e) {{
+        if (card && force) card.hidden = true;
+        if (hint && force) hint.textContent = String(e.message || e);
+      }}
+    }}
+    async function bootAccountOverview() {{
+      pollAccLogs().catch((e) => notify(String(e.message || e), "err"));
+      pollAccQrcode(true).catch(() => {{}});
+      try {{
+        await loadAccount({{ brief: true }});
+      }} catch (e) {{
+        notify(String(e.message || e), "err");
+      }}
+      loadAccount({{ brief: false }}).catch((e) => notify(String(e.message || e), "err"));
     }}
     let __savedAccountBackend = "napcat";
     window.__managedTagSaved = "";
@@ -3563,6 +3835,7 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
       }}
       html += '<div class="muted" style="margin-top:8px">WORKDIR: ' + escHtml(a.account_data_dir || "") + "</div>";
       ov.innerHTML = html;
+      if (brief) return;
       document.getElementById("display_name").value = a.display_name || "";
       document.getElementById("qq").value = a.qq || "";
       {{
@@ -3612,11 +3885,12 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
     }}
     async function pollAccLogs() {{
       try {{
-        const data = await api(`/api/accounts/${{encodeURIComponent(accountId)}}/logs?lines=280`);
+        const data = await api(`/api/accounts/${{encodeURIComponent(accountId)}}/logs?lines=120`);
         const el = document.getElementById("accLogs");
         if (shouldPauseLiveLogDomWrite(el)) return;
+        const lines = data.logs || [];
         const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
-        el.textContent = (data.logs || []).join("\\n");
+        el.textContent = lines.length ? lines.join("\\n") : "暂无进程输出";
         if (atBottom) el.scrollTop = el.scrollHeight;
       }} catch (e) {{
         const el = document.getElementById("accLogs");
@@ -3762,6 +4036,8 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
       try {{
         await api(`/api/accounts/${{encodeURIComponent(accountId)}}/start`, {{ method: "POST" }});
         await loadAccount();
+        await pollAccQrcode(true);
+        await pollAccLogs();
         notify("启动成功", "ok");
       }} catch (e) {{
         notify(e.message || e, "err");
@@ -3784,6 +4060,8 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
       try {{
         await api(`/api/accounts/${{encodeURIComponent(accountId)}}/restart`, {{ method: "POST" }});
         await loadAccount();
+        await pollAccQrcode(true);
+        await pollAccLogs();
         notify("重启成功", "ok");
       }} catch (e) {{
         notify(e.message || e, "err");
@@ -3810,14 +4088,19 @@ def render_account_workspace(base_path: str, account_id: str, pallas_console_htt
       tab(["overview","settings","configs"].includes(tabn) ? tabn : "overview");
     }})();
     loadHints().catch(() => {{}});
-    loadAccount({{ brief: false }}).catch((e) => alert(e.message));
-    loadJsonCfgs().catch(() => {{}});
+    bootAccountOverview();
     setInterval(() => {{
-      if (activeTab === "overview") loadAccount({{ brief: true }}).catch(() => {{}});
+      if (document.hidden || activeTab !== "overview") return;
+      loadAccount({{ brief: true }}).catch(() => {{}});
+    }}, 10000);
+    setInterval(() => {{
+      if (document.hidden || activeTab !== "overview") return;
+      pollAccLogs();
     }}, 8000);
     setInterval(() => {{
-      if (activeTab === "overview") pollAccLogs();
-    }}, 5000);
+      if (document.hidden || activeTab !== "overview") return;
+      pollAccQrcode(false);
+    }}, 8000);
   </script>
   <div id="pageOverlay" class="page-overlay">
     <div class="page-overlay-inner">

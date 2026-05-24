@@ -9,7 +9,7 @@ from urllib.parse import quote, urlparse, urlunparse
 
 import httpx
 from fastapi import FastAPI, Form, Header, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -429,11 +429,19 @@ def register_pallas_protocol_routes(
             return redirect
         if not manager.has_account(account_id):
             raise HTTPException(status_code=404, detail="账号不存在")
+        from src.common.webui.console_login import extract_session_from_request
+
+        page_session = extract_session_from_request(
+            cookies=dict(request.cookies),
+            header_token=x_pallas_protocol_token,
+            query_token=token,
+        ) or ""
         return HTMLResponse(
             render_account_workspace(
                 resolve_protocol_webui_base_path(plugin_config),
                 account_id,
                 _pallas_console_http_base(),
+                page_session=page_session,
             ),
         )
 
@@ -861,9 +869,37 @@ def register_pallas_protocol_routes(
         _auth(x_pallas_protocol_token, token)
         if not manager.has_account(account_id):
             raise HTTPException(status_code=404, detail="账号不存在")
-        await manager.ensure_docker_logs_if_needed(account_id)
+        try:
+            await asyncio.wait_for(manager.ensure_docker_logs_if_needed(account_id), timeout=2.5)
+        except TimeoutError:
+            pass
         logs = await asyncio.to_thread(manager.tail_logs, account_id, lines)
         return {"logs": logs}
+
+    @app.get(f"{base}/api/accounts/{{account_id}}/qrcode/meta")
+    async def account_qrcode_meta(
+        account_id: str,
+        token: str | None = Query(default=None),
+        x_pallas_protocol_token: str | None = Header(default=None, alias="X-Pallas-Protocol-Token"),
+    ):
+        _auth(x_pallas_protocol_token, token)
+        if not manager.has_account(account_id):
+            raise HTTPException(status_code=404, detail="账号不存在")
+        return await asyncio.to_thread(manager.account_qrcode_meta, account_id)
+
+    @app.get(f"{base}/api/accounts/{{account_id}}/qrcode")
+    async def account_qrcode_image(
+        account_id: str,
+        token: str | None = Query(default=None),
+        x_pallas_protocol_token: str | None = Header(default=None, alias="X-Pallas-Protocol-Token"),
+    ):
+        _auth(x_pallas_protocol_token, token)
+        if not manager.has_account(account_id):
+            raise HTTPException(status_code=404, detail="账号不存在")
+        path = await asyncio.to_thread(manager.account_qrcode_path, account_id)
+        if path is None:
+            raise HTTPException(status_code=404, detail="暂无二维码文件")
+        return FileResponse(path, media_type="image/png", filename=f"{account_id}-qrcode.png")
 
     @app.get(f"{base}/api/accounts/{{account_id}}/configs")
     async def get_account_configs(
