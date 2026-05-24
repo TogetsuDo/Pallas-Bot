@@ -82,6 +82,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch origin docs
-          git checkout docs
+          git switch -C docs origin/docs
           git merge origin/main -m "chore(docs): 同步 main 文档变更 (${GITHUB_SHA:0:7})"
-          git push origin docs
+          git push origin HEAD:refs/heads/docs
