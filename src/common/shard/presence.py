@@ -198,7 +198,7 @@ def touch_worker_bot_presence_sync(*, qq: int) -> None:
 
 
 def reconcile_local_worker_presence_sync(*, shard_id: int, local_qq_ids: set[int]) -> None:
-    """对齐本 worker 实际连接：移除已断开但仍留在 presence 的牛。"""
+    """对齐本 worker 实际连接：移除已断开记录，刷新在线牛的 last_seen，并补齐漏写的 presence。"""
     from src.common.coord.redis_presence import (
         presence_uses_redis_only,
         reconcile_local_worker_presence_redis_sync,
@@ -215,7 +215,9 @@ def reconcile_local_worker_presence_sync(*, shard_id: int, local_qq_ids: set[int
     def upd(data: dict[str, Any]) -> None:
         bots = data.get("bots")
         if not isinstance(bots, dict):
-            return
+            bots = {}
+            data["bots"] = bots
+        present_for_shard: set[int] = set()
         for key in list(bots.keys()):
             rec = bots.get(key)
             if not isinstance(rec, dict):
@@ -231,7 +233,21 @@ def reconcile_local_worker_presence_sync(*, shard_id: int, local_qq_ids: set[int
             if qq not in local_qq_ids:
                 bots.pop(key, None)
             else:
+                present_for_shard.add(qq)
                 rec["last_seen_at"] = now
+        for qq in local_qq_ids:
+            if qq in present_for_shard:
+                continue
+            key = str(int(qq))
+            bots[key] = {
+                "qq": int(qq),
+                "shard_id": sid,
+                "connection_key": key,
+                "adapter": "",
+                "connected_at_unix": int(now),
+                "last_seen_at": now,
+                "nickname": "",
+            }
 
     _mutate_file(upd)
 

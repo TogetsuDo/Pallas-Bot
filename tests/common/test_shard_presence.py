@@ -88,7 +88,7 @@ def test_presence_redis_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(rp, "get_presence_redis_client", lambda: client)
     monkeypatch.setattr(rp, "presence_uses_redis_only", lambda: True)
     monkeypatch.setattr(mod, "is_sharding_active", lambda: True)
-    monkeypatch.setattr(mod, "_read_file_bots", lambda: {})
+    monkeypatch.setattr(mod, "_read_file_bots", dict)
 
     mod.note_worker_bot_connected_sync(qq=111, connection_key="111", adapter="OneBot V11", shard_id=0)
     assert mod.get_cluster_online_bot_ids() == frozenset({111})
@@ -126,3 +126,57 @@ def test_presence_imports_file_when_redis_empty(tmp_path, monkeypatch: pytest.Mo
     loaded = mod._load_presence_bots()
     assert "444" in loaded
     assert loaded["444"]["shard_id"] == 2
+
+
+def test_reconcile_redis_upserts_missing_local_bot(monkeypatch: pytest.MonkeyPatch) -> None:
+    store: dict[str, str] = {}
+
+    client = MagicMock()
+
+    def hset(name, key, value):
+        store[str(key)] = value
+
+    def hgetall(name):
+        return dict(store)
+
+    client.hset.side_effect = hset
+    client.hgetall.side_effect = hgetall
+    client.pipeline.return_value = client
+    client.execute.return_value = None
+    client.set.return_value = True
+
+    monkeypatch.setattr(rp, "get_presence_redis_client", lambda: client)
+    monkeypatch.setattr(rp, "presence_uses_redis_only", lambda: True)
+    monkeypatch.setattr(mod, "is_sharding_active", lambda: True)
+    monkeypatch.setattr(mod, "_read_file_bots", dict)
+
+    rp.note_worker_bot_connected_redis_sync(
+        qq=222,
+        connection_key="222",
+        adapter="OneBot V11",
+        shard_id=1,
+        nickname="other-shard",
+    )
+    assert "111" not in store
+
+    mod.reconcile_local_worker_presence_sync(shard_id=0, local_qq_ids={111, 333})
+
+    assert "111" in store
+    rec = json.loads(store["111"])
+    assert rec["shard_id"] == 0
+    assert rec["qq"] == 111
+    assert "222" in store
+
+
+def test_reconcile_file_upserts_missing_local_bot(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(mod, "plugin_data_dir", lambda name, create=True: tmp_path / name)
+    monkeypatch.setattr(mod, "is_sharding_active", lambda: True)
+
+    mod.note_worker_bot_connected_sync(qq=222, connection_key="222", adapter="OneBot V11", shard_id=1)
+    mod.reconcile_local_worker_presence_sync(shard_id=0, local_qq_ids={111})
+
+    bots = mod._read_file_bots()
+    assert "111" in bots
+    assert bots["111"]["shard_id"] == 0
+    assert "222" in bots
+    assert 111 in mod.get_cluster_online_bot_ids()

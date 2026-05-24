@@ -153,6 +153,19 @@ def note_worker_bot_disconnected_redis_sync(*, qq: int) -> bool:
         return False
 
 
+def _minimal_presence_rec(*, qq: int, shard_id: int, now: float) -> dict[str, Any]:
+    key = str(int(qq))
+    return {
+        "qq": int(qq),
+        "shard_id": int(shard_id),
+        "connection_key": key,
+        "adapter": "",
+        "connected_at_unix": int(now),
+        "last_seen_at": now,
+        "nickname": "",
+    }
+
+
 def reconcile_local_worker_presence_redis_sync(*, shard_id: int, local_qq_ids: set[int]) -> bool:
     client = get_presence_redis_client()
     if client is None:
@@ -160,11 +173,10 @@ def reconcile_local_worker_presence_redis_sync(*, shard_id: int, local_qq_ids: s
     now = time.time()
     sid = int(shard_id)
     try:
-        raw_map = client.hgetall(_HASH_KEY)
-        if not raw_map:
-            return True
+        raw_map = client.hgetall(_HASH_KEY) or {}
         pipe = client.pipeline()
         changed = False
+        present_for_shard: set[int] = set()
         for key, val in raw_map.items():
             k = key.decode("utf-8") if isinstance(key, bytes) else str(key)
             rec = _decode_rec(val)
@@ -184,9 +196,16 @@ def reconcile_local_worker_presence_redis_sync(*, shard_id: int, local_qq_ids: s
                 pipe.hdel(_HASH_KEY, k)
                 changed = True
             else:
+                present_for_shard.add(qq)
                 rec["last_seen_at"] = now
                 pipe.hset(_HASH_KEY, k, _encode_rec(rec))
                 changed = True
+        for qq in local_qq_ids:
+            if qq in present_for_shard:
+                continue
+            key = str(int(qq))
+            pipe.hset(_HASH_KEY, key, _encode_rec(_minimal_presence_rec(qq=qq, shard_id=sid, now=now)))
+            changed = True
         if changed:
             pipe.set(_UPDATED_AT_KEY, str(now))
             pipe.execute()
