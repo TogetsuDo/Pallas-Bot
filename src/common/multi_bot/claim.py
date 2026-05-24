@@ -80,5 +80,24 @@ def try_claim_message_sync(plugin: str, group_id: int, message_id: int, bot_id: 
             return False
 
 
+def take_claim_message_sync(plugin: str, group_id: int, message_id: int, bot_id: int) -> bool:
+    from src.common.coord.redis_claim import take_claim_message_redis_sync
+
+    redis_result = take_claim_message_redis_sync(plugin, group_id, message_id, bot_id)
+    if redis_result is not None:
+        return redis_result
+    path = _claim_path(plugin, group_id, message_id)
+    try:
+        path.write_text(str(int(bot_id)), encoding="utf-8")
+    except OSError:
+        return False
+    _prune_old_claims(plugin)
+    return True
+
+
 async def try_claim_message(plugin: str, group_id: int, message_id: int, bot_id: int) -> bool:
     return await asyncio.to_thread(try_claim_message_sync, plugin, group_id, message_id, bot_id)
+
+
+async def take_claim_message(plugin: str, group_id: int, message_id: int, bot_id: int) -> bool:
+    return await asyncio.to_thread(take_claim_message_sync, plugin, group_id, message_id, bot_id)

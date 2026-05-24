@@ -51,3 +51,20 @@ async def test_run_ai_callback_send_timeout_returns_failed(monkeypatch: pytest.M
 
     assert result == {"message": "failed"}
     remove_task.assert_awaited_once_with("task-1")
+
+
+@pytest.mark.asyncio
+async def test_run_ai_callback_get_bot_failed(monkeypatch: pytest.MonkeyPatch) -> None:
+    def raise_get_bot(_bot_id: str):
+        raise ValueError("bot not found")
+
+    monkeypatch.setattr(callback_handler, "get_bot", raise_get_bot)
+    monkeypatch.setattr(
+        callback_handler.TaskManager,
+        "get_task",
+        AsyncMock(return_value={"bot_id": "111", "group_id": 222}),
+    )
+
+    result = await callback_handler.run_ai_callback("task-1", status="success", text="hello")
+
+    assert result == {"message": "failed"}

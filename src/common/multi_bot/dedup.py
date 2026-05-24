@@ -150,6 +150,15 @@ async def try_claim_cross_bot_message(
     return await try_claim_message(plugin, group_id, claim_key, bot_id)
 
 
+def ingress_shard_claim_owner_obsolete(owner: int) -> bool:
+    """registry 中已不存在的分片 id 视为过期 claim owner。"""
+    from src.common.shard.registry import get_shard_registry
+
+    reg = get_shard_registry()
+    known = {int(s.id) for s in reg.shards}
+    return int(owner) not in known
+
+
 async def try_claim_cross_shard_message_memory(
     plugin: str,
     group_id: int,
@@ -159,6 +168,7 @@ async def try_claim_cross_shard_message_memory(
     shard_id: int,
     *,
     use_plaintext: bool = True,
+    include_message_time: bool = False,
 ) -> bool:
     sig = cross_bot_message_signature(
         group_id,
@@ -166,6 +176,7 @@ async def try_claim_cross_shard_message_memory(
         message_body,
         message_time,
         use_plaintext=use_plaintext,
+        include_message_time=include_message_time,
     )
     key = (plugin, sig)
     async with _cross_bot_claim_lock:
@@ -174,7 +185,12 @@ async def try_claim_cross_shard_message_memory(
             _cross_bot_claim_owners[key] = shard_id
             _prune_cross_bot_claims()
             return True
-        return owner == shard_id
+        if owner == shard_id:
+            return True
+        if ingress_shard_claim_owner_obsolete(owner):
+            _cross_bot_claim_owners[key] = shard_id
+            return True
+        return False
 
 
 _shard_ingress_file_locks: dict[tuple[str, tuple[int, int, str]], asyncio.Lock] = defaultdict(asyncio.Lock)
@@ -189,6 +205,7 @@ async def try_claim_cross_shard_message(
     shard_id: int,
     *,
     use_plaintext: bool = True,
+    include_message_time: bool = False,
     bot_id: int | None = None,
 ) -> bool:
     """分片 ingress：全舰队每条消息仅一个 shard 通过；该 shard 上各牛不再互斥。"""
@@ -200,6 +217,7 @@ async def try_claim_cross_shard_message(
         message_time,
         shard_id,
         use_plaintext=use_plaintext,
+        include_message_time=include_message_time,
     ):
         return False
     sig = cross_bot_message_signature(
@@ -208,6 +226,7 @@ async def try_claim_cross_shard_message(
         message_body,
         message_time,
         use_plaintext=use_plaintext,
+        include_message_time=include_message_time,
     )
     claim_key = cross_bot_group_message_key(
         group_id,
@@ -215,12 +234,19 @@ async def try_claim_cross_shard_message(
         message_body,
         message_time,
         use_plaintext=use_plaintext,
+        include_message_time=include_message_time,
     )
     lock_key = (plugin, sig)
     async with _shard_ingress_file_locks[lock_key]:
         owner = await asyncio.to_thread(read_claim_owner_sync, plugin, group_id, claim_key)
         if owner is not None:
-            return owner == shard_id
+            if owner == shard_id:
+                return True
+            if ingress_shard_claim_owner_obsolete(owner):
+                from src.common.multi_bot.claim import take_claim_message
+
+                return await take_claim_message(plugin, group_id, claim_key, shard_id)
+            return False
         if bot_id is not None:
             from src.common.shard.local_representative import is_local_worker_representative
 
@@ -228,7 +254,13 @@ async def try_claim_cross_shard_message(
                 for _ in range(20):
                     owner = await asyncio.to_thread(read_claim_owner_sync, plugin, group_id, claim_key)
                     if owner is not None:
-                        return owner == shard_id
+                        if owner == shard_id:
+                            return True
+                        if ingress_shard_claim_owner_obsolete(owner):
+                            from src.common.multi_bot.claim import take_claim_message
+
+                            return await take_claim_message(plugin, group_id, claim_key, shard_id)
+                        return False
                     await asyncio.sleep(0.01)
                 return False
         return await try_claim_message(plugin, group_id, claim_key, shard_id)

@@ -96,6 +96,13 @@ REQUEST_SONG_COOLDOWN_KEY = "request_song"
 WHAT_SONG_COOLDOWN_KEY = "song_title"
 
 
+async def finish_on_cooldown(matcher, config: GroupConfig, cooldown_key: str) -> bool:
+    if await config.is_cooldown(cooldown_key):
+        return True
+    await matcher.finish("牛牛还在回味上一首，稍等再点歌吧。")
+    return False
+
+
 async def is_to_sing(event: GroupMessageEvent, state: T_State) -> bool:
     plugin_config = get_sing_config()
     if not plugin_config.sing_enable:
@@ -175,7 +182,7 @@ sing_msg = on_message(
 async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
     plugin_config = get_sing_config()
     config = GroupConfig(event.group_id, cooldown=10)
-    if not await config.is_cooldown(SING_COOLDOWN_KEY):
+    if not await finish_on_cooldown(sing_msg, config, SING_COOLDOWN_KEY):
         return
     await config.refresh_cooldown(SING_COOLDOWN_KEY)
     speaker = state["speaker"]
@@ -219,8 +226,8 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
         chunk_index=chunk_index,
         key=key,
     )
-    await config.update_sing_progress(sing_progress)
     await sing_msg.finish("欢呼吧！")
+    await config.update_sing_progress(sing_progress)
 
 
 async def is_play(bot: Bot, event: Event, state: T_State) -> bool:
@@ -250,7 +257,7 @@ play_cmd = on_message(
 async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
     plugin_config = get_sing_config()
     config = GroupConfig(event.group_id, cooldown=10)
-    if not await config.is_cooldown(PLAY_COOLDOWN_KEY):
+    if not await finish_on_cooldown(play_cmd, config, PLAY_COOLDOWN_KEY):
         return
     await config.refresh_cooldown(PLAY_COOLDOWN_KEY)
 
@@ -321,7 +328,7 @@ request_song_msg = on_message(
 async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
     plugin_config = get_sing_config()
     config = GroupConfig(event.group_id, cooldown=10)
-    if not await config.is_cooldown(REQUEST_SONG_COOLDOWN_KEY):
+    if not await finish_on_cooldown(request_song_msg, config, REQUEST_SONG_COOLDOWN_KEY):
         return
     await config.refresh_cooldown(REQUEST_SONG_COOLDOWN_KEY)
 

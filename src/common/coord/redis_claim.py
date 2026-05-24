@@ -51,6 +51,21 @@ def read_claim_owner_redis_sync(plugin: str, group_id: int, message_id: int) -> 
         return None
 
 
+def take_claim_message_redis_sync(plugin: str, group_id: int, message_id: int, bot_id: int) -> bool | None:
+    """覆盖 Redis claim（回收过期 owner 时用）。None 表示未走 Redis。"""
+    client = get_coord_redis_client()
+    if client is None:
+        return None
+    key = claim_redis_key(plugin, group_id, message_id)
+    ttl = coord_redis_claim_ttl_sec()
+    owner = str(int(bot_id))
+    try:
+        client.set(key, owner, ex=ttl)
+        return True
+    except Exception:
+        return None
+
+
 def try_claim_message_redis_sync(plugin: str, group_id: int, message_id: int, bot_id: int) -> bool | None:
     """
     尝试 Redis 抢占。

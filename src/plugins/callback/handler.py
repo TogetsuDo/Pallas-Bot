@@ -55,9 +55,11 @@ async def run_ai_callback(
     bot_id = task.get("bot_id")
     group_id = task.get("group_id")
 
+    bot_id_str = str(bot_id).strip() if bot_id is not None else ""
     try:
-        bot = get_bot(bot_id)
-    except Exception:
+        bot = get_bot(bot_id_str)
+    except Exception as e:
+        logger.warning("AI callback get_bot failed task={} bot_id={}: {}", task_id, bot_id_str, e)
         return {"message": "failed"}
 
     if group_id and song_id is not None and chunk_index is not None and key is not None:

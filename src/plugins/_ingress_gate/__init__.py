@@ -125,6 +125,7 @@ async def ingress_group_message_gate(bot, event) -> None:
             event.time,
             shard_id,
             use_plaintext=True,
+            include_message_time=True,
         ):
             if metrics:
                 record_ingress_claim(won=False)
@@ -137,6 +138,7 @@ async def ingress_group_message_gate(bot, event) -> None:
             event.time,
             self_id,
             use_plaintext=True,
+            include_message_time=True,
         ):
             if metrics:
                 record_ingress_claim(won=False)
@@ -153,6 +155,7 @@ async def ingress_group_message_gate(bot, event) -> None:
         event.time,
         self_id,
         use_plaintext=True,
+        include_message_time=True,
     ):
         if metrics:
             record_ingress_claim(won=False)
