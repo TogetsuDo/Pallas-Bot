@@ -37,6 +37,13 @@ jobs:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
+      - name: Require DOCS_SYNC_TOKEN
+        run: |
+          if [ -z "${{ secrets.DOCS_SYNC_TOKEN }}" ]; then
+            echo "::error::未配置 DOCS_SYNC_TOKEN：请在 Pallas-Bot 仓库 Settings → Secrets → Actions 添加。"
+            exit 1
+          fi
+
       - name: Checkout Pallas-Bot
         uses: actions/checkout@v6
 
@@ -53,6 +60,7 @@ jobs:
       - name: Commit and push
         working-directory: pallas-bot-docs
         env:
+          DOCS_SYNC_TOKEN: ${{ secrets.DOCS_SYNC_TOKEN }}
           SOURCE_SHA: ${{ github.sha }}
           SOURCE_REF: ${{ github.ref_name }}
         run: |
@@ -64,6 +72,7 @@ jobs:
           fi
           git add -A
           git commit -m "docs: 同步主仓 Pallas-Bot@${SOURCE_SHA:0:7} (${SOURCE_REF})"
+          git remote set-url origin "https://x-access-token:${DOCS_SYNC_TOKEN}@github.com/PallasBot/Pallas-Bot-Docs.git"
           git push origin HEAD:main
 
   update-docs-branch:
