@@ -11,6 +11,16 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.common.shard.observability import aggregate_shard_observability  # noqa: E402
+from src.common.shard.registry.config import is_sharding_active  # noqa: E402
+
+
+def observability_sharded(data: dict) -> bool:
+    if data.get("sharded"):
+        return True
+    if is_sharding_active():
+        return True
+    workers = data.get("workers")
+    return isinstance(workers, list) and len(workers) > 0
 
 
 def fmt_rate(value: float | None) -> str:
@@ -21,7 +31,7 @@ def fmt_rate(value: float | None) -> str:
 
 def main() -> int:
     data = aggregate_shard_observability()
-    if not data.get("sharded"):
+    if not observability_sharded(data):
         print("未启用分片（unified 模式）")
         return 0
 

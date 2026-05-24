@@ -431,11 +431,14 @@ def register_pallas_protocol_routes(
             raise HTTPException(status_code=404, detail="账号不存在")
         from src.common.webui.console_login import extract_session_from_request
 
-        page_session = extract_session_from_request(
-            cookies=dict(request.cookies),
-            header_token=x_pallas_protocol_token,
-            query_token=token,
-        ) or ""
+        page_session = (
+            extract_session_from_request(
+                cookies=dict(request.cookies),
+                header_token=x_pallas_protocol_token,
+                query_token=token,
+            )
+            or ""
+        )
         return HTMLResponse(
             render_account_workspace(
                 resolve_protocol_webui_base_path(plugin_config),

@@ -215,6 +215,7 @@ print_observability_status_block() {
 shard_common_env() {
   (
     echo "PALLAS_SHARD_ENABLED=true"
+    echo "PALLAS_BOT_ROLE=hub"
     echo "PALLAS_SHARD_BOTS_PER=${BOTS_PER_SHARD}"
     echo "PALLAS_SHARD_HUB_PORT=${HUB_PORT}"
     echo "PALLAS_SHARD_WORKER_BASE_PORT=${WORKER_BASE_PORT}"
