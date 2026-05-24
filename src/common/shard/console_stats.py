@@ -183,9 +183,14 @@ def trim_worker_duration_logs_sync(*, shard_id: int, cap: int) -> None:
             if not isinstance(rec, dict):
                 continue
             log = rec.get("matcher_duration_log")
-            if isinstance(log, list) and len(log) > cap:
-                rec["matcher_duration_log"] = log[-cap:]
-                changed = True
+            if isinstance(log, list) and log:
+                from src.plugins.pallas_webui.extended_api import enforce_matcher_duration_log_limits
+
+                trimmed = log[-cap:]
+                enforce_matcher_duration_log_limits(trimmed)
+                if trimmed != log:
+                    rec["matcher_duration_log"] = trimmed
+                    changed = True
         if changed:
             data["updated_at"] = time.time()
             path = worker_stats_path(shard_id)

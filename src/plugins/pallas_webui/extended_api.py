@@ -154,7 +154,8 @@ _MATCHER_RUN_STARTED: contextvars.ContextVar[float | None] = contextvars.Context
     default=None,
 )
 _MATCHER_ERROR_LOG_CAP = 80
-_MATCHER_DURATION_LOG_CAP = 80
+_MATCHER_DURATION_LOG_CAP = 150
+_MATCHER_DURATION_LOG_PER_PLUGIN_CAP = 30
 _MATCHER_ERROR_MSG_MAX = 2000
 _MATCHER_ERROR_TB_MAX = 50_000
 _MATCHER_ERROR_JSONL_LOCK = threading.Lock()
@@ -2237,6 +2238,40 @@ def _load_matcher_duration_logs_from_disk() -> None:
     for sid, entries in by_sid.items():
         rec = _plugin_run_bot_bucket(sid)
         rec["matcher_duration_log"] = entries[-cap:]
+        enforce_matcher_duration_log_limits(rec["matcher_duration_log"])
+
+
+def enforce_matcher_duration_log_limits(log: list[dict[str, Any]]) -> None:
+    """单账号缓冲：总条数与单插件条数上限（删最旧，避免高频插件占满环形缓冲）。"""
+    if not isinstance(log, list):
+        return
+    while len(log) > _MATCHER_DURATION_LOG_CAP:
+        log.pop(0)
+    per_cap = _MATCHER_DURATION_LOG_PER_PLUGIN_CAP
+    if per_cap <= 0:
+        return
+    while True:
+        counts: dict[str, int] = {}
+        for it in log:
+            if not isinstance(it, dict):
+                continue
+            p = str(it.get("plugin") or "").strip()
+            if p:
+                counts[p] = counts.get(p, 0) + 1
+        over = {p for p, c in counts.items() if c > per_cap}
+        if not over:
+            break
+        drop_idx = -1
+        for i, it in enumerate(log):
+            if not isinstance(it, dict):
+                continue
+            p = str(it.get("plugin") or "").strip()
+            if p in over:
+                drop_idx = i
+                break
+        if drop_idx < 0:
+            break
+        log.pop(drop_idx)
 
 
 def _append_matcher_duration_log(
@@ -2262,8 +2297,7 @@ def _append_matcher_duration_log(
             rec["matcher_duration_log"] = []
             log = rec["matcher_duration_log"]
         log.append(entry)
-        while len(log) > _MATCHER_DURATION_LOG_CAP:
-            log.pop(0)
+        enforce_matcher_duration_log_limits(log)
         if is_sharded_worker():
             return
         with _MATCHER_DURATION_JSONL_LOCK:
@@ -2880,6 +2914,7 @@ def _plugin_run_stats_bot_row(
         "matcher_error_log": err_log,
         "matcher_duration_log": dur_log,
         "matcher_duration_log_cap": _MATCHER_DURATION_LOG_CAP,
+        "matcher_duration_log_per_plugin_cap": _MATCHER_DURATION_LOG_PER_PLUGIN_CAP,
     }
 
 
