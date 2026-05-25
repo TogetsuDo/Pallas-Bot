@@ -94,7 +94,7 @@ class Config(BaseModel):
 def on_pallas_webui_config_reload(cfg: Config) -> None:
     from nonebot import logger
 
-    from .extended_api import patch_console_meta
+    from .console_meta_store import patch_console_meta
 
     dev_mode = bool(cfg.pallas_webui_dev_mode)
     patch_console_meta(pallas_webui_dev_mode=dev_mode)

@@ -40,12 +40,15 @@ from src.common.webui.console_login import (
     verify_console_password,
 )
 
-from .api import _merge_console_version_from_disk
+from .console_meta_store import (
+    get_console_meta,
+    merge_console_version_from_disk,
+    set_console_meta,
+)
 
 if typing.TYPE_CHECKING:
     from .config import Config
 
-_CONSOLE_EXTRA: dict[str, Any] = {}
 _INIT_LOG_SINK = False
 _READ_CACHE: dict[str, dict[str, Any]] = {}
 
@@ -163,18 +166,6 @@ _LOG_ERROR_MSG_MAX = _MATCHER_ERROR_MSG_MAX
 _LOG_ERROR_TB_MAX = _MATCHER_ERROR_TB_MAX
 _LOG_ERROR_JSONL_LOCK = threading.Lock()
 _LOG_ERROR_BUFFER: list[dict[str, Any]] = []
-
-
-def set_console_meta(d: dict[str, Any] | None) -> None:
-    """由 __init__ 在启动时注入 static_root、http_base 等，供 /system 与前端展示。"""
-    _CONSOLE_EXTRA.clear()
-    if d:
-        _CONSOLE_EXTRA.update(d)
-
-
-def patch_console_meta(**kwargs: Any) -> None:
-    """增量更新控制台元信息（配置热重载后同步 dev_mode 等）。"""
-    _CONSOLE_EXTRA.update(kwargs)
 
 
 def _ensure_log_sink() -> None:
@@ -3374,10 +3365,10 @@ def _system_dict() -> dict[str, Any]:
             port_s = int(port)
         except (TypeError, ValueError):
             port_s = None
-    console = dict(_CONSOLE_EXTRA)
+    console = get_console_meta()
     sr = str(console.get("static_root", "") or "").strip()
     static_path = Path(sr) if sr else None
-    _merge_console_version_from_disk(console, static_path)
+    merge_console_version_from_disk(console, static_path)
     return {
         "nonebot2_driver": {
             "host": host_s,
@@ -5596,7 +5587,7 @@ def register_extended_api(
             except Exception:  # noqa: BLE001
                 dist_ver = ""
             effective_version = (dist_ver or "").strip() or new_tag or "unknown"
-            set_console_meta({**_CONSOLE_EXTRA, "version": effective_version})
+            set_console_meta({**get_console_meta(), "version": effective_version})
             logger.info("Pallas-Bot 控制台: WebUI 已更新至 {}（发布 tag: {}）", effective_version, new_tag)
             _drop_read_cache(("update_check_webui:",))
             return JSONResponse({
