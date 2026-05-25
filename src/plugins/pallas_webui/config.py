@@ -3,57 +3,90 @@
 from pydantic import BaseModel, Field
 
 from src.common.webui import install_hot_reload_config, plugin_config_proxy
+from src.common.webui.field_help import field_help
 
 
 class Config(BaseModel):
     pallas_webui_enabled: bool = Field(
         default=True,
-        description="是否挂载 Pallas 控制台（静态前端与扩展 JSON API）。",
+        description=field_help(
+            "是否为本牛牛提供网页控制台",
+            "开启后可通过浏览器打开管理界面并调用相关接口",
+            "关闭后无法访问控制台页面",
+        ),
     )
     pallas_webui_http_base: str = Field(
         default="/pallas",
-        description="浏览器访问路径前缀，需与 Vite 的 base 一致（如 /pallas/）",
+        description=field_help(
+            "控制台在网址中的路径前缀",
+            "一般填 /pallas，需与发布的前端包配置一致",
+            "例如反代后访问地址为 https://域名/pallas/",
+        ),
     )
     pallas_webui_dist_zip_url: str = Field(
         default="",
-        description="dist 的 zip 直链；留空时按 repo/tag/asset 自动拼接 GitHub Releases 下载地址",
+        description=field_help(
+            "控制台前端压缩包的下载地址",
+            "填 zip 文件的完整直链",
+            "留空时程序会按下面三项从 GitHub 发布页自动拼下载地址",
+        ),
     )
     pallas_webui_dist_zip_repo: str = Field(
         default="PallasBot/Pallas-Bot-WebUI",
-        description="pallas_webui_dist_zip_url 为空时生效：GitHub 仓库（Owner/Repo）",
+        description=field_help(
+            "自动下载前端时使用的 GitHub 仓库",
+            "格式为 所有者/仓库名，例如 PallasBot/Pallas-Bot-WebUI",
+            "仅在上面的 zip 直链留空时生效",
+        ),
     )
     pallas_webui_dist_zip_tag: str = Field(
         default="",
-        description="pallas_webui_dist_zip_url 为空时生效：版本标签（空=latest）",
+        description=field_help(
+            "要下载的发布版本标签",
+            "例如 v1.0.0；留空表示使用最新版 latest",
+            "仅在上面的 zip 直链留空时生效",
+        ),
     )
     pallas_webui_dist_zip_asset: str = Field(
         default="dist.zip",
-        description="pallas_webui_dist_zip_url 为空时生效：发布资产文件名",
+        description=field_help(
+            "发布页里压缩包的文件名",
+            "一般为 dist.zip，与 GitHub Release 上的资产名一致",
+            "仅在上面的 zip 直链留空时生效",
+        ),
     )
     pallas_webui_cors: bool = Field(
         default=False,
-        description=(
-            "为开发时前后端分离调试开启 CORS（例如 Vite dev 连远程 Bot）；启用前请同时配置 pallas_webui_allowed_origins"
+        description=field_help(
+            "是否允许浏览器从别的域名访问控制台接口",
+            "仅在本机用 npm 开发前端、需要连远程牛牛时开启",
+            "开启后必须同时填写下面的「允许的来源」列表",
         ),
     )
     pallas_webui_allowed_origins: list[str] = Field(
         default_factory=list,
-        description=(
-            "启用 CORS 时允许的来源列表（如 ['http://localhost:5173']）；"
-            "为空则不挂载 CORS 中间件；含 '*' 时强制关闭 allow_credentials"
+        description=field_help(
+            "允许跨域访问的前端地址列表",
+            "JSON 数组，例如 [\"http://localhost:5173\"]",
+            "留空且未开启跨域时不生效；列表里写 * 表示任意来源（不推荐生产环境）",
         ),
     )
     pallas_webui_log_lines_max: int = Field(
         default=20000,
         ge=50,
         le=20000,
-        description="GET /pallas/api/logs 单次返回的最大行数上限（含分片 worker 落盘合并）",
+        description=field_help(
+            "控制台「运行日志」一次最多显示多少行",
+            "填 50～20000 之间的整数；多台分片机器时会合并各机日志",
+            "数值越大占用内存越多",
+        ),
     )
     pallas_webui_dev_mode: bool = Field(
         default=False,
-        description=(
-            "开发联调：跳过控制台 JSON API 与静态页会话鉴权；"
-            "可在 WebUI 首页或通用配置中切换并热重载（生产环境务必关闭）"
+        description=field_help(
+            "开发模式：临时跳过控制台登录校验",
+            "仅在本机调试时开启；也可在控制台顶栏快速切换",
+            "公网或生产环境务必关闭，否则任何人可改配置",
         ),
     )
 

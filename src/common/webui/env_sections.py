@@ -89,7 +89,7 @@ def _message_scrub_section() -> WebuiEnvSection:
     }
     return WebuiEnvSection(
         id="message_scrub",
-        title="消息审查 / 入站过滤",
+        title="消息审查与入站过滤",
         module_label="src.common.message_scrub",
         model_cls=msg_cfg_cls,
         read_current=get_msg_cfg,
@@ -157,7 +157,7 @@ def _ingress_fanout_section() -> WebuiEnvSection:
 
     return WebuiEnvSection(
         id="ingress_fanout",
-        title="分片全员同响白名单",
+        title="分片：全员同响应口令",
         module_label="src.common.ingress",
         model_cls=IngressFanoutConfig,
         read_current=get_ingress_fanout_config,
@@ -178,7 +178,7 @@ def _repeater_learn_section() -> WebuiEnvSection:
     }
     return WebuiEnvSection(
         id="repeater_learn",
-        title="复读 / 后台 learn",
+        title="复读：后台语料学习",
         module_label="src.plugins.repeater",
         model_cls=RepeaterLearnRuntimeConfig,
         read_current=get_repeater_learn_runtime_config,
@@ -222,19 +222,19 @@ def _registered_sections() -> tuple[WebuiEnvSection, ...]:
         for s in (
             _plugin_env_section_from_module(
                 section_id="pallas_webui",
-                title="控制台 / Pallas WebUI",
+                title="网页控制台",
                 module_label="src.plugins.pallas_webui",
                 config_module="src.plugins.pallas_webui.config",
             ),
             _plugin_env_section_from_module(
                 section_id="pallas_protocol",
-                title="协议端 / Pallas Protocol",
+                title="QQ 协议端（NapCat 等）",
                 module_label="src.plugins.pallas_protocol",
                 config_module="src.plugins.pallas_protocol.config",
             ),
             _plugin_env_section_from_module(
                 section_id="help",
-                title="帮助 / Help",
+                title="帮助菜单与样式",
                 module_label="src.plugins.help",
                 config_module="src.plugins.help.config",
             ),
@@ -329,7 +329,7 @@ def _pallas_webui_payload_extras() -> dict[str, Any]:
         "field_groups": [
             {
                 "id": "security",
-                "title": "安全与联调",
+                "title": "安全与开发调试",
                 "field_names": [
                     "pallas_webui_dev_mode",
                     "pallas_webui_cors",
@@ -339,7 +339,7 @@ def _pallas_webui_payload_extras() -> dict[str, Any]:
             },
             {
                 "id": "deploy",
-                "title": "挂载与静态资源",
+                "title": "网页挂载与前端安装包",
                 "field_names": [
                     "pallas_webui_enabled",
                     "pallas_webui_http_base",

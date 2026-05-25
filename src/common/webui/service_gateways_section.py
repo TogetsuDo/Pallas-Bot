@@ -23,7 +23,7 @@ from .plugin_api import (
 )
 
 SERVICE_GATEWAYS_SECTION_ID = "service_gateways"
-SERVICE_GATEWAYS_TITLE = "服务网关 / 连通性"
+SERVICE_GATEWAYS_TITLE = "外部服务地址与连通检测"
 
 _PLUGIN_SPECS: tuple[tuple[str, str, frozenset[str], str], ...] = (
     ("pallas_image", "牛牛画画", PALLAS_IMAGE_GATEWAY_FIELDS, "src.plugins.pallas_image.config"),

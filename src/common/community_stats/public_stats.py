@@ -9,6 +9,7 @@ from nonebot import logger
 
 from src.common.community_stats.config import get_community_stats_config
 from src.common.community_stats.endpoints import stats_urls_for_config
+from src.common.community_stats.history_store import record_stats_snapshot
 from src.common.message_scrub.quiet_http_loggers import scrub_http_log_noise
 
 _HTTP_TIMEOUT_SEC = 12.0
@@ -70,6 +71,7 @@ async def fetch_community_public_stats() -> dict[str, Any]:
                     data["bots_online_sum"],
                     stats_url,
                 )
+                record_stats_snapshot(data)
                 return data
             except (httpx.HTTPError, ValueError) as e:
                 last_err = e

@@ -10,6 +10,7 @@ from src.common.config.dotenv import (
     merged_repo_dotenv_upper,
     repo_layered_dotenv_files_exist,
 )
+from src.common.webui.field_help import field_help
 
 _config_lock = Lock()
 _cached_message_scrub_config: MessageScrubConfig | None = None
@@ -85,44 +86,122 @@ class MessageScrubConfig(BaseModel):
 
     inbound_filter_substrings: str = Field(
         default="",
-        description="逗号分隔本地子串；命中则拦截。不区分大小写。",
+        description=field_help(
+            "在本地按关键词拦截入站消息",
+            "多个词用英文逗号分隔；消息里只要出现其中任一词（不区分大小写）就不再处理",
+            "留空表示不按关键词拦截",
+        ),
     )
     scrub_lexicon_path: str = Field(
         default="",
-        description="可选 UTF-8 词表文件路径，一行一词，# 开头为注释。",
+        description=field_help(
+            "从文件加载敏感词表",
+            "填写服务器上词表文件的完整路径；文件需为 UTF-8 文本，一行一个词，以 # 开头的行会被忽略",
+            "留空表示不使用外部词表文件",
+        ),
     )
     scrub_lexicon_extra: str = Field(
         default="",
-        description="逗号分隔追加词，并入本地词库。",
+        description=field_help(
+            "在本地词表外再追加一批词",
+            "多个词用英文逗号分隔，会与词表文件中的词一起参与匹配",
+            "留空表示不追加",
+        ),
     )
     scrub_review_providers_key_present: bool = Field(
         default=False,
-        description="是否显式设置 PALLAS_SCRUB_REVIEW_PROVIDERS（含空字符串）。",
+        description=field_help(
+            "标记是否已在环境里写过「审查服务列表」这一项",
+            "一般由程序自动维护，请勿在控制台手动修改",
+        ),
     )
     scrub_review_providers: str = Field(
         default="",
-        description="审查链：逗号分隔的 baidu / json_http / generic / http。",
+        description=field_help(
+            "按顺序调用哪些在线审查服务",
+            "多个服务名用英文逗号分隔，可选：baidu（百度）、json_http、generic、http",
+            "留空表示不启用在线审查，仅使用本地词表与关键词",
+        ),
     )
-    scrub_api_url: str = Field(default="", description="自建审查网关 URL（优先于 inbound_filter_api_url）。")
-    inbound_filter_api_url: str = Field(default="", description="自建审查网关 URL（备用键名）。")
-    inbound_filter_api_key: str = Field(default="", description="自建网关 Bearer Token。")
+    scrub_api_url: str = Field(
+        default="",
+        description=field_help(
+            "使用你自己搭建的审查接口",
+            "填写完整网址（含 http 或 https）；若同时填了「备用审查网址」，以本项为准",
+            "留空表示不使用自建接口",
+        ),
+    )
+    inbound_filter_api_url: str = Field(
+        default="",
+        description=field_help(
+            "审查接口网址（备用项）",
+            "与上一项作用相同，仅在没有填写「scrub_api_url」时才会使用",
+            "留空表示不用此项",
+        ),
+    )
+    inbound_filter_api_key: str = Field(
+        default="",
+        description=field_help(
+            "访问自建审查接口时携带的密钥",
+            "按你的网关要求填写；不需要密钥时留空",
+        ),
+    )
     inbound_filter_api_timeout_sec: float = Field(
         default=2.0,
         ge=0.1,
         le=120.0,
-        description="远程审查 HTTP 超时（秒）。",
+        description=field_help(
+            "等待在线审查接口返回的最长时间",
+            "填写秒数，例如 2 表示最多等 2 秒",
+            "时间过短容易误判为失败；过长会拖慢收消息",
+        ),
     )
     inbound_filter_api_fail_open: bool = Field(
         default=True,
-        description="远程失败时是否放行（True=放行，False=按拦截处理）。",
+        description=field_help(
+            "在线审查出错或超时时是否仍放行消息",
+            "开启：接口不可用时不拦消息；关闭：出错时按拦截处理",
+            "若你更在意可用性可保持开启；更在意安全可关闭",
+        ),
     )
-    scrub_baidu_api_key: str = Field(default="", description="百度 API Key（client_id）。")
-    scrub_baidu_secret_key: str = Field(default="", description="百度 Secret Key（client_secret）。")
-    scrub_baidu_censor_url: str = Field(default="", description="百度文本审核接口 URL，空则用官方默认。")
-    scrub_baidu_strategy_id: str = Field(default="", description="百度策略 ID，可选。")
+    scrub_baidu_api_key: str = Field(
+        default="",
+        description=field_help(
+            "百度内容审核的 API Key",
+            "在百度智能云控制台创建应用后获取",
+            "仅在使用 baidu 审查时需要填写",
+        ),
+    )
+    scrub_baidu_secret_key: str = Field(
+        default="",
+        description=field_help(
+            "百度内容审核的 Secret Key",
+            "与 API Key 成对使用",
+            "请勿泄露或提交到公开仓库",
+        ),
+    )
+    scrub_baidu_censor_url: str = Field(
+        default="",
+        description=field_help(
+            "百度文本审核的接口地址",
+            "一般留空即可，程序会使用百度官方默认地址",
+            "只有百度文档要求自定义端点时才需要改",
+        ),
+    )
+    scrub_baidu_strategy_id: str = Field(
+        default="",
+        description=field_help(
+            "百度审核策略编号",
+            "若你在百度控制台配置了专用策略，可填写对应 ID",
+            "留空使用账号默认策略",
+        ),
+    )
     scrub_baidu_block_suspected: bool = Field(
         default=True,
-        description="百度 conclusion 为「疑似」时是否拦截。",
+        description=field_help(
+            "百度返回「疑似违规」时是否也拦截",
+            "开启：疑似也当违规处理；关闭：仅明确违规才拦截",
+        ),
     )
 
     @classmethod

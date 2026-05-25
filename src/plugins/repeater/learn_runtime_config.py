@@ -8,6 +8,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.common.config.dotenv import repo_env_raw_value, repo_layered_dotenv_files_exist
+from src.common.webui.field_help import field_help
 
 _config_lock = Lock()
 _cached: RepeaterLearnRuntimeConfig | None = None
@@ -39,18 +40,20 @@ class RepeaterLearnRuntimeConfig(BaseModel):
         default=24,
         ge=1,
         le=128,
-        description=(
-            "后台语料 learn 最大并发。handler 已先接话再入队，此项主要减轻事件循环拥堵、加快牛牛命令排队。"
-            "WebUI 保存后立即生效；CPU 充裕可试 32～48。"
+        description=field_help(
+            "后台同时处理多少条「学语料」任务",
+            "填正整数，例如 24；机器 CPU 较空闲时可试 32～48",
+            "只影响后台学习速度，不影响复读接话和命令回复；保存后立即生效",
         ),
     )
     learn_queue_max_size: int = Field(
         default=2048,
         ge=64,
         le=20000,
-        description=(
-            "待 learn 队列长度；满则仅丢弃 learn、不影响接话与命令。"
-            "WebUI 保存后会重启 learn worker 以应用新容量；极端刷屏时略少学几句。"
+        description=field_help(
+            "等待学习的消息最多排队多少条",
+            "填正整数，例如 2048；队列满时只跳过学习，照常复读和回复命令",
+            "保存后会重启后台学习线程以应用新容量；群消息特别多时可适当加大",
         ),
     )
 

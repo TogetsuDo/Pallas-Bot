@@ -10,6 +10,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.common.config.dotenv import merged_repo_dotenv_upper, repo_layered_dotenv_files_exist
+from src.common.webui.field_help import field_help
 
 
 class CmdPermConfig(BaseModel):
@@ -17,9 +18,10 @@ class CmdPermConfig(BaseModel):
 
     command_permission_overrides: dict[str, str] = Field(
         default_factory=dict,
-        description=(
-            "键为命令 ID；默认等级来自各插件 metadata.extra.command_permissions（未声明则用 registry），"
-            "值为 superuser | group_moderator | bot_moderator | staff | everyone"
+        description=field_help(
+            "覆盖各命令默认的「谁可以用」",
+            "JSON 对象：键为命令编号，值为权限档位",
+            "档位可选：超级用户、群管、牛号群管、群管或号主（staff）、所有人（保存为 superuser / group_moderator 等英文键）；未写的命令仍用插件默认值。本页下方表格可图形化编辑",
         ),
     )
 

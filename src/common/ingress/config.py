@@ -9,6 +9,7 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.common.config.dotenv import repo_env_raw_value, repo_layered_dotenv_files_exist
+from src.common.webui.field_help import field_help
 
 _config_lock = Lock()
 _cached: IngressFanoutConfig | None = None
@@ -46,9 +47,10 @@ class IngressFanoutConfig(BaseModel):
 
     greeting_fanout_texts: str = Field(
         default="牛牛,帕拉斯,牛牛报数,牛牛出列",
-        description=(
-            "分片下同群各牛均处理（不做 ingress claim）的群消息明文，逗号分隔、须与全文精确匹配。"
-            "可含招呼语、牛牛报数、牛牛赞我等；WebUI 保存后立即生效。"
+        description=field_help(
+            "在多台牛分片部署时，让某些固定口令被每一台牛都响应",
+            "多个口令用英文逗号分隔；须与群消息全文完全一致（不能多字少字）",
+            "例如招呼、报数、出列等；保存后立即生效，默认可保留示例口令",
         ),
     )
 

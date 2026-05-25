@@ -7,6 +7,7 @@ from typing import Any, Self
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.common.webui import config_from_env, install_hot_reload_config
+from src.common.webui.field_help import field_help
 
 
 class ImageBackendEntry(BaseModel):
@@ -14,16 +15,28 @@ class ImageBackendEntry(BaseModel):
 
     name: str = Field(
         default="",
-        description="显示名称（网关检测、牛牛网关命令等）；留空则按顺序显示为备线 N。",
+        description=field_help(
+            "这条备用线路在检测和命令里显示的名字",
+            "可自拟，例如「备线1」；留空则自动显示为备线序号",
+        ),
     )
     base_url: str = Field(
         default="",
-        description="备选 API 根 URL（建议以 / 结尾；插件会拼接 v1/images/...，勿写成 .../v1）。",
+        description=field_help(
+            "备用画图服务的根网址",
+            "建议以 / 结尾；不要重复写 /v1，程序会自动拼接画图接口路径",
+        ),
     )
-    api_key: str = Field(default="", description="备选 API 密钥。")
+    api_key: str = Field(
+        default="",
+        description=field_help("访问该备用服务用的密钥", "按服务商要求填写；无密钥可留空"),
+    )
     model: str = Field(
         default="",
-        description="可选模型名；留空则使用主配置 pallas_image_model。",
+        description=field_help(
+            "该备用线路使用的模型名",
+            "留空则使用主配置里的默认模型",
+        ),
     )
     omit_response_format: bool = Field(
         default=False,
@@ -42,25 +55,41 @@ class Config(BaseModel, extra="ignore"):
     )
     pallas_image_base_url: str = Field(
         default="",
-        description=(
-            "主 API 根 URL（如 OpenAI 兼容网关），须含协议；建议以 / 结尾。"
-            "插件会拼接 v1/images/generations，勿将 base 写成已含 /v1 的路径以免重复。"
+        description=field_help(
+            "主画图服务的根网址",
+            "须带 http:// 或 https://，建议以 / 结尾；不要写成已含 /v1 的地址以免路径重复",
+            "通用配置「服务网关」页可一键检测是否连通",
         ),
     )
-    pallas_image_api_key: str = Field(default="", description="调用图像 API 的密钥或 Token。")
+    pallas_image_api_key: str = Field(
+        default="",
+        description=field_help(
+            "主画图服务的访问密钥",
+            "按服务商（如 OpenAI 兼容网关）要求填写",
+        ),
+    )
     pallas_image_primary_name: str = Field(
         default="",
-        description="主网关显示名称；留空时 WebUI 与检测结果显示为「主网关」。",
+        description=field_help(
+            "主线路在界面里显示的名称",
+            "留空显示为「主网关」",
+        ),
     )
     pallas_image_api_backends: list[ImageBackendEntry] = Field(
         default_factory=list,
-        description=(
-            "备选 API 列表；主配置失败后按顺序尝试。"
-            "每项含 base_url、api_key；name、model、omit_response_format 可选。"
-            "WebUI 插件配置页提供列表编辑；环境变量仍为 JSON 数组。"
+        description=field_help(
+            "主线路不可用时的备用画图服务列表",
+            "JSON 数组，每项至少含 base_url 与 api_key；主配置失败时按顺序尝试",
+            "详细列表可在「插件 → 牛牛画画」页编辑",
         ),
     )
-    pallas_image_model: str = Field(default="gpt-image-2", description="默认使用的图像模型名。")
+    pallas_image_model: str = Field(
+        default="gpt-image-2",
+        description=field_help(
+            "默认使用的画图模型名称",
+            "须与服务商支持的模型名一致，例如 gpt-image-2",
+        ),
+    )
     pallas_image_aspect_ratio: str = Field(
         default="",
         description="画幅比例，如 21:9、16:9、1:1；与 size 二选一填写，皆空则由接口默认。",

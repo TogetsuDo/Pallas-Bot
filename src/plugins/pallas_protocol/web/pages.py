@@ -3293,7 +3293,7 @@ def render_account_workspace(
             </div>
             <hr style="border:none;border-top:1px solid var(--bd);margin:6px 0 14px" />
             <h4 style="margin:0 0 12px;font-size:0.9rem;color:var(--muted);font-weight:700">WS 连接（协议端 → Bot）</h4>
-            <p class="muted" style="margin:0 0 12px">正向 WS：协议端主动连接 Bot 时使用的地址。跨机部署时填写 Bot 所在机器对本机可达的地址；保存后<strong>重启协议端进程</strong>生效，无需重启 Bot。</p>
+            <p class="muted" style="margin:0 0 12px">正向 WS：协议端主动连接牛牛时使用的地址。跨机部署时填写牛牛所在机器对本机可达的地址；保存后<strong>重启协议端进程</strong>生效，无需重启牛牛。</p>
             <div class="field"><label>WS 连接地址</label>
               <input id="ws_url" placeholder="ws://bot-host:8088/onebot/v11/ws" autocomplete="off" />
             </div>

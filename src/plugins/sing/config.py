@@ -1,15 +1,53 @@
 from pydantic import BaseModel, Field
 
 from src.common.webui import install_hot_reload_config
+from src.common.webui.field_help import field_help
 
 
 class Config(BaseModel, extra="ignore"):
-    ai_server_host: str = Field(default="127.0.0.1", description="歌唱/音频所用 AI 服务主机。")
-    ai_server_port: int = Field(default=9099, description="AI 服务端口。")
-    sing_enable: bool = Field(default=False, description="是否启用唱歌、合成与播放相关指令（需服务支持）。")
-    sing_endpoint: str = Field(default="/api/sing", description="提交歌唱合成的 API 路径。")
-    play_endpoint: str = Field(default="/api/play", description="获取或触发播放的 API 路径。")
-    request_endpoint: str = Field(default="/api/request", description="唱歌/排队请求的 API 路径。")
+    ai_server_host: str = Field(
+        default="127.0.0.1",
+        description=field_help(
+            "点歌/唱歌服务所在机器的地址",
+            "本机填 127.0.0.1；服务在别的机器上填其 IP 或域名",
+        ),
+    )
+    ai_server_port: int = Field(
+        default=9099,
+        description=field_help(
+            "点歌/唱歌服务监听的端口",
+            "填整数，需与后端实际监听端口一致",
+        ),
+    )
+    sing_enable: bool = Field(
+        default=False,
+        description=field_help(
+            "是否启用点歌、合成与播放相关命令",
+            "开启前请确认后端服务已部署且地址正确",
+        ),
+    )
+    sing_endpoint: str = Field(
+        default="/api/sing",
+        description=field_help(
+            "提交合成任务的接口路径",
+            "以 / 开头的路径，会拼在「主机:端口」后面",
+            "须与后端文档一致",
+        ),
+    )
+    play_endpoint: str = Field(
+        default="/api/play",
+        description=field_help(
+            "触发或获取播放的接口路径",
+            "以 / 开头；留空或错误会导致播放失败",
+        ),
+    )
+    request_endpoint: str = Field(
+        default="/api/request",
+        description=field_help(
+            "点歌排队请求的接口路径",
+            "通用配置页「服务网关」主要使用此项做连通检测",
+        ),
+    )
     sing_length: int = Field(default=120, description="单次合成音频的默认最大时长（秒），具体以后端为准。")
     sing_speakers: dict[str, str] = Field(
         default_factory=lambda: {

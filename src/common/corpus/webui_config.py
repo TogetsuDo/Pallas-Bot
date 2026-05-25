@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.common.config.repo_settings import repo_env_raw_value
+from src.common.webui.field_help import field_help
 
 _TRI = Literal["auto", "true", "false"]
 
@@ -37,33 +38,110 @@ class CorpusFederationWebuiConfig(BaseModel):
 
     merge_order: str = Field(
         default="local,community",
-        description="读语料顺序：local,community（Phase 1）或仅 local。",
+        description=field_help(
+            "查找回复语料时先查哪几个来源",
+            "选 local,community 表示先本机再社区；选 local 表示只用本机语料",
+            "关闭社区语料时建议选 local",
+        ),
     )
     merge_strategy: Literal["local_first", "merge_counts"] = Field(
         default="local_first",
-        description="合并策略：local_first 优先本地；merge_counts 合并计数。",
+        description=field_help(
+            "本机与社区都有同一句时如何合并",
+            "local_first：优先用本机记录；merge_counts：把两边的使用次数加在一起再排序",
+        ),
     )
-    community_enabled: _TRI = Field(default="false", description="是否启用社区语料池（默认关，WebUI 手动开启）。")
-    auto_enroll: _TRI = Field(default="auto", description="是否向 stats 中心自动 enroll 语料 token。")
-    community_contribute: _TRI = Field(default="auto", description="是否 mirror 学习结果到社区池。")
-    fed_enabled: _TRI = Field(default="auto", description="是否启用联邦语料（托管 Phase 2，当前多为未接入）。")
-    fed_contribute: bool = Field(default=False, description="是否向联邦 PG 写回学习结果。")
+    community_enabled: _TRI = Field(
+        default="false",
+        description=field_help(
+            "是否使用社区共享语料池",
+            "选 true 开启，false 关闭，auto 由程序按环境自动判断",
+            "默认关闭，确认已配置社区地址与令牌后再开启",
+        ),
+    )
+    auto_enroll: _TRI = Field(
+        default="auto",
+        description=field_help(
+            "是否自动向社区统计服务登记本机的语料访问凭证",
+            "选 auto 一般即可；true 强制登记，false 不登记",
+            "登记成功后会把凭证保存在本机，无需每次手填",
+        ),
+    )
+    community_contribute: _TRI = Field(
+        default="auto",
+        description=field_help(
+            "是否把本机新学到的回复同步到社区池",
+            "选 auto 由程序判断；true 总是上传，false 从不上传",
+            "上传前请确认符合社区规范",
+        ),
+    )
+    fed_enabled: _TRI = Field(
+        default="auto",
+        description=field_help(
+            "是否启用跨站联邦语料（高级功能）",
+            "当前多数部署尚未接入，保持 auto 或 false 即可",
+        ),
+    )
+    fed_contribute: bool = Field(
+        default=False,
+        description=field_help(
+            "是否向联邦数据库回写学习结果",
+            "仅在你已部署联邦服务并知晓风险时开启",
+        ),
+    )
     on_remote_failure: Literal["local_only"] = Field(
         default="local_only",
-        description="远端语料失败时策略（当前仅 local_only）。",
+        description=field_help(
+            "拉取社区语料失败时的兜底方式",
+            "目前固定为仅使用本机语料，以保证牛牛仍能回复",
+        ),
     )
     community_api_base: str = Field(
         default="",
-        description="手动 community API 基址；留空则 auto enroll / 心跳推导。",
+        description=field_help(
+            "社区语料接口的根地址",
+            "填写形如 https://示例域名 的地址，末尾不要加斜杠",
+            "留空时程序会尝试用自动登记结果或统计心跳地址推导",
+        ),
     )
-    community_token: str = Field(default="", description="手动语料 token（pc_…）；留空则用 enroll 落盘。")
-    community_stats_enabled: bool = Field(default=True, description="是否向社区统计中心上报心跳。")
+    community_token: str = Field(
+        default="",
+        description=field_help(
+            "访问社区语料用的令牌",
+            "一般以 pc_ 开头；留空则使用自动登记保存在本机的令牌",
+        ),
+    )
+    community_stats_enabled: bool = Field(
+        default=True,
+        description=field_help(
+            "是否向社区统计服务上报本机在线情况",
+            "开启后控制台「社区中心」才能看到全网大致数据；关闭则只影响上报，不影响牛牛聊天",
+        ),
+    )
     community_stats_endpoint: str = Field(
         default="https://stats.pallasbot.top/v1/heartbeat",
-        description="心跳 URL；内置主/备域名可自动切换。",
+        description=field_help(
+            "统计心跳要提交到的网址",
+            "填完整 URL；官方地址一般无需修改，程序会在主站不可用时尝试备用域名",
+        ),
     )
-    community_stats_token: str = Field(default="", description="心跳 Bearer（公开 stats 可留空）。")
-    community_stats_interval_sec: int = Field(default=300, ge=60, le=3600, description="心跳间隔（秒）。")
+    community_stats_token: str = Field(
+        default="",
+        description=field_help(
+            "提交统计时附带的访问令牌",
+            "公开统计服务通常可留空；若运营方发了专用令牌再填写",
+        ),
+    )
+    community_stats_interval_sec: int = Field(
+        default=300,
+        ge=60,
+        le=3600,
+        description=field_help(
+            "每隔多少秒上报一次在线心跳",
+            "在下拉框中选秒数，例如 300 表示 5 分钟一次",
+            "间隔过短会增加请求次数；过长则社区数据更新变慢",
+        ),
+    )
 
 
 def get_corpus_federation_webui_config() -> CorpusFederationWebuiConfig:

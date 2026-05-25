@@ -81,7 +81,13 @@ def _field_row(key: str, cur: Any) -> dict[str, Any]:
         row["choices"] = choices
     if key == "community_enabled":
         row["kind"] = "bool"
-        row["description"] = "是否启用社区语料池（读 community 源；关闭后仅 local）。"
+        from src.common.webui.field_help import field_help
+
+        row["description"] = field_help(
+            "是否使用社区共享语料池",
+            "开启后除本机语料外还会读取社区池；关闭则只使用本机语料",
+            "与上方「读语料顺序」配合使用；首次使用请先填好社区地址与令牌",
+        )
         row["current"] = _community_enabled_bool(cur)
     elif key == "merge_order":
         row["kind"] = "enum"
@@ -112,12 +118,12 @@ def corpus_federation_payload(*, current_values: dict[str, Any] | None = None) -
         "field_groups": [
             {
                 "id": "merge",
-                "title": "多读源与合并",
+                "title": "语料来源与合并方式",
                 "field_names": ["merge_order", "merge_strategy"],
             },
             {
                 "id": "community",
-                "title": "社区语料（stats 中心）",
+                "title": "社区语料池",
                 "field_names": [
                     "community_enabled",
                     "auto_enroll",
@@ -128,7 +134,7 @@ def corpus_federation_payload(*, current_values: dict[str, Any] | None = None) -
             },
             {
                 "id": "community_stats",
-                "title": "社区统计心跳",
+                "title": "社区在线统计上报",
                 "field_names": [
                     "community_stats_enabled",
                     "community_stats_endpoint",

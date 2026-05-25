@@ -1,54 +1,67 @@
 from pydantic import BaseModel, Field
 
 from src.common.webui import install_hot_reload_config
+from src.common.webui.field_help import field_help
 
 
 class Config(BaseModel, extra="ignore"):
     maa_public_base_url: str = Field(
         default="",
-        description=(
-            "MAA 客户端可访问的对外基址（含 http/https，末尾勿加斜杠），如 https://nb.example.com。"
-            "一般仅配置此项即可：会与默认路径拼成 getTask / reportStatus 完整 URL（见帮助与绑定提示）。"
-            "分片时请填 hub 对外地址；未填时按 hub 端口推断。单进程未填则回退本机 host/port。"
+        description=field_help(
+            "手机或模拟器上的 MAA 要能访问到的牛牛对外网址",
+            "填 https://你的域名，末尾不要加斜杠；程序会自动拼「取任务」「报状态」两条路径",
+            "多台牛牛分片时请填总机对外地址；单台本机部署可留空由程序推断",
         ),
     )
     maa_get_task_endpoint: str = Field(
         default="",
-        description=(
-            "（可选）获取任务完整 URL；留空则使用 maa_public_base_url + maa_get_task_path。"
-            "仅当基址+路径无法满足（反代路径特殊等）时再填。"
+        description=field_help(
+            "「取任务」接口的完整网址（高级）",
+            "只有反代路径很特殊、无法靠「对外网址 + 相对路径」拼出来时才填",
+            "留空即可",
         ),
     )
     maa_report_status_endpoint: str = Field(
         default="",
-        description=(
-            "（可选）汇报任务完整 URL；留空则使用 maa_public_base_url + maa_report_status_path。"
-            "仅当基址+路径无法满足时再填。"
+        description=field_help(
+            "「报状态」接口的完整网址（高级）",
+            "与上一项相同，一般留空",
         ),
     )
     maa_get_task_path: str = Field(
         default="/maa/getTask",
-        description=(
-            "获取任务相对路径（POST JSON）；与 maa_public_base_url 拼接。使用默认路由时无需修改，仅配置基址即可。"
+        description=field_help(
+            "取任务接口在网址后面的路径",
+            "默认 /maa/getTask，与牛牛内置路由一致时无需修改",
         ),
     )
     maa_report_status_path: str = Field(
         default="/maa/reportStatus",
-        description=(
-            "汇报任务相对路径（POST JSON）；与 maa_public_base_url 拼接。使用默认路由时无需修改，仅配置基址即可。"
+        description=field_help(
+            "报状态接口在网址后面的路径",
+            "默认 /maa/reportStatus，一般无需修改",
         ),
     )
     maa_attach_screenshot: bool = Field(
         default=True,
-        description="用户下发指令后是否默认再排队一张截图任务。",
+        description=field_help(
+            "用户发 MAA 相关指令后是否默认再截一张图",
+            "开启便于在群里看到当前界面；不需要截图可关闭",
+        ),
     )
     maa_seen_ttl_seconds: int = Field(
         default=86400,
-        description="未绑定设备在内存中的保留时长（秒），超时需重新让 MAA 连一次再绑定。",
+        description=field_help(
+            "未绑定设备在内存里保留多久（秒）",
+            "例如 86400 表示一天；超时后需要让 MAA 再连一次完成绑定",
+        ),
     )
     maa_combat_auto_prepare: bool = Field(
         default=True,
-        description="牛牛作战前是否自动排队 Settings-Stage1（写入已保存的主关卡候选）。",
+        description=field_help(
+            "「牛牛作战」前是否自动准备关卡设置",
+            "开启会先排队 Settings-Stage1，使用你已保存的主关卡候选",
+        ),
     )
 
 
