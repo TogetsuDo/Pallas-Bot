@@ -2,14 +2,14 @@ import re
 import time
 from collections import defaultdict
 
-from src.common.db import Ban, Context, make_blacklist_repository, make_context_repository
+from src.common.db import Ban, Context, make_blacklist_repository
+from src.common.db.context_repo_access import context_repo
 
 from .config import get_repeater_config
 
 plugin_config = get_repeater_config()
 
 
-context_repo = make_context_repository()
 blacklist_repo = make_blacklist_repository()
 
 

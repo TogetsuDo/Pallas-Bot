@@ -26,6 +26,7 @@
 ## 行为
 
 - 首次启用时在 `data/pallas_config/community_stats.json` 生成 `deployment_id`（UUID）。
+- **社区语料 auto enroll**（默认开启）：hub / 单进程启动时向 stats 中心 `POST /v1/corpus/enroll`，token 写入同文件 `corpus_community` 段；手动配置 `[corpus.community] token` 时跳过。
 - **单进程 / hub** 上报；**分片 worker** 不上报（避免重复计数）。
 - `online_bots` 与控制台 **「在线 Bot」** 同源；首包在启动约 **60 秒** 后发送，之后按 `interval_sec`（默认 300 秒）刷新。
 - WebUI **「在线牛总和」** 为全社区各部署 `online_bots` 之和。

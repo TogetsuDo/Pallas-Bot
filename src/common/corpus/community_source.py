@@ -1,0 +1,176 @@
+"""社区语料 HTTP 仓储（控制面 Corpus API）。"""
+
+from __future__ import annotations
+
+import asyncio
+from typing import Any
+
+import httpx
+from nonebot import logger
+
+from src.common.db.modules import Answer, Ban, Context
+from src.common.db.repository import ContextRepositoryExistenceMixin
+
+
+class RemoteCorpusRepository(ContextRepositoryExistenceMixin):
+    def __init__(self, *, api_base: str, token: str, timeout_sec: float = 15.0) -> None:
+        base = (api_base or "").strip().rstrip("/")
+        self._context_url = f"{base}/context"
+        self._contribute_url = f"{base}/contribute"
+        self._token = (token or "").strip()
+        self._timeout = timeout_sec
+
+    def _headers(self) -> dict[str, str]:
+        headers = {"Accept": "application/json"}
+        if self._token:
+            headers["Authorization"] = f"Bearer {self._token}"
+        return headers
+
+    @staticmethod
+    async def schedule_auth_refresh() -> None:
+        from src.common.corpus.enroll import maybe_refresh_corpus_enrollment_on_auth_failure
+
+        await maybe_refresh_corpus_enrollment_on_auth_failure()
+
+    async def find_by_keywords(self, keywords: str) -> Context | None:
+        if not keywords or not self._context_url.startswith("http"):
+            return None
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                resp = await client.get(
+                    self._context_url,
+                    params={"keywords": keywords},
+                    headers=self._headers(),
+                )
+        except httpx.HTTPError as e:
+            logger.warning(f"corpus community find failed: {e}")
+            raise
+        if resp.status_code == 401:
+            asyncio.create_task(self.schedule_auth_refresh())
+            return None
+        if resp.status_code == 404:
+            return None
+        if resp.status_code != 200:
+            logger.warning(f"corpus community find HTTP {resp.status_code}: {(resp.text or '')[:200]}")
+            return None
+        data = resp.json()
+        if not isinstance(data, dict):
+            return None
+        return self._context_from_payload(data)
+
+    async def save(self, context: Context) -> None:
+        return None
+
+    async def insert(self, context: Context) -> None:
+        await self._post_contribute({"op": "insert", "context": self._context_to_payload(context)})
+
+    async def delete_expired(self, expiration: int, threshold: int) -> None:
+        return None
+
+    async def find_for_cleanup(self, trigger_threshold: int, expiration: int) -> list[Context]:
+        return []
+
+    async def upsert_answer(
+        self,
+        keywords: str,
+        group_id: int,
+        answer_keywords: str,
+        answer_time: int,
+        message: str,
+        append_on_existing: bool,
+    ) -> None:
+        await self._post_contribute({
+            "op": "upsert_answer",
+            "keywords": keywords,
+            "group_id": int(group_id),
+            "answer_keywords": answer_keywords,
+            "answer_time": int(answer_time),
+            "message": message,
+            "append_on_existing": bool(append_on_existing),
+        })
+
+    async def replace_answers(self, keywords: str, answers: list[Answer], clear_time: int) -> None:
+        return None
+
+    async def append_ban(self, keywords: str, ban: Ban) -> None:
+        return None
+
+    async def _post_contribute(self, body: dict[str, Any]) -> None:
+        if not self._contribute_url.startswith("http"):
+            return
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                resp = await client.post(self._contribute_url, json=body, headers=self._headers())
+        except httpx.HTTPError as e:
+            logger.warning(f"corpus community contribute failed: {e}")
+            raise
+        if resp.status_code not in (200, 202):
+            logger.warning(f"corpus community contribute HTTP {resp.status_code}: {(resp.text or '')[:200]}")
+
+    @staticmethod
+    def _context_from_payload(data: dict[str, Any]) -> Context:
+        answers_raw = data.get("answers")
+        answers: list[Answer] = []
+        if isinstance(answers_raw, list):
+            for item in answers_raw:
+                if not isinstance(item, dict):
+                    continue
+                answers.append(
+                    Answer(
+                        keywords=str(item.get("keywords") or ""),
+                        group_id=int(item.get("group_id") or 0),
+                        count=int(item.get("count") or 1),
+                        time=int(item.get("time") or 0),
+                        messages=[str(m) for m in (item.get("messages") or []) if m is not None],
+                    )
+                )
+        ban_raw = data.get("ban")
+        bans: list[Ban] = []
+        if isinstance(ban_raw, list):
+            for item in ban_raw:
+                if not isinstance(item, dict):
+                    continue
+                bans.append(
+                    Ban(
+                        keywords=str(item.get("keywords") or ""),
+                        group_id=int(item.get("group_id") or 0),
+                        reason=str(item.get("reason") or ""),
+                        time=int(item.get("time") or 0),
+                    )
+                )
+        return Context.model_construct(
+            keywords=str(data.get("keywords") or ""),
+            time=int(data.get("time") or 0),
+            trigger_count=int(data.get("trigger_count") or data.get("count") or 1),
+            answers=answers,
+            ban=bans,
+            clear_time=int(data.get("clear_time") or 0),
+        )
+
+    @staticmethod
+    def _context_to_payload(context: Context) -> dict[str, Any]:
+        return {
+            "keywords": context.keywords,
+            "time": int(context.time),
+            "trigger_count": int(context.trigger_count),
+            "clear_time": int(context.clear_time),
+            "answers": [
+                {
+                    "keywords": a.keywords,
+                    "group_id": int(a.group_id),
+                    "count": int(a.count),
+                    "time": int(a.time),
+                    "messages": list(a.messages),
+                }
+                for a in context.answers
+            ],
+            "ban": [
+                {
+                    "keywords": b.keywords,
+                    "group_id": int(b.group_id),
+                    "reason": b.reason,
+                    "time": int(b.time),
+                }
+                for b in context.ban
+            ],
+        }

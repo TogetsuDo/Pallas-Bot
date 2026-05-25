@@ -9,7 +9,8 @@ from nonebot import get_bots
 from nonebot.adapters.onebot.v11 import Message
 
 from src.common.config import BotConfig
-from src.common.db import Answer, make_context_repository
+from src.common.db import Answer
+from src.common.db.context_repo_access import context_repo
 
 from .ban_manager import BanManager
 from .config import get_repeater_config
@@ -19,9 +20,6 @@ if TYPE_CHECKING:
 
 
 plugin_config = get_repeater_config()
-
-
-context_repo = make_context_repository()
 
 
 @dataclass(frozen=True)
