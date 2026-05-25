@@ -13,6 +13,10 @@ from pathlib import Path
 import httpx
 from nonebot import logger
 
+from src.common.bot_version import (
+    get_bot_current_version,
+    pallas_bot_repo_root,
+)
 from src.common.paths import plugin_data_dir
 from src.common.utils.format_exception import format_exception_for_log
 from src.common.utils.github_release import (
@@ -285,34 +289,7 @@ def save_installed_webui_version(tag: str, asset_url: str = "") -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-_BOT_ROOT = Path(__file__).resolve().parents[3]
-
-
-def get_bot_current_version() -> dict:
-    import subprocess
-
-    root = _BOT_ROOT
-    tag = ""
-    commit = ""
-    try:
-        tag = subprocess.check_output(
-            ["git", "describe", "--tags", "--exact-match"],
-            cwd=root,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        ).strip()
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        commit = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=root,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        ).strip()
-    except Exception:  # noqa: BLE001
-        pass
-    return {"tag": tag, "commit": commit}
+_BOT_ROOT = pallas_bot_repo_root()
 
 
 def inspect_bot_deployment() -> dict[str, str | bool | int]:
@@ -471,42 +448,6 @@ def bot_is_development_build(
     if head_sha == latest_sha:
         return False
     return bot_git_rev_list_count(f"{latest_sha}..{head_sha}") > 0
-
-
-def get_pallas_bot_version_for_health() -> str:
-    """供 ``/health`` 的 ``pallas_bot``：优先环境变量（镜像注入）、git describe，其次已安装发行版号，最后 pyproject。"""
-    import importlib.metadata
-    import subprocess
-    import tomllib
-
-    env = (os.environ.get("PALLAS_BOT_VERSION") or os.environ.get("PALLAS_VERSION") or "").strip()
-    if env:
-        return env
-    root = _BOT_ROOT
-    try:
-        desc = subprocess.check_output(
-            ["git", "describe", "--tags", "--always", "--dirty"],
-            cwd=root,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            timeout=3.0,
-        ).strip()
-        if desc:
-            return desc
-    except Exception:  # noqa: BLE001
-        pass
-    try:
-        v = importlib.metadata.version("pallas-bot")
-        if v.strip():
-            return v.strip()
-    except importlib.metadata.PackageNotFoundError:
-        pass
-    try:
-        pyproject = root / "pyproject.toml"
-        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-        return str(data.get("project", {}).get("version", "")).strip() or "unknown"
-    except Exception:  # noqa: BLE001
-        return "unknown"
 
 
 class BotGitUpdateError(Exception):

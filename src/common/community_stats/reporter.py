@@ -8,7 +8,7 @@ import httpx
 from nonebot import logger
 
 from src.common.bot_runtime.roles import is_sharded_worker
-from src.common.cmd_perm.metadata_defaults import PLUGIN_EXTRA_VERSION
+from src.common.bot_version import get_pallas_bot_version_for_reporting
 from src.common.community_stats.config import CommunityStatsConfig, get_community_stats_config
 from src.common.community_stats.endpoints import (
     FALLBACK_HEARTBEAT,
@@ -49,7 +49,7 @@ def build_heartbeat_payload() -> dict[str, object]:
     return {
         "deployment_id": load_or_create_deployment_id(),
         "ts": int(time.time()),
-        "version": PLUGIN_EXTRA_VERSION,
+        "version": get_pallas_bot_version_for_reporting(),
         "online_bots": online_bots,
         "catalog_bots": catalog_bots,
         "sharded": sharded,
