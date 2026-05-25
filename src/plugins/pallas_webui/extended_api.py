@@ -1295,6 +1295,9 @@ def _rollover_console_day_if_needed(sid: str, today: str) -> None:
     pblock = _PLUGIN_RUN_STATS.get(sid)
     if isinstance(pblock, dict):
         pblock["day_key"] = today
+        log = pblock.get("matcher_duration_log")
+        if isinstance(log, list):
+            trim_matcher_duration_log_to_local_day(log, today)
         bp = pblock.get("by_plugin")
         if isinstance(bp, dict):
             for prow in bp.values():
@@ -1309,6 +1312,16 @@ def _rollover_console_day_if_needed(sid: str, today: str) -> None:
 
 def _flush_today_console_daily_stats_disk() -> None:
     """定时刷盘：当前自然日内累计值写入磁盘（不按桶）。"""
+    try:
+        from src.common.bot_runtime.roles import is_sharded_hub
+        from src.common.shard.registry.config import is_sharding_active
+
+        if is_sharding_active() and is_sharded_hub():
+            from src.common.shard.console_stats import prune_stale_worker_stats_bots_sync
+
+            prune_stale_worker_stats_bots_sync()
+    except Exception:  # noqa: BLE001
+        pass
     if not _console_daily_stats_disk_enabled():
         return
     from src.plugins.pallas_webui import daily_stats_store
@@ -2241,10 +2254,47 @@ def _load_matcher_duration_logs_from_disk() -> None:
             "had_error": bool(obj.get("had_error")),
         })
     cap = _MATCHER_DURATION_LOG_CAP
+    worker_assigned: set[str] = set()
+    try:
+        from src.common.bot_runtime.roles import is_sharded_hub
+        from src.common.shard.registry.config import is_sharding_active
+
+        if is_sharding_active() and is_sharded_hub():
+            from src.common.shard.registry.store import get_shard_registry
+
+            worker_assigned = {str(k).strip() for k in get_shard_registry().assignments if str(k).strip()}
+    except Exception:  # noqa: BLE001
+        pass
     for sid, entries in by_sid.items():
+        sid = str(sid).strip()
+        if not sid or sid in worker_assigned:
+            continue
         rec = _plugin_run_bot_bucket(sid)
         rec["matcher_duration_log"] = entries[-cap:]
         enforce_matcher_duration_log_limits(rec["matcher_duration_log"])
+
+
+def trim_matcher_duration_log_to_local_day(log: list[dict[str, Any]], day: str) -> None:
+    """原地删除非 day 自然日的单次耗时（跨日 rollover 后避免旧分片/旧日日志仍出现在总览）。"""
+    if not isinstance(log, list):
+        return
+    day_key = str(day).strip()[:10]
+    if len(day_key) < 10:
+        return
+    i = 0
+    while i < len(log):
+        it = log[i]
+        if not isinstance(it, dict):
+            log.pop(i)
+            continue
+        try:
+            at = int(it.get("at") or 0)
+        except (TypeError, ValueError):
+            at = 0
+        if at <= 0 or time.strftime("%Y-%m-%d", time.localtime(at)) != day_key:
+            log.pop(i)
+        else:
+            i += 1
 
 
 def enforce_matcher_duration_log_limits(log: list[dict[str, Any]]) -> None:
@@ -2320,6 +2370,15 @@ def _matcher_duration_log_public(
     raw = rec.get("matcher_duration_log")
     if not isinstance(raw, list) or not raw:
         return []
+    day_filter = ""
+    try:
+        from src.common.bot_runtime.roles import is_sharded_hub
+        from src.common.shard.registry.config import is_sharding_active
+
+        if is_sharding_active() and is_sharded_hub():
+            day_filter = time.strftime("%Y-%m-%d", time.localtime())
+    except Exception:  # noqa: BLE001
+        pass
     out: list[dict[str, Any]] = []
     for it in reversed(raw[-limit:]):
         if not isinstance(it, dict):
@@ -2328,6 +2387,8 @@ def _matcher_duration_log_public(
             at = int(it.get("at") or 0)
         except (TypeError, ValueError):
             at = 0
+        if day_filter and at > 0 and time.strftime("%Y-%m-%d", time.localtime(at)) != day_filter:
+            continue
         try:
             duration_ms = _duration_ms_float(it.get("duration_ms") or 0)
         except (TypeError, ValueError):

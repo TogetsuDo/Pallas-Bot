@@ -6,6 +6,8 @@ import json
 import os
 import re
 import time
+from collections import defaultdict
+from operator import itemgetter
 from typing import Any
 
 from src.common.paths import plugin_data_dir
@@ -153,15 +155,99 @@ def iter_worker_shard_ids() -> list[int]:
     return sorted(out)
 
 
+def bot_authoritative_shard_map() -> dict[str, int]:
+    """牛牛归属分片：在线 presence 优先，否则注册表 assignments。"""
+    out: dict[str, int] = {}
+    try:
+        from src.common.shard.presence import read_presence_bots
+
+        for qq, rec in read_presence_bots().items():
+            key = str(qq).strip()
+            if not key or not isinstance(rec, dict):
+                continue
+            try:
+                out[key] = int(rec.get("shard_id"))
+            except (TypeError, ValueError):
+                continue
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from src.common.shard.registry.store import get_shard_registry
+
+        reg = get_shard_registry()
+        for qq, shard_id in reg.assignments.items():
+            key = str(qq).strip()
+            if key and key not in out:
+                out[key] = int(shard_id)
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
 def load_cluster_console_stats_by_sid() -> dict[str, dict[str, Any]]:
-    """hub：合并各 worker stats 文件为 self_id -> bot 快照。"""
+    """hub：按牛牛归属分片合并 worker stats，避免迁分片后旧 worker 快照覆盖/拼进总日志。"""
     if not is_sharding_active():
         return {}
-    merged: dict[str, dict[str, Any]] = {}
+    auth = bot_authoritative_shard_map()
+    by_qq: dict[str, list[tuple[int, dict[str, Any], float]]] = defaultdict(list)
     for sid_shard in iter_worker_shard_ids():
+        data = _read_worker_file(sid_shard)
+        try:
+            updated = float(data.get("updated_at") or 0)
+        except (TypeError, ValueError):
+            updated = 0.0
         for qq, rec in read_worker_stats(sid_shard).items():
-            merged[str(qq)] = rec
+            key = str(qq).strip()
+            if key and isinstance(rec, dict):
+                by_qq[key].append((sid_shard, rec, updated))
+    merged: dict[str, dict[str, Any]] = {}
+    for qq, entries in by_qq.items():
+        target = auth.get(qq)
+        if target is not None:
+            matched = [e for e in entries if e[0] == target]
+            if matched:
+                entries = matched
+        best = max(entries, key=itemgetter(2))
+        merged[qq] = best[1]
     return merged
+
+
+def prune_stale_worker_stats_bots_sync() -> int:
+    """hub：从各 worker 文件移除注册表已迁走的牛牛快照（如 worker-99 遗留）。"""
+    try:
+        from src.common.shard.registry.store import get_shard_registry
+
+        reg = get_shard_registry()
+    except Exception:  # noqa: BLE001
+        return 0
+    removed = 0
+    for sid_shard in iter_worker_shard_ids():
+        allowed = {str(k).strip() for k in reg.bots_on_shard(sid_shard) if str(k).strip()}
+        fd = _acquire_lock(sid_shard)
+        if fd is None:
+            continue
+        try:
+            data = _read_worker_file(sid_shard)
+            bots = data.get("bots")
+            if not isinstance(bots, dict) or not bots:
+                continue
+            kept: dict[str, Any] = {}
+            for qq, rec in bots.items():
+                key = str(qq).strip()
+                if key and key in allowed:
+                    kept[key] = rec
+            if len(kept) == len(bots):
+                continue
+            removed += len(bots) - len(kept)
+            data["bots"] = kept
+            data["updated_at"] = time.time()
+            path = worker_stats_path(sid_shard)
+            tmp = path.with_suffix(".json.tmp")
+            tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            tmp.replace(path)
+        finally:
+            _release_lock(sid_shard, fd)
+    return removed
 
 
 def load_worker_console_stats_for_boot(shard_id: int) -> dict[str, dict[str, Any]]:
