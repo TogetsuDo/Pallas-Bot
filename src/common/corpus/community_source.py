@@ -13,10 +13,24 @@ from src.common.db.repository import ContextRepositoryExistenceMixin
 
 
 class RemoteCorpusRepository(ContextRepositoryExistenceMixin):
-    def __init__(self, *, api_base: str, token: str, timeout_sec: float = 15.0) -> None:
-        base = (api_base or "").strip().rstrip("/")
-        self._context_url = f"{base}/context"
-        self._contribute_url = f"{base}/contribute"
+    def __init__(
+        self,
+        *,
+        api_base: str = "",
+        api_bases: list[str] | None = None,
+        token: str,
+        timeout_sec: float = 15.0,
+    ) -> None:
+        bases = list(api_bases or [])
+        if not bases and api_base:
+            bases = [api_base]
+        seen: set[str] = set()
+        self._api_bases: list[str] = []
+        for base in bases:
+            norm = (base or "").strip().rstrip("/")
+            if norm and norm not in seen:
+                seen.add(norm)
+                self._api_bases.append(norm)
         self._token = (token or "").strip()
         self._timeout = timeout_sec
 
@@ -33,30 +47,45 @@ class RemoteCorpusRepository(ContextRepositoryExistenceMixin):
         await maybe_refresh_corpus_enrollment_on_auth_failure()
 
     async def find_by_keywords(self, keywords: str) -> Context | None:
-        if not keywords or not self._context_url.startswith("http"):
+        if not keywords or not self._api_bases:
             return None
+        last_error: httpx.HTTPError | None = None
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
-                resp = await client.get(
-                    self._context_url,
-                    params={"keywords": keywords},
-                    headers=self._headers(),
-                )
+                for base in self._api_bases:
+                    context_url = f"{base}/context"
+                    if not context_url.startswith("http"):
+                        continue
+                    try:
+                        resp = await client.get(
+                            context_url,
+                            params={"keywords": keywords},
+                            headers=self._headers(),
+                        )
+                    except httpx.HTTPError as e:
+                        last_error = e
+                        logger.warning(f"corpus community find failed api_base={base}: {e}")
+                        continue
+                    if resp.status_code == 401:
+                        asyncio.create_task(self.schedule_auth_refresh())
+                        return None
+                    if resp.status_code == 404:
+                        return None
+                    if resp.status_code != 200:
+                        logger.warning(
+                            f"corpus community find HTTP {resp.status_code} api_base={base}: {(resp.text or '')[:200]}"
+                        )
+                        continue
+                    data = resp.json()
+                    if not isinstance(data, dict):
+                        return None
+                    return self._context_from_payload(data)
         except httpx.HTTPError as e:
             logger.warning(f"corpus community find failed: {e}")
             raise
-        if resp.status_code == 401:
-            asyncio.create_task(self.schedule_auth_refresh())
-            return None
-        if resp.status_code == 404:
-            return None
-        if resp.status_code != 200:
-            logger.warning(f"corpus community find HTTP {resp.status_code}: {(resp.text or '')[:200]}")
-            return None
-        data = resp.json()
-        if not isinstance(data, dict):
-            return None
-        return self._context_from_payload(data)
+        if last_error is not None:
+            raise last_error
+        return None
 
     async def save(self, context: Context) -> None:
         return None
@@ -96,16 +125,32 @@ class RemoteCorpusRepository(ContextRepositoryExistenceMixin):
         return None
 
     async def _post_contribute(self, body: dict[str, Any]) -> None:
-        if not self._contribute_url.startswith("http"):
+        if not self._api_bases:
             return
+        last_error: httpx.HTTPError | None = None
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
-                resp = await client.post(self._contribute_url, json=body, headers=self._headers())
+                for base in self._api_bases:
+                    contribute_url = f"{base}/contribute"
+                    if not contribute_url.startswith("http"):
+                        continue
+                    try:
+                        resp = await client.post(contribute_url, json=body, headers=self._headers())
+                    except httpx.HTTPError as e:
+                        last_error = e
+                        logger.warning(f"corpus community contribute failed api_base={base}: {e}")
+                        continue
+                    if resp.status_code in (200, 202):
+                        return
+                    body_preview = (resp.text or "")[:200]
+                    logger.warning(
+                        f"corpus community contribute HTTP {resp.status_code} api_base={base}: {body_preview}"
+                    )
         except httpx.HTTPError as e:
             logger.warning(f"corpus community contribute failed: {e}")
             raise
-        if resp.status_code not in (200, 202):
-            logger.warning(f"corpus community contribute HTTP {resp.status_code}: {(resp.text or '')[:200]}")
+        if last_error is not None:
+            raise last_error
 
     @staticmethod
     def _context_from_payload(data: dict[str, Any]) -> Context:

@@ -103,13 +103,30 @@ def resolve_enabled(flag: bool | None, *, configured: bool) -> bool:
     return configured
 
 
-def resolved_community_api_base() -> str:
+def resolved_community_api_base_urls() -> list[str]:
     manual = setting_str(f"{_PREFIX}COMMUNITY_API_BASE")
     if manual:
-        return manual
+        return [manual.rstrip("/")]
+    try:
+        from src.common.community_stats.config import get_community_stats_config
+        from src.common.community_stats.endpoints import corpus_api_base_urls_for_config, is_auto_endpoint_mode
+
+        cs_cfg = get_community_stats_config()
+        if is_auto_endpoint_mode(cs_cfg):
+            urls = corpus_api_base_urls_for_config(cs_cfg)
+            if urls:
+                return urls
+    except Exception:
+        pass
     from src.common.corpus.store import load_corpus_community_state
 
-    return str(load_corpus_community_state().get("api_base") or "").strip().rstrip("/")
+    stored = str(load_corpus_community_state().get("api_base") or "").strip().rstrip("/")
+    return [stored] if stored else []
+
+
+def resolved_community_api_base() -> str:
+    urls = resolved_community_api_base_urls()
+    return urls[0] if urls else ""
 
 
 def resolved_community_token() -> str:

@@ -7,8 +7,12 @@ import pytest
 from src.common.apscheduler_runtime import ensure_apscheduler_running, register_apscheduler_startup_hook
 from src.common.community_stats import config as cfg_mod
 from src.common.community_stats.endpoints import (
+    FALLBACK_CORPUS_API_BASE,
     FALLBACK_HEARTBEAT,
+    PRIMARY_CORPUS_API_BASE,
     PRIMARY_HEARTBEAT,
+    corpus_api_base_from_heartbeat,
+    corpus_api_base_urls_for_config,
     heartbeat_urls_for_config,
     is_auto_endpoint_mode,
 )
@@ -49,6 +53,29 @@ def test_auto_endpoint_custom_url_not_builtin(monkeypatch):
 def test_stats_url_from_heartbeat_endpoint():
     assert stats_url_from_endpoint("https://stats.pallasbot.top/v1/heartbeat") == "https://stats.pallasbot.top/v1/stats"
     assert stats_url_from_endpoint("") == "https://stats.pallasbot.top/v1/stats"
+
+
+def test_corpus_api_base_from_heartbeat():
+    assert corpus_api_base_from_heartbeat(PRIMARY_HEARTBEAT) == PRIMARY_CORPUS_API_BASE
+    assert corpus_api_base_from_heartbeat(FALLBACK_HEARTBEAT) == FALLBACK_CORPUS_API_BASE
+
+
+def test_corpus_api_base_urls_follow_heartbeat_order(monkeypatch):
+    monkeypatch.delenv("PALLAS_COMMUNITY_STATS_ENDPOINT", raising=False)
+    cfg_mod.clear_community_stats_config_cache()
+    cfg = cfg_mod.get_community_stats_config()
+    assert corpus_api_base_urls_for_config(cfg)[:2] == [PRIMARY_CORPUS_API_BASE, FALLBACK_CORPUS_API_BASE]
+
+
+def test_resolved_community_api_base_urls_auto_mode(monkeypatch):
+    monkeypatch.delenv("PALLAS_CORPUS_COMMUNITY_API_BASE", raising=False)
+    monkeypatch.delenv("PALLAS_COMMUNITY_STATS_ENDPOINT", raising=False)
+    from src.common.corpus.config import clear_corpus_config_cache, resolved_community_api_base_urls
+
+    cfg_mod.clear_community_stats_config_cache()
+    clear_corpus_config_cache()
+    urls = resolved_community_api_base_urls()
+    assert urls[:2] == [PRIMARY_CORPUS_API_BASE, FALLBACK_CORPUS_API_BASE]
 
 
 def test_parse_stats_body():

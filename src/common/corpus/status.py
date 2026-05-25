@@ -16,6 +16,7 @@ from src.common.corpus.config import (
     is_community_corpus_wanted,
     resolve_enabled,
     resolved_community_api_base,
+    resolved_community_api_base_urls,
 )
 from src.common.corpus.store import corpus_community_enrollment_valid, load_corpus_community_state
 
@@ -29,6 +30,7 @@ def build_corpus_status_snapshot() -> dict[str, Any]:
     fed_on = resolve_enabled(cfg.fed_enabled, configured=fed_configured())
     community_on = community_wanted and (community_configured() or auto_enroll_enabled())
     api_base = resolved_community_api_base() if community_configured() else ""
+    api_bases = resolved_community_api_base_urls() if community_configured() else []
 
     expires_at = community_state.get("expires_at")
     enrolled_at = community_state.get("enrolled_at")
@@ -81,6 +83,7 @@ def build_corpus_status_snapshot() -> dict[str, Any]:
                 "readable": community_on and bool(api_base) and (enrolled or manual),
                 "writable": community_contribute_enabled(cfg) and enrolled,
                 "api_base": api_base,
+                "api_bases": api_bases,
                 "contribute": contribute,
                 "token_present": bool(token),
                 "enrolled_at": int(enrolled_at) if enrolled_at is not None else None,

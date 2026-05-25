@@ -12,6 +12,8 @@ if TYPE_CHECKING:
 
 PRIMARY_HEARTBEAT = "https://stats.pallasbot.top/v1/heartbeat"
 FALLBACK_HEARTBEAT = "https://pallas.togetsudo.com/v1/heartbeat"
+PRIMARY_CORPUS_API_BASE = "https://stats.pallasbot.top/v1/corpus"
+FALLBACK_CORPUS_API_BASE = "https://pallas.togetsudo.com/v1/corpus"
 
 _BUILTIN_HEARTBEATS: frozenset[str] = frozenset({PRIMARY_HEARTBEAT, FALLBACK_HEARTBEAT})
 
@@ -64,3 +66,23 @@ def stats_urls_for_config(cfg: CommunityStatsConfig) -> list[str]:
     from src.common.community_stats.stats_url import stats_url_from_endpoint
 
     return [stats_url_from_endpoint(u) for u in heartbeat_urls_for_config(cfg)]
+
+
+def corpus_api_base_from_heartbeat(heartbeat_url: str) -> str:
+    url = normalize_heartbeat_url(heartbeat_url)
+    if url.endswith("/heartbeat"):
+        return f"{url[: -len('/heartbeat')]}/corpus"
+    if url.endswith("/corpus/enroll"):
+        return url[: -len("/enroll")]
+    return f"{url}/corpus" if url else PRIMARY_CORPUS_API_BASE
+
+
+def corpus_api_base_from_enroll_url(enroll_url: str) -> str:
+    return corpus_api_base_from_heartbeat(normalize_heartbeat_url(enroll_url))
+
+
+def corpus_api_base_urls_for_config(cfg: CommunityStatsConfig) -> list[str]:
+    custom = custom_heartbeat_url(cfg)
+    if custom:
+        return [corpus_api_base_from_heartbeat(custom)]
+    return [corpus_api_base_from_heartbeat(u) for u in heartbeat_urls_for_config(cfg)]

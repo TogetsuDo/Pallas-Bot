@@ -12,7 +12,7 @@ from src.common.corpus.config import (
     get_corpus_config,
     is_community_corpus_wanted,
     resolve_enabled,
-    resolved_community_api_base,
+    resolved_community_api_base_urls,
     resolved_community_token,
 )
 
@@ -24,11 +24,11 @@ def build_community_repository() -> ContextRepository | None:
     cfg = get_corpus_config()
     if not is_community_corpus_wanted(cfg):
         return None
-    api_base = resolved_community_api_base()
+    api_bases = resolved_community_api_base_urls()
     token = resolved_community_token()
-    if not api_base or not token:
+    if not api_bases or not token:
         return None
-    return RemoteCorpusRepository(api_base=api_base, token=token)
+    return RemoteCorpusRepository(api_bases=api_bases, token=token)
 
 
 def build_fed_repository() -> ContextRepository | None:

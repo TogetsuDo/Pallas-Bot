@@ -8,7 +8,12 @@ import httpx
 from nonebot import logger
 
 from src.common.community_stats.config import get_community_stats_config
-from src.common.community_stats.endpoints import heartbeat_urls_for_config, normalize_heartbeat_url
+from src.common.community_stats.endpoints import (
+    corpus_api_base_from_enroll_url,
+    heartbeat_urls_for_config,
+    is_auto_endpoint_mode,
+    normalize_heartbeat_url,
+)
 from src.common.community_stats.reporter import _headers as community_stats_headers
 from src.common.community_stats.store import load_or_create_deployment_id
 from src.common.corpus.config import (
@@ -94,7 +99,12 @@ async def ensure_corpus_community_enrolled(*, force: bool = False) -> bool:
                         last_error = "invalid json body"
                         continue
                     token = str(data.get("corpus_token") or "").strip()
-                    api_base = str(data.get("api_base") or "").strip().rstrip("/")
+                    server_api_base = str(data.get("api_base") or "").strip().rstrip("/")
+                    derived_api_base = corpus_api_base_from_enroll_url(endpoint)
+                    if is_auto_endpoint_mode(cfg):
+                        api_base = derived_api_base
+                    else:
+                        api_base = server_api_base or derived_api_base
                     if not token or not api_base:
                         last_error = "missing corpus_token or api_base"
                         continue
