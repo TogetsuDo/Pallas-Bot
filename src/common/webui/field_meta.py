@@ -46,6 +46,8 @@ def _jsonable_value(v: Any) -> Any:
 def field_meta_for_model_field(*, key: str, field: Any, env_key: str, cur: Any, default_value: Any) -> dict[str, Any]:
     from pydantic_core import PydanticUndefined
 
+    from src.common.webui.field_help import normalize_field_description
+
     ann = field.annotation
     choices = literal_choices(ann)
     default = None if default_value is PydanticUndefined else default_value
@@ -53,7 +55,7 @@ def field_meta_for_model_field(*, key: str, field: Any, env_key: str, cur: Any, 
         "name": key,
         "kind": field_kind_from_annotation(ann),
         "required": bool(field.is_required()),
-        "description": str(field.description or ""),
+        "description": normalize_field_description(str(field.description or "")),
         "env_key": env_key,
         "default": _jsonable_value(default),
         "current": _jsonable_value(cur),

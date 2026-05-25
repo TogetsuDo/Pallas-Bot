@@ -67,7 +67,7 @@ class Config(BaseModel):
         default_factory=list,
         description=field_help(
             "允许跨域访问的前端地址列表",
-            "JSON 数组，例如 [\"http://localhost:5173\"]",
+            'JSON 数组，例如 ["http://localhost:5173"]',
             "留空且未开启跨域时不生效；列表里写 * 表示任意来源（不推荐生产环境）",
         ),
     )

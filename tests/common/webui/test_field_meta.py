@@ -30,3 +30,39 @@ def test_field_meta_includes_choices():
     )
     assert row["kind"] == "enum"
     assert row["choices"] == ["auto", "session"]
+
+
+def test_field_meta_normalizes_legacy_description():
+    class _Legacy(BaseModel):
+        x: int = Field(default=1, description="群内复读触发次数。")
+
+    f = _Legacy.model_fields["x"]
+    row = field_meta_for_model_field(
+        key="x",
+        field=f,
+        env_key="X",
+        cur=1,
+        default_value=1,
+    )
+    assert row["description"].startswith("用途：")
+    assert "填写：" in row["description"]
+
+
+def test_field_meta_keeps_field_help_description():
+    from src.common.webui.field_help import field_help
+
+    class _Help(BaseModel):
+        y: bool = Field(
+            default=False,
+            description=field_help("是否启用", "选 true 或 false"),
+        )
+
+    f = _Help.model_fields["y"]
+    row = field_meta_for_model_field(
+        key="y",
+        field=f,
+        env_key="Y",
+        cur=False,
+        default_value=False,
+    )
+    assert row["description"] == field_help("是否启用", "选 true 或 false")

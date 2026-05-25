@@ -10,6 +10,7 @@ from pydantic_core import PydanticUndefined
 if TYPE_CHECKING:
     from pydantic import BaseModel
 
+from .field_help import normalize_field_description
 from .gateway_fields import (
     ALL_GATEWAY_FIELDS,
     MAA_GATEWAY_FIELDS,
@@ -65,7 +66,7 @@ def _field_row(cfg_cls: type[BaseModel], key: str, cur: Any) -> dict[str, Any]:
         "name": key,
         "kind": field_kind_from_annotation(f.annotation),
         "required": bool(f.is_required()),
-        "description": str(f.description or ""),
+        "description": normalize_field_description(str(f.description or "")),
         "env_key": key.upper(),
         "default": jsonable_value(default_value),
         "current": jsonable_value(cur),

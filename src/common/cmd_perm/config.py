@@ -21,7 +21,7 @@ class CmdPermConfig(BaseModel):
         description=field_help(
             "覆盖各命令默认的「谁可以用」",
             "JSON 对象：键为命令编号，值为权限档位",
-            "档位可选：超级用户、群管、牛号群管、群管或号主（staff）、所有人（保存为 superuser / group_moderator 等英文键）；未写的命令仍用插件默认值。本页下方表格可图形化编辑",
+            "档位见 superuser / group_moderator 等英文键；未写的命令仍用插件默认；本页表格可图形化编辑",
         ),
     )
 

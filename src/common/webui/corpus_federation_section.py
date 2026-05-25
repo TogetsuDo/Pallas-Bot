@@ -9,6 +9,7 @@ from pydantic_core import PydanticUndefined
 from src.common.config.dotenv import env_value_to_str
 from src.common.config.repo_settings import upsert_repo_settings_items
 from src.common.corpus.webui_config import CorpusFederationWebuiConfig, get_corpus_federation_webui_config
+from src.common.webui.field_help import normalize_field_description
 
 CORPUS_FEDERATION_SECTION_ID = "corpus_federation"
 CORPUS_FEDERATION_TITLE = "语料联邦"
@@ -72,7 +73,7 @@ def _field_row(key: str, cur: Any) -> dict[str, Any]:
         "name": key,
         "kind": field_kind_from_annotation(ann),
         "required": bool(f.is_required()),
-        "description": str(f.description or ""),
+        "description": normalize_field_description(str(f.description or "")),
         "env_key": _FIELD_TO_ENV.get(key, key.upper()),
         "default": _jsonable(default_value),
         "current": _jsonable(cur),

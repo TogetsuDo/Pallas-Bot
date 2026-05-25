@@ -10,6 +10,7 @@ from fastapi import APIRouter, status
 from fastapi.responses import JSONResponse
 from nonebot import __version__ as _nb_ver
 
+from .extended_api import get_console_meta
 from .manager import get_pallas_bot_version_for_health
 
 
@@ -57,7 +58,7 @@ def register_api(
     @router.get(f"{x}/health", include_in_schema=True)
     async def _health() -> JSONResponse:  # pragma: no cover - 路由注册
         # 每次请求重读 dist 内 console-version.json，避免 WebUI 在线更新后仍返回启动时快照
-        live_console = dict(console_meta)
+        live_console = {**console_meta, **get_console_meta()}
         _merge_console_version_from_disk(live_console, static_root)
         return JSONResponse(
             {

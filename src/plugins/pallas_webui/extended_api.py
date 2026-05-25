@@ -4001,16 +4001,6 @@ def register_extended_api(
         data = await _cached_read(key="community-stats", loader=_load, ttl_sec=30.0, stale_sec=120.0)
         return JSONResponse({"ok": True, "data": data})
 
-    @router.get(f"{x}/community-stats/history", include_in_schema=True)
-    async def _community_stats_history(
-        hours: float = Query(default=24.0, ge=1.0, le=168.0),
-        bucket_sec: int = Query(default=300, ge=60, le=3600),
-    ) -> JSONResponse:
-        from src.common.community_stats.history_store import query_history
-
-        data = query_history(hours=hours, bucket_sec=bucket_sec)
-        return JSONResponse({"ok": True, "data": data})
-
     @router.get(f"{x}/corpus-status", include_in_schema=True)
     async def _corpus_status() -> JSONResponse:
         from src.common.corpus.status import build_corpus_status_snapshot
