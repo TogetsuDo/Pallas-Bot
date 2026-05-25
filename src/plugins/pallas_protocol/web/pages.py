@@ -11,13 +11,13 @@ from ..contract import resolve_public_mount_path
 
 
 def shell_brand_mark_src(public_base_path: str) -> str:
-    """侧栏品牌图（与 WebUI ``pallas-priest.png`` 同源）。"""
+    """侧栏品牌图（与 WebUI ``favicon.png`` 同源）。"""
     p = (public_base_path or "").strip().rstrip("/")
-    return f"{p}/_pallas_ui/pallas-priest.png" if p else "/_pallas_ui/pallas-priest.png"
+    return f"{p}/_pallas_ui/favicon.png" if p else "/_pallas_ui/favicon.png"
 
 
 def shell_favicon_link(public_base_path: str) -> str:
-    """favicon：静态目录 ``pallas-priest.png``。"""
+    """favicon：静态目录 ``favicon.png``。"""
     href = shell_brand_mark_src(public_base_path)
     return f'  <link rel="icon" type="image/png" href="{html_escape(href, quote=True)}" />\n'
 
@@ -788,7 +788,7 @@ def render_settings_page(base_path: str, pallas_console_http_base: str = "/palla
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-{shell_head_assets(path)}  <title>Pallas-Bot · 协议端偏好设置</title>
+{shell_head_assets(path)}  <title>偏好设置 · 协议端</title>
   <style>
 .pref-card {{ margin-bottom: 14px; }}
 .pref-title {{ margin: 0 0 6px; font-size: 1rem; }}
@@ -1062,7 +1062,7 @@ def render_dashboard(base_path: str, pallas_console_http_base: str = "/pallas") 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-{shell_head_assets(path)}  <title>Pallas-Bot · 协议端仪表盘</title>
+{shell_head_assets(path)}  <title>仪表盘 · 协议端</title>
 </head>
 <body data-base-path="{html_escape(path, quote=True)}">
   <input type="hidden" id="token" value="" autocomplete="off" />
@@ -1815,7 +1815,7 @@ def render_import_page(base_path: str, pallas_console_http_base: str = "/pallas"
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-{shell_head_assets(path)}  <title>导入账号</title>
+{shell_head_assets(path)}  <title>导入账号 · 协议端</title>
   <style>
 .result-row {{ display:flex; gap:8px; align-items:baseline; padding:6px 0; border-bottom:1px solid var(--bd); font-size:0.88rem; }}
 .result-row:last-child {{ border-bottom:none; }}
@@ -1957,7 +1957,7 @@ def render_new_account_page(base_path: str, pallas_console_http_base: str = "/pa
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-{shell_head_assets(path)}  <title>新建账号</title>
+{shell_head_assets(path)}  <title>新建账号 · 协议端</title>
 </head>
 <body data-base-path="{html_escape(path, quote=True)}">
   <input type="hidden" id="token" value="" autocomplete="off" />
@@ -2061,7 +2061,7 @@ def render_protocol_assets_page(base_path: str, pallas_console_http_base: str = 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-{shell_head_assets(path)}  <title>协议资产</title>
+{shell_head_assets(path)}  <title>协议资产 · 协议端</title>
 </head>
 <body>
   <input type="hidden" id="token" value="" autocomplete="off" />
@@ -3154,7 +3154,7 @@ def render_account_workspace(
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-{shell_head_assets(path)}  <title>账号 {aid_h}</title>
+{shell_head_assets(path)}  <title>账号 {aid_h} · 协议端</title>
 </head>
 <body>
   <input type="hidden" id="token" value="" autocomplete="off" />

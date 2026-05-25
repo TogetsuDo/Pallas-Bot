@@ -246,17 +246,25 @@ def _registered_sections() -> tuple[WebuiEnvSection, ...]:
 
 
 def list_webui_env_sections() -> list[dict[str, str]]:
+    from .corpus_federation_section import CORPUS_FEDERATION_SECTION_ID, CORPUS_FEDERATION_TITLE
     from .service_gateways_section import (
         SERVICE_GATEWAYS_SECTION_ID,
         SERVICE_GATEWAYS_TITLE,
     )
 
     rows = [{"id": s.id, "title": s.title} for s in _registered_sections()]
-    rows.append({"id": SERVICE_GATEWAYS_SECTION_ID, "title": SERVICE_GATEWAYS_TITLE})
+    rows.extend([
+        {"id": CORPUS_FEDERATION_SECTION_ID, "title": CORPUS_FEDERATION_TITLE},
+        {"id": SERVICE_GATEWAYS_SECTION_ID, "title": SERVICE_GATEWAYS_TITLE},
+    ])
     return rows
 
 
 def get_webui_env_section(section_id: str) -> WebuiEnvSection:
+    from .corpus_federation_section import CORPUS_FEDERATION_SECTION_ID
+
+    if section_id == CORPUS_FEDERATION_SECTION_ID:
+        raise ValueError("corpus_federation 使用专用 payload，勿走 WebuiEnvSection")
     sid = (section_id or "").strip()
     for s in _registered_sections():
         if s.id == sid:
@@ -270,8 +278,11 @@ def webui_env_section_payload(
     current_values: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """GET 默认读进程内配置；PUT 后应传 ``validated``，与刚写入 ``.env`` 的值一致。"""
+    from .corpus_federation_section import CORPUS_FEDERATION_SECTION_ID, corpus_federation_payload
     from .service_gateways_section import SERVICE_GATEWAYS_SECTION_ID, service_gateways_payload
 
+    if section_id == CORPUS_FEDERATION_SECTION_ID:
+        return corpus_federation_payload(current_values=current_values)
     if section_id == SERVICE_GATEWAYS_SECTION_ID:
         return service_gateways_payload(current_values=current_values)
     s = get_webui_env_section(section_id)
@@ -359,11 +370,14 @@ def _cmd_perm_payload_extras(cfg_obj: Any) -> dict[str, Any]:
 
 
 def apply_webui_env_section_patch(section_id: str, patch: dict[str, Any]) -> dict[str, Any]:
+    from .corpus_federation_section import CORPUS_FEDERATION_SECTION_ID, apply_corpus_federation_patch
     from .service_gateways_section import (
         SERVICE_GATEWAYS_SECTION_ID,
         apply_service_gateways_patch,
     )
 
+    if section_id == CORPUS_FEDERATION_SECTION_ID:
+        return apply_corpus_federation_patch(patch)
     if section_id == SERVICE_GATEWAYS_SECTION_ID:
         return apply_service_gateways_patch(patch)
     s = get_webui_env_section(section_id)

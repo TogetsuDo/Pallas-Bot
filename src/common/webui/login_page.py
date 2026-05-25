@@ -33,10 +33,10 @@ def _login_favicon_link_fragment(variant: LoginFaviconVariant) -> str:
     return f'  <link rel="icon" href="{html_escape(href, quote=True)}" type="image/svg+xml" />\n'
 
 
-def shell_priest_png_href(public_base_path: str) -> str:
-    """与协议壳 ``shell_favicon_link`` 同源：``_pallas_ui/pallas-priest.png``。"""
+def shell_brand_logo_href(public_base_path: str) -> str:
+    """与协议壳 ``shell_favicon_link`` 同源：``_pallas_ui/favicon.png``。"""
     p = (public_base_path or "").strip().rstrip("/")
-    return f"{p}/_pallas_ui/pallas-priest.png" if p else "/_pallas_ui/pallas-priest.png"
+    return f"{p}/_pallas_ui/favicon.png" if p else "/_pallas_ui/favicon.png"
 
 
 def _login_theme_and_accent_js() -> str:
@@ -157,18 +157,18 @@ def render_pallas_login_page_html(
     foot = f'<p class="login-foot">{html_escape(foot_line)}</p>'
     extra = head_extra_html or ""
     shell_base = (shell_brand_icon_base or "").strip()
-    priest_href = (
-        shell_priest_png_href(shell_brand_icon_base or "") if favicon_variant == "protocol" and shell_base else ""
+    brand_logo_href = (
+        shell_brand_logo_href(shell_brand_icon_base or "") if favicon_variant == "protocol" and shell_base else ""
     )
-    if priest_href:
-        favicon_link = f'  <link rel="icon" type="image/png" href="{html_escape(priest_href, quote=True)}" />\n'
+    if brand_logo_href:
+        favicon_link = f'  <link rel="icon" type="image/png" href="{html_escape(brand_logo_href, quote=True)}" />\n'
     elif favicon_variant:
         favicon_link = _login_favicon_link_fragment(favicon_variant)
     else:
         favicon_link = ""
-    if priest_href:
+    if brand_logo_href:
         logo_inner = (
-            f'<img class="login-logo-img" src="{html_escape(priest_href, quote=True)}" alt="" decoding="async" />'
+            f'<img class="login-logo-img" src="{html_escape(brand_logo_href, quote=True)}" alt="" decoding="async" />'
         )
         logo_wrap_class = "login-logo login-logo--img"
     else:
