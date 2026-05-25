@@ -40,29 +40,29 @@ class CorpusFederationWebuiConfig(BaseModel):
         default="local,community",
         description=field_help(
             "查找回复语料时先查哪几个来源",
-            "选 local,community 表示先本机再社区；选 local 表示只用本机语料",
-            "关闭社区语料时建议选 local",
+            "选 local,community 表示先本机再共享池；选 local 表示只用本机语料",
+            "关闭共享语料时建议选 local",
         ),
     )
     merge_strategy: Literal["local_first", "merge_counts"] = Field(
         default="local_first",
         description=field_help(
-            "本机与社区都有同一句时如何合并",
+            "本机与共享池都有同一句时如何合并",
             "local_first：优先用本机记录；merge_counts：把两边的使用次数加在一起再排序",
         ),
     )
     community_enabled: _TRI = Field(
         default="false",
         description=field_help(
-            "是否使用社区共享语料池",
+            "是否使用共享语料池",
             "选 true 开启，false 关闭，auto 由程序按环境自动判断",
-            "默认关闭，确认已配置社区地址与令牌后再开启",
+            "默认关闭，确认已配置共享池地址与令牌后再开启",
         ),
     )
     auto_enroll: _TRI = Field(
         default="auto",
         description=field_help(
-            "是否自动向社区统计服务登记本机的语料访问凭证",
+            "是否自动向统计中心登记本机的语料访问凭证",
             "选 auto 一般即可；true 强制登记，false 不登记",
             "登记成功后会把凭证保存在本机，无需每次手填",
         ),
@@ -70,9 +70,9 @@ class CorpusFederationWebuiConfig(BaseModel):
     community_contribute: _TRI = Field(
         default="auto",
         description=field_help(
-            "是否把本机新学到的回复同步到社区池",
+            "是否把本机新学到的回复同步到共享池",
             "选 auto 由程序判断；true 总是上传，false 从不上传",
-            "上传前请确认符合社区规范",
+            "上传前请确认符合共享语料规范",
         ),
     )
     fed_enabled: _TRI = Field(
@@ -92,14 +92,14 @@ class CorpusFederationWebuiConfig(BaseModel):
     on_remote_failure: Literal["local_only"] = Field(
         default="local_only",
         description=field_help(
-            "拉取社区语料失败时的兜底方式",
+            "拉取共享语料失败时的兜底方式",
             "目前固定为仅使用本机语料，以保证牛牛仍能回复",
         ),
     )
     community_api_base: str = Field(
         default="",
         description=field_help(
-            "社区语料接口的根地址",
+            "共享语料接口的根地址",
             "填写形如 https://示例域名 的地址，末尾不要加斜杠",
             "留空时程序会尝试用自动登记结果或统计心跳地址推导",
         ),
@@ -107,15 +107,15 @@ class CorpusFederationWebuiConfig(BaseModel):
     community_token: str = Field(
         default="",
         description=field_help(
-            "访问社区语料用的令牌",
+            "访问共享语料用的令牌",
             "一般以 pc_ 开头；留空则使用自动登记保存在本机的令牌",
         ),
     )
     community_stats_enabled: bool = Field(
         default=True,
         description=field_help(
-            "是否向社区统计服务上报本机在线情况",
-            "开启后控制台「社区中心」才能看到全网大致数据；关闭则只影响上报，不影响牛牛聊天",
+            "是否向统计中心上报本机在线情况",
+            "开启后控制台「统计与语料」才能看到全网大致数据；关闭则只影响上报，不影响牛牛聊天",
         ),
     )
     community_stats_endpoint: str = Field(
@@ -139,7 +139,7 @@ class CorpusFederationWebuiConfig(BaseModel):
         description=field_help(
             "每隔多少秒上报一次在线心跳",
             "在下拉框中选秒数，例如 300 表示 5 分钟一次",
-            "间隔过短会增加请求次数；过长则社区数据更新变慢",
+            "间隔过短会增加请求次数；过长则在线统计数据更新变慢",
         ),
     )
 

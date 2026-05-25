@@ -85,9 +85,9 @@ def _field_row(key: str, cur: Any) -> dict[str, Any]:
         from src.common.webui.field_help import field_help
 
         row["description"] = field_help(
-            "是否使用社区共享语料池",
-            "开启后除本机语料外还会读取社区池；关闭则只使用本机语料",
-            "与上方「读语料顺序」配合使用；首次使用请先填好社区地址与令牌",
+            "是否使用共享语料池",
+            "开启后除本机语料外还会读取共享池；关闭则只使用本机语料",
+            "与上方「读语料顺序」配合使用；首次使用请先填好共享池地址与令牌",
         )
         row["current"] = _community_enabled_bool(cur)
     elif key == "merge_order":
@@ -124,7 +124,7 @@ def corpus_federation_payload(*, current_values: dict[str, Any] | None = None) -
             },
             {
                 "id": "community",
-                "title": "社区语料池",
+                "title": "共享语料",
                 "field_names": [
                     "community_enabled",
                     "auto_enroll",
@@ -135,7 +135,7 @@ def corpus_federation_payload(*, current_values: dict[str, Any] | None = None) -
             },
             {
                 "id": "community_stats",
-                "title": "社区在线统计上报",
+                "title": "在线统计",
                 "field_names": [
                     "community_stats_enabled",
                     "community_stats_endpoint",
@@ -196,7 +196,7 @@ def apply_corpus_federation_patch(patch: dict[str, Any]) -> dict[str, Any]:
         from src.common.community_stats.scheduler import schedule_reload_community_stats_reporter
 
         schedule_reload_community_stats_reporter()
-        logger.info("corpus_federation: WebUI 已写入配置，语料与社区统计心跳已热重载")
+        logger.info("corpus_federation: WebUI 已写入配置，语料与在线统计上报已热重载")
     except Exception as e:
         from nonebot import logger
 
