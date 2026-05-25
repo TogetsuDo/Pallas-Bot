@@ -444,7 +444,7 @@ DbConn:
 
 ## 隐私与降级
 
-- **contribute** 默认关闭；上传仅 `keywords` + 短句，`group_id=0`，不含 QQ/群号  
+- **contribute** 默认开启（可关）；上传仅 `keywords` + 短句，`group_id=0`，不含 QQ/群号
 - 中心不可达：接话/学习仅 local；debug 日志一条，不 raise  
 - **审核**：控制面对 `contribute` 可 202 入队，Bot 侧 mirror 失败不 retry 风暴（指数退避 + 日配额）
 

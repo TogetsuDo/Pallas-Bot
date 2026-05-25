@@ -51,7 +51,8 @@ db = "PallasBot"
 # [corpus]
 # community_enabled = "auto"
 # auto_enroll = "auto"          # 默认向 stats 中心自动 enroll，token 落盘 community_stats.json
-# community_contribute = false
+# community_contribute = "auto"   # 默认开；写回社区池（group_id=0 匿名）
+# 显式关闭：community_contribute = false
 # on_remote_failure = "local_only"
 # 手动指定时跳过 auto enroll：
 # [corpus.community]

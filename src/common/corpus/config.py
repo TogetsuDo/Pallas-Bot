@@ -41,7 +41,7 @@ class CorpusConfig(BaseModel):
     community_enabled: bool | None = Field(default=None)
     auto_enroll: bool | None = Field(default=None)
     fed_contribute: bool = Field(default=False)
-    community_contribute: bool = Field(default=False)
+    community_contribute: bool | None = Field(default=None)
     on_remote_failure: str = Field(default="local_only")
     community_api_base: str = Field(default="")
     community_token: str = Field(default="")
@@ -121,11 +121,27 @@ def resolved_community_token() -> str:
     return str(load_corpus_community_state().get("corpus_token") or "").strip()
 
 
+def community_contribute_enabled(cfg: CorpusConfig | None = None) -> bool:
+    """是否向社区池 mirror 学习结果；默认 auto=开，enroll policy 或显式 false 可关。"""
+    flag = parse_tristate(setting_str(f"{_PREFIX}COMMUNITY_CONTRIBUTE", "auto"), default=True)
+    if flag is True:
+        return True
+    if flag is False:
+        return False
+    from src.common.corpus.store import load_corpus_community_state
+
+    state = load_corpus_community_state()
+    if "contribute" in state and state.get("contribute") is not None:
+        return bool(state.get("contribute"))
+    return True
+
+
 @lru_cache(maxsize=1)
 def get_corpus_config() -> CorpusConfig:
     fed_flag = parse_tristate(setting_str(f"{_PREFIX}FED_ENABLED", "auto"))
     community_flag = parse_tristate(setting_str(f"{_PREFIX}COMMUNITY_ENABLED", "auto"))
     auto_flag = parse_tristate(setting_str(f"{_PREFIX}AUTO_ENROLL", "auto"), default=True)
+    contrib_flag = parse_tristate(setting_str(f"{_PREFIX}COMMUNITY_CONTRIBUTE", "auto"), default=True)
     return CorpusConfig(
         merge_order=resolve_merge_order(setting_str(f"{_PREFIX}MERGE_ORDER", "local,fed,community")),
         merge_strategy=setting_str(f"{_PREFIX}MERGE_STRATEGY", "local_first") or "local_first",
@@ -133,8 +149,7 @@ def get_corpus_config() -> CorpusConfig:
         community_enabled=community_flag,
         auto_enroll=auto_flag,
         fed_contribute=parse_tristate(setting_str(f"{_PREFIX}FED_CONTRIBUTE", "false"), default=False) is True,
-        community_contribute=parse_tristate(setting_str(f"{_PREFIX}COMMUNITY_CONTRIBUTE", "false"), default=False)
-        is True,
+        community_contribute=contrib_flag,
         on_remote_failure=setting_str(f"{_PREFIX}ON_REMOTE_FAILURE", "local_only") or "local_only",
         community_api_base=resolved_community_api_base(),
         community_token=resolved_community_token(),

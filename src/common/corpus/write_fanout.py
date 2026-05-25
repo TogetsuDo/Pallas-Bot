@@ -7,8 +7,9 @@ from typing import TYPE_CHECKING, Any
 
 from nonebot import logger
 
+from src.common.corpus.config import CorpusConfig, community_contribute_enabled
+
 if TYPE_CHECKING:
-    from src.common.corpus.config import CorpusConfig
     from src.common.db.modules import Context
     from src.common.db.repository import ContextRepository
 
@@ -46,7 +47,7 @@ async def mirror_upsert_answer(
             message=message,
             append_on_existing=append_on_existing,
         )
-    if cfg.community_contribute and community is not None:
+    if community_contribute_enabled(cfg) and community is not None:
         await community.upsert_answer(
             keywords=keywords,
             group_id=0,
@@ -66,7 +67,7 @@ async def mirror_insert(
 ) -> None:
     if cfg.fed_contribute and fed is not None:
         await fed.insert(context)
-    if cfg.community_contribute and community is not None:
+    if community_contribute_enabled(cfg) and community is not None:
         await community.insert(context)
 
 
@@ -82,7 +83,7 @@ def schedule_mirror_upsert_answer(
     message: str,
     append_on_existing: bool,
 ) -> None:
-    if not cfg.fed_contribute and not cfg.community_contribute:
+    if not cfg.fed_contribute and not community_contribute_enabled(cfg):
         return
     task = asyncio.create_task(
         mirror_upsert_answer(
@@ -107,7 +108,7 @@ def schedule_mirror_insert(
     cfg: CorpusConfig,
     context: Context,
 ) -> None:
-    if not cfg.fed_contribute and not cfg.community_contribute:
+    if not cfg.fed_contribute and not community_contribute_enabled(cfg):
         return
     task = asyncio.create_task(
         mirror_insert(

@@ -28,11 +28,11 @@ def test_enroll_url_from_heartbeat():
 
 @pytest.mark.asyncio
 async def test_ensure_corpus_community_enrolled_persists_token(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
     state_path = tmp_path / "data" / "pallas_config" / "community_stats.json"
     dep = str(uuid.uuid4())
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps({"deployment_id": dep}), encoding="utf-8")
+    monkeypatch.setattr("src.common.community_stats.store.community_stats_state_path", lambda: state_path)
 
     monkeypatch.setattr(
         "src.common.corpus.enroll.should_run_corpus_auto_enroll",
