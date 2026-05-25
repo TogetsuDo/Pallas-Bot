@@ -9,6 +9,7 @@ from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State
 
+from src.common.bot_runtime.roles import is_hub_role
 from src.common.cmd_perm import private_message_permission_for_command
 from src.common.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
@@ -18,6 +19,14 @@ from src.common.cmd_perm.metadata_defaults import (
 from src.common.cmd_perm.metadata_text import SCENE_PRIVATE, join_usage, usage_line
 from src.common.config import BotConfig, user_is_bot_admin
 from src.common.db import make_bot_config_repository
+
+if is_hub_role():
+    from nonebot import get_app
+
+    from src.common.shard.coord.relogin_hub_routes import mount_relogin_hub_routes
+
+    mount_relogin_hub_routes(get_app())
+
 from src.plugins.pallas_protocol import manager as protocol_manager
 
 __all__ = ["relogin_cmd", "create_cmd"]
