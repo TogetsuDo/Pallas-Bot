@@ -4001,6 +4001,16 @@ def register_extended_api(
         data = await _cached_read(key="community-stats", loader=_load, ttl_sec=30.0, stale_sec=120.0)
         return JSONResponse({"ok": True, "data": data})
 
+    @router.get(f"{x}/corpus-status", include_in_schema=True)
+    async def _corpus_status() -> JSONResponse:
+        from src.common.corpus.status import build_corpus_status_snapshot
+
+        async def _load() -> dict[str, Any]:
+            return build_corpus_status_snapshot()
+
+        data = await _cached_read(key="corpus-status", loader=_load, ttl_sec=5.0, stale_sec=30.0)
+        return JSONResponse({"ok": True, "data": data})
+
     @router.get(f"{x}/plugin-run-stats", include_in_schema=True)
     async def _plugin_run_stats(
         self_id: int | None = Query(default=None, ge=1),
