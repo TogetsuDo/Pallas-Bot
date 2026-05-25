@@ -92,7 +92,7 @@ def is_community_corpus_wanted(cfg: CorpusConfig | None = None) -> bool:
         return False
     if cfg.community_enabled is True:
         return True
-    return community_configured() or auto_enroll_enabled()
+    return community_configured()
 
 
 def resolve_enabled(flag: bool | None, *, configured: bool) -> bool:
@@ -156,7 +156,7 @@ def community_contribute_enabled(cfg: CorpusConfig | None = None) -> bool:
 @lru_cache(maxsize=1)
 def get_corpus_config() -> CorpusConfig:
     fed_flag = parse_tristate(setting_str(f"{_PREFIX}FED_ENABLED", "auto"))
-    community_flag = parse_tristate(setting_str(f"{_PREFIX}COMMUNITY_ENABLED", "auto"))
+    community_flag = parse_tristate(setting_str(f"{_PREFIX}COMMUNITY_ENABLED", "false"))
     auto_flag = parse_tristate(setting_str(f"{_PREFIX}AUTO_ENROLL", "auto"), default=True)
     contrib_flag = parse_tristate(setting_str(f"{_PREFIX}COMMUNITY_CONTRIBUTE", "auto"), default=True)
     return CorpusConfig(

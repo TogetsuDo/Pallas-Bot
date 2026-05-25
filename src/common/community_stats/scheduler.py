@@ -39,3 +39,27 @@ async def start_community_stats_reporter() -> None:
         _FIRST_HEARTBEAT_DELAY_SEC,
         (cfg.endpoint or "").strip(),
     )
+
+
+async def reload_community_stats_reporter() -> None:
+    from src.common.community_stats.config import clear_community_stats_config_cache
+
+    clear_community_stats_config_cache()
+    if scheduler.get_job(_JOB_ID):
+        scheduler.remove_job(_JOB_ID)
+    if should_run_community_stats_reporter():
+        await start_community_stats_reporter()
+    else:
+        logger.info("community_stats: 已关闭周期上报（配置热重载）")
+
+
+def schedule_reload_community_stats_reporter() -> None:
+    import asyncio
+
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(reload_community_stats_reporter())
+    except RuntimeError:
+        import asyncio as aio
+
+        aio.run(reload_community_stats_reporter())

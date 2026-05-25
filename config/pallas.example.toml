@@ -47,10 +47,10 @@ db = "PallasBot"
 # PG_POOL_SIZE = "12"
 # PG_MAX_OVERFLOW = "8"
 
-# 语料多源（local + 可选 fed / community）；见 docs/architecture/control-plane-corpus-federation.md
+# 语料多源（local + 可选 community）；社区语料默认关，见 WebUI「语料联邦」
 # [corpus]
-# community_enabled = "auto"
-# auto_enroll = "auto"          # 默认向 stats 中心自动 enroll，token 落盘 community_stats.json
+# community_enabled = false       # 默认关；true 后配合 auto_enroll 接入 stats 中心
+# auto_enroll = "auto"            # community 开启时默认向 stats enroll
 # community_contribute = "auto"   # 默认开；写回社区池（group_id=0 匿名）
 # 显式关闭：community_contribute = false
 # on_remote_failure = "local_only"

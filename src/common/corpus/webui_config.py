@@ -36,14 +36,14 @@ class CorpusFederationWebuiConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     merge_order: str = Field(
-        default="local,fed,community",
-        description="读语料顺序，逗号分隔：local / fed / community。",
+        default="local,community",
+        description="读语料顺序：local,community（Phase 1）或仅 local。",
     )
     merge_strategy: Literal["local_first", "merge_counts"] = Field(
         default="local_first",
         description="合并策略：local_first 优先本地；merge_counts 合并计数。",
     )
-    community_enabled: _TRI = Field(default="auto", description="是否启用社区语料池。")
+    community_enabled: _TRI = Field(default="false", description="是否启用社区语料池（默认关，WebUI 手动开启）。")
     auto_enroll: _TRI = Field(default="auto", description="是否向 stats 中心自动 enroll 语料 token。")
     community_contribute: _TRI = Field(default="auto", description="是否 mirror 学习结果到社区池。")
     fed_enabled: _TRI = Field(default="auto", description="是否启用联邦语料（托管 Phase 2，当前多为未接入）。")
@@ -81,9 +81,9 @@ def get_corpus_federation_webui_config() -> CorpusFederationWebuiConfig:
     if strategy not in ("local_first", "merge_counts"):
         strategy = "local_first"
     return CorpusFederationWebuiConfig(
-        merge_order=_str_read("PALLAS_CORPUS_MERGE_ORDER", "local,fed,community"),
+        merge_order=_str_read("PALLAS_CORPUS_MERGE_ORDER", "local,community"),
         merge_strategy=strategy,  # type: ignore[arg-type]
-        community_enabled=_tristate_read("PALLAS_CORPUS_COMMUNITY_ENABLED"),
+        community_enabled=_tristate_read("PALLAS_CORPUS_COMMUNITY_ENABLED", default="false"),
         auto_enroll=_tristate_read("PALLAS_CORPUS_AUTO_ENROLL"),
         community_contribute=_tristate_read("PALLAS_CORPUS_COMMUNITY_CONTRIBUTE"),
         fed_enabled=_tristate_read("PALLAS_CORPUS_FED_ENABLED"),

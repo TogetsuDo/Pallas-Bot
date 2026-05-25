@@ -22,6 +22,7 @@
 | [插件规范](architecture/plugin-convention.md) | `src/plugins` 组织方式 |
 | [配置存储](architecture/settings-storage.md) | pallas.toml + webui.json |
 | [多进程分片](architecture/bot_process_sharding.md) | hub + worker 生产部署 |
+| [控制面与语料联邦](architecture/control-plane-corpus-federation.md) | community 语料 Phase 1；fed/ingress Phase 2 |
 | [站点定制与更新](architecture/site-customization-and-updates.md) | local/plugins、更新策略 |
 
 ## 插件
@@ -36,6 +37,7 @@
 | [WebUI 配置热重载](common/webui/README.md) | `install_hot_reload_config` |
 | [消息审查 message_scrub](common/message_scrub/README.md) | 复读/做梦入站过滤 |
 | [社区统计](common/community_stats.md) | 部署心跳（默认开启） |
+| [语料联邦 corpus](common/corpus/README.md) | local + community 多读源；WebUI 配置 |
 
 ## 同步 Web 文档
 

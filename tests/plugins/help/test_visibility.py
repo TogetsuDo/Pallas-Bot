@@ -13,8 +13,8 @@ def test_builtin_help_hidden_includes_infra_plugins():
     hidden = _visibility.BUILTIN_HELP_HIDDEN_PLUGINS
     assert "_ingress_gate" in hidden
     assert "pallas_console_metrics" in hidden
-    assert "_ingress_gate" in _visibility.resolve_help_hidden_plugins()
-    assert "pallas_console_metrics" in _visibility.resolve_help_hidden_plugins()
+    assert "community_stats" in hidden
+    assert "community_stats" in _visibility.resolve_help_hidden_plugins()
 
 
 def test_console_stats_excluded_matches_help_hidden_infra():

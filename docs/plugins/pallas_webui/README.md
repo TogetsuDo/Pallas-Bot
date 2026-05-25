@@ -14,6 +14,8 @@
 
 控制台口令在 `data/pallas_console/`；前端静态资源启动时下载。详见插件 `config` 与 [FAQ · 部署排障](../../FAQ.md#部署排障)。
 
+**语料联邦**：侧栏 **语料联邦**（`/pallas/corpus-config`）或通用配置段 `corpus_federation`；首页 **社区与语料** 只读状态。见 [语料联邦](../../common/corpus/README.md)。
+
 ## 排障
 
 | 现象 | 处理 |

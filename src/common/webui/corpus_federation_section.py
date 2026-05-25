@@ -1,4 +1,4 @@
-"""WebUI「通用配置 → 语料联邦」。"""
+"""WebUI「通用配置 → 语料联邦」（Phase 1：local + community）。"""
 
 from __future__ import annotations
 
@@ -13,15 +13,27 @@ from src.common.corpus.webui_config import CorpusFederationWebuiConfig, get_corp
 CORPUS_FEDERATION_SECTION_ID = "corpus_federation"
 CORPUS_FEDERATION_TITLE = "语料联邦"
 
+# Phase 1 仅暴露已接入项；fed / on_remote_failure 等 Phase 2 不在 WebUI 展示。
+_PHASE1_FIELD_NAMES: tuple[str, ...] = (
+    "merge_order",
+    "merge_strategy",
+    "community_enabled",
+    "auto_enroll",
+    "community_contribute",
+    "community_api_base",
+    "community_token",
+    "community_stats_enabled",
+    "community_stats_endpoint",
+    "community_stats_token",
+    "community_stats_interval_sec",
+)
+
 _FIELD_TO_ENV: dict[str, str] = {
     "merge_order": "PALLAS_CORPUS_MERGE_ORDER",
     "merge_strategy": "PALLAS_CORPUS_MERGE_STRATEGY",
     "community_enabled": "PALLAS_CORPUS_COMMUNITY_ENABLED",
     "auto_enroll": "PALLAS_CORPUS_AUTO_ENROLL",
     "community_contribute": "PALLAS_CORPUS_COMMUNITY_CONTRIBUTE",
-    "fed_enabled": "PALLAS_CORPUS_FED_ENABLED",
-    "fed_contribute": "PALLAS_CORPUS_FED_CONTRIBUTE",
-    "on_remote_failure": "PALLAS_CORPUS_ON_REMOTE_FAILURE",
     "community_api_base": "PALLAS_CORPUS_COMMUNITY_API_BASE",
     "community_token": "PALLAS_CORPUS_TOKEN",
     "community_stats_enabled": "PALLAS_COMMUNITY_STATS_ENABLED",
@@ -30,11 +42,23 @@ _FIELD_TO_ENV: dict[str, str] = {
     "community_stats_interval_sec": "PALLAS_COMMUNITY_STATS_INTERVAL_SEC",
 }
 
+_TRI_CHOICES = ["auto", "true", "false"]
+_MERGE_ORDER_CHOICES = ["local,community", "local"]
+_INTERVAL_CHOICES = ["60", "120", "300", "600", "900", "1800", "3600"]
+
 
 def _jsonable(v: Any) -> Any:
     if v is PydanticUndefined:
         return None
     return v
+
+
+def _community_enabled_bool(cur: Any) -> bool:
+    if cur is True or cur == "true":
+        return True
+    if cur is False or cur == "false":
+        return False
+    return False
 
 
 def _field_row(key: str, cur: Any) -> dict[str, Any]:
@@ -55,9 +79,22 @@ def _field_row(key: str, cur: Any) -> dict[str, Any]:
     }
     if choices is not None:
         row["choices"] = choices
-    if key in ("community_enabled", "auto_enroll", "community_contribute", "fed_enabled"):
+    if key == "community_enabled":
+        row["kind"] = "bool"
+        row["description"] = "是否启用社区语料池（读 community 源；关闭后仅 local）。"
+        row["current"] = _community_enabled_bool(cur)
+    elif key == "merge_order":
         row["kind"] = "enum"
-        row["choices"] = ["auto", "true", "false"]
+        row["choices"] = _MERGE_ORDER_CHOICES
+        if row["current"] not in _MERGE_ORDER_CHOICES:
+            row["current"] = _MERGE_ORDER_CHOICES[0]
+    elif key in ("auto_enroll", "community_contribute"):
+        row["kind"] = "enum"
+        row["choices"] = _TRI_CHOICES
+    elif key == "community_stats_interval_sec":
+        row["kind"] = "enum"
+        row["choices"] = _INTERVAL_CHOICES
+        row["current"] = str(int(cur)) if cur is not None else row["choices"][2]
     return row
 
 
@@ -66,16 +103,17 @@ def corpus_federation_payload(*, current_values: dict[str, Any] | None = None) -
     data = cfg.model_dump(mode="python")
     if current_values is not None:
         data = {**data, **current_values}
-    fields = [_field_row(k, data.get(k)) for k in CorpusFederationWebuiConfig.model_fields]
+    fields = [_field_row(k, data.get(k)) for k in _PHASE1_FIELD_NAMES]
     return {
         "plugin": CORPUS_FEDERATION_SECTION_ID,
         "module": "src.common.corpus",
+        "hot_reload": True,
         "fields": fields,
         "field_groups": [
             {
                 "id": "merge",
                 "title": "多读源与合并",
-                "field_names": ["merge_order", "merge_strategy", "on_remote_failure"],
+                "field_names": ["merge_order", "merge_strategy"],
             },
             {
                 "id": "community",
@@ -87,11 +125,6 @@ def corpus_federation_payload(*, current_values: dict[str, Any] | None = None) -
                     "community_api_base",
                     "community_token",
                 ],
-            },
-            {
-                "id": "fed",
-                "title": "联邦语料 fed（托管 Phase 2）",
-                "field_names": ["fed_enabled", "fed_contribute"],
             },
             {
                 "id": "community_stats",
@@ -107,9 +140,24 @@ def corpus_federation_payload(*, current_values: dict[str, Any] | None = None) -
     }
 
 
+def _normalize_patch(patch: dict[str, Any]) -> dict[str, Any]:
+    out = dict(patch)
+    if "community_enabled" in out:
+        v = out["community_enabled"]
+        if isinstance(v, bool):
+            out["community_enabled"] = "true" if v else "false"
+    if "community_stats_interval_sec" in out:
+        try:
+            out["community_stats_interval_sec"] = int(out["community_stats_interval_sec"])
+        except (TypeError, ValueError) as e:
+            raise ValueError("community_stats_interval_sec 须为整数秒") from e
+    return out
+
+
 def apply_corpus_federation_patch(patch: dict[str, Any]) -> dict[str, Any]:
+    patch = _normalize_patch(patch)
     current = get_corpus_federation_webui_config().model_dump(mode="python")
-    allowed = set(CorpusFederationWebuiConfig.model_fields.keys())
+    allowed = set(_PHASE1_FIELD_NAMES)
     for k in patch:
         if k not in allowed:
             raise ValueError(f"未知配置项: {k}")
@@ -135,4 +183,15 @@ def apply_corpus_federation_patch(patch: dict[str, Any]) -> dict[str, Any]:
         invalidate_shared_context_repository()
     except Exception:
         pass
+    try:
+        from nonebot import logger
+
+        from src.common.community_stats.scheduler import schedule_reload_community_stats_reporter
+
+        schedule_reload_community_stats_reporter()
+        logger.info("corpus_federation: WebUI 已写入配置，语料与社区统计心跳已热重载")
+    except Exception as e:
+        from nonebot import logger
+
+        logger.warning("corpus_federation hot reload failed: {}", e)
     return corpus_federation_payload(current_values=validated)

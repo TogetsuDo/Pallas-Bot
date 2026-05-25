@@ -70,6 +70,8 @@ uv run nb run
 
 浏览器打开 `http://<主机>:8088/pallas/`，使用启动日志中的口令登录。
 
+**社区语料（可选）**：hub/单进程默认向 [stats 中心](https://stats.pallasbot.top) 上报心跳并 **auto enroll** 社区语料池（本地 PG 为主读，远端 complement）。配置与关闭方式见 [docs/common/corpus/README.md](docs/common/corpus/README.md)。**fed**（第二 PG 联邦池）尚未接入。
+
 <a id="文档"></a>
 ## 📖 文档
 

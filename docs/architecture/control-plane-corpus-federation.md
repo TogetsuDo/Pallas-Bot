@@ -1,8 +1,11 @@
-# 控制面、联邦语料与外接语料（设计草案）
+# 控制面、联邦语料与外接语料
 
-本文描述 **全量 Provision（Tenant + Bootstrap + 联邦）** 与 **外接社区语料** 在同一控制面下的 Bot 侧接入方式。阶段 2 目标：库表隔离、语料互补、可选跨部署 ingress 去重。
+本文描述 **全量 Provision（Tenant + Bootstrap + 联邦）** 与 **外接社区语料** 在同一控制面下的 Bot 侧接入方式。
 
-> 状态：**Phase 1 已落地**（含 **auto enroll**）；Bootstrap、联邦 PG、ingress 待实现。
+> **Phase 1**：`local` + **community** 多读源、auto enroll、contribute 默认开、主/备语料读 failover、WebUI 语料联邦配置与 `/corpus-status`。  
+> **Phase 2（未实现）**：联邦 **fed** 第二 PG、`bootstrap`、跨 deployment **ingress 去重**。
+
+用户向说明见 [语料联邦（corpus）](../common/corpus/README.md)。
 
 ## 域名与部署
 
@@ -14,7 +17,7 @@
 | 备案过渡期 | `pallas.togetsudo.com` | Bot 自动回退（与 community_stats 相同） |
 | 后续扩展 | 如 `control.pallasbot.top` | Bootstrap、Tenant、联邦（尚未实现） |
 
-Bot **auto enroll** 从 `[community_stats]` 心跳地址推导语料 URL（`/v1/heartbeat` → `/v1/corpus/enroll`）；中心在 `CORPUS_PUBLIC_API_BASE` 下发 enroll 响应里的 `api_base`（生产建议 `https://stats.pallasbot.top/v1/corpus`）。换子域时只改中心反代与 `CORPUS_PUBLIC_API_BASE`，Bot 侧一般无需改配置。
+Bot **auto enroll** 从 `[community_stats]` 心跳地址推导语料 URL（`/v1/heartbeat` → `/v1/corpus/enroll`）。auto 模式下 enroll 落盘 **实际连上的** `api_base`；读路径按心跳主/备顺序 **failover**（与 `community_stats` 相同，备案过渡期逻辑；主域恢复后可删备域逻辑）。
 
 ## 目标与档位
 
@@ -391,31 +394,26 @@ DbConn:
 
 ## Pallas-Bot 改动清单
 
-### 新增
+### Phase 1（已交付）
 
 | 路径 | 说明 |
 |------|------|
-| `src/common/corpus/` | 见模块布局 |
-| `tests/common/corpus/test_merge.py` | merge 单测 |
-| `tests/common/corpus/test_composite_repo.py` | 读写路由 mock |
-| `config/pallas.example.toml` | `[control_plane]`、`[corpus]` 示例 |
+| `src/common/corpus/` | config、merge、composite、community HTTP、enroll、status |
+| `src/common/webui/corpus_federation_section.py` | WebUI「语料联邦」配置段 |
+| `src/plugins/pallas_webui/extended_api.py` | `GET /corpus-status`、`/community-stats` 代理 |
+| `tests/common/corpus/` | merge、composite、enroll、failover 等单测 |
+| `tools/seed_community_corpus.py` | 向中心预灌语料（运维） |
+| `docs/common/corpus/README.md` | 用户向说明 |
 
-### 修改
+### Phase 1 已修改（节选）
 
 | 路径 | 说明 |
 |------|------|
-| `src/common/db/__init__.py` | `make_context_repository()` 委托 composite；可选 `init_corpus_fed_pg()` |
-| `src/common/db/repository_pg.py` | 抽取「指定 engine 的 PgContextRepository」供 fed 第二连接 |
-| `src/common/config/repo_settings.py` | flatten `[corpus]`、`[control_plane]` |
-| `src/common/community_stats/reporter.py` | heartbeat 附带 `tenant_id` / `federate_id` / `corpus` 状态；处理 `actions` |
-| `src/common/community_stats/scheduler.py` | 触发 bootstrap refresh |
-| `src/plugins/repeater/learner.py` | 无改或仅改用 module 级 `context_repo`（已 factory） |
-| `src/plugins/repeater/responder.py` | 同上 |
-| `src/plugins/repeater/context_exists_cache.py` | 存在性缓存需感知 composite（或禁用 remote 的 exists 缓存） |
-| `src/plugins/pallas_webui/extended_api.py` | 语料源状态 API + enroll 代理（可选） |
-| `docs/common/community_stats.md` | 链到本文 |
+| `src/common/db/__init__.py` | `make_context_repository()` 委托 composite |
+| `src/common/config/repo_settings.py` | flatten `[corpus]`、`[community_stats]` |
+| `config/pallas.example.toml` | `[corpus]` 示例注释 |
 
-### 阶段 2 追加（联邦去重，本文不展开实现）
+### Phase 2 规划（未交付）
 
 | 路径 | 说明 |
 |------|------|
@@ -432,13 +430,13 @@ DbConn:
 
 ## 实施顺序
 
-1. `corpus/merge.py` + `CompositeContextRepository` + 单测  
-2. `RemoteCorpusRepository` + mock HTTP 测试  
-3. `POST /v1/corpus/enroll` 控制面（或 stub server 联调）  
-4. WebUI / env：`[corpus.community]`  
-5. `bootstrap_client` + `[control_plane]` + `corpus_fed` 第二 PG  
-6. heartbeat `actions` + `write_fanout`  
-7. 联邦 Redis + ingress（阶段 2）
+1. ~~`corpus/merge.py` + `CompositeContextRepository` + 单测~~ ✅  
+2. ~~`RemoteCorpusRepository` + enroll + HTTP 测试~~ ✅  
+3. ~~控制面 `POST /v1/corpus/enroll`（Community-Stats）~~ ✅  
+4. ~~WebUI / env：`[corpus]`、`/corpus-config`、首页状态~~ ✅  
+5. `bootstrap_client` + `[control_plane]` + `corpus_fed` 第二 PG ⏳  
+6. heartbeat `actions` + 增强 write_fanout ⏳  
+7. 联邦 Redis + **ingress 去重**（Phase 2，非语料 block）⏳  
 
 ---
 
@@ -452,6 +450,7 @@ DbConn:
 
 ## 相关文档
 
+- [语料联邦（用户向）](../common/corpus/README.md)
 - [社区统计](../common/community_stats.md)（`deployment_id`、heartbeat）
 - [多进程分片](bot_process_sharding.md)（同集群内 coord；与跨租户联邦正交）
 - [配置存储](settings-storage.md)
