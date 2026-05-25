@@ -34,7 +34,18 @@
 - **单进程 / hub** 上报；**分片 worker** 不上报（避免重复计数）。
 - `online_bots` 与控制台 **「在线 Bot」** 同源；首包在启动约 **60 秒** 后发送，之后按 `interval_sec`（默认 300 秒）刷新。
 - WebUI 首页 **社区与语料**、**语料联邦** 配置页（`/pallas/corpus-config`）；**在线牛总和** 为全社区 `online_bots` 之和。
+- 控制台 `GET /pallas/api/community-stats` 优先拉取中心 **`GET /v1/monitor/overview`**（不可用时回退 `/v1/stats`），展示语料接入数、24h 活跃部署、在线版本分布等。
 - 上报失败仅记日志，不影响 Bot 启动与消息处理。
+
+## 中心监控 API（只读）
+
+| 路径 | 说明 |
+| --- | --- |
+| `GET /v1/stats` | 基础聚合；`corpus.enrollments_total` 为累计接入语料库的 deployment 数 |
+| `GET /v1/stats/corpus` | 语料池专用指标（含 `enrollments_online`、`answer_hits_sum` 等） |
+| `GET /v1/monitor/overview` | 控制台一页式快照（部署 + 语料 + 版本 Top5） |
+
+详见 Community-Stats 仓库 [docs/API.md](https://github.com/TogetsuDo/Pallas-Bot-Community-Stats/blob/main/docs/API.md)。
 
 ## 隐私
 

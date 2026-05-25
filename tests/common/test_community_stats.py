@@ -23,7 +23,7 @@ from src.common.community_stats.reporter import (
     should_run_community_stats_reporter,
 )
 from src.common.community_stats.scheduler import start_community_stats_reporter
-from src.common.community_stats.stats_url import stats_url_from_endpoint
+from src.common.community_stats.stats_url import monitor_overview_url_from_endpoint, stats_url_from_endpoint
 from src.common.community_stats.store import community_stats_state_path, load_or_create_deployment_id
 
 
@@ -53,6 +53,10 @@ def test_auto_endpoint_custom_url_not_builtin(monkeypatch):
 def test_stats_url_from_heartbeat_endpoint():
     assert stats_url_from_endpoint("https://stats.pallasbot.top/v1/heartbeat") == "https://stats.pallasbot.top/v1/stats"
     assert stats_url_from_endpoint("") == "https://stats.pallasbot.top/v1/stats"
+    assert (
+        monitor_overview_url_from_endpoint("https://stats.pallasbot.top/v1/heartbeat")
+        == "https://stats.pallasbot.top/v1/monitor/overview"
+    )
 
 
 def test_corpus_api_base_from_heartbeat():
@@ -91,6 +95,40 @@ def test_parse_stats_body():
     )
     assert data["deployments_total"] == 10
     assert data["online_ttl_sec"] == 900
+
+
+def test_parse_monitor_overview_body():
+    data = _parse_stats_body(
+        {
+            "online_ttl_sec": 900,
+            "as_of": "2026-05-25T12:00:00Z",
+            "corpus_enabled": True,
+            "deployments": {
+                "deployments_total": 10,
+                "deployments_online": 3,
+                "bots_online_sum": 7,
+                "catalog_bots_online_sum": 9,
+                "deployments_online_sharded": 1,
+                "shard_workers_online_sum": 2,
+                "active_recent_24h": 4,
+                "online_versions": [{"version": "3.1.0", "count": 2}],
+            },
+            "corpus": {
+                "contexts_total": 1,
+                "answers_total": 2,
+                "answer_hits_sum": 5,
+                "enrollments_total": 3,
+                "enrollments_online": 2,
+                "enrollments_recent_24h": 1,
+                "read_enabled_total": 3,
+                "contribute_enabled_total": 2,
+            },
+        },
+        "https://stats.example/v1/monitor/overview",
+    )
+    assert data["catalog_bots_online_sum"] == 9
+    assert data["corpus"]["enrollments_online"] == 2
+    assert data["online_versions"][0]["version"] == "3.1.0"
 
 
 def test_config_enabled_default_true(monkeypatch):

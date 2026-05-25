@@ -49,7 +49,7 @@
 
 1. 运行 `sync_docs_to_web.py` 写入 Pallas-Bot-Docs 的 `src/`
 2. 提交并 push 到 **Pallas-Bot-Docs `main`**（随后 GitHub Pages 自动部署）
-3. 若 push 来自 **`main`**，同时将 `main` 合并进本仓 **`docs`** 分支，保持文档分支与主线一致
+3. 若 push 来自 **`main`**，尝试将 `main` 合并进本仓 **`docs`** 分支；**同一文件冲突时以 `docs` 为准**（`-X ours`），无法自动合并时跳过推送、不覆盖 `docs`
 
 **维护者一次性配置**（见下方「如何启用自动更新」）：在 Pallas-Bot 仓库 Actions Secrets 添加 `DOCS_SYNC_TOKEN`。
 
