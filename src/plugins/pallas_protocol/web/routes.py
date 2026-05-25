@@ -138,7 +138,7 @@ def register_pallas_protocol_routes(
         head = shell_font_stylesheet_link(base)
         footer_note = (detail or "").strip()
         html = render_pallas_login_page_html(
-            document_title="协议端登录 · Pallas-Bot",
+            document_title="登录 · 协议端",
             surface_label="协议端",
             tagline="与 Web 控制台（/pallas）共用登录口令。",
             form_action=f"{base}/login",

@@ -138,7 +138,7 @@ def register_routes(
         if token_submitted:
             err = "口令无效，请重试。"
         html = render_pallas_login_page_html(
-            document_title="控制台登录 · Pallas-Bot",
+            document_title="登录 · 控制台",
             surface_label="控制台",
             tagline="与协议端管理共用口令。",
             form_action=f"{base}/login",

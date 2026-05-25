@@ -31,6 +31,22 @@ def _parse_stats_body(body: Any, stats_url: str) -> dict[str, Any]:
         out["online_ttl_sec"] = int(body["online_ttl_sec"])
     if isinstance(body.get("as_of"), str):
         out["as_of"] = body["as_of"]
+    for key in ("deployments_online_sharded", "shard_workers_online_sum"):
+        if key in body:
+            out[key] = int(body[key])
+    corpus_raw = body.get("corpus")
+    if isinstance(corpus_raw, dict):
+        corpus_out: dict[str, int] = {}
+        for key in (
+            "contexts_total",
+            "answers_total",
+            "enrollments_total",
+            "contribute_enabled_total",
+        ):
+            if key in corpus_raw:
+                corpus_out[key] = int(corpus_raw[key])
+        if corpus_out:
+            out["corpus"] = corpus_out
     return out
 
 

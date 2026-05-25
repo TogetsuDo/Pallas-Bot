@@ -151,6 +151,32 @@ def _flatten_env_section(section: Any) -> dict[str, str]:
     return out
 
 
+def _flatten_corpus(section: Any) -> dict[str, str]:
+    if not isinstance(section, dict):
+        return {}
+    key_map = {
+        "merge_order": "PALLAS_CORPUS_MERGE_ORDER",
+        "merge_strategy": "PALLAS_CORPUS_MERGE_STRATEGY",
+        "fed_enabled": "PALLAS_CORPUS_FED_ENABLED",
+        "community_enabled": "PALLAS_CORPUS_COMMUNITY_ENABLED",
+        "auto_enroll": "PALLAS_CORPUS_AUTO_ENROLL",
+        "fed_contribute": "PALLAS_CORPUS_FED_CONTRIBUTE",
+        "community_contribute": "PALLAS_CORPUS_COMMUNITY_CONTRIBUTE",
+        "on_remote_failure": "PALLAS_CORPUS_ON_REMOTE_FAILURE",
+    }
+    out: dict[str, str] = {}
+    for k, env_key in key_map.items():
+        if k in section and section[k] is not None:
+            out[env_key] = env_value_to_str(section[k])
+    community = section.get("community")
+    if isinstance(community, dict):
+        if community.get("api_base") is not None:
+            out["PALLAS_CORPUS_COMMUNITY_API_BASE"] = env_value_to_str(community["api_base"])
+        if community.get("token") is not None:
+            out["PALLAS_CORPUS_TOKEN"] = env_value_to_str(community["token"])
+    return out
+
+
 def _flatten_community_stats(section: Any) -> dict[str, str]:
     if not isinstance(section, dict):
         return {}
@@ -172,6 +198,7 @@ def _load_pallas_toml_upper() -> dict[str, str]:
     merged: dict[str, str] = {}
     merged.update(_flatten_bootstrap(data.get("bootstrap")))
     merged.update(_flatten_community_stats(data.get("community_stats")))
+    merged.update(_flatten_corpus(data.get("corpus")))
     merged.update(_flatten_env_section(data.get("env")))
     return merged
 

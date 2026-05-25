@@ -6,7 +6,7 @@ import asyncio
 import time
 from typing import TYPE_CHECKING
 
-from src.common.db import make_context_repository
+from src.common.db.context_repo_access import context_repo
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -18,8 +18,6 @@ _exists_lock = asyncio.Lock()
 _exists_generation: dict[str, int] = {}
 _fetch_tasks: dict[str, asyncio.Task[bool]] = {}
 _fetch_tasks_lock = asyncio.Lock()
-
-_repo = make_context_repository()
 
 
 async def invalidate_context_exists_cache(keywords: str | Iterable[str] | None = None) -> None:
@@ -59,7 +57,7 @@ async def note_context_exists(keywords: str) -> None:
 
 
 async def _fetch_exists_db(keywords: str) -> bool:
-    return await _repo.context_exists_by_keywords(keywords)
+    return await context_repo.context_exists_by_keywords(keywords)
 
 
 async def _await_exists_deduped(keywords: str) -> bool:

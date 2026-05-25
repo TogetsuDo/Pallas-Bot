@@ -46,3 +46,15 @@ db = "PallasBot"
 # PostgreSQL（db_backend=postgresql 时）：分片约 (worker+hub) 进程 × (pool+overflow)，建议单进程 ≤20
 # PG_POOL_SIZE = "12"
 # PG_MAX_OVERFLOW = "8"
+
+# 语料多源（local + 可选 fed / community）；见 docs/architecture/control-plane-corpus-federation.md
+# [corpus]
+# community_enabled = "auto"
+# auto_enroll = "auto"          # 默认向 stats 中心自动 enroll，token 落盘 community_stats.json
+# community_contribute = "auto"   # 默认开；写回社区池（group_id=0 匿名）
+# 显式关闭：community_contribute = false
+# on_remote_failure = "local_only"
+# 手动指定时跳过 auto enroll：
+# [corpus.community]
+# api_base = "https://stats.pallasbot.top/v1/corpus"
+# token = "pc_..."

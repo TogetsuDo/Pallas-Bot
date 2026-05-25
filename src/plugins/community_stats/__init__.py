@@ -7,6 +7,7 @@ from src.common.cmd_perm.metadata_defaults import (
     PLUGIN_MENU_TEMPLATE,
 )
 from src.common.community_stats.scheduler import start_community_stats_reporter
+from src.common.corpus.enroll import ensure_corpus_community_enrolled
 
 __plugin_meta__ = PluginMetadata(
     name="社区统计上报",
@@ -27,6 +28,10 @@ driver = get_driver()
 
 @driver.on_startup
 async def community_stats_startup() -> None:
+    try:
+        await ensure_corpus_community_enrolled()
+    except Exception as e:
+        logger.warning(f"corpus enroll: startup failed: {e}")
     try:
         await start_community_stats_reporter()
     except Exception as e:

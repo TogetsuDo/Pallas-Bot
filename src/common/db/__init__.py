@@ -335,12 +335,19 @@ register_backend(
 # 工厂函数
 
 
-def make_context_repository() -> ContextRepository:
-    """根据当前配置的后端，返回对应的 ContextRepository 实例。"""
+def make_local_context_repository() -> ContextRepository:
+    """本地业务库 ContextRepository（不含语料多源包装）。"""
     backend = get_db_backend()
     if backend not in CONTEXT_REPO_REGISTRY:
         raise ValueError(f"不支持的数据库后端: {backend}，已注册的后端: {list(CONTEXT_REPO_REGISTRY)}")
     return CONTEXT_REPO_REGISTRY[backend]()
+
+
+def make_context_repository() -> ContextRepository:
+    """根据当前配置的后端返回 ContextRepository；启用语料多源时用 Composite 包装。"""
+    from src.common.corpus.factory import maybe_wrap_composite
+
+    return maybe_wrap_composite(make_local_context_repository())
 
 
 def make_message_repository() -> MessageRepository:

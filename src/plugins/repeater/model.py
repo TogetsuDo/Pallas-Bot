@@ -12,7 +12,7 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message
 
 from src.common.config import BotConfig
 from src.common.db import Message as MessageModel
-from src.common.db import make_context_repository
+from src.common.db.context_repo_access import context_repo
 
 from .ban_manager import BanManager
 from .config import get_repeater_config
@@ -33,9 +33,6 @@ except ImportError:
 
 
 plugin_config = get_repeater_config()
-
-
-context_repo = make_context_repository()
 
 
 @dataclass
