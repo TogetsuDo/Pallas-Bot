@@ -4063,6 +4063,21 @@ def register_extended_api(
         data = await _cached_read(key="corpus-status", loader=_load, ttl_sec=5.0, stale_sec=30.0)
         return JSONResponse({"ok": True, "data": data})
 
+    @router.get(f"{x}/federation-onboarding", include_in_schema=True)
+    async def _federation_onboarding() -> JSONResponse:
+        from src.common.community_stats.federation_onboarding import fetch_federation_onboarding
+
+        async def _load() -> dict[str, Any]:
+            return await fetch_federation_onboarding()
+
+        data = await _cached_read(
+            key="federation-onboarding",
+            loader=_load,
+            ttl_sec=120.0,
+            stale_sec=600.0,
+        )
+        return JSONResponse({"ok": True, "data": data})
+
     @router.get(f"{x}/plugin-run-stats", include_in_schema=True)
     async def _plugin_run_stats(
         self_id: int | None = Query(default=None, ge=1),

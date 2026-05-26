@@ -56,6 +56,43 @@ def build_corpus_status_snapshot() -> dict[str, Any]:
 
     token = str(community_state.get("corpus_token") or cfg.community_token or "").strip()
 
+    control_plane: dict[str, Any] = {}
+    try:
+        from src.common.control_plane.config import get_control_plane_config, should_run_bootstrap_refresh
+        from src.common.control_plane.store import bootstrap_state_valid, load_bootstrap_coord_redis_url
+        from src.common.control_plane.webui_config import get_control_plane_webui_config
+
+        cp_cfg = get_control_plane_config()
+        cp_web = get_control_plane_webui_config()
+        bootstrap_fid = ""
+        bootstrap_expires: int | None = None
+        try:
+            from src.common.community_stats.store import _read_state_raw
+
+            raw = _read_state_raw()
+            boot = raw.get("control_plane_bootstrap")
+            if isinstance(boot, dict):
+                bootstrap_expires = int(boot["expires_at"]) if boot.get("expires_at") is not None else None
+            bootstrap_fid = str(raw.get("federate_id") or "").strip()
+        except Exception:
+            pass
+        ingress_raw = str(cp_web.federate_ingress_enabled or "auto").strip() or "auto"
+        control_plane = {
+            "enabled": bool(cp_web.enabled),
+            "instance_secret_configured": bool((cp_cfg.instance_secret or "").strip()),
+            "federate_id": str(cp_web.federate_id or bootstrap_fid or "").strip(),
+            "federate_ingress_enabled": ingress_raw,
+            "coord_redis_configured": bool(
+                (cp_web.coord_redis_url or "").strip() or load_bootstrap_coord_redis_url()
+            ),
+            "bootstrap_refresh_enabled": should_run_bootstrap_refresh(),
+            "bootstrap_valid": bootstrap_state_valid(),
+            "bootstrap_federate_id": bootstrap_fid,
+            "bootstrap_expires_at": bootstrap_expires,
+        }
+    except Exception:
+        control_plane = {}
+
     return {
         "composite_active": corpus_composite_enabled(cfg),
         "merge_order": list(cfg.merge_order),
@@ -95,5 +132,6 @@ def build_corpus_status_snapshot() -> dict[str, Any]:
             "community_stats_enabled": community_stats_enabled,
             "heartbeat_endpoint": heartbeat_endpoint,
         },
+        "control_plane": control_plane,
         "as_of": int(time.time()),
     }
