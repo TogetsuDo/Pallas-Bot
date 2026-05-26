@@ -22,7 +22,9 @@ FILE_MAP: dict[str, str] = {
     "architecture/settings-storage.md": "architecture/settings-storage.md",
     "architecture/bot_process_sharding.md": "architecture/bot-process-sharding.md",
     "architecture/site-customization-and-updates.md": "architecture/site-customization-and-updates.md",
+    "architecture/control-plane-corpus-federation.md": "architecture/control-plane-corpus-federation.md",
     "common/community_stats.md": "common/community_stats.md",
+    "common/corpus/README.md": "common/corpus.md",
     "common/cmd_perm/README.md": "common/cmd_perm.md",
     "common/webui/README.md": "common/webui.md",
     "common/message_scrub/README.md": "common/message_scrub.md",
@@ -104,6 +106,41 @@ def transform_for_vitepress(text: str) -> str:
     text = re.sub(
         r"\]\(\.\./\.\./common/community_stats\.md([^)]*)\)",
         r"](/common/community_stats\1)",
+        text,
+    )
+    text = re.sub(
+        r"\]\(\.\./common/corpus/README\.md([^)]*)\)",
+        r"](/common/corpus\1)",
+        text,
+    )
+    text = re.sub(
+        r"\]\(\.\./\.\./common/corpus/README\.md([^)]*)\)",
+        r"](/common/corpus\1)",
+        text,
+    )
+    text = re.sub(
+        r"\]\(common/corpus/README\.md([^)]*)\)",
+        r"](/common/corpus\1)",
+        text,
+    )
+    text = re.sub(
+        r"\]\(corpus/README\.md([^)]*)\)",
+        r"](/common/corpus\1)",
+        text,
+    )
+    text = re.sub(
+        r"\]\(\.\./architecture/control-plane-corpus-federation\.md([^)]*)\)",
+        r"](/architecture/control-plane-corpus-federation\1)",
+        text,
+    )
+    text = re.sub(
+        r"\]\(\.\./\.\./architecture/control-plane-corpus-federation\.md([^)]*)\)",
+        r"](/architecture/control-plane-corpus-federation\1)",
+        text,
+    )
+    text = re.sub(
+        r"\]\(architecture/control-plane-corpus-federation\.md([^)]*)\)",
+        r"](/architecture/control-plane-corpus-federation\1)",
         text,
     )
     text = re.sub(
