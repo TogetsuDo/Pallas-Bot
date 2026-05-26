@@ -9,6 +9,7 @@ _COUNTERS = (
     "events",
     "early_fleet",
     "early_not_at_target",
+    "early_federate",
     "fanout_bypass",
     "claim_won",
     "claim_lost",
@@ -48,7 +49,12 @@ def record_ingress_event() -> None:
 
 def record_ingress_early_discard(reason: str) -> None:
     _rollover_if_needed()
-    key = "early_fleet" if reason == "fleet" else "early_not_at_target"
+    if reason == "fleet":
+        key = "early_fleet"
+    elif reason == "federate":
+        key = "early_federate"
+    else:
+        key = "early_not_at_target"
     _state[key] += 1
 
 

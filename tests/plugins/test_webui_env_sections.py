@@ -7,6 +7,13 @@ skip_no_message_scrub = pytest.mark.skipif(not _MS_CFG.is_file(), reason="无 me
 
 
 @skip_no_message_scrub
+def test_list_webui_env_sections_contains_control_plane():
+    from src.common.webui import list_webui_env_sections
+
+    rows = list_webui_env_sections()
+    assert any(r["id"] == "control_plane" for r in rows)
+
+
 def test_list_webui_env_sections_contains_message_scrub():
     from src.common.webui import list_webui_env_sections
 

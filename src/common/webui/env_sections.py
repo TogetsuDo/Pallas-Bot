@@ -152,6 +152,28 @@ def _plugin_env_section_from_module(
     )
 
 
+def _control_plane_section() -> WebuiEnvSection:
+    from src.common.control_plane.webui_config import ControlPlaneWebuiConfig, get_control_plane_webui_config
+
+    return WebuiEnvSection(
+        id="control_plane",
+        title="联邦控制面",
+        module_label="src.common.control_plane",
+        model_cls=ControlPlaneWebuiConfig,
+        read_current=get_control_plane_webui_config,
+        field_to_env={
+            "enabled": "PALLAS_CONTROL_PLANE_ENABLED",
+            "bootstrap_url": "PALLAS_CONTROL_PLANE_BOOTSTRAP_URL",
+            "instance_secret": "PALLAS_INSTANCE_SECRET",
+            "federate_id": "PALLAS_FEDERATE_ID",
+            "federate_ingress_enabled": "PALLAS_FEDERATE_INGRESS_ENABLED",
+            "federate_redis_prefix": "PALLAS_FEDERATE_REDIS_PREFIX",
+            "coord_redis_url": "PALLAS_COORD_REDIS_URL",
+        },
+        skip_fields=frozenset(),
+    )
+
+
 def _ingress_fanout_section() -> WebuiEnvSection:
     from src.common.ingress.config import IngressFanoutConfig, get_ingress_fanout_config
 
@@ -211,6 +233,8 @@ def _registered_sections() -> tuple[WebuiEnvSection, ...]:
     parts: list[WebuiEnvSection] = []
     if (_COMMON_ROOT / "message_scrub" / "config.py").is_file():
         parts.append(_message_scrub_section())
+    if (_COMMON_ROOT / "control_plane" / "webui_config.py").is_file():
+        parts.append(_control_plane_section())
     if (_COMMON_ROOT / "ingress" / "config.py").is_file():
         parts.append(_ingress_fanout_section())
     repeater_learn_cfg = _COMMON_ROOT.parent / "plugins" / "repeater" / "learn_runtime_config.py"
@@ -320,6 +344,8 @@ def webui_env_section_payload(
         base.update(_cmd_perm_payload_extras(perm_src))
     elif section_id == "pallas_webui":
         base.update(_pallas_webui_payload_extras())
+    elif section_id == "control_plane":
+        base["hot_reload"] = True
     return base
 
 
@@ -404,6 +430,36 @@ def apply_webui_env_section_patch(section_id: str, patch: dict[str, Any]) -> dic
             clear_cmd_perm_cache()
         except Exception:
             pass
+    elif section_id == "control_plane":
+        try:
+            from nonebot import logger
+
+            from src.common.control_plane.bootstrap_client import clear_bootstrap_runtime_caches
+            from src.common.control_plane.config import clear_control_plane_config_cache
+            from src.common.control_plane.webui_config import clear_control_plane_webui_config_cache
+            from src.common.federate.config import clear_federate_config_cache
+
+            clear_control_plane_webui_config_cache()
+            clear_control_plane_config_cache()
+            clear_federate_config_cache()
+            clear_bootstrap_runtime_caches()
+            import asyncio
+
+            from src.common.control_plane.bootstrap_client import refresh_control_plane_bootstrap
+
+            async def run_bootstrap() -> None:
+                ok = await refresh_control_plane_bootstrap(force=True)
+                logger.info("control_plane: WebUI 已热重载，bootstrap refresh ok={}", ok)
+
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(run_bootstrap())
+            except RuntimeError:
+                asyncio.run(run_bootstrap())
+        except Exception as e:
+            from nonebot import logger
+
+            logger.warning("control_plane hot reload failed: {}", e)
     elif section_id == "ingress_fanout":
         try:
             from src.common.ingress.config import clear_ingress_fanout_config_cache

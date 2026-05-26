@@ -14,6 +14,7 @@ from src.common.cmd_perm.metadata_defaults import (
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
+from src.common.federate.ingress import claim_federate_group_message_ingress
 from src.common.ingress.cage_plaintext import is_cage_plaintext
 from src.common.ingress.drink_plaintext import is_drink_plaintext
 from src.common.ingress.roulette_plaintext import is_roulette_plaintext
@@ -102,6 +103,12 @@ async def ingress_group_message_gate(bot, event) -> None:
             raise IgnoredException("not at-target bot")
 
     plain = (event.get_plaintext() or "").strip()
+    body = plain or event.raw_message
+    if not await claim_federate_group_message_ingress(event):
+        if metrics:
+            record_ingress_early_discard("federate")
+        raise IgnoredException("federate ingress claim lost")
+
     if is_sharding_active() and (
         is_ingress_fanout_plaintext(plain)
         or should_skip_ingress_claim_for_shard_bot_count(plain)
@@ -113,7 +120,6 @@ async def ingress_group_message_gate(bot, event) -> None:
             record_ingress_fanout_bypass()
         return
 
-    body = plain or event.raw_message
     if is_sharding_active():
         shard_id = get_shard_registry_settings().shard_id
         # 不传 bot_id：避免「代表牛」不在群内时非代表牛永远无法通过文件 claim（如群内发牛牛网关）
@@ -168,6 +174,15 @@ async def ingress_group_message_gate(bot, event) -> None:
 async def _log_ingress_gate() -> None:
     if not ingress_gate_active():
         return
+    from src.common.federate.config import federate_ingress_active, resolved_federate_id
+
     n = len(get_fleet_bot_ids())
     mode = "shard" if is_sharding_active() else "unified"
-    logger.info("ingress_gate: active mode={} fleet_bots={}", mode, n)
+    fed = "on" if federate_ingress_active() else "off"
+    logger.info(
+        "ingress_gate: active mode={} fleet_bots={} federate_ingress={} federate_id={}",
+        mode,
+        n,
+        fed,
+        resolved_federate_id() or "-",
+    )

@@ -177,6 +177,32 @@ def _flatten_corpus(section: Any) -> dict[str, str]:
     return out
 
 
+def _flatten_control_plane(section: Any) -> dict[str, str]:
+    if not isinstance(section, dict):
+        return {}
+    key_map = {
+        "enabled": "PALLAS_CONTROL_PLANE_ENABLED",
+        "bootstrap_url": "PALLAS_CONTROL_PLANE_BOOTSTRAP_URL",
+        "instance_secret": "PALLAS_INSTANCE_SECRET",
+        "federate_id": "PALLAS_FEDERATE_ID",
+        "ingress_enabled": "PALLAS_FEDERATE_INGRESS_ENABLED",
+        "redis_prefix": "PALLAS_FEDERATE_REDIS_PREFIX",
+    }
+    out: dict[str, str] = {}
+    for k, env_key in key_map.items():
+        if k in section and section[k] is not None:
+            out[env_key] = env_value_to_str(section[k])
+    coord = section.get("coord")
+    if isinstance(coord, dict):
+        if coord.get("redis_url") is not None:
+            out["PALLAS_COORD_REDIS_URL"] = env_value_to_str(coord["redis_url"])
+        if coord.get("redis_prefix") is not None:
+            out["PALLAS_FEDERATE_REDIS_PREFIX"] = env_value_to_str(coord["redis_prefix"])
+        if coord.get("claim_ttl_sec") is not None:
+            out["PALLAS_COORD_REDIS_CLAIM_TTL_SEC"] = env_value_to_str(coord["claim_ttl_sec"])
+    return out
+
+
 def _flatten_community_stats(section: Any) -> dict[str, str]:
     if not isinstance(section, dict):
         return {}
@@ -198,6 +224,7 @@ def _load_pallas_toml_upper() -> dict[str, str]:
     merged: dict[str, str] = {}
     merged.update(_flatten_bootstrap(data.get("bootstrap")))
     merged.update(_flatten_community_stats(data.get("community_stats")))
+    merged.update(_flatten_control_plane(data.get("control_plane")))
     merged.update(_flatten_corpus(data.get("corpus")))
     merged.update(_flatten_env_section(data.get("env")))
     return merged

@@ -47,6 +47,18 @@ db = "PallasBot"
 # PG_POOL_SIZE = "12"
 # PG_MAX_OVERFLOW = "8"
 
+# 联邦控制面（Phase 2 ingress；协调 Redis 可手写或 bootstrap 下发）
+# [control_plane]
+# enabled = true                  # 默认开；WebUI「通用配置 → 联邦控制面」可改
+# bootstrap_url = "https://stats.pallasbot.top/v1/bootstrap"  # 省略则从心跳域推导
+# instance_secret = ""   # 与中心 INSTANCE_SECRET 一致；亦可用环境变量 PALLAS_INSTANCE_SECRET
+# federate_id = ""       # 可省略，由 bootstrap 落盘到 community_stats.json
+# ingress_enabled = "auto"
+# [control_plane.coord]
+# redis_url = "redis://127.0.0.1:6379/2"
+# redis_prefix = "pallas:fed:my_pool"
+# claim_ttl_sec = 86400
+
 # 语料多源（local + 可选 community）；社区语料默认关，见 WebUI「语料联邦」
 # [corpus]
 # community_enabled = false       # 默认关；true 后配合 auto_enroll 接入 stats 中心

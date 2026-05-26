@@ -7,6 +7,7 @@ from src.common.cmd_perm.metadata_defaults import (
     PLUGIN_MENU_TEMPLATE,
 )
 from src.common.community_stats.scheduler import start_community_stats_reporter
+from src.common.control_plane.bootstrap_client import ensure_control_plane_bootstrap
 from src.common.corpus.enroll import ensure_corpus_community_enrolled
 
 __plugin_meta__ = PluginMetadata(
@@ -28,6 +29,10 @@ driver = get_driver()
 
 @driver.on_startup
 async def community_stats_startup() -> None:
+    try:
+        await ensure_control_plane_bootstrap()
+    except Exception as e:
+        logger.warning("control_plane bootstrap: startup failed: {}", e)
     try:
         await ensure_corpus_community_enrolled()
     except Exception as e:

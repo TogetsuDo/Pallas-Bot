@@ -3,7 +3,7 @@
 本文描述 **全量 Provision（Tenant + Bootstrap + 联邦）** 与 **外接社区语料** 在同一控制面下的 Bot 侧接入方式。
 
 > **Phase 1**：`local` + **community** 多读源、auto enroll、contribute 默认开、主/备语料读 failover、WebUI 语料联邦配置与 `/corpus-status`。  
-> **Phase 2（未实现）**：联邦 **fed** 第二 PG、`bootstrap`、跨 deployment **ingress 去重**。
+> **Phase 2（进行中）**：**ingress 去重**（`src/common/federate/` + `_ingress_gate`）已接入；**fed** 第二 PG、`bootstrap`、fleet 快照仍待交付。
 
 用户向说明见 [语料联邦（corpus）](../common/corpus/README.md)。
 
@@ -413,13 +413,14 @@ DbConn:
 | `src/common/config/repo_settings.py` | flatten `[corpus]`、`[community_stats]` |
 | `config/pallas.example.toml` | `[corpus]` 示例注释 |
 
-### Phase 2 规划（未交付）
+### Phase 2（ingress 已交付 / 其余待做）
 
 | 路径 | 说明 |
 |------|------|
-| `src/common/federate/` | `try_claim_cross_federate_message`、fleet snapshot 客户端 |
-| `src/common/multi_bot/fleet.py` | 合并远程 fleet QQ |
-| `src/plugins/repeater/__init__.py` | 联邦 ingress 钩子 |
+| `src/common/federate/` | ✅ `try_claim_cross_federate_message`、Redis 前缀 claim；⏳ fleet snapshot 客户端 |
+| `src/common/multi_bot/fleet.py` | ⏳ 合并远程 fleet QQ |
+| `src/plugins/_ingress_gate/__init__.py` | ✅ 联邦 ingress 抢占（fanout 前） |
+| `src/plugins/repeater/__init__.py` | ✅ 复读路径二次校验 |
 
 ### 不宜改动
 
@@ -434,9 +435,9 @@ DbConn:
 2. ~~`RemoteCorpusRepository` + enroll + HTTP 测试~~ ✅  
 3. ~~控制面 `POST /v1/corpus/enroll`（Community-Stats）~~ ✅  
 4. ~~WebUI / env：`[corpus]`、`/corpus-config`、首页状态~~ ✅  
-5. `bootstrap_client` + `[control_plane]` + `corpus_fed` 第二 PG ⏳  
+5. ~~`bootstrap_client` + `[control_plane]` 协调 Redis 下发~~ ✅（`GET /v1/bootstrap` + Bot 落盘）；`corpus_fed` 第二 PG ⏳  
 6. heartbeat `actions` + 增强 write_fanout ⏳  
-7. 联邦 Redis + **ingress 去重**（Phase 2，非语料 block）⏳  
+7. ~~联邦 Redis + **ingress 去重**（Phase 2，非语料 block）~~ ✅（须 `PALLAS_FEDERATE_ID` + 共享 `REDIS_URL`）  
 
 ---
 
