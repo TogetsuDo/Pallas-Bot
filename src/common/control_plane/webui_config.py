@@ -23,31 +23,13 @@ def setting_str(name: str, default: str = "") -> str:
 class ControlPlaneWebuiConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    enabled: bool = Field(default=True, description="拉取中心 bootstrap（federate_id、协调 Redis）")
-    bootstrap_url: str = Field(
-        default="",
-        description="留空则从社区心跳域推导 /v1/bootstrap",
-    )
-    instance_secret: str = Field(
-        default="",
-        description="与中心 INSTANCE_SECRET 一致；bootstrap 鉴权",
-    )
-    federate_id: str = Field(
-        default="",
-        description="联邦池 ID；可留空由 bootstrap 落盘",
-    )
-    federate_ingress_enabled: str = Field(
-        default="auto",
-        description="跨 deployment ingress 去重：auto | true | false",
-    )
-    federate_redis_prefix: str = Field(
-        default="",
-        description="协调 Redis key 前缀；留空由 bootstrap 或按 federate_id 生成",
-    )
-    coord_redis_url: str = Field(
-        default="",
-        description="联邦协调 Redis（勿填分片 REDIS_URL）；留空由 bootstrap 下发",
-    )
+    enabled: bool = Field(default=True, description="是否向中心自动领取联邦配置")
+    bootstrap_url: str = Field(default="", description="中心配置地址，留空则自动选择主站或备站")
+    instance_secret: str = Field(default="", description="入池密钥，与中心一致")
+    federate_id: str = Field(default="", description="联邦池编号，可留空由中心写入")
+    federate_ingress_enabled: str = Field(default="auto", description="重复消息去重：自动、开启或关闭")
+    federate_redis_prefix: str = Field(default="", description="去重键前缀，一般留空")
+    coord_redis_url: str = Field(default="", description="去重服务器地址，一般留空由中心下发")
 
 
 def repair_misplaced_federate_redis_env() -> bool:

@@ -21,7 +21,7 @@ from src.common.corpus.config import (
 from src.common.corpus.store import corpus_community_enrollment_valid, load_corpus_community_state
 
 
-def build_corpus_status_snapshot() -> dict[str, Any]:
+async def build_corpus_status_snapshot() -> dict[str, Any]:
     cfg = get_corpus_config()
     community_state = load_corpus_community_state()
     enrolled = corpus_community_enrollment_valid(community_state)
@@ -93,6 +93,15 @@ def build_corpus_status_snapshot() -> dict[str, Any]:
     except Exception:
         control_plane = {}
 
+    community_usage: dict[str, Any] | None = None
+    if community_on and (enrolled or manual) and token:
+        try:
+            from src.common.corpus.usage import fetch_corpus_community_usage
+
+            community_usage = await fetch_corpus_community_usage()
+        except Exception:
+            community_usage = None
+
     return {
         "composite_active": corpus_composite_enabled(cfg),
         "merge_order": list(cfg.merge_order),
@@ -125,6 +134,7 @@ def build_corpus_status_snapshot() -> dict[str, Any]:
                 "token_present": bool(token),
                 "enrolled_at": int(enrolled_at) if enrolled_at is not None else None,
                 "expires_at": int(expires_at) if expires_at is not None else None,
+                "usage": community_usage,
             },
         },
         "deployment": {

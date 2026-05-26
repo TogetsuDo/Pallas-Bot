@@ -78,7 +78,7 @@ enabled = false
 
 | 项 | 说明 |
 | --- | --- |
-| 状态 API | `GET /pallas/api/corpus-status`（控制台同源） |
+| 状态 API | `GET /pallas/api/corpus-status`（含中心 `GET /v1/corpus/usage` 代理的本部署用量） |
 | 社区聚合 | `GET /pallas/api/community-stats`（含中心 `corpus.*` 计数） |
 | 预灌工具 | `uv run python tools/seed_community_corpus.py`（运维向中心贡献样本） |
 | 落盘 | `data/pallas_config/community_stats.json`（`deployment_id` + `corpus_community`） |

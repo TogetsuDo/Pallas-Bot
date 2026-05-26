@@ -1,9 +1,20 @@
 from __future__ import annotations
 
+import pytest
+
 from src.common.corpus.status import build_corpus_status_snapshot
 
 
-def test_build_corpus_status_snapshot_shape(monkeypatch, tmp_path):
+async def _mock_no_usage():
+    return None
+
+
+@pytest.mark.asyncio
+async def test_build_corpus_status_snapshot_shape(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        "src.common.corpus.usage.fetch_corpus_community_usage",
+        _mock_no_usage,
+    )
     monkeypatch.setattr(
         "src.common.corpus.status.load_corpus_community_state",
         lambda: {
@@ -23,10 +34,11 @@ def test_build_corpus_status_snapshot_shape(monkeypatch, tmp_path):
     from src.common.corpus.config import clear_corpus_config_cache
 
     clear_corpus_config_cache()
-    snap = build_corpus_status_snapshot()
+    snap = await build_corpus_status_snapshot()
     assert snap["composite_active"] is True
     assert snap["sources"]["local"]["enabled"] is True
     assert snap["sources"]["community"]["enrolled"] is True
     assert snap["sources"]["community"]["contribute"] is False
     assert snap["sources"]["community"]["token_present"] is True
+    assert snap["sources"]["community"]["usage"] is None
     assert "deployment_id" in snap["deployment"]

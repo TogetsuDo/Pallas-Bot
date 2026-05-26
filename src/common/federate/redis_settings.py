@@ -60,7 +60,26 @@ def federate_redis_ping(url: str) -> bool:
     try:
         client = redis.Redis.from_url(url, socket_connect_timeout=1.0, socket_timeout=1.0)
         return bool(client.ping())
-    except Exception:
+    except Exception as e:
+        from urllib.parse import urlparse
+
+        host = urlparse(url).hostname or ""
+        if host:
+            import socket
+
+            try:
+                socket.getaddrinfo(host, None)
+            except socket.gaierror:
+                from nonebot import logger
+
+                logger.warning(
+                    "federate coord redis: 无法解析主机 {}（请为 coord 配置 DNS A 记录）",
+                    host,
+                )
+                return False
+        from nonebot import logger
+
+        logger.debug("federate coord redis ping failed host={}: {}", host or "?", e)
         return False
 
 

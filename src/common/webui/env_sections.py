@@ -231,8 +231,7 @@ def _registered_sections() -> tuple[WebuiEnvSection, ...]:
     if _sections_cache is not None:
         return _sections_cache
     parts: list[WebuiEnvSection] = []
-    if (_COMMON_ROOT / "message_scrub" / "config.py").is_file():
-        parts.append(_message_scrub_section())
+    parts.append(_cmd_perm_section())
     if (_COMMON_ROOT / "control_plane" / "webui_config.py").is_file():
         parts.append(_control_plane_section())
     if (_COMMON_ROOT / "ingress" / "config.py").is_file():
@@ -240,7 +239,8 @@ def _registered_sections() -> tuple[WebuiEnvSection, ...]:
     repeater_learn_cfg = _COMMON_ROOT.parent / "plugins" / "repeater" / "learn_runtime_config.py"
     if repeater_learn_cfg.is_file():
         parts.append(_repeater_learn_section())
-    parts.append(_cmd_perm_section())
+    if (_COMMON_ROOT / "message_scrub" / "config.py").is_file():
+        parts.append(_message_scrub_section())
     parts.extend(
         s
         for s in (
@@ -269,26 +269,60 @@ def _registered_sections() -> tuple[WebuiEnvSection, ...]:
     return _sections_cache
 
 
+_COMMON_CONFIG_SECTION_ORDER: tuple[str, ...] = (
+    "cmd_perm",
+    "control_plane",
+    "corpus_federation",
+    "ingress_fanout",
+    "repeater_learn",
+    "message_scrub",
+    "service_gateways",
+    "pallas_webui",
+    "pallas_protocol",
+    "help",
+)
+
+
 def list_webui_env_sections() -> list[dict[str, str]]:
+    from .control_plane_section import CONTROL_PLANE_SECTION_ID, CONTROL_PLANE_TITLE
     from .corpus_federation_section import CORPUS_FEDERATION_SECTION_ID, CORPUS_FEDERATION_TITLE
     from .service_gateways_section import (
         SERVICE_GATEWAYS_SECTION_ID,
         SERVICE_GATEWAYS_TITLE,
     )
 
-    rows = [{"id": s.id, "title": s.title} for s in _registered_sections()]
-    rows.extend([
-        {"id": CORPUS_FEDERATION_SECTION_ID, "title": CORPUS_FEDERATION_TITLE},
-        {"id": SERVICE_GATEWAYS_SECTION_ID, "title": SERVICE_GATEWAYS_TITLE},
-    ])
-    return rows
+    by_id: dict[str, dict[str, str]] = {s.id: {"id": s.id, "title": s.title} for s in _registered_sections()}
+    by_id[CORPUS_FEDERATION_SECTION_ID] = {
+        "id": CORPUS_FEDERATION_SECTION_ID,
+        "title": CORPUS_FEDERATION_TITLE,
+    }
+    by_id[SERVICE_GATEWAYS_SECTION_ID] = {
+        "id": SERVICE_GATEWAYS_SECTION_ID,
+        "title": SERVICE_GATEWAYS_TITLE,
+    }
+    if CONTROL_PLANE_SECTION_ID in by_id:
+        by_id[CONTROL_PLANE_SECTION_ID]["title"] = CONTROL_PLANE_TITLE
+
+    ordered: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for sid in _COMMON_CONFIG_SECTION_ORDER:
+        row = by_id.get(sid)
+        if row is None:
+            continue
+        ordered.append(row)
+        seen.add(sid)
+    for sid, row in by_id.items():
+        if sid not in seen:
+            ordered.append(row)
+    return ordered
 
 
 def get_webui_env_section(section_id: str) -> WebuiEnvSection:
+    from .control_plane_section import CONTROL_PLANE_SECTION_ID
     from .corpus_federation_section import CORPUS_FEDERATION_SECTION_ID
 
-    if section_id == CORPUS_FEDERATION_SECTION_ID:
-        raise ValueError("corpus_federation 使用专用 payload，勿走 WebuiEnvSection")
+    if section_id in (CORPUS_FEDERATION_SECTION_ID, CONTROL_PLANE_SECTION_ID):
+        raise ValueError(f"{section_id} 使用专用 payload，勿走 WebuiEnvSection")
     sid = (section_id or "").strip()
     for s in _registered_sections():
         if s.id == sid:
@@ -302,9 +336,12 @@ def webui_env_section_payload(
     current_values: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """GET 默认读进程内配置；PUT 后应传 ``validated``，与刚写入 ``.env`` 的值一致。"""
+    from .control_plane_section import CONTROL_PLANE_SECTION_ID, control_plane_payload
     from .corpus_federation_section import CORPUS_FEDERATION_SECTION_ID, corpus_federation_payload
     from .service_gateways_section import SERVICE_GATEWAYS_SECTION_ID, service_gateways_payload
 
+    if section_id == CONTROL_PLANE_SECTION_ID:
+        return control_plane_payload(current_values=current_values)
     if section_id == CORPUS_FEDERATION_SECTION_ID:
         return corpus_federation_payload(current_values=current_values)
     if section_id == SERVICE_GATEWAYS_SECTION_ID:
@@ -344,21 +381,6 @@ def webui_env_section_payload(
         base.update(_cmd_perm_payload_extras(perm_src))
     elif section_id == "pallas_webui":
         base.update(_pallas_webui_payload_extras())
-    elif section_id == "control_plane":
-        base["hot_reload"] = True
-        shard_redis = ""
-        try:
-            from src.common.config.repo_settings import repo_env_raw_value
-
-            shard_redis = str(repo_env_raw_value("REDIS_URL") or "").strip()
-        except Exception:
-            pass
-        base["field_notes"] = {
-            "coord_redis_url": (
-                "仅联邦 ingress 用，与分片 REDIS_URL 分离。"
-                + (f" 当前分片 Redis：{shard_redis}" if shard_redis else "")
-            ),
-        }
     return base
 
 
@@ -409,12 +431,15 @@ def _cmd_perm_payload_extras(cfg_obj: Any) -> dict[str, Any]:
 
 
 def apply_webui_env_section_patch(section_id: str, patch: dict[str, Any]) -> dict[str, Any]:
+    from .control_plane_section import CONTROL_PLANE_SECTION_ID, apply_control_plane_patch
     from .corpus_federation_section import CORPUS_FEDERATION_SECTION_ID, apply_corpus_federation_patch
     from .service_gateways_section import (
         SERVICE_GATEWAYS_SECTION_ID,
         apply_service_gateways_patch,
     )
 
+    if section_id == CONTROL_PLANE_SECTION_ID:
+        return apply_control_plane_patch(patch)
     if section_id == CORPUS_FEDERATION_SECTION_ID:
         return apply_corpus_federation_patch(patch)
     if section_id == SERVICE_GATEWAYS_SECTION_ID:
@@ -428,20 +453,7 @@ def apply_webui_env_section_patch(section_id: str, patch: dict[str, Any]) -> dic
     merged = {**current, **patch}
     validated = s.model_cls(**merged).model_dump(mode="python")
     items = {s.field_to_env[k]: env_value_to_str(validated[k]) for k in patch}
-    if section_id == "control_plane" and "coord_redis_url" in patch:
-        if not str(validated.get("coord_redis_url") or "").strip():
-            items["PALLAS_FEDERATE_COORD_REDIS_URL"] = ""
     upsert_env_dotenv_items(items)
-    if section_id == "control_plane":
-        try:
-            from src.common.config.repo_settings import remove_repo_settings_keys
-            from src.common.control_plane.webui_config import repair_misplaced_federate_redis_env
-
-            if not str(validated.get("coord_redis_url") or "").strip():
-                remove_repo_settings_keys(["PALLAS_FEDERATE_COORD_REDIS_URL"])
-            repair_misplaced_federate_redis_env()
-        except Exception:
-            pass
     if section_id == "message_scrub":
         try:
             from src.common.message_scrub import reload_message_scrub_caches
@@ -456,42 +468,6 @@ def apply_webui_env_section_patch(section_id: str, patch: dict[str, Any]) -> dic
             clear_cmd_perm_cache()
         except Exception:
             pass
-    elif section_id == "control_plane":
-        if "coord_redis_url" in patch and not str(patch.get("coord_redis_url") or "").strip():
-            patch = {**patch, "coord_redis_url": ""}
-        try:
-            from nonebot import logger
-
-            from src.common.control_plane.bootstrap_client import clear_bootstrap_runtime_caches
-            from src.common.control_plane.config import clear_control_plane_config_cache
-            from src.common.control_plane.webui_config import (
-                clear_control_plane_webui_config_cache,
-                repair_misplaced_federate_redis_env,
-            )
-            from src.common.federate.config import clear_federate_config_cache
-
-            repair_misplaced_federate_redis_env()
-            clear_control_plane_webui_config_cache()
-            clear_control_plane_config_cache()
-            clear_federate_config_cache()
-            clear_bootstrap_runtime_caches()
-            import asyncio
-
-            from src.common.control_plane.bootstrap_client import refresh_control_plane_bootstrap
-
-            async def run_bootstrap() -> None:
-                ok = await refresh_control_plane_bootstrap(force=True)
-                logger.info("control_plane: WebUI 已热重载，bootstrap refresh ok={}", ok)
-
-            try:
-                loop = asyncio.get_running_loop()
-                loop.create_task(run_bootstrap())
-            except RuntimeError:
-                asyncio.run(run_bootstrap())
-        except Exception as e:
-            from nonebot import logger
-
-            logger.warning("control_plane hot reload failed: {}", e)
     elif section_id == "ingress_fanout":
         try:
             from src.common.ingress.config import clear_ingress_fanout_config_cache
