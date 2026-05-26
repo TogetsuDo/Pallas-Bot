@@ -168,7 +168,7 @@ def _control_plane_section() -> WebuiEnvSection:
             "federate_id": "PALLAS_FEDERATE_ID",
             "federate_ingress_enabled": "PALLAS_FEDERATE_INGRESS_ENABLED",
             "federate_redis_prefix": "PALLAS_FEDERATE_REDIS_PREFIX",
-            "coord_redis_url": "PALLAS_COORD_REDIS_URL",
+            "coord_redis_url": "PALLAS_FEDERATE_COORD_REDIS_URL",
         },
         skip_fields=frozenset(),
     )
@@ -346,6 +346,19 @@ def webui_env_section_payload(
         base.update(_pallas_webui_payload_extras())
     elif section_id == "control_plane":
         base["hot_reload"] = True
+        shard_redis = ""
+        try:
+            from src.common.config.repo_settings import repo_env_raw_value
+
+            shard_redis = str(repo_env_raw_value("REDIS_URL") or "").strip()
+        except Exception:
+            pass
+        base["field_notes"] = {
+            "coord_redis_url": (
+                "仅联邦 ingress 用，与分片 REDIS_URL 分离。"
+                + (f" 当前分片 Redis：{shard_redis}" if shard_redis else "")
+            ),
+        }
     return base
 
 
@@ -415,7 +428,20 @@ def apply_webui_env_section_patch(section_id: str, patch: dict[str, Any]) -> dic
     merged = {**current, **patch}
     validated = s.model_cls(**merged).model_dump(mode="python")
     items = {s.field_to_env[k]: env_value_to_str(validated[k]) for k in patch}
+    if section_id == "control_plane" and "coord_redis_url" in patch:
+        if not str(validated.get("coord_redis_url") or "").strip():
+            items["PALLAS_FEDERATE_COORD_REDIS_URL"] = ""
     upsert_env_dotenv_items(items)
+    if section_id == "control_plane":
+        try:
+            from src.common.config.repo_settings import remove_repo_settings_keys
+            from src.common.control_plane.webui_config import repair_misplaced_federate_redis_env
+
+            if not str(validated.get("coord_redis_url") or "").strip():
+                remove_repo_settings_keys(["PALLAS_FEDERATE_COORD_REDIS_URL"])
+            repair_misplaced_federate_redis_env()
+        except Exception:
+            pass
     if section_id == "message_scrub":
         try:
             from src.common.message_scrub import reload_message_scrub_caches
@@ -431,14 +457,20 @@ def apply_webui_env_section_patch(section_id: str, patch: dict[str, Any]) -> dic
         except Exception:
             pass
     elif section_id == "control_plane":
+        if "coord_redis_url" in patch and not str(patch.get("coord_redis_url") or "").strip():
+            patch = {**patch, "coord_redis_url": ""}
         try:
             from nonebot import logger
 
             from src.common.control_plane.bootstrap_client import clear_bootstrap_runtime_caches
             from src.common.control_plane.config import clear_control_plane_config_cache
-            from src.common.control_plane.webui_config import clear_control_plane_webui_config_cache
+            from src.common.control_plane.webui_config import (
+                clear_control_plane_webui_config_cache,
+                repair_misplaced_federate_redis_env,
+            )
             from src.common.federate.config import clear_federate_config_cache
 
+            repair_misplaced_federate_redis_env()
             clear_control_plane_webui_config_cache()
             clear_control_plane_config_cache()
             clear_federate_config_cache()

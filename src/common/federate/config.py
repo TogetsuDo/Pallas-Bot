@@ -7,7 +7,7 @@ from functools import lru_cache
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.common.config.repo_settings import repo_env_raw_value
-from src.common.coord.redis_settings import coord_redis_enabled, resolve_coord_redis_url
+from src.common.federate.redis_settings import federate_redis_available
 
 _PREFIX = "PALLAS_FEDERATE_"
 
@@ -52,8 +52,10 @@ def get_federate_config() -> FederateConfig:
 
 
 def clear_federate_config_cache() -> None:
+    from src.common.federate.redis_settings import clear_federate_redis_client_cache
+
     get_federate_config.cache_clear()
-    federate_redis_available.cache_clear()
+    clear_federate_redis_client_cache()
 
 
 def load_persisted_federate_id() -> str:
@@ -89,13 +91,6 @@ def federate_redis_prefix(cfg: FederateConfig | None = None) -> str:
         return ""
     safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in fid)
     return f"pallas:fed:{safe}"
-
-
-@lru_cache(maxsize=1)
-def federate_redis_available() -> bool:
-    if not resolve_coord_redis_url():
-        return False
-    return coord_redis_enabled()
 
 
 def federate_ingress_enabled(cfg: FederateConfig | None = None) -> bool:

@@ -49,13 +49,9 @@ def bootstrap_headers(cfg: ControlPlaneConfig | None = None) -> dict[str, str]:
 
 
 def clear_bootstrap_runtime_caches() -> None:
-    from src.common.coord.redis_claim import clear_coord_redis_client_cache
-    from src.common.coord.redis_settings import clear_coord_redis_settings_cache
     from src.common.federate.config import clear_federate_config_cache
 
     clear_federate_config_cache()
-    clear_coord_redis_settings_cache()
-    clear_coord_redis_client_cache()
 
 
 async def refresh_control_plane_bootstrap(*, force: bool = False) -> bool:

@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from src.common.coord.redis_claim import get_coord_redis_client
-from src.common.coord.redis_settings import coord_redis_claim_ttl_sec
 from src.common.federate.config import federate_redis_prefix
+from src.common.federate.redis_settings import federate_claim_ttl_sec, get_federate_redis_client
 
 
 def federate_claim_redis_key(plugin: str, group_id: int, claim_key: int) -> str:
@@ -13,7 +12,7 @@ def federate_claim_redis_key(plugin: str, group_id: int, claim_key: int) -> str:
 
 
 def read_federate_claim_owner_redis_sync(plugin: str, group_id: int, claim_key: int) -> str | None:
-    client = get_coord_redis_client()
+    client = get_federate_redis_client()
     if client is None:
         return None
     key = federate_claim_redis_key(plugin, group_id, claim_key)
@@ -36,7 +35,7 @@ def try_claim_federate_message_redis_sync(
     deployment_id: str,
 ) -> bool | None:
     """True/False 表示抢占结果；None 表示未走 Redis。"""
-    client = get_coord_redis_client()
+    client = get_federate_redis_client()
     if client is None:
         return None
     prefix = federate_redis_prefix()
@@ -46,7 +45,7 @@ def try_claim_federate_message_redis_sync(
     owner = deployment_id.strip().lower()
     if not owner:
         return False
-    ttl = coord_redis_claim_ttl_sec()
+    ttl = federate_claim_ttl_sec()
     try:
         if client.set(key, owner, nx=True, ex=ttl):
             return True

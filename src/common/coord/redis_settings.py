@@ -23,14 +23,6 @@ def resolve_coord_redis_url() -> str | None:
         val = _setting(key)
         if val:
             return val
-    try:
-        from src.common.control_plane.store import load_bootstrap_coord_redis_url
-
-        boot_url = load_bootstrap_coord_redis_url()
-        if boot_url:
-            return boot_url
-    except Exception:
-        pass
     ai_env = repo_root().parent / "Pallas-Bot-AI" / "config" / "pallas.toml"
     if ai_env.is_file():
         try:

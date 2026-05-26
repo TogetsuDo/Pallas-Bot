@@ -195,11 +195,11 @@ def _flatten_control_plane(section: Any) -> dict[str, str]:
     coord = section.get("coord")
     if isinstance(coord, dict):
         if coord.get("redis_url") is not None:
-            out["PALLAS_COORD_REDIS_URL"] = env_value_to_str(coord["redis_url"])
+            out["PALLAS_FEDERATE_COORD_REDIS_URL"] = env_value_to_str(coord["redis_url"])
         if coord.get("redis_prefix") is not None:
             out["PALLAS_FEDERATE_REDIS_PREFIX"] = env_value_to_str(coord["redis_prefix"])
         if coord.get("claim_ttl_sec") is not None:
-            out["PALLAS_COORD_REDIS_CLAIM_TTL_SEC"] = env_value_to_str(coord["claim_ttl_sec"])
+            out["PALLAS_FEDERATE_CLAIM_TTL_SEC"] = env_value_to_str(coord["claim_ttl_sec"])
     return out
 
 
@@ -366,6 +366,31 @@ def upsert_repo_settings_items(items: dict[str, str]) -> None:
         key = (k or "").strip().upper()
         if key:
             os.environ[key] = v
+
+
+def remove_repo_settings_keys(keys: list[str]) -> None:
+    """从 ``webui.json`` 的 ``env`` 删除键（用于纠正误写字段）。"""
+    from .webui_export_toml import export_webui_inspection_toml, rebuild_webui_json_sections
+
+    doc = _load_webui_json_document()
+    env = doc.setdefault("env", {})
+    if not isinstance(env, dict):
+        return
+    removed = False
+    for raw in keys:
+        key = (raw or "").strip().upper()
+        if key in env:
+            env.pop(key, None)
+            removed = True
+        os.environ.pop(key, None)
+    if not removed:
+        return
+    doc["sections"] = rebuild_webui_json_sections(env)
+    _atomic_write_text(
+        repo_webui_settings_path(),
+        json.dumps(doc, ensure_ascii=False, indent=2) + "\n",
+    )
+    export_webui_inspection_toml(env, doc["sections"])
 
 
 def upsert_env_dotenv_items(items: dict[str, str]) -> None:

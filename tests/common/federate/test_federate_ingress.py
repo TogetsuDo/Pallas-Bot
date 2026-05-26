@@ -52,7 +52,7 @@ def test_try_claim_federate_message_redis_sync(monkeypatch):
     fc.clear_federate_config_cache()
     client = MagicMock()
     client.set.return_value = True
-    monkeypatch.setattr(frc, "get_coord_redis_client", lambda: client)
+    monkeypatch.setattr(frc, "get_federate_redis_client", lambda: client)
     assert frc.try_claim_federate_message_redis_sync("p", 1, 2, "dep-a") is True
     _, kwargs = client.set.call_args
     assert kwargs.get("nx") is True
@@ -62,5 +62,7 @@ def test_federate_ingress_active_requires_redis(monkeypatch):
     monkeypatch.setenv("PALLAS_FEDERATE_ID", "pool-1")
     monkeypatch.setenv("PALLAS_FEDERATE_INGRESS_ENABLED", "true")
     fc.clear_federate_config_cache()
-    monkeypatch.setattr(fc, "federate_redis_available", lambda: False)
+    from src.common.federate import redis_settings as frs
+
+    monkeypatch.setattr(frs, "federate_redis_available", lambda: False)
     assert fc.federate_ingress_active() is False

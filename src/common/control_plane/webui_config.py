@@ -6,8 +6,11 @@ from functools import lru_cache
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.common.config.repo_settings import repo_env_raw_value
+from src.common.config.repo_settings import repo_env_raw_value, repo_webui_settings_path
 from src.common.corpus.config import parse_tristate
+
+_FEDERATE_COORD_URL_KEY = "PALLAS_FEDERATE_COORD_REDIS_URL"
+_LEGACY_COORD_URL_KEY = "PALLAS_COORD_REDIS_URL"
 
 
 def setting_str(name: str, default: str = "") -> str:
@@ -43,22 +46,79 @@ class ControlPlaneWebuiConfig(BaseModel):
     )
     coord_redis_url: str = Field(
         default="",
-        description="协调 Redis URL；留空由 bootstrap 下发",
+        description="联邦协调 Redis（勿填分片 REDIS_URL）；留空由 bootstrap 下发",
     )
+
+
+def repair_misplaced_federate_redis_env() -> bool:
+    """修正误将分片 REDIS_URL 写入 PALLAS_COORD_REDIS_URL 的情况。"""
+    import json
+
+    path = repo_webui_settings_path()
+    if not path.is_file():
+        return False
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(doc, dict):
+        return False
+    env = doc.get("env")
+    if not isinstance(env, dict):
+        return False
+    redis_url = str(env.get("REDIS_URL") or "").strip()
+    coord_url = str(env.get(_LEGACY_COORD_URL_KEY) or "").strip()
+    fed_url = str(env.get(_FEDERATE_COORD_URL_KEY) or "").strip()
+    changed = False
+    if fed_url and coord_url == fed_url and coord_url != redis_url:
+        env.pop(_LEGACY_COORD_URL_KEY, None)
+        changed = True
+    if not fed_url and coord_url and redis_url and coord_url == redis_url:
+        env.pop(_LEGACY_COORD_URL_KEY, None)
+        changed = True
+    if not changed:
+        return False
+    from src.common.config.repo_settings import remove_repo_settings_keys
+
+    remove_repo_settings_keys([_LEGACY_COORD_URL_KEY])
+    return True
+
+
+def resolved_coord_redis_url_for_webui() -> str:
+    """WebUI 展示：仅显式联邦 URL 或 bootstrap 落盘，不含分片 REDIS_URL。"""
+    repair_misplaced_federate_redis_env()
+    explicit = setting_str(_FEDERATE_COORD_URL_KEY)
+    if explicit:
+        return explicit
+    try:
+        from src.common.control_plane.store import load_bootstrap_coord_redis_url
+
+        return load_bootstrap_coord_redis_url()
+    except Exception:
+        return ""
 
 
 @lru_cache(maxsize=1)
 def get_control_plane_webui_config() -> ControlPlaneWebuiConfig:
+    repair_misplaced_federate_redis_env()
     enabled_raw = setting_str("PALLAS_CONTROL_PLANE_ENABLED", "true")
     enabled_flag = parse_tristate(enabled_raw, default=True)
+    fid = setting_str("PALLAS_FEDERATE_ID")
+    if not fid:
+        try:
+            from src.common.community_stats.store import load_community_stats_state
+
+            fid = str(load_community_stats_state().get("federate_id") or "").strip()
+        except Exception:
+            fid = ""
     return ControlPlaneWebuiConfig(
         enabled=enabled_flag is not False,
         bootstrap_url=setting_str("PALLAS_CONTROL_PLANE_BOOTSTRAP_URL"),
         instance_secret=setting_str("PALLAS_INSTANCE_SECRET"),
-        federate_id=setting_str("PALLAS_FEDERATE_ID"),
+        federate_id=fid,
         federate_ingress_enabled=setting_str("PALLAS_FEDERATE_INGRESS_ENABLED", "auto") or "auto",
         federate_redis_prefix=setting_str("PALLAS_FEDERATE_REDIS_PREFIX"),
-        coord_redis_url=setting_str("PALLAS_COORD_REDIS_URL") or setting_str("REDIS_URL"),
+        coord_redis_url=resolved_coord_redis_url_for_webui(),
     )
 
 
