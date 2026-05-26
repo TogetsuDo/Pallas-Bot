@@ -43,11 +43,11 @@ async def test_shard_empty_member_list_prefers_presence(monkeypatch) -> None:
         async def get_group_member_list(self, *, group_id: int, no_cache: bool):
             return []
 
-    monkeypatch.setattr("src.common.shard.registry.config.is_sharding_active", lambda: True)
-    monkeypatch.setattr("src.common.multi_bot.fleet.get_catalog_bot_ids", lambda: frozenset({111, 222, 333}))
-    monkeypatch.setattr("src.common.shard.presence.pick_local_query_bot", lambda: FakeCaller())
+    monkeypatch.setattr("src.common.platform.shard.registry.config.is_sharding_active", lambda: True)
+    monkeypatch.setattr("src.common.platform.multi_bot.fleet.get_catalog_bot_ids", lambda: frozenset({111, 222, 333}))
+    monkeypatch.setattr("src.common.platform.shard.presence.pick_local_query_bot", lambda: FakeCaller())
     monkeypatch.setattr(
-        "src.common.shard.presence.get_cluster_online_bot_ids",
+        "src.common.platform.shard.presence.get_cluster_online_bot_ids",
         lambda: {111, 222, 333},
     )
 
@@ -67,11 +67,11 @@ async def test_shard_empty_member_list_skips_fleet_probe(monkeypatch) -> None:
         probe_calls.append(group_id)
         return []
 
-    monkeypatch.setattr("src.common.shard.registry.config.is_sharding_active", lambda: True)
-    monkeypatch.setattr("src.common.multi_bot.fleet.get_catalog_bot_ids", lambda: frozenset({111, 222}))
-    monkeypatch.setattr("src.common.shard.presence.pick_local_query_bot", lambda: FakeCaller())
+    monkeypatch.setattr("src.common.platform.shard.registry.config.is_sharding_active", lambda: True)
+    monkeypatch.setattr("src.common.platform.multi_bot.fleet.get_catalog_bot_ids", lambda: frozenset({111, 222}))
+    monkeypatch.setattr("src.common.platform.shard.presence.pick_local_query_bot", lambda: FakeCaller())
     monkeypatch.setattr(
-        "src.common.shard.presence.get_cluster_online_bot_ids",
+        "src.common.platform.shard.presence.get_cluster_online_bot_ids",
         lambda: {111, 222},
     )
     monkeypatch.setattr(mod, "probe_fleet_bots_in_group", fake_probe)
@@ -90,9 +90,9 @@ async def test_list_group_online_bot_ids_uses_cache(monkeypatch) -> None:
             list_calls.append(group_id)
             return [{"user_id": 111}, {"user_id": 222}]
 
-    monkeypatch.setattr("src.common.shard.registry.config.is_sharding_active", lambda: True)
-    monkeypatch.setattr("src.common.multi_bot.fleet.get_catalog_bot_ids", lambda: frozenset({111, 222, 333}))
-    monkeypatch.setattr("src.common.shard.presence.pick_local_query_bot", lambda: FakeCaller())
+    monkeypatch.setattr("src.common.platform.shard.registry.config.is_sharding_active", lambda: True)
+    monkeypatch.setattr("src.common.platform.multi_bot.fleet.get_catalog_bot_ids", lambda: frozenset({111, 222, 333}))
+    monkeypatch.setattr("src.common.platform.shard.presence.pick_local_query_bot", lambda: FakeCaller())
 
     first = await list_group_online_bot_ids(626266904)
     second = await list_group_online_bot_ids(626266904)
@@ -118,8 +118,8 @@ async def test_unified_group_online_bot_ids(monkeypatch) -> None:
 
     bots = {str(qq): FakeBot(qq) for qq in (111, 222, 333)}
 
-    monkeypatch.setattr("src.common.shard.registry.config.is_sharding_active", lambda: False)
-    monkeypatch.setattr("src.common.multi_bot.fleet.get_catalog_bot_ids", lambda: frozenset({111, 222, 333}))
+    monkeypatch.setattr("src.common.platform.shard.registry.config.is_sharding_active", lambda: False)
+    monkeypatch.setattr("src.common.platform.multi_bot.fleet.get_catalog_bot_ids", lambda: frozenset({111, 222, 333}))
     monkeypatch.setattr(mod, "get_bots", lambda: bots)
 
     ids = await list_group_online_bot_ids(626266905)

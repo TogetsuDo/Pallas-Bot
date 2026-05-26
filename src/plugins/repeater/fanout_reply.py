@@ -16,10 +16,10 @@ if TYPE_CHECKING:
 
 from itertools import starmap
 
-from src.common.bot_runtime.send_unavailable import BOT_SEND_UNAVAILABLE_ERRORS, log_bot_send_unavailable
-from src.common.config import BotConfig
-from src.common.multi_bot.dedup import try_claim_group_message_once
-from src.common.shard.registry.config import is_sharding_active
+from src.common.foundation.config import BotConfig
+from src.common.platform.bot_runtime.send_unavailable import BOT_SEND_UNAVAILABLE_ERRORS, log_bot_send_unavailable
+from src.common.platform.multi_bot.dedup import try_claim_group_message_once
+from src.common.platform.shard.registry.config import is_sharding_active
 
 from .config import get_repeater_config
 from .model import Chat, ChatData
@@ -133,7 +133,7 @@ async def bot_may_repeater_reply(bot_id: int, group_id: int) -> bool:
 
 async def list_fanout_bot_ids(group_id: int) -> list[int]:
 
-    from src.common.shard.presence import get_cluster_online_bot_ids
+    from src.common.platform.shard.presence import get_cluster_online_bot_ids
     from src.plugins.duel.duel_bots import list_group_online_bot_ids
 
     ids = await list_group_online_bot_ids(group_id)
@@ -280,7 +280,7 @@ async def dispatch_repeater_fanout(
     ids = list(bot_ids)
     stagger = 0.35
 
-    from src.common.shard.presence import bot_has_cluster_connection, bot_has_local_connection
+    from src.common.platform.shard.presence import bot_has_cluster_connection, bot_has_local_connection
 
     local: list[tuple[int, int]] = []
     remote: list[tuple[int, int]] = []
@@ -312,7 +312,7 @@ async def _dispatch_remote_fanout_batch(
     payload: dict[str, Any],
     group_id: int,
 ) -> None:
-    from src.common.shard.coord.bot_action import invoke_bot_action
+    from src.common.platform.shard.coord.bot_action import invoke_bot_action
 
     async def one(bid: int, delay: float) -> None:
         if delay > 0:

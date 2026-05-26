@@ -6,9 +6,9 @@ from typing import Literal
 
 from nonebot import get_bots
 
-from src.common.multi_bot.fleet import get_fleet_bot_ids
-from src.common.multi_bot.session_seen import get_session_seen_bot_ids
-from src.common.shard.registry.config import is_sharding_active
+from src.common.platform.multi_bot.fleet import get_fleet_bot_ids
+from src.common.platform.multi_bot.session_seen import get_session_seen_bot_ids
+from src.common.platform.shard.registry.config import is_sharding_active
 
 from .config import get_bot_status_config
 
@@ -58,7 +58,7 @@ def cluster_online_bot_ids_for_status(
     mode = list_mode or resolve_status_list_mode()
     bots = current_bots if current_bots is not None else nb_get_bots()
     if is_sharding_active() and mode in ("fleet", "connected"):
-        from src.common.shard.presence import get_cluster_online_bot_ids
+        from src.common.platform.shard.presence import get_cluster_online_bot_ids
 
         return set(get_cluster_online_bot_ids())
     out: set[int] = set()

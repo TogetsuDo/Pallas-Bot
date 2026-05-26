@@ -6,9 +6,9 @@ from __future__ import annotations
 
 import pytest
 
-from src.common.db.modules import ImageCache
-from src.common.db.repository import ImageCacheRepository
-from src.common.db.repository_impl import MongoImageCacheRepository
+from src.common.foundation.db.modules import ImageCache
+from src.common.foundation.db.repository import ImageCacheRepository
+from src.common.foundation.db.repository_impl import MongoImageCacheRepository
 
 
 def test_mongo_image_cache_satisfies_protocol():

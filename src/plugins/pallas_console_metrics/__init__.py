@@ -5,12 +5,12 @@ from __future__ import annotations
 from nonebot import get_driver
 from nonebot.plugin import PluginMetadata
 
-from src.common.cmd_perm.metadata_defaults import (
+from src.common.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.shard.registry.config import is_sharding_active
+from src.common.platform.shard.registry.config import is_sharding_active
 
 __plugin_meta__ = PluginMetadata(
     name="控制台运行指标",
@@ -33,7 +33,7 @@ driver = get_driver()
 async def _boot_worker_console_metrics() -> None:
     if not is_sharding_active():
         return
-    from src.common.bot_runtime.roles import is_sharded_worker
+    from src.common.platform.bot_runtime.roles import is_sharded_worker
 
     if not is_sharded_worker():
         return

@@ -5,15 +5,15 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from src.common.cmd_perm import permission_for_command
-from src.common.cmd_perm.metadata_defaults import (
+from src.common.features.cmd_perm import permission_for_command
+from src.common.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.cmd_perm.metadata_text import SCENE_BOTH, SCENE_GROUP, join_usage, usage_line
-from src.common.command_prefix import matches_command_prefix
-from src.common.config import BotConfig, GroupConfig
+from src.common.features.cmd_perm.metadata_text import SCENE_BOTH, SCENE_GROUP, join_usage, usage_line
+from src.common.foundation.command_prefix import matches_command_prefix
+from src.common.foundation.config import BotConfig, GroupConfig
 
 from .config import Config, get_help_config, plugin_config
 from .event_preprocessor import IGNORED_PLUGINS  # noqa: F401

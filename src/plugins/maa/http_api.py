@@ -26,7 +26,7 @@ class ReportStatusRequest(BaseModel):
 
 
 async def maa_get_task(body: GetTaskRequest) -> GetTaskResponse:
-    from src.common.shard.coord.maa_route_registry import register_maa_user_route
+    from src.common.platform.shard.coord.maa_route_registry import register_maa_user_route
 
     register_maa_user_route(body.user)
     cfg = get_maa_config()
@@ -78,12 +78,12 @@ async def deliver_maa_notify(
     *,
     task_id: str = "",
 ) -> None:
-    from src.common.shard.presence import bot_has_local_connection
-    from src.common.shard.registry.config import is_sharding_active
+    from src.common.platform.shard.presence import bot_has_local_connection
+    from src.common.platform.shard.registry.config import is_sharding_active
 
     bot_id = int(notify.bot_id)
     if is_sharding_active() and not bot_has_local_connection(bot_id):
-        from src.common.shard.coord.bot_action import send_group_message_as_bot, send_private_msg_as_bot
+        from src.common.platform.shard.coord.bot_action import send_group_message_as_bot, send_private_msg_as_bot
 
         message = Message(segments)
         try:

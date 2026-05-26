@@ -5,7 +5,7 @@ import time
 
 from nonebot import logger
 
-from src.common.db import get_db_backend
+from src.common.foundation.db import get_db_backend
 
 from .history_bottle import DREAM_KEY_PREFIX
 
@@ -22,7 +22,7 @@ async def delete_expired_dream_messages(*, retention_days: int) -> int:
 
 
 async def _mongo_delete_expired(cutoff: int) -> int:
-    from src.common.db.modules import Message
+    from src.common.foundation.db.modules import Message
 
     coll = Message.get_pymongo_collection()
     key_pat = f"^{re.escape(DREAM_KEY_PREFIX)}"
@@ -38,7 +38,7 @@ async def _mongo_delete_expired(cutoff: int) -> int:
 async def _pg_delete_expired(cutoff: int) -> int:
     from sqlalchemy import delete
 
-    from src.common.db.repository_pg import MessageRow, get_session
+    from src.common.foundation.db.repository_pg import MessageRow, get_session
 
     try:
         async with get_session() as session:

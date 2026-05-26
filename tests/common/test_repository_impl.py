@@ -4,13 +4,13 @@ import time
 
 import pytest
 
-from src.common.db.modules import Answer, Ban, Context, Message
-from src.common.db.repository import (
+from src.common.foundation.db.modules import Answer, Ban, Context, Message
+from src.common.foundation.db.repository import (
     BlackListRepository,
     ContextRepository,
     MessageRepository,
 )
-from src.common.db.repository_impl import (
+from src.common.foundation.db.repository_impl import (
     MongoBlackListRepository,
     MongoContextRepository,
     MongoMessageRepository,

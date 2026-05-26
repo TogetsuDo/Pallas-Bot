@@ -10,7 +10,7 @@ from nonebot.adapters.onebot.v11 import Message, MessageSegment
 from nonebot.adapters.onebot.v11.exception import ActionFailed, ApiNotAvailable, NetworkError
 from nonebot.matcher import Matcher  # noqa: TC002
 
-from src.common.bot_runtime.send_unavailable import is_bot_send_unavailable, log_bot_send_unavailable
+from src.common.platform.bot_runtime.send_unavailable import is_bot_send_unavailable, log_bot_send_unavailable
 from src.plugins.duel.duel_message import (
     append_duel_message,
     coerce_duel_message,
@@ -263,7 +263,7 @@ async def _route_send_outbound(
     bots = get_bots()
     inst = bots.get(str(qq))
     if inst is None:
-        from src.common.shard.coord.bot_action import send_group_message_as_bot
+        from src.common.platform.shard.coord.bot_action import send_group_message_as_bot
         from src.plugins.block import is_fleet_bot_qq
 
         try:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.common.shard.coord import maa_pending_registry as mod
+from src.common.platform.shard.coord import maa_pending_registry as mod
 from src.plugins.maa.store import NotifyTarget, PendingTask, pending_task_to_dict
 
 
@@ -37,7 +37,7 @@ async def test_store_pending_count_uses_shard_file(tmp_path, monkeypatch) -> Non
     (tmp_path / "queues").mkdir(parents=True, exist_ok=True)
     (tmp_path / "task_index").mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(
-        "src.common.shard.registry.config.is_sharding_active",
+        "src.common.platform.shard.registry.config.is_sharding_active",
         lambda: True,
     )
 

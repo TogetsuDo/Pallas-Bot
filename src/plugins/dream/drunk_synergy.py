@@ -8,13 +8,13 @@ from nonebot import logger
 from nonebot.adapters.onebot.v11 import Bot, Message, MessageSegment
 from nonebot.exception import ActionFailed
 
-from src.common.db import get_db_backend
-from src.common.utils import is_bot_admin
+from src.common.foundation.db import get_db_backend
+from src.common.shared.utils import is_bot_admin
 
 from .history_bottle import DREAM_KEY_PREFIX
 
 if TYPE_CHECKING:
-    from src.common.config import BotConfig
+    from src.common.foundation.config import BotConfig
 
 _TAKE_NAME_CARDS = ("帕拉斯", "牛牛", "牛牛喝酒", "牛牛干杯", "牛牛继续喝")
 _USER_HISTORY_MAX_AGE_SEC = 90 * 86400
@@ -37,7 +37,7 @@ async def pick_random_member_user_id(*, bot_id: int, group_id: int) -> int | Non
 
 
 async def _mongo_pick_random_user(bot_id: int, group_id: int) -> int | None:
-    from src.common.db.modules import Message
+    from src.common.foundation.db.modules import Message
 
     coll = Message.get_pymongo_collection()
     now = int(time.time())
@@ -64,7 +64,7 @@ async def _mongo_pick_random_user(bot_id: int, group_id: int) -> int | None:
 async def _pg_pick_random_user(bot_id: int, group_id: int) -> int | None:
     from sqlalchemy import func, select
 
-    from src.common.db.repository_pg import MessageRow, get_session
+    from src.common.foundation.db.repository_pg import MessageRow, get_session
 
     now = int(time.time())
     cutoff = now - _USER_HISTORY_MAX_AGE_SEC
@@ -99,7 +99,7 @@ async def sample_user_non_dream_plain_line(*, bot_id: int, group_id: int, user_i
 
 
 async def _mongo_pick_plain_line(bot_id: int, group_id: int, user_id: int) -> str | None:
-    from src.common.db.modules import Message
+    from src.common.foundation.db.modules import Message
 
     coll = Message.get_pymongo_collection()
     now = int(time.time())
@@ -131,7 +131,7 @@ async def _mongo_pick_plain_line(bot_id: int, group_id: int, user_id: int) -> st
 async def _pg_pick_plain_line(bot_id: int, group_id: int, user_id: int) -> str | None:
     from sqlalchemy import func, select
 
-    from src.common.db.repository_pg import MessageRow, get_session
+    from src.common.foundation.db.repository_pg import MessageRow, get_session
 
     now = int(time.time())
     cutoff = now - _USER_HISTORY_MAX_AGE_SEC

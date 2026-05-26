@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from src.common.shard.coord import maa_seen_registry as mod
+from src.common.platform.shard.coord import maa_seen_registry as mod
 
 
 def test_touch_and_was_seen(tmp_path, monkeypatch) -> None:
@@ -38,7 +38,7 @@ async def test_store_was_seen_reads_cluster_file(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(mod, "_seen_dir", lambda: tmp_path)
     mod.clear_seen_cache_for_tests()
     monkeypatch.setattr(
-        "src.common.shard.registry.config.is_sharding_active",
+        "src.common.platform.shard.registry.config.is_sharding_active",
         lambda: True,
     )
     from src.plugins.maa.store import MaaStore

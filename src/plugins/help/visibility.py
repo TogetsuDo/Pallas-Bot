@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from src.common.paths import plugin_data_dir
+from src.common.foundation.paths import plugin_data_dir
 
 _VISIBILITY_FILE = "help_visibility.json"
 

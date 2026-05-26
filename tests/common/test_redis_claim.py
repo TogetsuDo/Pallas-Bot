@@ -4,9 +4,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.common.coord import redis_claim as rc
-from src.common.coord import redis_settings as rs
-from src.common.multi_bot import claim as claim_mod
+from src.common.platform.coord import redis_claim as rc
+from src.common.platform.coord import redis_settings as rs
+from src.common.platform.multi_bot import claim as claim_mod
 
 
 @pytest.fixture(autouse=True)

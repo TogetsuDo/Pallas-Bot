@@ -4,17 +4,17 @@ from nonebot.adapters.onebot.v11 import GroupIncreaseNoticeEvent, GroupMessageEv
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from src.common.cmd_perm.metadata_defaults import (
+from src.common.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.cmd_perm.metadata_text import join_usage, usage_line
-from src.common.config import BotConfig
-from src.common.multi_bot.fleet import fleet_bot_ids_contains
-from src.common.multi_bot.session_seen import note_bot_session_seen
-from src.common.shard.presence import note_worker_bot_connected, note_worker_bot_disconnected
-from src.common.shard.registry.config import is_sharding_active
+from src.common.features.cmd_perm.metadata_text import join_usage, usage_line
+from src.common.foundation.config import BotConfig
+from src.common.platform.multi_bot.fleet import fleet_bot_ids_contains
+from src.common.platform.multi_bot.session_seen import note_bot_session_seen
+from src.common.platform.shard.presence import note_worker_bot_connected, note_worker_bot_disconnected
+from src.common.platform.shard.registry.config import is_sharding_active
 
 from .config import Config, plugin_config
 

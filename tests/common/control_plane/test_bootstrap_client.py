@@ -6,19 +6,19 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.common.control_plane import bootstrap_client as bc
-from src.common.control_plane import store as cp_store
+from src.common.features.control_plane import bootstrap_client as bc
+from src.common.features.control_plane import store as cp_store
 
 
 @pytest.fixture
 def community_state_file(tmp_path, monkeypatch):
     path = tmp_path / "community_stats.json"
     monkeypatch.setattr(
-        "src.common.community_stats.store.community_stats_state_path",
+        "src.common.features.community_stats.store.community_stats_state_path",
         lambda: path,
     )
     monkeypatch.setattr(
-        "src.common.control_plane.store._read_state_raw",
+        "src.common.features.control_plane.store._read_state_raw",
         lambda: json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {},
     )
 
@@ -26,7 +26,7 @@ def community_state_file(tmp_path, monkeypatch):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    monkeypatch.setattr("src.common.control_plane.store._write_state", write_state)
+    monkeypatch.setattr("src.common.features.control_plane.store._write_state", write_state)
     return path
 
 
@@ -43,7 +43,7 @@ async def test_refresh_bootstrap_saves_coord(community_state_file, monkeypatch, 
     monkeypatch.setenv("PALLAS_INSTANCE_SECRET", "sec")
     monkeypatch.setenv("PALLAS_CONTROL_PLANE_BOOTSTRAP_URL", "https://stats.example/v1/bootstrap")
     bc.clear_bootstrap_runtime_caches()
-    from src.common.control_plane.config import clear_control_plane_config_cache
+    from src.common.features.control_plane.config import clear_control_plane_config_cache
 
     clear_control_plane_config_cache()
 
@@ -75,6 +75,6 @@ async def test_refresh_bootstrap_saves_coord(community_state_file, monkeypatch, 
     assert data["federate_id"] == "pool-a"
     assert data["control_plane_bootstrap"]["coord"]["redis_url"] == "redis://coord:6379/2"
 
-    from src.common.control_plane.store import load_bootstrap_coord_redis_url
+    from src.common.features.control_plane.store import load_bootstrap_coord_redis_url
 
     assert load_bootstrap_coord_redis_url() == "redis://coord:6379/2"

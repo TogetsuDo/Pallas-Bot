@@ -32,7 +32,7 @@ async def pg_engine():
 
     from sqlalchemy.ext.asyncio import create_async_engine
 
-    from src.common.db.repository_pg import Base, dispose_pg, init_pg
+    from src.common.foundation.db.repository_pg import Base, dispose_pg, init_pg
 
     engine = create_async_engine(PG_TEST_DSN)
     async with engine.begin() as conn:

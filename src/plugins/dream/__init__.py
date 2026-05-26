@@ -8,15 +8,15 @@ from nonebot.exception import ActionFailed
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from src.common.cmd_perm.metadata_defaults import (
+from src.common.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.cmd_perm.metadata_text import SCENE_AUTO, SCENE_GROUP, join_usage, usage_line
-from src.common.config import BotConfig, GroupConfig
-from src.common.message_scrub import is_message_scrub_blocked_async
-from src.common.message_scrub.log_preview import scrub_intercept_log_preview
+from src.common.features.cmd_perm.metadata_text import SCENE_AUTO, SCENE_GROUP, join_usage, usage_line
+from src.common.features.message_scrub import is_message_scrub_blocked_async
+from src.common.features.message_scrub.log_preview import scrub_intercept_log_preview
+from src.common.foundation.config import BotConfig, GroupConfig
 
 from . import ban_handlers as _dream_ban_handlers  # noqa: F401 — 注册梦库「不可以」/撤回清理
 from .capture_filter import dream_capture_blocked_by_substrings

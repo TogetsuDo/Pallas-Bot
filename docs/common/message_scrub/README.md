@@ -107,15 +107,15 @@
 
 ## 源码与二次调用
 
-实现位于 [`src/common/message_scrub/`](../../../src/common/message_scrub/)；配置模型见 [`config.py`](../../../src/common/message_scrub/config.py)。其它插件若要复用同一套判断，可：
+实现位于 [`src/common/features/message_scrub/`](../../../src/common/features/message_scrub/)；配置模型见 [`config.py`](../../../src/common/features/message_scrub/config.py)。其它插件若要复用同一套判断，可：
 
 ```python
-from src.common.message_scrub import (
+from src.common.features.message_scrub import (
     is_message_scrub_blocked_async,
     is_message_scrub_blocked_sync,
     reload_message_scrub_caches,
 )
-from src.common.message_scrub import MessageScrubConfig, get_message_scrub_config
+from src.common.features.message_scrub import MessageScrubConfig, get_message_scrub_config
 ```
 
 ---

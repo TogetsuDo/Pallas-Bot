@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.common.db import backup as mod
+from src.common.foundation.db import backup as mod
 
 
 def test_resolve_backup_parent_default(tmp_path, monkeypatch) -> None:

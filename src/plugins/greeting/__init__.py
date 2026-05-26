@@ -22,19 +22,19 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule, to_me
 from nonebot.typing import T_State
 
-from src.common.cmd_perm import (
+from src.common.features.cmd_perm import (
     group_message_permission_for_command,
     private_message_permission_for_command,
 )
-from src.common.cmd_perm.metadata_defaults import (
+from src.common.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.cmd_perm.metadata_text import SCENE_AUTO, SCENE_GROUP, SCENE_PRIVATE, join_usage, usage_line
-from src.common.config import BotConfig, GroupConfig, UserConfig
-from src.common.paths import plugin_data_dir
-from src.common.utils import HTTPXClient, is_bot_admin
+from src.common.features.cmd_perm.metadata_text import SCENE_AUTO, SCENE_GROUP, SCENE_PRIVATE, join_usage, usage_line
+from src.common.foundation.config import BotConfig, GroupConfig, UserConfig
+from src.common.foundation.paths import plugin_data_dir
+from src.common.shared.utils import HTTPXClient, is_bot_admin
 from src.plugins.blacklist import invalidate_user_ban_gate_cache
 
 from .config import Config, plugin_config

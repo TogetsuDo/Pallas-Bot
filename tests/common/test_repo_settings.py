@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from src.common.config import repo_settings as rs
+from src.common.foundation.config import repo_settings as rs
 
 
 def test_merged_prefers_webui_over_legacy_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -85,7 +85,7 @@ db = "MyDb"
 def test_get_invalidates_cache_when_webui_json_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from pydantic import BaseModel, Field
 
-    from src.common.webui.plugin_config import install_hot_reload_config
+    from src.common.console.webui.plugin_config import install_hot_reload_config
 
     class Cfg(BaseModel):
         flag: bool = Field(default=False)

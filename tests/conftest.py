@@ -17,7 +17,7 @@ async def beanie_fixture():
     from beanie import init_beanie
     from mongomock_motor import AsyncMongoMockClient
 
-    from src.common.db.modules import (
+    from src.common.foundation.db.modules import (
         BlackList,
         BotConfigModule,
         Context,

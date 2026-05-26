@@ -16,15 +16,15 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from src.common.cmd_perm import group_message_permission_for_command
-from src.common.cmd_perm.metadata_defaults import (
+from src.common.features.cmd_perm import group_message_permission_for_command
+from src.common.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.cmd_perm.metadata_text import SCENE_GROUP, join_usage, usage_line
-from src.common.config import BotConfig, GroupConfig
-from src.common.multi_bot.dedup import try_claim_group_message_once
+from src.common.features.cmd_perm.metadata_text import SCENE_GROUP, join_usage, usage_line
+from src.common.foundation.config import BotConfig, GroupConfig
+from src.common.platform.multi_bot.dedup import try_claim_group_message_once
 
 from .config import JUDGMENT_CFG, RESCUE_CFG, SHOT_CFG
 from .player import PlayerList

@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import pytest
 
-from src.common.db.modules import BotConfigModule, GroupConfigModule, UserConfigModule
-from src.common.db.repository import ConfigRepository
-from src.common.db.repository_impl import MongoConfigRepository
+from src.common.foundation.db.modules import BotConfigModule, GroupConfigModule, UserConfigModule
+from src.common.foundation.db.repository import ConfigRepository
+from src.common.foundation.db.repository_impl import MongoConfigRepository
 
 
 def test_mongo_config_repo_satisfies_protocol():
@@ -67,7 +67,7 @@ async def test_invalidate_cache_is_safe(beanie_fixture):
 
 @pytest.mark.asyncio
 async def test_bot_config_class_uses_repo(beanie_fixture):
-    from src.common.config import BotConfig
+    from src.common.foundation.config import BotConfig
 
     bot = BotConfig(bot_id=999)
     assert await bot.security() is False  # default
@@ -77,7 +77,7 @@ async def test_bot_config_class_uses_repo(beanie_fixture):
 
 @pytest.mark.asyncio
 async def test_group_config_class_uses_repo(beanie_fixture):
-    from src.common.config import GroupConfig
+    from src.common.foundation.config import GroupConfig
 
     group = GroupConfig(group_id=500)
     assert await group.is_banned() is False
@@ -91,7 +91,7 @@ async def test_group_config_class_uses_repo(beanie_fixture):
 
 @pytest.mark.asyncio
 async def test_user_config_class_uses_repo(beanie_fixture):
-    from src.common.config import UserConfig
+    from src.common.foundation.config import UserConfig
 
     user = UserConfig(user_id=700)
     assert await user.is_banned() is False

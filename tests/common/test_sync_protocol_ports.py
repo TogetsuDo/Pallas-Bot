@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.common.shard.registry.sync_protocol_ports import sync_accounts_ws_urls
+from src.common.platform.shard.registry.sync_protocol_ports import sync_accounts_ws_urls
 
 
 def test_sync_protocol_ports_no_change_when_already_aligned(tmp_path, monkeypatch):
@@ -46,7 +46,7 @@ def test_sync_protocol_ports_no_change_when_already_aligned(tmp_path, monkeypatc
     )
     monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
     monkeypatch.setattr(
-        "src.common.shard.registry.store._registry_path",
+        "src.common.platform.shard.registry.store._registry_path",
         lambda: reg_dir / "registry.json",
     )
 
@@ -97,7 +97,7 @@ def test_sync_protocol_ports_detects_port_drift(tmp_path, monkeypatch):
     )
     monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
     monkeypatch.setattr(
-        "src.common.shard.registry.store._registry_path",
+        "src.common.platform.shard.registry.store._registry_path",
         lambda: reg_dir / "registry.json",
     )
 

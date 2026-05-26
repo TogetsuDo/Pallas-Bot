@@ -9,9 +9,9 @@ from nonebot import get_bot, logger
 from nonebot.adapters.onebot.v11.exception import NetworkError
 from nonebot.exception import ActionFailed
 
-from src.common.config import GroupConfig, TaskManager
-from src.common.db import SingProgress
-from src.common.shard.coord.ai_task_registry import get_ai_task_record, remove_ai_task
+from src.common.foundation.config import GroupConfig, TaskManager
+from src.common.foundation.db import SingProgress
+from src.common.platform.shard.coord.ai_task_registry import get_ai_task_record, remove_ai_task
 
 _CALLBACK_SEND_ERRORS = (ActionFailed, NetworkError)
 

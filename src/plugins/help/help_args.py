@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from src.common.command_prefix import extract_command_tail
+from src.common.foundation.command_prefix import extract_command_tail
 
 HELP_COMMAND = "牛牛帮助"
 PLUGIN_ENABLE_COMMAND = "牛牛开启"

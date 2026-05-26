@@ -6,7 +6,7 @@ import asyncio
 import time
 from typing import TYPE_CHECKING
 
-from src.common.db.context_repo_access import context_repo
+from src.common.foundation.db.context_repo_access import context_repo
 
 if TYPE_CHECKING:
     from collections.abc import Iterable

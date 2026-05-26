@@ -2,14 +2,14 @@ from fastapi import File, Form, UploadFile
 from nonebot import get_app
 from nonebot.plugin import PluginMetadata
 
-from src.common.bot_runtime.roles import is_hub_role
-from src.common.cmd_perm.metadata_defaults import (
+from src.common.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.cmd_perm.metadata_text import join_usage, usage_line
-from src.common.shard.coord.ai_callback_forward import forward_ai_callback_to_worker
+from src.common.features.cmd_perm.metadata_text import join_usage, usage_line
+from src.common.platform.bot_runtime.roles import is_hub_role
+from src.common.platform.shard.coord.ai_callback_forward import forward_ai_callback_to_worker
 
 from .handler import run_ai_callback
 

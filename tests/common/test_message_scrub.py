@@ -8,12 +8,12 @@ from unittest.mock import patch
 
 import pytest
 
-from src.common.message_scrub import (
+from src.common.features.message_scrub import (
     is_message_scrub_blocked_async,
     is_message_scrub_blocked_sync,
     reload_message_scrub_caches,
 )
-from src.common.message_scrub.aho_corasick import AhoCorasick
+from src.common.features.message_scrub.aho_corasick import AhoCorasick
 
 
 def test_ac_overlapping_patterns() -> None:
@@ -30,7 +30,7 @@ def test_ac_unicode() -> None:
 
 
 def test_scrub_intercept_log_preview_plain_then_raw() -> None:
-    from src.common.message_scrub.log_preview import scrub_intercept_log_preview
+    from src.common.features.message_scrub.log_preview import scrub_intercept_log_preview
 
     assert scrub_intercept_log_preview("  hello\n", "") == "hello"
     assert scrub_intercept_log_preview("", "[CQ:image,file=abc]") == "[CQ:image,file=abc]"
@@ -41,7 +41,7 @@ def test_scrub_intercept_log_preview_plain_then_raw() -> None:
 
 
 def test_config_merged_reads_nonebot_when_os_absent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    from src.common.message_scrub.config import MessageScrubConfig
+    from src.common.features.message_scrub.config import MessageScrubConfig
 
     monkeypatch.delenv("PALLAS_INBOUND_FILTER_SUBSTRINGS", raising=False)
     fake_cfg = SimpleNamespace(
@@ -50,16 +50,16 @@ def test_config_merged_reads_nonebot_when_os_absent(monkeypatch: pytest.MonkeyPa
     )
     fake_driver = SimpleNamespace(config=fake_cfg)
     phantom = tmp_path / "no_dotenv_here.env"
-    with patch("src.common.config.repo_settings.repo_env_path", return_value=phantom):
-        with patch("src.common.config.repo_settings.repo_config_path", return_value=phantom):
-            with patch("src.common.config.repo_settings.repo_webui_settings_path", return_value=phantom):
+    with patch("src.common.foundation.config.repo_settings.repo_env_path", return_value=phantom):
+        with patch("src.common.foundation.config.repo_settings.repo_config_path", return_value=phantom):
+            with patch("src.common.foundation.config.repo_settings.repo_webui_settings_path", return_value=phantom):
                 with patch("nonebot.get_driver", return_value=fake_driver):
                     c = MessageScrubConfig.from_env()
     assert c.inbound_filter_substrings == "from_nb"
 
 
 def test_config_merged_os_overrides_nonebot(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    from src.common.message_scrub.config import MessageScrubConfig
+    from src.common.features.message_scrub.config import MessageScrubConfig
 
     monkeypatch.setenv("PALLAS_INBOUND_FILTER_SUBSTRINGS", "from_os")
     fake_cfg = SimpleNamespace(
@@ -68,16 +68,16 @@ def test_config_merged_os_overrides_nonebot(monkeypatch: pytest.MonkeyPatch, tmp
     )
     fake_driver = SimpleNamespace(config=fake_cfg)
     phantom = tmp_path / "no_dotenv_here.env"
-    with patch("src.common.config.repo_settings.repo_env_path", return_value=phantom):
-        with patch("src.common.config.repo_settings.repo_config_path", return_value=phantom):
-            with patch("src.common.config.repo_settings.repo_webui_settings_path", return_value=phantom):
+    with patch("src.common.foundation.config.repo_settings.repo_env_path", return_value=phantom):
+        with patch("src.common.foundation.config.repo_settings.repo_config_path", return_value=phantom):
+            with patch("src.common.foundation.config.repo_settings.repo_webui_settings_path", return_value=phantom):
                 with patch("nonebot.get_driver", return_value=fake_driver):
                     c = MessageScrubConfig.from_env()
     assert c.inbound_filter_substrings == "from_os"
 
 
 def test_config_review_providers_explicit_from_nonebot_only(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    from src.common.message_scrub.config import MessageScrubConfig
+    from src.common.features.message_scrub.config import MessageScrubConfig
 
     monkeypatch.delenv("PALLAS_SCRUB_REVIEW_PROVIDERS", raising=False)
     fake_cfg = SimpleNamespace(
@@ -86,9 +86,9 @@ def test_config_review_providers_explicit_from_nonebot_only(monkeypatch: pytest.
     )
     fake_driver = SimpleNamespace(config=fake_cfg)
     phantom = tmp_path / "no_dotenv_here.env"
-    with patch("src.common.config.repo_settings.repo_env_path", return_value=phantom):
-        with patch("src.common.config.repo_settings.repo_config_path", return_value=phantom):
-            with patch("src.common.config.repo_settings.repo_webui_settings_path", return_value=phantom):
+    with patch("src.common.foundation.config.repo_settings.repo_env_path", return_value=phantom):
+        with patch("src.common.foundation.config.repo_settings.repo_config_path", return_value=phantom):
+            with patch("src.common.foundation.config.repo_settings.repo_webui_settings_path", return_value=phantom):
                 with patch("nonebot.get_driver", return_value=fake_driver):
                     c = MessageScrubConfig.from_env()
     assert c.scrub_review_providers_key_present is True
@@ -97,7 +97,7 @@ def test_config_review_providers_explicit_from_nonebot_only(monkeypatch: pytest.
 
 def test_config_repo_dotenv_layer_overrides_stale_driver(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """仓库 .env 已存在时：磁盘上无该键则不再回退到启动时冻结的 driver.config。"""
-    from src.common.message_scrub.config import MessageScrubConfig
+    from src.common.features.message_scrub.config import MessageScrubConfig
 
     monkeypatch.delenv("PALLAS_INBOUND_FILTER_SUBSTRINGS", raising=False)
     p = tmp_path / ".env"
@@ -107,10 +107,10 @@ def test_config_repo_dotenv_layer_overrides_stale_driver(tmp_path: Path, monkeyp
         pallas_inbound_filter_substrings="stale_driver",
     )
     fake_driver = SimpleNamespace(config=fake_cfg)
-    with patch("src.common.config.repo_settings.repo_env_path", return_value=p):
-        with patch("src.common.config.repo_settings.repo_config_path", return_value=tmp_path / "missing.toml"):
+    with patch("src.common.foundation.config.repo_settings.repo_env_path", return_value=p):
+        with patch("src.common.foundation.config.repo_settings.repo_config_path", return_value=tmp_path / "missing.toml"):
             with patch(
-                "src.common.config.repo_settings.repo_webui_settings_path",
+                "src.common.foundation.config.repo_settings.repo_webui_settings_path",
                 return_value=tmp_path / "missing.json",
             ):
                 with patch("nonebot.get_driver", return_value=fake_driver):
@@ -119,7 +119,7 @@ def test_config_repo_dotenv_layer_overrides_stale_driver(tmp_path: Path, monkeyp
 
 
 def test_config_repo_dotenv_file_value_used_when_os_absent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.common.message_scrub.config import MessageScrubConfig
+    from src.common.features.message_scrub.config import MessageScrubConfig
 
     monkeypatch.delenv("PALLAS_INBOUND_FILTER_SUBSTRINGS", raising=False)
     p = tmp_path / ".env"
@@ -129,10 +129,10 @@ def test_config_repo_dotenv_file_value_used_when_os_absent(tmp_path: Path, monke
         pallas_inbound_filter_substrings="from_nb",
     )
     fake_driver = SimpleNamespace(config=fake_cfg)
-    with patch("src.common.config.repo_settings.repo_env_path", return_value=p):
-        with patch("src.common.config.repo_settings.repo_config_path", return_value=tmp_path / "missing.toml"):
+    with patch("src.common.foundation.config.repo_settings.repo_env_path", return_value=p):
+        with patch("src.common.foundation.config.repo_settings.repo_config_path", return_value=tmp_path / "missing.toml"):
             with patch(
-                "src.common.config.repo_settings.repo_webui_settings_path",
+                "src.common.foundation.config.repo_settings.repo_webui_settings_path",
                 return_value=tmp_path / "missing.json",
             ):
                 with patch("nonebot.get_driver", return_value=fake_driver):
@@ -189,7 +189,7 @@ def test_build_review_providers_default_baidu_before_json(
     scrub_env_cleanup: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from src.common.message_scrub.api_chain import build_review_providers
+    from src.common.features.message_scrub.api_chain import build_review_providers
 
     monkeypatch.setenv("PALLAS_SCRUB_BAIDU_API_KEY", "ak")
     monkeypatch.setenv("PALLAS_SCRUB_BAIDU_SECRET_KEY", "sk")
@@ -203,7 +203,7 @@ def test_get_message_scrub_config_cached_until_reload(
     scrub_env_cleanup: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from src.common.message_scrub.config import get_message_scrub_config
+    from src.common.features.message_scrub.config import get_message_scrub_config
 
     monkeypatch.setenv("PALLAS_INBOUND_FILTER_SUBSTRINGS", "alpha")
     reload_message_scrub_caches()
@@ -219,7 +219,7 @@ def test_get_message_scrub_config_cached_until_reload(
 
 
 def test_lexicon_file_oserror_logs_warning(tmp_path: Path) -> None:
-    from src.common.message_scrub import local_lexicon
+    from src.common.features.message_scrub import local_lexicon
 
     p = tmp_path / "lex.txt"
     p.write_text("word", encoding="utf-8")
@@ -249,7 +249,7 @@ def test_build_review_providers_explicit_order(
     scrub_env_cleanup: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from src.common.message_scrub.api_chain import build_review_providers
+    from src.common.features.message_scrub.api_chain import build_review_providers
 
     monkeypatch.setenv("PALLAS_SCRUB_BAIDU_API_KEY", "ak")
     monkeypatch.setenv("PALLAS_SCRUB_BAIDU_SECRET_KEY", "sk")

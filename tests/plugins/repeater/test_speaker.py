@@ -6,7 +6,7 @@ import pytest
 
 
 def _build_message(group_id: int, user_id: int, raw_message: str, keywords: str, time_value: int):
-    from src.common.db import Message as MessageModel
+    from src.common.foundation.db import Message as MessageModel
 
     return MessageModel(
         group_id=group_id,

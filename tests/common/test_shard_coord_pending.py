@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import time
 
-from src.common.shard.coord_pending import coord_pending_snapshot_sync
+from src.common.platform.shard.coord_pending import coord_pending_snapshot_sync
 
 
 def test_coord_pending_counts(tmp_path, monkeypatch):
@@ -24,7 +24,7 @@ def test_coord_pending_counts(tmp_path, monkeypatch):
     (coord / "duel_qte" / "q.json").write_text("{}", encoding="utf-8")
 
     monkeypatch.setattr(
-        "src.common.shard.coord_pending._coord_root",
+        "src.common.platform.shard.coord_pending._coord_root",
         lambda: coord,
     )
     snap = coord_pending_snapshot_sync()

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 
-from src.common.shard.coord import duel_qte as mod
+from src.common.platform.shard.coord import duel_qte as mod
 
 
 def test_single_qte_cross_shard_result(tmp_path, monkeypatch):

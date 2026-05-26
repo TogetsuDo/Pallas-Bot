@@ -8,28 +8,28 @@ from nonebot.exception import IgnoredException
 from nonebot.message import event_preprocessor
 from nonebot.plugin import PluginMetadata
 
-from src.common.bot_runtime.roles import is_hub_role
-from src.common.cmd_perm.metadata_defaults import (
+from src.common.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.federate.ingress import claim_federate_group_message_ingress
-from src.common.ingress.cage_plaintext import is_cage_plaintext
-from src.common.ingress.drink_plaintext import is_drink_plaintext
-from src.common.ingress.roulette_plaintext import is_roulette_plaintext
-from src.common.multi_bot.dedup import try_claim_cross_bot_message, try_claim_cross_shard_message
-from src.common.multi_bot.fleet import fleet_bot_ids_contains, get_fleet_bot_ids
-from src.common.shard.coord.bot_count import should_skip_ingress_claim_for_shard_bot_count
-from src.common.shard.ingress_fanout import is_ingress_fanout_plaintext
-from src.common.shard.ingress_metrics import (
+from src.common.platform.bot_runtime.roles import is_hub_role
+from src.common.platform.federate.ingress import claim_federate_group_message_ingress
+from src.common.platform.ingress.cage_plaintext import is_cage_plaintext
+from src.common.platform.ingress.drink_plaintext import is_drink_plaintext
+from src.common.platform.ingress.roulette_plaintext import is_roulette_plaintext
+from src.common.platform.multi_bot.dedup import try_claim_cross_bot_message, try_claim_cross_shard_message
+from src.common.platform.multi_bot.fleet import fleet_bot_ids_contains, get_fleet_bot_ids
+from src.common.platform.shard.coord.bot_count import should_skip_ingress_claim_for_shard_bot_count
+from src.common.platform.shard.ingress_fanout import is_ingress_fanout_plaintext
+from src.common.platform.shard.ingress_metrics import (
     record_ingress_claim,
     record_ingress_early_discard,
     record_ingress_event,
     record_ingress_fanout_bypass,
     should_record_ingress_metrics,
 )
-from src.common.shard.registry.config import get_shard_registry_settings, is_sharding_active
+from src.common.platform.shard.registry.config import get_shard_registry_settings, is_sharding_active
 
 INGRESS_CLAIM_PLUGIN = "ingress_gate"
 INGRESS_SHARD_CLAIM_PLUGIN = "ingress_gate_shard"
@@ -174,7 +174,7 @@ async def ingress_group_message_gate(bot, event) -> None:
 async def _log_ingress_gate() -> None:
     if not ingress_gate_active():
         return
-    from src.common.federate.config import federate_ingress_active, resolved_federate_id
+    from src.common.platform.federate.config import federate_ingress_active, resolved_federate_id
 
     n = len(get_fleet_bot_ids())
     mode = "shard" if is_sharding_active() else "unified"

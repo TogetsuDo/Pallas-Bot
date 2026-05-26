@@ -1,6 +1,6 @@
 import pytest
 
-from src.common.web.bot_web import nonebot_log_record_matches_http_facet
+from src.common.console.web.bot_web import nonebot_log_record_matches_http_facet
 
 
 @pytest.mark.parametrize(

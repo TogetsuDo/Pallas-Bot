@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, Any
 
 from nonebot import get_bots, logger
 
-from src.common.multi_bot.dedup import normalize_message_time
-from src.common.multi_bot.group_online_cache import (
+from src.common.platform.multi_bot.dedup import normalize_message_time
+from src.common.platform.multi_bot.group_online_cache import (
     GROUP_ONLINE_TTL_SEC,
     NS_FLEET,
     NS_LOCAL_CONNECTED,
@@ -127,7 +127,7 @@ async def list_group_online_bot_ids(group_id: int) -> list[int]:
 
 async def resolve_unified_group_online_bot_ids(group_id: int) -> list[int]:
     """单进程多账号：本进程已连接 fleet 牛 ∩ 本群成员。"""
-    from src.common.multi_bot.fleet import get_catalog_bot_ids
+    from src.common.platform.multi_bot.fleet import get_catalog_bot_ids
 
     catalog = get_catalog_bot_ids()
     if not catalog:
@@ -162,9 +162,9 @@ async def resolve_unified_group_online_bot_ids(group_id: int) -> list[int]:
 
 async def resolve_shard_group_online_bot_ids(group_id: int) -> list[int]:
     """分片：解析本群可用 fleet 牛（无进程内 TTL 缓存）。"""
-    from src.common.multi_bot.fleet import get_catalog_bot_ids
-    from src.common.shard.presence import get_cluster_online_bot_ids, pick_local_query_bot
-    from src.common.shard.registry.config import is_sharding_active
+    from src.common.platform.multi_bot.fleet import get_catalog_bot_ids
+    from src.common.platform.shard.presence import get_cluster_online_bot_ids, pick_local_query_bot
+    from src.common.platform.shard.registry.config import is_sharding_active
 
     if not is_sharding_active():
         return await resolve_unified_group_online_bot_ids(group_id)
@@ -297,8 +297,8 @@ async def fleet_bot_confirmed_in_group(bot: Any, group_id: int) -> bool:
 
 async def list_local_fleet_bots_in_group(group_id: int) -> list[int]:
     """本 worker 已连接且能确认在本群的 fleet 牛（八角笼分片登记用）。"""
-    from src.common.multi_bot.fleet import get_catalog_bot_ids
-    from src.common.shard.presence import pick_local_query_bot
+    from src.common.platform.multi_bot.fleet import get_catalog_bot_ids
+    from src.common.platform.shard.presence import pick_local_query_bot
 
     caller = pick_local_query_bot()
     if caller is None:

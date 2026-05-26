@@ -10,7 +10,7 @@ from nonebot import logger
 if TYPE_CHECKING:
     from pathlib import Path
 
-from src.common.paths import plugin_data_dir
+from src.common.foundation.paths import plugin_data_dir
 
 _USAGE_FILE = "pallas_draw_daily_usage.json"
 _VERSION = 1

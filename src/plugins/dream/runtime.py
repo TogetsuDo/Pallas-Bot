@@ -9,9 +9,9 @@ from nonebot import get_bot, logger
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, MessageSegment
 from nonebot.exception import ActionFailed
 
-from src.common.config import BotConfig
-from src.common.db import Message as MessageModel
-from src.common.db import make_message_repository
+from src.common.foundation.config import BotConfig
+from src.common.foundation.db import Message as MessageModel
+from src.common.foundation.db import make_message_repository
 
 from .config import plugin_config as dream_plugin_config
 from .dedupe_keys import dream_image_dedupe_key, dream_text_dedupe_key

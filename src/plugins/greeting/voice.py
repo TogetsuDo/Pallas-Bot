@@ -1,7 +1,7 @@
 import random
 from pathlib import Path
 
-from src.common.paths import resource_dir
+from src.common.foundation.paths import resource_dir
 
 voice_set = {
     "任命助理",

@@ -1,4 +1,4 @@
-from src.common.config.dotenv import apply_repo_settings_to_environ
+from src.common.foundation.config.dotenv import apply_repo_settings_to_environ
 
 apply_repo_settings_to_environ()
 
@@ -6,13 +6,13 @@ apply_repo_settings_to_environ()
 import nonebot
 from nonebot.adapters.onebot.v11 import Adapter as ONEBOT_V11Adapter
 
-from src.common.adapters import register_onebot_v11_custom_events
-from src.common.ban_gate import start_ban_gate_snapshot, stop_ban_gate_snapshot
-from src.common.bot_runtime import load_plugins_for_role
-from src.common.db import init_db
-from src.common.logging import apply_stdlib_logging_channel_prefix
-from src.common.utils.voice_downloader import ensure_voices
-from src.common.web import install_nonebot_log_sink
+from src.common.shared.adapters import register_onebot_v11_custom_events
+from src.common.features.ban_gate import start_ban_gate_snapshot, stop_ban_gate_snapshot
+from src.common.platform.bot_runtime import load_plugins_for_role
+from src.common.foundation.db import init_db
+from src.common.foundation.logging import apply_stdlib_logging_channel_prefix
+from src.common.shared.utils.voice_downloader import ensure_voices
+from src.common.console.web import install_nonebot_log_sink
 
 apply_stdlib_logging_channel_prefix()
 nonebot.init()

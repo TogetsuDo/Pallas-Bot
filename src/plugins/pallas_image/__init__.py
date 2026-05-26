@@ -1,11 +1,11 @@
 from nonebot.plugin import PluginMetadata
 
-from src.common.cmd_perm.metadata_defaults import (
+from src.common.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.cmd_perm.metadata_text import SCENE_GROUP, join_usage, usage_line
+from src.common.features.cmd_perm.metadata_text import SCENE_GROUP, join_usage, usage_line
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛画画",

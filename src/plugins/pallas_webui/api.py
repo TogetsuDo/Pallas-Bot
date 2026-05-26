@@ -9,7 +9,7 @@ from fastapi import APIRouter, status
 from fastapi.responses import JSONResponse
 from nonebot import __version__ as _nb_ver
 
-from src.common.bot_version import get_pallas_bot_version_for_health
+from src.common.foundation.bot_version import get_pallas_bot_version_for_health
 
 from .console_meta_store import get_console_meta, merge_console_version_from_disk
 

@@ -2,7 +2,7 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-from src.common.utils.github_release import github_release_asset_url
+from src.common.shared.utils.github_release import github_release_asset_url
 from src.plugins.pallas_protocol.runtime.installer import (
     _asset_name_from_url,
     _looks_like_http_url,

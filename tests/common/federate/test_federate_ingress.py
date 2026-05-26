@@ -4,11 +4,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.common.coord import redis_claim as rc
-from src.common.coord import redis_settings as rs
-from src.common.federate import config as fc
-from src.common.federate import dedup as fd
-from src.common.federate import redis_claim as frc
+from src.common.platform.coord import redis_claim as rc
+from src.common.platform.coord import redis_settings as rs
+from src.common.platform.federate import config as fc
+from src.common.platform.federate import dedup as fd
+from src.common.platform.federate import redis_claim as frc
 
 
 @pytest.fixture(autouse=True)
@@ -62,7 +62,7 @@ def test_federate_ingress_active_requires_redis(monkeypatch):
     monkeypatch.setenv("PALLAS_FEDERATE_ID", "pool-1")
     monkeypatch.setenv("PALLAS_FEDERATE_INGRESS_ENABLED", "true")
     fc.clear_federate_config_cache()
-    from src.common.federate import redis_settings as frs
+    from src.common.platform.federate import redis_settings as frs
 
     monkeypatch.setattr(frs, "federate_redis_available", lambda: False)
     assert fc.federate_ingress_active() is False

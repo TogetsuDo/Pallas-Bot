@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from src.common.webui.field_meta import field_kind_from_annotation, field_meta_for_model_field, literal_choices
+from src.common.console.webui.field_meta import field_kind_from_annotation, field_meta_for_model_field, literal_choices
 
 
 def test_literal_choices():
@@ -49,7 +49,7 @@ def test_field_meta_normalizes_legacy_description():
 
 
 def test_field_meta_keeps_field_help_description():
-    from src.common.webui.field_help import field_help
+    from src.common.console.webui.field_help import field_help
 
     class _Help(BaseModel):
         y: bool = Field(

@@ -9,16 +9,16 @@ from nonebot.adapters.onebot.v11 import Bot, MessageSegment, PrivateMessageEvent
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from src.common.bot_runtime.roles import is_sharded_worker
-from src.common.cmd_perm import satisfies_command_permission
-from src.common.cmd_perm.metadata_defaults import (
+from src.common.features.cmd_perm import satisfies_command_permission
+from src.common.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.cmd_perm.metadata_text import SCENE_PRIVATE, join_usage, usage_line
-from src.common.shard.coord.relogin_payload import ReloginHandleResult, ReplyItem  # noqa: TC001
-from src.common.shard.coord.relogin_worker_forward import forward_relogin_to_hub
+from src.common.features.cmd_perm.metadata_text import SCENE_PRIVATE, join_usage, usage_line
+from src.common.platform.bot_runtime.roles import is_sharded_worker
+from src.common.platform.shard.coord.relogin_payload import ReloginHandleResult, ReplyItem  # noqa: TC001
+from src.common.platform.shard.coord.relogin_worker_forward import forward_relogin_to_hub
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛重新上号转发",

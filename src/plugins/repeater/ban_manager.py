@@ -2,8 +2,8 @@ import re
 import time
 from collections import defaultdict
 
-from src.common.db import Ban, Context, make_blacklist_repository
-from src.common.db.context_repo_access import context_repo
+from src.common.foundation.db import Ban, Context, make_blacklist_repository
+from src.common.foundation.db.context_repo_access import context_repo
 
 from .config import get_repeater_config
 

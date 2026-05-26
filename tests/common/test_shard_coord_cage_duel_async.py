@@ -6,8 +6,8 @@ import time
 
 import pytest
 
-from src.common.multi_bot.dedup import cross_bot_group_message_key
-from src.common.shard.coord import cage_duel as mod
+from src.common.platform.multi_bot.dedup import cross_bot_group_message_key
+from src.common.platform.shard.coord import cage_duel as mod
 
 
 @pytest.mark.asyncio
@@ -19,7 +19,7 @@ async def test_run_shard_merges_self_across_workers(tmp_path, monkeypatch) -> No
 
     async def shard_run(shard_id: int, self_bot: int) -> tuple[int, int] | None:
         monkeypatch.setattr(
-            "src.common.shard.registry.config.get_shard_registry_settings",
+            "src.common.platform.shard.registry.config.get_shard_registry_settings",
             lambda: type("S", (), {"shard_id": shard_id})(),
         )
         return await mod.run_shard_cage_duel_coord(
@@ -70,7 +70,7 @@ async def test_cage_session_resets_after_completed_round(tmp_path, monkeypatch) 
     )
 
     monkeypatch.setattr(
-        "src.common.shard.registry.config.get_shard_registry_settings",
+        "src.common.platform.shard.registry.config.get_shard_registry_settings",
         lambda: type("S", (), {"shard_id": 0})(),
     )
     pair = await mod.run_shard_cage_duel_coord(

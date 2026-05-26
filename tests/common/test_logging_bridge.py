@@ -1,6 +1,6 @@
 import logging
 
-from src.common.logging.bridge import ChannelLoguruHandler
+from src.common.foundation.logging.bridge import ChannelLoguruHandler
 
 
 def test_channel_handler_downgrades_transient_uvicorn_errors() -> None:

@@ -36,7 +36,7 @@
 
 - 持久化数据使用 `data/<plugin_name>/...`。
 - 资源文件使用全局目录 `resource/...`。
-- 插件代码中优先通过 `src/common/paths/`（包 `src.common.paths`）的统一 helper 获取路径，不直接硬编码相对路径字符串。
+- 插件代码中优先通过 `src/common/paths/`（包 `src.common.foundation.paths`）的统一 helper 获取路径，不直接硬编码相对路径字符串。
 
 说明：这样做可以避免运行目录变化导致路径漂移，也能统一备份与清理策略。
 
@@ -56,8 +56,8 @@
 
 ## WebUI 配置与命令权限
 
-- 需在 WebUI 保存 **`webui.json`** 后立即生效的插件配置：在 `config.py` 使用 `src.common.webui.install_hot_reload_config`（见 [WebUI 插件配置](../common/webui/README.md)）；已有自定义缓存的插件可登记到 `plugin_webui_registry`（如决斗插件）。
-- 可配置命令权限：在 `PluginMetadata.extra` 声明 `command_permissions`，matcher 使用 `src.common.cmd_perm.permission_for_command`（见 [cmd_perm](../common/cmd_perm/README.md)）。
+- 需在 WebUI 保存 **`webui.json`** 后立即生效的插件配置：在 `config.py` 使用 `src.common.console.webui.install_hot_reload_config`（见 [WebUI 插件配置](../common/webui/README.md)）；已有自定义缓存的插件可登记到 `plugin_webui_registry`（如决斗插件）。
+- 可配置命令权限：在 `PluginMetadata.extra` 声明 `command_permissions`，matcher 使用 `src.common.features.cmd_perm.permission_for_command`（见 [cmd_perm](../common/cmd_perm/README.md)）。
 
 ### 命令权限与帮助文案（cmd_perm）
 

@@ -24,8 +24,8 @@ import pytest
 @pytest.mark.asyncio
 async def test_find_for_cleanup_or_semantics(pg_engine):
     """trigger_count>threshold 与 clear_time<expiration 必须是 OR 关系（对齐 Mongo）。"""
-    from src.common.db.modules import Context
-    from src.common.db.repository_pg import PgContextRepository
+    from src.common.foundation.db.modules import Context
+    from src.common.foundation.db.repository_pg import PgContextRepository
 
     repo = PgContextRepository()
     await repo.insert(
@@ -48,8 +48,8 @@ async def test_find_for_cleanup_or_semantics(pg_engine):
 @pytest.mark.asyncio
 async def test_context_exists_by_keywords(pg_engine):
     """Learner仅需分支判断时应只查 id，避免误用全量 find_by_keywords。"""
-    from src.common.db.modules import Context
-    from src.common.db.repository_pg import PgContextRepository
+    from src.common.foundation.db.modules import Context
+    from src.common.foundation.db.repository_pg import PgContextRepository
 
     repo = PgContextRepository()
     assert await repo.context_exists_by_keywords("absent_kw") is False
@@ -62,8 +62,8 @@ async def test_context_exists_by_keywords(pg_engine):
 @pytest.mark.asyncio
 async def test_upsert_answer_is_atomic(pg_engine):
     """并发 50 次 upsert_answer 只产生 1 条 Answer、count=50、trigger_count 精确累加。"""
-    from src.common.db.modules import Context
-    from src.common.db.repository_pg import PgContextRepository
+    from src.common.foundation.db.modules import Context
+    from src.common.foundation.db.repository_pg import PgContextRepository
 
     repo = PgContextRepository()
     await repo.insert(Context.model_construct(keywords="kw", time=0, trigger_count=1, answers=[], ban=[], clear_time=0))
@@ -91,8 +91,8 @@ async def test_upsert_answer_is_atomic(pg_engine):
 @pytest.mark.asyncio
 async def test_upsert_answer_append_flag(pg_engine):
     """append_on_existing=False 时 count 仍 +1，但不把新 message 追加到已有 Answer。"""
-    from src.common.db.modules import Context
-    from src.common.db.repository_pg import PgContextRepository
+    from src.common.foundation.db.modules import Context
+    from src.common.foundation.db.repository_pg import PgContextRepository
 
     repo = PgContextRepository()
     await repo.insert(Context.model_construct(keywords="k", time=0, trigger_count=1, answers=[], ban=[], clear_time=0))
@@ -110,7 +110,7 @@ async def test_upsert_answer_append_flag(pg_engine):
 @pytest.mark.asyncio
 async def test_upsert_answer_context_missing(pg_engine):
     """Context 不存在时 upsert_answer 必须 no-op，不得凭空造 Context。"""
-    from src.common.db.repository_pg import PgContextRepository
+    from src.common.foundation.db.repository_pg import PgContextRepository
 
     repo = PgContextRepository()
     await repo.upsert_answer("absent", 1, "a", 100, "m", append_on_existing=True)
@@ -121,8 +121,8 @@ async def test_upsert_answer_context_missing(pg_engine):
 @pytest.mark.asyncio
 async def test_delete_expired_chunked(pg_engine):
     """delete_expired 分块模式下应清掉所有过期行、保留未过期行。"""
-    from src.common.db.modules import Context
-    from src.common.db.repository_pg import PgContextRepository
+    from src.common.foundation.db.modules import Context
+    from src.common.foundation.db.repository_pg import PgContextRepository
 
     repo = PgContextRepository()
     for i in range(100):
@@ -142,8 +142,8 @@ async def test_delete_expired_chunked(pg_engine):
 @pytest.mark.asyncio
 async def test_null_byte_stripping(pg_engine):
     """Context / Answer / Ban / Message 全链路入库前都剥除 \\x00，PG 不得因此报错。"""
-    from src.common.db.modules import Answer, Ban, Context, Message
-    from src.common.db.repository_pg import PgContextRepository, PgMessageRepository
+    from src.common.foundation.db.modules import Answer, Ban, Context, Message
+    from src.common.foundation.db.repository_pg import PgContextRepository, PgMessageRepository
 
     ctx_repo = PgContextRepository()
     msg_repo = PgMessageRepository()
@@ -183,8 +183,8 @@ async def test_null_byte_stripping(pg_engine):
 
 @pytest.mark.asyncio
 async def test_message_find_recent_in_group(pg_engine):
-    from src.common.db.modules import Message
-    from src.common.db.repository_pg import PgMessageRepository
+    from src.common.foundation.db.modules import Message
+    from src.common.foundation.db.repository_pg import PgMessageRepository
 
     repo = PgMessageRepository()
     gid = 88001
@@ -220,8 +220,8 @@ async def test_message_find_recent_in_group(pg_engine):
 @pytest.mark.asyncio
 async def test_upsert_answer_handles_long_keywords(pg_engine):
     """answer.keywords 超出 btree 2704 字节上限时，UNIQUE 约束走 keywords_hash，不应触发 ProgramLimitExceededError。"""
-    from src.common.db.modules import Context
-    from src.common.db.repository_pg import PgContextRepository
+    from src.common.foundation.db.modules import Context
+    from src.common.foundation.db.repository_pg import PgContextRepository
 
     repo = PgContextRepository()
     await repo.insert(
@@ -241,7 +241,7 @@ async def test_upsert_answer_handles_long_keywords(pg_engine):
 @pytest.mark.asyncio
 async def test_blacklist_upsert_is_atomic(pg_engine):
     """并发 upsert_answers 到同一 group_id 不会炸库、最终只剩 1 行。"""
-    from src.common.db.repository_pg import PgBlackListRepository
+    from src.common.foundation.db.repository_pg import PgBlackListRepository
 
     repo = PgBlackListRepository()
     await asyncio.gather(*[repo.upsert_answers(1, [f"a{i}"]) for i in range(20)])
@@ -253,7 +253,7 @@ async def test_blacklist_upsert_is_atomic(pg_engine):
 @pytest.mark.asyncio
 async def test_blacklist_answers_and_reserve_do_not_clobber(pg_engine):
     """同一 group_id 下 upsert_answers 与 upsert_answers_reserve 各管各的列，互不覆盖。"""
-    from src.common.db.repository_pg import PgBlackListRepository
+    from src.common.foundation.db.repository_pg import PgBlackListRepository
 
     repo = PgBlackListRepository()
     # 先写 answers，再写 reserve；reserve 分支不应把 answers 清空
@@ -276,8 +276,8 @@ async def test_blacklist_answers_and_reserve_do_not_clobber(pg_engine):
 @pytest.mark.asyncio
 async def test_image_cache_save_is_upsert(pg_engine):
     """PgImageCacheRepository.save 必须对齐 Mongo save() 的 upsert 语义（存在则更新、不存在则插入）。"""
-    from src.common.db.modules import ImageCache
-    from src.common.db.repository_pg import PgImageCacheRepository
+    from src.common.foundation.db.modules import ImageCache
+    from src.common.foundation.db.repository_pg import PgImageCacheRepository
 
     repo = PgImageCacheRepository()
     ic = ImageCache.model_construct(cq_code="[CQ:image,file=x.image]", base64_data=None, ref_times=1, date=20250419)
@@ -296,8 +296,8 @@ async def test_image_cache_save_is_upsert(pg_engine):
 @pytest.mark.asyncio
 async def test_image_cache_insert_is_no_op_on_duplicate(pg_engine):
     """insert() 的契约是并发下同 cq_code 第二次写等价 no-op，原行不得被覆盖。"""
-    from src.common.db.modules import ImageCache
-    from src.common.db.repository_pg import PgImageCacheRepository
+    from src.common.foundation.db.modules import ImageCache
+    from src.common.foundation.db.repository_pg import PgImageCacheRepository
 
     repo = PgImageCacheRepository()
     first = ImageCache.model_construct(
@@ -321,7 +321,7 @@ async def test_image_cache_insert_is_no_op_on_duplicate(pg_engine):
 @pytest.mark.asyncio
 async def test_config_cache_hit_and_invalidate_on_write(pg_engine):
     """读后走 TTL 缓存；一旦 upsert_field 写入必须让缓存失效，下次读能拿到新值。"""
-    from src.common.db.repository_pg import PgConfigRepository
+    from src.common.foundation.db.repository_pg import PgConfigRepository
 
     repo = PgConfigRepository("bot_config", "account")
     await repo.upsert_field(1001, "security", True)
@@ -340,7 +340,7 @@ async def test_config_cache_ignore_cache_forces_db_read(pg_engine):
     """ignore_cache=True 必须绕过缓存直接回源，不受外部 SQL 旁路改库影响。"""
     from sqlalchemy import update
 
-    from src.common.db.repository_pg import BotConfigRow, PgConfigRepository, get_session
+    from src.common.foundation.db.repository_pg import BotConfigRow, PgConfigRepository, get_session
 
     repo = PgConfigRepository("bot_config", "account")
     await repo.upsert_field(2002, "security", True)
@@ -360,7 +360,7 @@ async def test_config_cache_ignore_cache_forces_db_read(pg_engine):
 @pytest.mark.asyncio
 async def test_config_invalidate_all(pg_engine):
     """invalidate_cache() 必须能全量清空该 row_class 的缓存条目。"""
-    from src.common.db.repository_pg import PgConfigRepository
+    from src.common.foundation.db.repository_pg import PgConfigRepository
 
     repo = PgConfigRepository("bot_config", "account")
     await repo.upsert_field(3003, "security", True)
@@ -372,7 +372,7 @@ async def test_config_invalidate_all(pg_engine):
 @pytest.mark.asyncio
 async def test_config_get_or_create_concurrent(pg_engine):
     """并发 get_or_create 同一 key 必须只有一次 created=True，不得出现 IntegrityError 冒泡。"""
-    from src.common.db.repository_pg import PgConfigRepository
+    from src.common.foundation.db.repository_pg import PgConfigRepository
 
     repo = PgConfigRepository("bot_config", "account")
     key = int(uuid.uuid4().int & 0x7FFFFFFF)

@@ -1,4 +1,4 @@
-from src.common.db import repository as repo_protocols
+from src.common.foundation.db import repository as repo_protocols
 from src.plugins.repeater import ban_manager, learner, message_store, model, responder
 
 

@@ -83,6 +83,7 @@ uv run ruff format --check src/
 - **插件专项说明**：[docs/plugins/README.md](docs/plugins/README.md)（各子目录 `README.md` 与 `src/plugins/<name>/` 对应）。
 - **命令权限（cmd_perm）**：[docs/common/cmd_perm/README.md](docs/common/cmd_perm/README.md)（可配置等级、WebUI 覆盖、帮助菜单「何人可用」）。
 - **运行配置存储**：[docs/architecture/settings-storage.md](docs/architecture/settings-storage.md)（`pallas.toml` + `webui.json`，勿再向根目录 `.env` 写入新项）。
+- **`src/common` 分层**：[docs/architecture/common-layers.md](docs/architecture/common-layers.md)（foundation / platform / features / console / domain / shared）。
 - **常见问题与部署排障**：[docs/FAQ.md](docs/FAQ.md)。
 
 ## 运行配置（Agent 必读）

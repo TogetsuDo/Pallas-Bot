@@ -1,7 +1,7 @@
 import pytest
 
-from src.common.shard.registry.config import get_shard_registry_settings
-from src.common.shard.registry.store import (
+from src.common.platform.shard.registry.config import get_shard_registry_settings
+from src.common.platform.shard.registry.store import (
     ShardRegistry,
     assign_bot_to_shard,
     clear_shard_registry_cache,

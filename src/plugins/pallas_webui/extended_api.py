@@ -28,9 +28,9 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_core import PydanticUndefined
 
-from src.common.web.bot_web import LogScope  # noqa: TC001  # FastAPI/OpenAPI 需在运行时解析注解
-from src.common.webui import apply_plugin_config_patch, plugin_config_payload
-from src.common.webui.console_login import (
+from src.common.console.web.bot_web import LogScope  # noqa: TC001  # FastAPI/OpenAPI 需在运行时解析注解
+from src.common.console.webui import apply_plugin_config_patch, plugin_config_payload
+from src.common.console.webui.console_login import (
     current_http_request,
     extract_session_from_request,
     is_console_auth_configured,
@@ -170,7 +170,7 @@ _LOG_ERROR_BUFFER: list[dict[str, Any]] = []
 
 def _ensure_log_sink() -> None:
     global _INIT_LOG_SINK
-    from src.common.web import install_nonebot_log_sink, set_log_error_capture
+    from src.common.console.web import install_nonebot_log_sink, set_log_error_capture
 
     install_nonebot_log_sink()
     set_log_error_capture(_append_log_error_from_sink)
@@ -262,7 +262,7 @@ def _help_menu_control() -> tuple[set[str], set[str]]:
 
 
 def _list_plugins_dict() -> list[dict[str, Any]]:
-    from src.common.webui.plugin_catalog import build_plugin_catalog_rows
+    from src.common.console.webui.plugin_catalog import build_plugin_catalog_rows
 
     ignored, hidden = _help_menu_control()
     return build_plugin_catalog_rows(ignored=ignored, hidden=hidden)
@@ -325,11 +325,11 @@ def _ensure_bot_session_hooks() -> None:
 
 
 def _list_bots_dict() -> list[dict[str, Any]]:
-    from src.common.bot_runtime.roles import is_sharded_hub
-    from src.common.shard.registry.config import is_sharding_active
+    from src.common.platform.bot_runtime.roles import is_sharded_hub
+    from src.common.platform.shard.registry.config import is_sharding_active
 
     if is_sharding_active() and is_sharded_hub():
-        from src.common.shard.presence import list_connected_bots_for_webui
+        from src.common.platform.shard.presence import list_connected_bots_for_webui
 
         return list_connected_bots_for_webui()
 
@@ -378,7 +378,7 @@ def _is_onebot_v11_bot(bot: object) -> bool:
 def _read_pending_friend_requests_disk() -> dict[str, dict[str, str]]:
     """与 request_handler 插件写入的 JSON 结构一致：{ bot_id: { user_id: flag } }。"""
 
-    from src.common.paths import plugin_data_dir
+    from src.common.foundation.paths import plugin_data_dir
 
     path = plugin_data_dir("request_handler", create=False) / "pending_friend_requests.json"
     if not path.exists():
@@ -399,7 +399,7 @@ def _read_pending_friend_requests_disk() -> dict[str, dict[str, str]]:
 
 
 def _save_pending_friend_requests_disk(data: dict[str, dict[str, str]]) -> None:
-    from src.common.paths import plugin_data_dir
+    from src.common.foundation.paths import plugin_data_dir
 
     path = plugin_data_dir("request_handler") / "pending_friend_requests.json"
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -408,7 +408,7 @@ def _save_pending_friend_requests_disk(data: dict[str, dict[str, str]]) -> None:
 def _read_pending_group_requests_disk() -> dict[str, dict[str, dict[str, Any]]]:
     """与 request_handler 插件写入的 JSON 结构一致：{ bot_id: { group_id: request } }。"""
 
-    from src.common.paths import plugin_data_dir
+    from src.common.foundation.paths import plugin_data_dir
 
     path = plugin_data_dir("request_handler", create=False) / "pending_group_requests.json"
     if not path.exists():
@@ -449,14 +449,14 @@ def _read_pending_group_requests_disk() -> dict[str, dict[str, dict[str, Any]]]:
 
 
 def _save_pending_group_requests_disk(data: dict[str, dict[str, dict[str, Any]]]) -> None:
-    from src.common.paths import plugin_data_dir
+    from src.common.foundation.paths import plugin_data_dir
 
     path = plugin_data_dir("request_handler") / "pending_group_requests.json"
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _ai_extension_config_path():
-    from src.common.paths import plugin_data_dir
+    from src.common.foundation.paths import plugin_data_dir
 
     return plugin_data_dir("pallas_webui") / "ai_extension.json"
 
@@ -560,15 +560,15 @@ def _find_online_onebot_v11_bot(self_id: str) -> tuple[str, object]:
 
 
 def _console_bot_online_in_cluster(self_id: str) -> bool:
-    from src.common.bot_runtime.roles import is_sharded_hub
-    from src.common.shard.registry.config import is_sharding_active
+    from src.common.platform.bot_runtime.roles import is_sharded_hub
+    from src.common.platform.shard.registry.config import is_sharding_active
 
     if not (is_sharding_active() and is_sharded_hub()):
         return False
     target = str(self_id).strip()
     if not target.isdigit():
         return False
-    from src.common.shard.presence import get_cluster_online_bot_ids
+    from src.common.platform.shard.presence import get_cluster_online_bot_ids
 
     return int(target) in get_cluster_online_bot_ids()
 
@@ -582,7 +582,7 @@ def _console_bot_connection_meta(self_id: int) -> tuple[str, str]:
                 raise HTTPException(status_code=400, detail="当前连接不是 OneBot V11")
             return str(key), _bot_adapter_label(bot)
     if _console_bot_online_in_cluster(target):
-        from src.common.shard.presence import read_presence_bots
+        from src.common.platform.shard.presence import read_presence_bots
 
         rec = read_presence_bots().get(target, {})
         return (
@@ -604,7 +604,7 @@ async def _onebot_v11_api_call(self_id: int, api: str, **params: Any) -> Any:
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=502, detail=str(e)) from e
     if _console_bot_online_in_cluster(target):
-        from src.common.shard.coord.bot_action import call_onebot_api_as_bot
+        from src.common.platform.shard.coord.bot_action import call_onebot_api_as_bot
 
         ok, result = await call_onebot_api_as_bot(
             int(self_id),
@@ -1175,7 +1175,7 @@ def _sum_matcher_day_runs(sid: str) -> int:
 
 def _console_daily_stats_disk_enabled() -> bool:
     """分片 worker 不写 console_daily_stats.json，由 hub 合并 worker 快照落盘。"""
-    from src.common.bot_runtime.roles import is_sharded_worker
+    from src.common.platform.bot_runtime.roles import is_sharded_worker
 
     return not is_sharded_worker()
 
@@ -1225,13 +1225,13 @@ def _merge_console_daily_flush_entry(
 
 def _collect_console_daily_flush_entries(today: str) -> list[tuple[str, str, int, int, int]]:
     """hub 定时刷盘：分片下合并各 worker stats 文件 + 本进程内存计数。"""
-    from src.common.bot_runtime.roles import is_sharded_hub
-    from src.common.shard.registry.config import is_sharding_active
+    from src.common.platform.bot_runtime.roles import is_sharded_hub
+    from src.common.platform.shard.registry.config import is_sharding_active
 
     bucket: dict[tuple[str, str], tuple[int, int, int]] = {}
 
     if is_sharding_active() and is_sharded_hub():
-        from src.common.shard.console_stats import load_cluster_console_stats_by_sid
+        from src.common.platform.shard.console_stats import load_cluster_console_stats_by_sid
 
         for sid, blob in load_cluster_console_stats_by_sid().items():
             if not isinstance(blob, dict):
@@ -1313,11 +1313,11 @@ def _rollover_console_day_if_needed(sid: str, today: str) -> None:
 def _flush_today_console_daily_stats_disk() -> None:
     """定时刷盘：当前自然日内累计值写入磁盘（不按桶）。"""
     try:
-        from src.common.bot_runtime.roles import is_sharded_hub
-        from src.common.shard.registry.config import is_sharding_active
+        from src.common.platform.bot_runtime.roles import is_sharded_hub
+        from src.common.platform.shard.registry.config import is_sharding_active
 
         if is_sharding_active() and is_sharded_hub():
-            from src.common.shard.console_stats import prune_stale_worker_stats_bots_sync
+            from src.common.platform.shard.console_stats import prune_stale_worker_stats_bots_sync
 
             prune_stale_worker_stats_bots_sync()
     except Exception:  # noqa: BLE001
@@ -1463,12 +1463,12 @@ def _collect_worker_console_stats_snapshot(*, include_hist: bool = False) -> dic
 
 
 def flush_worker_shard_console_stats_sync(*, include_hist: bool = False) -> None:
-    from src.common.bot_runtime.roles import is_sharded_worker
-    from src.common.shard.console_stats import write_worker_stats_sync
-    from src.common.shard.coord_pending import coord_pending_snapshot_sync
-    from src.common.shard.ingress_metrics import ingress_metrics_snapshot
-    from src.common.shard.presence import reconcile_local_worker_presence_sync
-    from src.common.shard.registry.config import get_shard_registry_settings
+    from src.common.platform.bot_runtime.roles import is_sharded_worker
+    from src.common.platform.shard.console_stats import write_worker_stats_sync
+    from src.common.platform.shard.coord_pending import coord_pending_snapshot_sync
+    from src.common.platform.shard.ingress_metrics import ingress_metrics_snapshot
+    from src.common.platform.shard.presence import reconcile_local_worker_presence_sync
+    from src.common.platform.shard.registry.config import get_shard_registry_settings
 
     if not is_sharded_worker():
         return
@@ -1492,9 +1492,9 @@ def flush_worker_shard_console_stats_sync(*, include_hist: bool = False) -> None
 
 
 def _restore_worker_console_stats_from_shard_file() -> None:
-    from src.common.bot_runtime.roles import is_sharded_worker
-    from src.common.shard.console_stats import load_worker_console_stats_for_boot
-    from src.common.shard.registry.config import get_shard_registry_settings
+    from src.common.platform.bot_runtime.roles import is_sharded_worker
+    from src.common.platform.shard.console_stats import load_worker_console_stats_for_boot
+    from src.common.platform.shard.registry.config import get_shard_registry_settings
 
     if not is_sharded_worker():
         return
@@ -1531,7 +1531,7 @@ def start_worker_shard_console_stats_sync() -> None:
     global _WORKER_STATS_SYNC_STARTED
     if _WORKER_STATS_SYNC_STARTED:
         return
-    from src.common.bot_runtime.roles import is_sharded_worker
+    from src.common.platform.bot_runtime.roles import is_sharded_worker
 
     if not is_sharded_worker():
         return
@@ -1956,12 +1956,12 @@ async def _message_stats_overview(*, self_id: str | None) -> dict[str, Any]:
         total_today_sent += int(row["today_sent"])
         total_today_received += int(row["today_received"])
 
-    from src.common.bot_runtime.roles import is_sharded_hub
-    from src.common.shard.registry.config import is_sharding_active
+    from src.common.platform.bot_runtime.roles import is_sharded_hub
+    from src.common.platform.shard.registry.config import is_sharding_active
 
     if is_sharding_active() and is_sharded_hub():
-        from src.common.shard.console_stats import load_cluster_console_stats_by_sid
-        from src.common.shard.presence import read_presence_bots
+        from src.common.platform.shard.console_stats import load_cluster_console_stats_by_sid
+        from src.common.platform.shard.presence import read_presence_bots
 
         cluster = load_cluster_console_stats_by_sid()
         seen: set[str] = set()
@@ -2144,7 +2144,7 @@ def _record_plugin_run_duration(sid: str, plugin: str, elapsed_ms: int | float) 
 
 def _append_matcher_error_log(sid: str, plugin: str, exception: BaseException) -> None:
     """进程内环形缓冲 + jsonl；与定时清理共用锁，避免与每日清空交错。"""
-    from src.common.paths import plugin_data_dir
+    from src.common.foundation.paths import plugin_data_dir
 
     tb = "".join(
         traceback.format_exception(
@@ -2187,7 +2187,7 @@ def _append_matcher_error_log(sid: str, plugin: str, exception: BaseException) -
 
 def _rewrite_matcher_durations_jsonl() -> None:
     """用各账号进程内缓冲（每账号最多 _MATCHER_DURATION_LOG_CAP 条）覆写 jsonl。"""
-    from src.common.paths import plugin_data_dir
+    from src.common.foundation.paths import plugin_data_dir
 
     path = plugin_data_dir("pallas_webui") / "matcher_durations.jsonl"
     lines: list[str] = []
@@ -2216,7 +2216,7 @@ def _rewrite_matcher_durations_jsonl() -> None:
 
 def _load_matcher_duration_logs_from_disk() -> None:
     """启动时从 jsonl 恢复各账号最近 _MATCHER_DURATION_LOG_CAP 条单次耗时。"""
-    from src.common.paths import plugin_data_dir
+    from src.common.foundation.paths import plugin_data_dir
 
     path = plugin_data_dir("pallas_webui") / "matcher_durations.jsonl"
     if not path.exists():
@@ -2256,11 +2256,11 @@ def _load_matcher_duration_logs_from_disk() -> None:
     cap = _MATCHER_DURATION_LOG_CAP
     worker_assigned: set[str] = set()
     try:
-        from src.common.bot_runtime.roles import is_sharded_hub
-        from src.common.shard.registry.config import is_sharding_active
+        from src.common.platform.bot_runtime.roles import is_sharded_hub
+        from src.common.platform.shard.registry.config import is_sharding_active
 
         if is_sharding_active() and is_sharded_hub():
-            from src.common.shard.registry.store import get_shard_registry
+            from src.common.platform.shard.registry.store import get_shard_registry
 
             worker_assigned = {str(k).strip() for k in get_shard_registry().assignments if str(k).strip()}
     except Exception:  # noqa: BLE001
@@ -2338,7 +2338,7 @@ def _append_matcher_duration_log(
     had_error: bool,
 ) -> None:
     """进程内环形缓冲；单进程/hub 另写 jsonl；分片 worker 由 stats 文件周期刷盘。"""
-    from src.common.bot_runtime.roles import is_sharded_worker
+    from src.common.platform.bot_runtime.roles import is_sharded_worker
 
     entry: dict[str, Any] = {
         "at": int(time.time()),
@@ -2372,8 +2372,8 @@ def _matcher_duration_log_public(
         return []
     day_filter = ""
     try:
-        from src.common.bot_runtime.roles import is_sharded_hub
-        from src.common.shard.registry.config import is_sharding_active
+        from src.common.platform.bot_runtime.roles import is_sharded_hub
+        from src.common.platform.shard.registry.config import is_sharding_active
 
         if is_sharding_active() and is_sharded_hub():
             day_filter = time.strftime("%Y-%m-%d", time.localtime())
@@ -2436,13 +2436,13 @@ def _dotted_module_short_name(module_name: str) -> str:
 
 
 def _tb_and_exc_type_from_log_record(record: Any) -> tuple[str, str, str]:
-    from src.common.shard.logs.errors import parse_log_error_from_record
+    from src.common.platform.shard.logs.errors import parse_log_error_from_record
 
     return parse_log_error_from_record("", record)
 
 
 def _append_console_log_error(entry: dict[str, Any]) -> None:
-    from src.common.paths import plugin_data_dir
+    from src.common.foundation.paths import plugin_data_dir
 
     path = plugin_data_dir("pallas_webui") / "log_errors.jsonl"
     line_obj = {k: v for k, v in entry.items() if k != "raw_line"}
@@ -2462,7 +2462,7 @@ def _append_console_log_error(entry: dict[str, Any]) -> None:
 
 
 def _append_log_error_from_sink(text: str, record: Any) -> None:
-    from src.common.shard.logs.errors import parse_log_error_from_record
+    from src.common.platform.shard.logs.errors import parse_log_error_from_record
 
     exc_type, msg, tb = parse_log_error_from_record(text, record)
     try:
@@ -2488,11 +2488,11 @@ def _append_log_error_from_sink(text: str, record: Any) -> None:
     }
     _append_console_log_error(entry)
     try:
-        from src.common.bot_runtime.roles import is_sharded_hub
+        from src.common.platform.bot_runtime.roles import is_sharded_hub
 
         if is_sharded_hub():
-            from src.common.shard.logs.errors import append_shard_log_error, log_stem_for_shard
-            from src.common.shard.registry.config import get_shard_registry_settings
+            from src.common.platform.shard.logs.errors import append_shard_log_error, log_stem_for_shard
+            from src.common.platform.shard.registry.config import get_shard_registry_settings
 
             s = get_shard_registry_settings()
             stem = log_stem_for_shard(role=s.role, shard_id=s.shard_id)
@@ -2537,11 +2537,11 @@ def _log_error_log_meta() -> dict[str, Any]:
     sharded = False
     sources = ["hub"]
     try:
-        from src.common.bot_runtime.roles import is_sharded_hub
+        from src.common.platform.bot_runtime.roles import is_sharded_hub
 
         if is_sharded_hub():
             sharded = True
-            from src.common.shard.logs.view import list_shard_log_sources
+            from src.common.platform.shard.logs.view import list_shard_log_sources
 
             sources = list_shard_log_sources()
     except Exception:
@@ -2559,10 +2559,10 @@ def _log_error_log_public(
         raw = list(_LOG_ERROR_BUFFER)
     merged: list[dict[str, Any]] = [dict(it) for it in raw if isinstance(it, dict)]
     try:
-        from src.common.bot_runtime.roles import is_sharded_hub
+        from src.common.platform.bot_runtime.roles import is_sharded_hub
 
         if is_sharded_hub():
-            from src.common.shard.logs.view import collect_cluster_log_errors
+            from src.common.platform.shard.logs.view import collect_cluster_log_errors
 
             merged.extend(collect_cluster_log_errors(per_file=800, limit=max(limit * 4, 80)))
     except Exception:
@@ -2587,7 +2587,7 @@ def _log_error_log_public(
 
 
 def _cleanup_log_error_archives_sync() -> None:
-    from src.common.paths import plugin_data_dir
+    from src.common.foundation.paths import plugin_data_dir
 
     path = plugin_data_dir("pallas_webui") / "log_errors.jsonl"
     with _LOG_ERROR_JSONL_LOCK:
@@ -2604,10 +2604,10 @@ def _cleanup_log_errors_manual_sync() -> dict[str, Any]:
     _cleanup_log_error_archives_sync()
     sharded_errors = False
     try:
-        from src.common.bot_runtime.roles import is_sharded_hub
+        from src.common.platform.bot_runtime.roles import is_sharded_hub
 
         if is_sharded_hub():
-            from src.common.shard.logs.errors import cleanup_shard_error_archives_sync
+            from src.common.platform.shard.logs.errors import cleanup_shard_error_archives_sync
 
             cleanup_shard_error_archives_sync()
             sharded_errors = True
@@ -2619,7 +2619,7 @@ def _cleanup_log_errors_manual_sync() -> dict[str, Any]:
 
 async def _scheduled_cleanup_matcher_error_logs() -> None:
     """每日 4:00 清理 Matcher 异常与日志 ERROR 归档（jsonl + 进程内缓冲）。"""
-    from src.common.paths import plugin_data_dir
+    from src.common.foundation.paths import plugin_data_dir
 
     err_path = plugin_data_dir("pallas_webui") / "matcher_errors.jsonl"
     dur_path = plugin_data_dir("pallas_webui") / "matcher_durations.jsonl"
@@ -2643,14 +2643,14 @@ async def _scheduled_cleanup_matcher_error_logs() -> None:
                 rec["matcher_duration_log"] = []
     _cleanup_log_error_archives_sync()
     try:
-        from src.common.bot_runtime.roles import is_sharded_hub
+        from src.common.platform.bot_runtime.roles import is_sharded_hub
 
         if is_sharded_hub():
-            from src.common.shard.console_stats import iter_worker_shard_ids, trim_worker_duration_logs_sync
-            from src.common.shard.logs.errors import cleanup_shard_error_archives_sync
+            from src.common.platform.shard.console_stats import iter_worker_shard_ids, trim_worker_duration_logs_sync
+            from src.common.platform.shard.logs.errors import cleanup_shard_error_archives_sync
 
             cleanup_shard_error_archives_sync()
-            from src.common.shard.logs.view import cleanup_stale_shard_log_files
+            from src.common.platform.shard.logs.view import cleanup_stale_shard_log_files
 
             cleanup_stale_shard_log_files()
             for wid in iter_worker_shard_ids():
@@ -2854,7 +2854,7 @@ def _init_plugin_run_tracking() -> None:
     if _PLUGIN_RUN_TRACKING_INIT:
         return
     _PLUGIN_RUN_TRACKING_INIT = True
-    from src.common.bot_runtime.roles import is_sharded_worker
+    from src.common.platform.bot_runtime.roles import is_sharded_worker
 
     if is_sharded_worker():
         _restore_worker_console_stats_from_shard_file()
@@ -3004,12 +3004,12 @@ def _plugin_run_stats_overview(
         total_runs_today += int(row.get("runs_today", 0))
         total_errors_today += int(row.get("errors_today", 0))
 
-    from src.common.bot_runtime.roles import is_sharded_hub
-    from src.common.shard.registry.config import is_sharding_active
+    from src.common.platform.bot_runtime.roles import is_sharded_hub
+    from src.common.platform.shard.registry.config import is_sharding_active
 
     if is_sharding_active() and is_sharded_hub():
-        from src.common.shard.console_stats import load_cluster_console_stats_by_sid
-        from src.common.shard.presence import read_presence_bots
+        from src.common.platform.shard.console_stats import load_cluster_console_stats_by_sid
+        from src.common.platform.shard.presence import read_presence_bots
 
         cluster = load_cluster_console_stats_by_sid()
         seen: set[str] = set()
@@ -3131,12 +3131,12 @@ def _console_daily_stats_payload(
     )
     by_key: dict[tuple[str, str], dict[str, Any]] = {(r["date"], r["self_id"]): dict(r) for r in rows}
     live_out: dict[str, dict[str, int]] = {}
-    from src.common.bot_runtime.roles import is_sharded_hub
-    from src.common.shard.registry.config import is_sharding_active
+    from src.common.platform.bot_runtime.roles import is_sharded_hub
+    from src.common.platform.shard.registry.config import is_sharding_active
 
     shard_cluster_sids: set[str] = set()
     if is_sharding_active() and is_sharded_hub():
-        from src.common.shard.console_stats import load_cluster_console_stats_by_sid
+        from src.common.platform.shard.console_stats import load_cluster_console_stats_by_sid
 
         for sid, blob in load_cluster_console_stats_by_sid().items():
             sid = str(sid).strip()
@@ -3258,12 +3258,12 @@ async def _call_get_message_history(
 
 async def _collect_online_bot_profiles() -> dict[str, dict[str, Any]]:
     """尽力读取在线 OneBot V11 账号资料，失败时忽略单个账号并保留其它结果。"""
-    from src.common.bot_runtime.roles import is_sharded_hub
-    from src.common.shard.registry.config import is_sharding_active
+    from src.common.platform.bot_runtime.roles import is_sharded_hub
+    from src.common.platform.shard.registry.config import is_sharding_active
 
     if is_sharding_active() and is_sharded_hub():
-        from src.common.shard.presence import read_presence_bots
-        from src.common.webui.protocol_accounts import protocol_account_display_names
+        from src.common.console.webui.protocol_accounts import protocol_account_display_names
+        from src.common.platform.shard.presence import read_presence_bots
 
         names = protocol_account_display_names()
         out: dict[str, dict[str, Any]] = {}
@@ -3277,7 +3277,7 @@ async def _collect_online_bot_profiles() -> dict[str, dict[str, Any]]:
                 "adapter": str(rec.get("adapter") or ""),
                 "shard_id": rec.get("shard_id"),
             }
-        from src.common.db.pallas_console_data import pallas_protocol_snapshot
+        from src.common.foundation.db.pallas_console_data import pallas_protocol_snapshot
 
         snap = pallas_protocol_snapshot()
         if snap and isinstance(snap.get("accounts"), list):
@@ -3342,11 +3342,11 @@ async def _friend_requests_overview(
 ) -> dict[str, Any]:
     disk = _read_pending_friend_requests_disk()
     online_by_self: dict[str, tuple[str, object]] = {}
-    from src.common.bot_runtime.roles import is_sharded_hub
-    from src.common.shard.registry.config import is_sharding_active
+    from src.common.platform.bot_runtime.roles import is_sharded_hub
+    from src.common.platform.shard.registry.config import is_sharding_active
 
     if is_sharding_active() and is_sharded_hub():
-        from src.common.shard.presence import read_presence_bots
+        from src.common.platform.shard.presence import read_presence_bots
 
         for key, rec in read_presence_bots().items():
             sid = str(rec.get("qq") or key)
@@ -3728,8 +3728,8 @@ class _RequestActionsBatchBody(BaseModel):
 
 
 async def _apply_bot_config_patch(account: int, body: _BotConfigPatch) -> dict[str, Any]:
-    from src.common.db import make_bot_config_repository
-    from src.common.db.pallas_console_data import bot_config_to_public
+    from src.common.foundation.db import make_bot_config_repository
+    from src.common.foundation.db.pallas_console_data import bot_config_to_public
 
     repo = make_bot_config_repository()
     await repo.get_or_create(account, disabled_plugins=[])
@@ -3748,7 +3748,7 @@ async def _apply_bot_config_patch(account: int, body: _BotConfigPatch) -> dict[s
 
         await invalidate_disabled_plugin_gate_cache(bot_id=account)
     if "admins" in fields:
-        from src.common.config.bot_admins_cache import invalidate_bot_admins_cache
+        from src.common.foundation.config.bot_admins_cache import invalidate_bot_admins_cache
 
         await invalidate_bot_admins_cache(account)
     doc = await repo.get(account, ignore_cache=True)
@@ -3758,8 +3758,8 @@ async def _apply_bot_config_patch(account: int, body: _BotConfigPatch) -> dict[s
 
 
 async def _apply_group_config_patch(group_id: int, body: _GroupConfigPatch) -> dict[str, Any]:
-    from src.common.db import make_group_config_repository
-    from src.common.db.pallas_console_data import group_config_to_public
+    from src.common.foundation.db import make_group_config_repository
+    from src.common.foundation.db.pallas_console_data import group_config_to_public
 
     repo = make_group_config_repository()
     await repo.get_or_create(group_id, disabled_plugins=[])
@@ -3790,8 +3790,8 @@ async def _apply_group_config_patch(group_id: int, body: _GroupConfigPatch) -> d
 
 
 async def _apply_user_config_patch(user_id: int, body: _UserConfigPatch) -> dict[str, Any]:
-    from src.common.db import make_user_config_repository
-    from src.common.db.pallas_console_data import user_config_to_public
+    from src.common.foundation.db import make_user_config_repository
+    from src.common.foundation.db.pallas_console_data import user_config_to_public
 
     repo = make_user_config_repository()
     await repo.get_or_create(user_id, banned=False)
@@ -3814,8 +3814,16 @@ def _normalize_table_name(raw: str) -> str:
 
 
 async def _get_db_table_row_public(table: str, row_id: int) -> dict[str, Any] | None:
-    from src.common.db import make_bot_config_repository, make_group_config_repository, make_user_config_repository
-    from src.common.db.pallas_console_data import bot_config_to_public, group_config_to_public, user_config_to_public
+    from src.common.foundation.db import (
+        make_bot_config_repository,
+        make_group_config_repository,
+        make_user_config_repository,
+    )
+    from src.common.foundation.db.pallas_console_data import (
+        bot_config_to_public,
+        group_config_to_public,
+        user_config_to_public,
+    )
 
     t = _normalize_table_name(table)
     if t == "bot_config":
@@ -3834,7 +3842,11 @@ async def _get_db_table_row_public(table: str, row_id: int) -> dict[str, Any] | 
 
 
 async def _upsert_db_table_row(table: str, row_id: int, data: dict[str, Any]) -> dict[str, Any]:
-    from src.common.db import make_bot_config_repository, make_group_config_repository, make_user_config_repository
+    from src.common.foundation.db import (
+        make_bot_config_repository,
+        make_group_config_repository,
+        make_user_config_repository,
+    )
 
     t = _normalize_table_name(table)
     payload = dict(data or {})
@@ -3861,7 +3873,7 @@ async def _upsert_db_table_row(table: str, row_id: int, data: dict[str, Any]) ->
 
             await invalidate_disabled_plugin_gate_cache(bot_id=int(row_id))
         if "admins" in payload:
-            from src.common.config.bot_admins_cache import invalidate_bot_admins_cache
+            from src.common.foundation.config.bot_admins_cache import invalidate_bot_admins_cache
 
             await invalidate_bot_admins_cache(int(row_id))
         got = await _get_db_table_row_public("bot_config", int(row_id))
@@ -3908,14 +3920,14 @@ async def _upsert_db_table_row(table: str, row_id: int, data: dict[str, Any]) ->
 
 
 async def _delete_db_table_row(table: str, row_id: int) -> bool:
-    from src.common.db import get_db_backend
+    from src.common.foundation.db import get_db_backend
 
     t = _normalize_table_name(table)
     if not t:
         raise ValueError("仅支持 config(bot_config)/group_config/user_config")
     backend = get_db_backend()
     if backend == "mongodb":
-        from src.common.db.modules import BotConfigModule, GroupConfigModule, UserConfigModule
+        from src.common.foundation.db.modules import BotConfigModule, GroupConfigModule, UserConfigModule
 
         model_map = {
             "bot_config": (BotConfigModule, "account"),
@@ -3931,7 +3943,7 @@ async def _delete_db_table_row(table: str, row_id: int) -> bool:
     if backend in ("postgres", "postgresql", "pg"):
         from sqlalchemy import delete
 
-        from src.common.db.repository_pg import BotConfigRow, GroupConfigRow, UserConfigRow, get_session
+        from src.common.foundation.db.repository_pg import BotConfigRow, GroupConfigRow, UserConfigRow, get_session
 
         row_map = {
             "bot_config": (BotConfigRow, "account"),
@@ -3978,7 +3990,7 @@ def register_extended_api(
 
     @router_pub.post(f"{x}/auth/login", include_in_schema=False)
     async def _auth_login(request: Request, body: _AuthLoginBody) -> JSONResponse:
-        from src.common.webui.console_login import SESSION_COOKIE_NAME, SESSION_TTL_SEC
+        from src.common.console.webui.console_login import SESSION_COOKIE_NAME, SESSION_TTL_SEC
 
         if not verify_console_password(body.password):
             raise HTTPException(status_code=401, detail="口令错误")
@@ -4008,8 +4020,8 @@ def register_extended_api(
 
     @router.get(f"{x}/shard-registry", include_in_schema=True)
     async def _shard_registry() -> JSONResponse:
-        from src.common.shard.registry import get_shard_registry, rebalance_hint
-        from src.common.shard.registry.config import get_shard_registry_settings
+        from src.common.platform.shard.registry import get_shard_registry, rebalance_hint
+        from src.common.platform.shard.registry.config import get_shard_registry_settings
 
         reg = get_shard_registry()
         settings = get_shard_registry_settings()
@@ -4024,7 +4036,7 @@ def register_extended_api(
 
     @router.get(f"{x}/shard-observability", include_in_schema=True)
     async def _shard_observability() -> JSONResponse:
-        from src.common.shard.observability import aggregate_shard_observability
+        from src.common.platform.shard.observability import aggregate_shard_observability
 
         async def _load() -> dict[str, Any]:
             return aggregate_shard_observability()
@@ -4045,7 +4057,7 @@ def register_extended_api(
 
     @router.get(f"{x}/community-stats", include_in_schema=True)
     async def _community_stats() -> JSONResponse:
-        from src.common.community_stats.public_stats import fetch_community_public_stats
+        from src.common.features.community_stats.public_stats import fetch_community_public_stats
 
         async def _load() -> dict[str, Any]:
             return await fetch_community_public_stats()
@@ -4055,7 +4067,7 @@ def register_extended_api(
 
     @router.get(f"{x}/corpus-status", include_in_schema=True)
     async def _corpus_status() -> JSONResponse:
-        from src.common.corpus.status import build_corpus_status_snapshot
+        from src.common.features.corpus.status import build_corpus_status_snapshot
 
         async def _load() -> dict[str, Any]:
             return await build_corpus_status_snapshot()
@@ -4065,7 +4077,7 @@ def register_extended_api(
 
     @router.get(f"{x}/federation-onboarding", include_in_schema=True)
     async def _federation_onboarding() -> JSONResponse:
-        from src.common.community_stats.federation_onboarding import fetch_federation_onboarding
+        from src.common.features.community_stats.federation_onboarding import fetch_federation_onboarding
 
         async def _load() -> dict[str, Any]:
             return await fetch_federation_onboarding()
@@ -4197,7 +4209,7 @@ def register_extended_api(
             from pydantic import ValidationError
 
             if isinstance(e, ValidationError):
-                from src.common.webui.plugin_api import format_validation_error
+                from src.common.console.webui.plugin_api import format_validation_error
 
                 raise HTTPException(status_code=400, detail=format_validation_error(e)) from e
             raise HTTPException(status_code=500, detail=str(e)) from e
@@ -4226,7 +4238,7 @@ def register_extended_api(
             from pydantic import ValidationError
 
             if isinstance(e, ValidationError):
-                from src.common.webui.plugin_api import format_validation_error
+                from src.common.console.webui.plugin_api import format_validation_error
 
                 raise HTTPException(status_code=400, detail=format_validation_error(e)) from e
             raise HTTPException(status_code=400, detail=str(e)) from e
@@ -4252,13 +4264,13 @@ def register_extended_api(
 
     @router.get(f"{x}/common-config/sections", include_in_schema=True)
     async def _common_config_sections_list() -> JSONResponse:
-        from src.common.webui.env_sections import list_webui_env_sections
+        from src.common.console.webui.env_sections import list_webui_env_sections
 
         return JSONResponse({"ok": True, "data": list_webui_env_sections()})
 
     @router.get(f"{x}/common-config/{{section_id}}", include_in_schema=True)
     async def _common_config_get(section_id: str) -> JSONResponse:
-        from src.common.webui.env_sections import webui_env_section_payload
+        from src.common.console.webui.env_sections import webui_env_section_payload
 
         try:
             data = webui_env_section_payload(section_id)
@@ -4274,7 +4286,7 @@ def register_extended_api(
         x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
     ) -> JSONResponse:
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
-        from src.common.webui.env_sections import apply_webui_env_section_patch
+        from src.common.console.webui.env_sections import apply_webui_env_section_patch
 
         try:
             data = apply_webui_env_section_patch(section_id, dict(body.values or {}))
@@ -4294,7 +4306,7 @@ def register_extended_api(
         x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
     ) -> JSONResponse:
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
-        from src.common.service_probe import format_probe_lines
+        from src.common.shared.service_probe import format_probe_lines
         from src.plugins.connectivity.probe_collect import probe_all_connectivity_from_draft
 
         try:
@@ -4337,16 +4349,16 @@ def register_extended_api(
         ),
     ) -> JSONResponse:
         _ensure_log_sink()
-        from src.common.web import tail_nonebot_log_entries_scoped, tail_nonebot_log_lines_scoped
+        from src.common.console.web import tail_nonebot_log_entries_scoped, tail_nonebot_log_lines_scoped
 
         sharded_logs = False
         log_sources: list[str] = []
         try:
-            from src.common.bot_runtime.roles import is_sharded_hub
+            from src.common.platform.bot_runtime.roles import is_sharded_hub
 
             if is_sharded_hub():
                 sharded_logs = True
-                from src.common.shard.logs.view import list_shard_log_sources
+                from src.common.platform.shard.logs.view import list_shard_log_sources
 
                 log_sources = list_shard_log_sources()
         except Exception:
@@ -4382,7 +4394,7 @@ def register_extended_api(
         ),
     ) -> StreamingResponse:
         _ensure_log_sink()
-        from src.common.web import iter_nonebot_log_sse
+        from src.common.console.web import iter_nonebot_log_sse
 
         src = (source or "all").strip() or "all"
         return StreamingResponse(
@@ -4409,7 +4421,7 @@ def register_extended_api(
 
     @router.get(f"{x}/db/overview", include_in_schema=True)
     async def _db_overview() -> JSONResponse:
-        from src.common.db.pallas_console_data import database_overview
+        from src.common.foundation.db.pallas_console_data import database_overview
 
         try:
             data = await _cached_read(
@@ -4425,7 +4437,7 @@ def register_extended_api(
 
     @router.get(f"{x}/db/backup/info", include_in_schema=True)
     async def _db_backup_info() -> JSONResponse:
-        from src.common.db.backup import backup_info
+        from src.common.foundation.db.backup import backup_info
 
         try:
             data = backup_info()
@@ -4442,7 +4454,11 @@ def register_extended_api(
     ) -> JSONResponse:
         """异步发起数据库逻辑备份；返回 job_id，进度见 GET /db/backup/jobs/{job_id}。"""
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
-        from src.common.db.backup_jobs import backup_job_status_payload, run_backup_job_sync, start_backup_job
+        from src.common.foundation.db.backup_jobs import (
+            backup_job_status_payload,
+            run_backup_job_sync,
+            start_backup_job,
+        )
 
         try:
             job = start_backup_job(
@@ -4462,14 +4478,14 @@ def register_extended_api(
 
     @router.get(f"{x}/db/backup/jobs/active", include_in_schema=True)
     async def _db_backup_job_active() -> JSONResponse:
-        from src.common.db.backup_jobs import active_backup_job, backup_job_status_payload
+        from src.common.foundation.db.backup_jobs import active_backup_job, backup_job_status_payload
 
         job = active_backup_job()
         return JSONResponse({"ok": True, "data": backup_job_status_payload(job) if job else None})
 
     @router.get(f"{x}/db/backup/jobs/{{job_id}}", include_in_schema=True)
     async def _db_backup_job_status(job_id: str) -> JSONResponse:
-        from src.common.db.backup_jobs import backup_job_status_payload, get_backup_job
+        from src.common.foundation.db.backup_jobs import backup_job_status_payload, get_backup_job
 
         job = get_backup_job(job_id.strip())
         if job is None:
@@ -4480,7 +4496,7 @@ def register_extended_api(
     async def _db_backup_runs(
         output_parent: str | None = Query(default=None, max_length=1024),
     ) -> JSONResponse:
-        from src.common.db.backup import list_backup_runs
+        from src.common.foundation.db.backup import list_backup_runs
 
         try:
             rows = await asyncio.to_thread(list_backup_runs, output_parent=output_parent)
@@ -4498,8 +4514,8 @@ def register_extended_api(
         x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
     ) -> JSONResponse:
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
-        from src.common.db.backup import delete_backup_runs
-        from src.common.db.backup_jobs import active_backup_job
+        from src.common.foundation.db.backup import delete_backup_runs
+        from src.common.foundation.db.backup_jobs import active_backup_job
 
         def check_active_delete_conflict() -> None:
             active = active_backup_job()
@@ -4537,7 +4553,7 @@ def register_extended_api(
             x_pallas_token=x_pallas_token,
             token=token,
         )
-        from src.common.db.pallas_console_data import mongo_aggregate_console
+        from src.common.foundation.db.pallas_console_data import mongo_aggregate_console
 
         try:
             rows = await mongo_aggregate_console(
@@ -4612,7 +4628,7 @@ def register_extended_api(
 
     @router.get(f"{x}/instances", include_in_schema=True)
     async def _instances() -> JSONResponse:
-        from src.common.db.pallas_console_data import list_all_bot_configs_public, pallas_protocol_snapshot
+        from src.common.foundation.db.pallas_console_data import list_all_bot_configs_public, pallas_protocol_snapshot
 
         async def _load() -> dict[str, Any]:
             db_bots = await list_all_bot_configs_public()
@@ -4642,7 +4658,7 @@ def register_extended_api(
 
     @router.get(f"{x}/bot-configs", include_in_schema=True)
     async def _bot_configs_list() -> JSONResponse:
-        from src.common.db.pallas_console_data import list_all_bot_configs_public
+        from src.common.foundation.db.pallas_console_data import list_all_bot_configs_public
 
         try:
             rows = await _cached_read(
@@ -4659,8 +4675,8 @@ def register_extended_api(
     async def _bot_config_one(
         account: int,
     ) -> JSONResponse:
-        from src.common.db import make_bot_config_repository
-        from src.common.db.pallas_console_data import bot_config_to_public
+        from src.common.foundation.db import make_bot_config_repository
+        from src.common.foundation.db.pallas_console_data import bot_config_to_public
 
         repo = make_bot_config_repository()
         doc = await repo.get(account, ignore_cache=True)
@@ -4693,7 +4709,10 @@ def register_extended_api(
         limit: int = Query(default=1000, ge=1, le=10_000),
         self_id: int | None = Query(default=None, description="Bot QQ；传入时仅返回该 Bot 所在群的配置"),
     ) -> JSONResponse:
-        from src.common.db.pallas_console_data import list_group_configs_by_ids_public, list_group_configs_public
+        from src.common.foundation.db.pallas_console_data import (
+            list_group_configs_by_ids_public,
+            list_group_configs_public,
+        )
 
         # 按账号过滤：拉取 Bot 的群列表，再从 DB 取对应群配置并合并（走 OneBot，结果短时缓存）
         if self_id is not None:
@@ -4778,8 +4797,8 @@ def register_extended_api(
     async def _group_config_one(
         group_id: int,
     ) -> JSONResponse:
-        from src.common.db import make_group_config_repository
-        from src.common.db.pallas_console_data import group_config_to_public
+        from src.common.foundation.db import make_group_config_repository
+        from src.common.foundation.db.pallas_console_data import group_config_to_public
 
         repo = make_group_config_repository()
         doc, _created = await repo.get_or_create(group_id, disabled_plugins=[])
@@ -4809,7 +4828,7 @@ def register_extended_api(
     async def _user_configs_list(
         limit: int = Query(default=1000, ge=1, le=10_000),
     ) -> JSONResponse:
-        from src.common.db.pallas_console_data import list_user_configs_public
+        from src.common.foundation.db.pallas_console_data import list_user_configs_public
 
         cache_key = f"user_configs_list:{int(limit)}"
 
@@ -4826,8 +4845,8 @@ def register_extended_api(
     async def _user_config_one(
         user_id: int,
     ) -> JSONResponse:
-        from src.common.db import make_user_config_repository
-        from src.common.db.pallas_console_data import user_config_to_public
+        from src.common.foundation.db import make_user_config_repository
+        from src.common.foundation.db.pallas_console_data import user_config_to_public
 
         repo = make_user_config_repository()
         doc, _created = await repo.get_or_create(user_id, banned=False)
@@ -5414,8 +5433,8 @@ def register_extended_api(
 
     @router.get(f"{x}/update/check", include_in_schema=True)
     async def _update_check() -> JSONResponse:
-        from src.common.utils.format_exception import format_exception_for_log
-        from src.common.utils.github_release import release_tags_equivalent
+        from src.common.shared.utils.format_exception import format_exception_for_log
+        from src.common.shared.utils.github_release import release_tags_equivalent
 
         from .manager import fetch_latest_webui_release, get_installed_webui_version
 
@@ -5469,7 +5488,7 @@ def register_extended_api(
 
     @router.get(f"{x}/update/bot/check", include_in_schema=True)
     async def _bot_update_check() -> JSONResponse:
-        from src.common.utils.format_exception import format_exception_for_log
+        from src.common.shared.utils.format_exception import format_exception_for_log
 
         from .manager import (
             bot_has_release_update,
@@ -5540,7 +5559,7 @@ def register_extended_api(
 
     @router.get(f"{x}/update/bot/config-migration/check", include_in_schema=True)
     async def _bot_config_migration_check() -> JSONResponse:
-        from src.common.config.migrate_env_to_pallas import inspect_env_to_pallas_migration
+        from src.common.foundation.config.migrate_env_to_pallas import inspect_env_to_pallas_migration
 
         return JSONResponse({"ok": True, "data": inspect_env_to_pallas_migration()})
 
@@ -5551,12 +5570,12 @@ def register_extended_api(
         x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
     ) -> JSONResponse:
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
-        from src.common.config.migrate_env_to_pallas import (
+        from src.common.foundation.config.migrate_env_to_pallas import (
             EnvToPallasMigrationError,
             apply_env_to_pallas_migration,
             inspect_env_to_pallas_migration,
         )
-        from src.common.utils.format_exception import format_exception_for_log
+        from src.common.shared.utils.format_exception import format_exception_for_log
 
         try:
             result = apply_env_to_pallas_migration(force=force)
@@ -5575,7 +5594,7 @@ def register_extended_api(
         x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
     ) -> JSONResponse:
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
-        from src.common.utils.format_exception import format_exception_for_log
+        from src.common.shared.utils.format_exception import format_exception_for_log
 
         from .manager import BotGitUpdateError, apply_bot_repository_update
 
@@ -5602,7 +5621,7 @@ def register_extended_api(
         x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
     ) -> JSONResponse:
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
-        from src.common.utils.format_exception import format_exception_for_log
+        from src.common.shared.utils.format_exception import format_exception_for_log
 
         from .manager import (
             download_and_extract_dist_zip,

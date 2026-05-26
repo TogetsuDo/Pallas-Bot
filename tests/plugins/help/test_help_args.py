@@ -1,4 +1,4 @@
-from src.common.command_prefix import matches_command_prefix
+from src.common.foundation.command_prefix import matches_command_prefix
 from src.plugins.help.help_args import (
     PLUGIN_DISABLE_COMMAND,
     PLUGIN_ENABLE_COMMAND,

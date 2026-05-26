@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.common.multi_bot.dedup import (
+from src.common.platform.multi_bot.dedup import (
     ingress_shard_claim_owner_obsolete,
     try_claim_cross_bot_message_memory,
     try_claim_cross_shard_message,
@@ -50,7 +50,7 @@ async def test_ingress_bot_claim_scoped_by_message_time() -> None:
 
 @pytest.mark.asyncio
 async def test_ingress_shard_claim_reclaims_obsolete_owner(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.common.multi_bot import dedup as mod
+    from src.common.platform.multi_bot import dedup as mod
 
     mod._shard_ingress_file_locks.clear()
     mod._cross_bot_claim_owners.clear()
@@ -64,7 +64,7 @@ async def test_ingress_shard_claim_reclaims_obsolete_owner(monkeypatch: pytest.M
     class FakeReg:
         shards = [FakeShard()]
 
-    monkeypatch.setattr("src.common.shard.registry.get_shard_registry", lambda: FakeReg())
+    monkeypatch.setattr("src.common.platform.shard.registry.get_shard_registry", lambda: FakeReg())
     assert ingress_shard_claim_owner_obsolete(99)
     assert not ingress_shard_claim_owner_obsolete(0)
 

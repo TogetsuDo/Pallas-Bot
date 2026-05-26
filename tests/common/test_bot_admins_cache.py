@@ -5,9 +5,9 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_get_bot_admins_gate_cache(beanie_fixture, monkeypatch):
-    from src.common.config import get_bot_admins
-    from src.common.config import bot_admins_cache as cache
-    from src.common.db import make_bot_config_repository
+    from src.common.foundation.config import get_bot_admins
+    from src.common.foundation.config import bot_admins_cache as cache
+    from src.common.foundation.db import make_bot_config_repository
 
     await cache.reset_bot_admins_cache()
     repo = make_bot_config_repository()

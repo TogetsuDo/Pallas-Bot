@@ -13,16 +13,16 @@ import os
 os.environ.setdefault("PALLAS_SHARD_ENABLED", "true")
 os.environ.setdefault("PALLAS_BOT_ROLE", "worker")
 
-from src.common.config.dotenv import apply_repo_settings_to_environ
+from src.common.foundation.config.dotenv import apply_repo_settings_to_environ
 
 apply_repo_settings_to_environ()
 
 
 def pin_worker_listen_port() -> None:
     """覆盖 .env 中 PORT，避免 getenv 读到首个 PORT 导致各 worker 抢同一端口。"""
-    from src.common.shard.registry import get_shard_registry, worker_port_for_shard
-    from src.common.shard.registry.config import get_shard_registry_settings
-    from src.common.shard.registry.listen_port import apply_listen_port
+    from src.common.platform.shard.registry import get_shard_registry, worker_port_for_shard
+    from src.common.platform.shard.registry.config import get_shard_registry_settings
+    from src.common.platform.shard.registry.listen_port import apply_listen_port
 
     s = get_shard_registry_settings()
     port = worker_port_for_shard(s.shard_id, registry=get_shard_registry())
@@ -35,17 +35,17 @@ pin_worker_listen_port()
 import nonebot
 from nonebot.adapters.onebot.v11 import Adapter as ONEBOT_V11Adapter
 
-from src.common.adapters import register_onebot_v11_custom_events
-from src.common.ban_gate.snapshot import start_ban_gate_snapshot, stop_ban_gate_snapshot
-from src.common.bot_runtime import load_plugins_for_role
-from src.common.db import init_db
-from src.common.logging import apply_stdlib_logging_channel_prefix
-from src.common.shard.logs.process import install_shard_process_logging
-from src.common.shard.registry import get_shard_registry, worker_port_for_shard
-from src.common.shard.registry.config import get_shard_registry_settings
-from src.common.shard.registry.listen_port import apply_listen_port
-from src.common.utils.voice_downloader import ensure_voices
-from src.common.web import install_nonebot_log_sink
+from src.common.shared.adapters import register_onebot_v11_custom_events
+from src.common.features.ban_gate.snapshot import start_ban_gate_snapshot, stop_ban_gate_snapshot
+from src.common.platform.bot_runtime import load_plugins_for_role
+from src.common.foundation.db import init_db
+from src.common.foundation.logging import apply_stdlib_logging_channel_prefix
+from src.common.platform.shard.logs.process import install_shard_process_logging
+from src.common.platform.shard.registry import get_shard_registry, worker_port_for_shard
+from src.common.platform.shard.registry.config import get_shard_registry_settings
+from src.common.platform.shard.registry.listen_port import apply_listen_port
+from src.common.shared.utils.voice_downloader import ensure_voices
+from src.common.console.web import install_nonebot_log_sink
 
 apply_stdlib_logging_channel_prefix()
 nonebot.init()
@@ -83,8 +83,8 @@ async def startup():
             port,
             s.shard_id,
         )
-    from src.common.coord.redis_settings import coord_redis_enabled, resolve_coord_redis_url
-    from src.common.shard.coord.worker_poll import start_shard_coord_worker_watcher
+    from src.common.platform.coord.redis_settings import coord_redis_enabled, resolve_coord_redis_url
+    from src.common.platform.shard.coord.worker_poll import start_shard_coord_worker_watcher
 
     if coord_redis_enabled():
         nonebot.logger.info("bot_worker: cross-process claims via Redis ({})", resolve_coord_redis_url())

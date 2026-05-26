@@ -8,14 +8,14 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot_plugin_apscheduler import scheduler
 
-from src.common.cmd_perm.metadata_defaults import (
+from src.common.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.cmd_perm.metadata_text import SCENE_AUTO, join_usage, usage_line
-from src.common.config import BotConfig
-from src.common.utils import is_bot_admin
+from src.common.features.cmd_perm.metadata_text import SCENE_AUTO, join_usage, usage_line
+from src.common.foundation.config import BotConfig
+from src.common.shared.utils import is_bot_admin
 from src.plugins.repeater.message_store import MessageStore
 
 __plugin_meta__ = PluginMetadata(

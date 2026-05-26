@@ -3,8 +3,8 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-from src.common.community_stats.endpoints import FALLBACK_CORPUS_API_BASE, PRIMARY_CORPUS_API_BASE
-from src.common.corpus.community_source import RemoteCorpusRepository
+from src.common.features.community_stats.endpoints import FALLBACK_CORPUS_API_BASE, PRIMARY_CORPUS_API_BASE
+from src.common.features.corpus.community_source import RemoteCorpusRepository
 
 
 @pytest.mark.asyncio
