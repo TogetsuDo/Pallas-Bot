@@ -27,6 +27,34 @@ _DEPLOYMENT_EXTRA_KEYS = (
     "catalog_bots_online_sum",
     "active_recent_24h",
 )
+_FEDERATION_KEYS = (
+    "members_total",
+    "members_online",
+    "members_recent_24h",
+    "coord_active_deployments",
+    "bootstrap_enabled",
+    "federate_id",
+    "coord_redis_configured",
+)
+
+
+def _parse_federation_block(fed_raw: Any) -> dict[str, Any] | None:
+    if not isinstance(fed_raw, dict):
+        return None
+    out: dict[str, Any] = {}
+    for key in _FEDERATION_KEYS:
+        if key not in fed_raw:
+            continue
+        val = fed_raw[key]
+        if key == "federate_id":
+            out[key] = str(val) if val is not None else None
+        elif key in ("bootstrap_enabled", "coord_redis_configured"):
+            out[key] = bool(val)
+        elif key == "coord_active_deployments":
+            out[key] = int(val) if val is not None else None
+        else:
+            out[key] = int(val)
+    return out or None
 
 
 def _parse_corpus_block(corpus_raw: Any) -> dict[str, int] | None:
@@ -82,6 +110,9 @@ def _parse_stats_body(body: Any, stats_url: str) -> dict[str, Any]:
         out["corpus"] = corpus_out
     if "corpus_enabled" in body:
         out["corpus_enabled"] = bool(body["corpus_enabled"])
+    federation_out = _parse_federation_block(body.get("federation"))
+    if federation_out:
+        out["federation"] = federation_out
     return out
 
 
