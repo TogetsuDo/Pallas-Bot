@@ -8,6 +8,7 @@ from typing import Any
 
 from nonebot import get_loaded_plugins, logger
 
+from src.common.cmd_perm.help_menu import is_user_help_plugin
 from src.common.db import make_bot_config_repository, make_group_config_repository
 from src.common.db.modules import BotConfigModule, GroupConfigModule
 from src.common.paths import plugin_data_dir
@@ -59,7 +60,7 @@ def get_help_menu_plugins(
 
     ignored = set(ignored_plugins if ignored_plugins is not None else resolve_help_ignored_plugins())
     hidden = set(resolve_help_hidden_plugins())
-    filtered = [p for p in plugins if p.name not in ignored and p.name not in hidden]
+    filtered = [p for p in plugins if p.name not in ignored and p.name not in hidden and is_user_help_plugin(p)]
     return sorted(filtered, key=plugin_display_name)
 
 

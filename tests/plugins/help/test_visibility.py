@@ -14,6 +14,7 @@ def test_builtin_help_hidden_includes_infra_plugins():
     assert "_ingress_gate" in hidden
     assert "pallas_console_metrics" in hidden
     assert "community_stats" in hidden
+    assert "relogin_forward" in hidden
     assert "community_stats" in _visibility.resolve_help_hidden_plugins()
 
 

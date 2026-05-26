@@ -13,6 +13,7 @@ BUILTIN_HELP_HIDDEN_PLUGINS = frozenset({
     "_ingress_gate",
     "pallas_console_metrics",
     "community_stats",
+    "relogin_forward",
 })
 
 

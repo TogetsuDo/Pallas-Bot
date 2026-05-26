@@ -33,6 +33,22 @@ def is_user_help_menu_item(item: dict[str, Any]) -> bool:
     return str(item.get("help_audience", "user") or "user").strip().lower() != "maintainer"
 
 
+def plugin_help_audience(plugin: Any) -> str:
+    """PluginMetadata.extra.help_audience，缺省 user。"""
+    meta = getattr(plugin, "metadata", None)
+    if meta is None:
+        return "user"
+    extra = getattr(meta, "extra", None)
+    if not isinstance(extra, dict):
+        return "user"
+    return str(extra.get("help_audience", "user") or "user").strip().lower()
+
+
+def is_user_help_plugin(plugin: Any) -> bool:
+    """插件级 help_audience 为 maintainer 时不进入用户帮助总览。"""
+    return plugin_help_audience(plugin) != "maintainer"
+
+
 def iter_user_help_menu(menu_data: list[dict[str, Any]]) -> Iterator[dict[str, Any]]:
     for item in menu_data:
         if is_user_help_menu_item(item):
