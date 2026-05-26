@@ -200,6 +200,19 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     from src.common.shard.registry.config import is_sharding_active
 
+    # 单进程多连接：协议可能对同条消息重复进 matcher；分片由 ingress_gate 已去重。
+    if not is_sharding_active():
+        from src.common.multi_bot.dedup import try_claim_group_message_once
+
+        if not await try_claim_group_message_once(
+            "repeater_ingress",
+            event.group_id,
+            event.user_id,
+            event.get_plaintext(),
+            event.time,
+        ):
+            return
+
     if is_sharding_active():
         from .fanout_reply import repeater_fanout_enabled
 

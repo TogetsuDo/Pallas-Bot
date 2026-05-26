@@ -24,7 +24,7 @@ from src.common.cmd_perm.metadata_defaults import (
 )
 from src.common.cmd_perm.metadata_text import SCENE_GROUP, join_usage, usage_line
 from src.common.config import BotConfig, GroupConfig
-from src.common.multi_bot.dedup import try_claim_cross_bot_message
+from src.common.multi_bot.dedup import try_claim_group_message_once
 
 from .config import JUDGMENT_CFG, RESCUE_CFG, SHOT_CFG
 from .player import PlayerList
@@ -169,14 +169,12 @@ async def participate_in_roulette(event: GroupMessageEvent) -> bool:
 
 
 async def roulette(messagae_handle, event: GroupMessageEvent):
-    if not await try_claim_cross_bot_message(
+    if not await try_claim_group_message_once(
         _roulette_start_plugin,
         event.group_id,
         event.user_id,
         event.get_plaintext(),
         event.time,
-        int(event.self_id),
-        use_plaintext=True,
     ):
         return
     rand = random.randint(1, 6)

@@ -11,6 +11,7 @@ from src.common.multi_bot.group import (
     try_begin_group_draw_cheer,
     try_begin_group_owned_gate,
     try_claim_cross_bot_message_memory,
+    try_claim_group_message_once,
 )
 
 
@@ -48,6 +49,14 @@ def test_cross_bot_key_includes_message_time_when_requested() -> None:
 
 def test_normalize_plaintext_collapses_whitespace() -> None:
     assert normalize_group_plaintext("牛牛画画  一只羊") == "牛牛画画 一只羊"
+
+
+@pytest.mark.asyncio
+async def test_group_message_once_same_sig_only_first() -> None:
+    gid, uid, body, t = 12345, 999, "呃呃呃", 100
+    assert await try_claim_group_message_once("repeater_ingress", gid, uid, body, t) is True
+    assert await try_claim_group_message_once("repeater_ingress", gid, uid, body, t) is False
+    assert await try_claim_group_message_once("repeater_ingress", gid, uid, body, t) is False
 
 
 @pytest.mark.asyncio

@@ -92,8 +92,8 @@ class Config(BaseModel, extra="ignore"):
         description="待 learn 队列长度；WebUI 同段或 PALLAS_REPEATER_LEARN_QUEUE_SIZE，满则只丢 learn。",
     )
     fanout_enabled: bool = Field(
-        default=True,
-        description="多牛同群接话 fanout；关闭后仅单牛回复。环境变量 PALLAS_REPEATER_FANOUT_ENABLED。",
+        default=False,
+        description="多牛同群接话 fanout（分片/多牛部署可开）；默认关。环境变量 PALLAS_REPEATER_FANOUT_ENABLED。",
     )
     fanout_max_bots: int = Field(
         default=0,

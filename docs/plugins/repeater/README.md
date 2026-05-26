@@ -20,7 +20,7 @@
 
 ## 配置
 
-见 [`config.py`](../../../src/plugins/repeater/config.py)（`answer_threshold`、`repeat_threshold`、`speak_threshold`、`enable_reaction` 等）。多牛同群接话 fanout：`fanout_enabled` / `fanout_max_bots`；推荐 WebUI **插件 → repeater** 修改。协调牛只查一次 context，其余牛从 `message_pool` 轻量随机。入库前清洗见 [message_scrub](../../common/message_scrub/README.md)。
+见 [`config.py`](../../../src/plugins/repeater/config.py)（`answer_threshold`、`repeat_threshold`、`speak_threshold`、`enable_reaction` 等）。多牛同群 fanout 默认关，分片/多牛需协调接话时在 WebUI **插件 → repeater** 开 `fanout_enabled` 或设 `fanout_max_bots`。入库前清洗见 [message_scrub](../../common/message_scrub/README.md)。
 
 ## 排障
 

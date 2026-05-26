@@ -300,6 +300,9 @@ class Responder:
             if answer_key in ban_keywords or answer_key in recent_replies or answer_key == keywords:
                 continue
 
+            if not answer.messages:
+                continue
+
             sample_msg = answer.messages[0]
             if chat_data.is_image and "[CQ:" not in sample_msg:
                 # 图片消息不回复纯文本。图片经常是表情包，后面的纯文本啥都有，很乱

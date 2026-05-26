@@ -18,7 +18,7 @@ from itertools import starmap
 
 from src.common.bot_runtime.send_unavailable import BOT_SEND_UNAVAILABLE_ERRORS, log_bot_send_unavailable
 from src.common.config import BotConfig
-from src.common.multi_bot.dedup import try_claim_cross_bot_message
+from src.common.multi_bot.dedup import try_claim_group_message_once
 from src.common.shard.registry.config import is_sharding_active
 
 from .config import get_repeater_config
@@ -165,14 +165,12 @@ async def resolve_fanout_gate(event: GroupMessageEvent) -> FanoutGate:
     if len(bot_ids) < 2:
         return FanoutGate()
 
-    if not await try_claim_cross_bot_message(
+    if not await try_claim_group_message_once(
         _FANOUT_PLUGIN,
         event.group_id,
         event.user_id,
         event.get_plaintext(),
         event.time,
-        int(event.self_id),
-        use_plaintext=True,
     ):
         return FanoutGate(lost=True)
 

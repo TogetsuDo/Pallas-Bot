@@ -22,6 +22,10 @@ _cross_bot_claim_lock = asyncio.Lock()
 CrossBotSig = tuple[int, int, str] | tuple[int, int, str, int]
 _cross_bot_claim_owners: dict[tuple[str, CrossBotSig], int] = {}
 
+_GROUP_MESSAGE_ONCE_MAX = 4000
+_group_message_once_keys: set[tuple[str, CrossBotSig]] = set()
+_group_message_once_order: deque[tuple[str, CrossBotSig]] = deque()
+
 
 def normalize_group_raw_message(raw_message: str) -> str:
     # 与 ChatData / learn 侧一致，避免图片子类型差异导致去重失败
@@ -87,6 +91,12 @@ def _prune_cross_bot_claims() -> None:
         _cross_bot_claim_owners.pop(key, None)
 
 
+def _prune_group_message_once_keys() -> None:
+    while len(_group_message_once_order) >= _GROUP_MESSAGE_ONCE_MAX:
+        old = _group_message_once_order.popleft()
+        _group_message_once_keys.discard(old)
+
+
 async def try_claim_cross_bot_message_memory(
     plugin: str,
     group_id: int,
@@ -148,6 +158,47 @@ async def try_claim_cross_bot_message(
         include_message_time=include_message_time,
     )
     return await try_claim_message(plugin, group_id, claim_key, bot_id)
+
+
+async def try_claim_group_message_once(
+    plugin: str,
+    group_id: int,
+    user_id: int,
+    message_body: str,
+    message_time: int,
+    *,
+    use_plaintext: bool = True,
+    include_message_time: bool = False,
+) -> bool:
+    """同条群消息只处理一次：重复连接、同牛二次进 matcher 均不再通过。"""
+    sig = cross_bot_message_signature(
+        group_id,
+        user_id,
+        message_body,
+        message_time,
+        use_plaintext=use_plaintext,
+        include_message_time=include_message_time,
+    )
+    key = (plugin, sig)
+    async with _cross_bot_claim_lock:
+        if key in _group_message_once_keys:
+            return False
+        _group_message_once_keys.add(key)
+        _group_message_once_order.append(key)
+        _prune_group_message_once_keys()
+    claim_key = cross_bot_group_message_key(
+        group_id,
+        user_id,
+        message_body,
+        message_time,
+        use_plaintext=use_plaintext,
+        include_message_time=include_message_time,
+    )
+    if await try_claim_message(plugin, group_id, claim_key, 0):
+        return True
+    async with _cross_bot_claim_lock:
+        _group_message_once_keys.discard(key)
+    return False
 
 
 def ingress_shard_claim_owner_obsolete(owner: int) -> bool:
