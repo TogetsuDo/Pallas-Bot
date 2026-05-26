@@ -39,13 +39,53 @@ def shard_logs_dir():
     return plugin_data_dir(_PLUGIN, create=False) / _LOG_DIR_NAME
 
 
+def shard_log_stem_in_registry_use(reg: Any, shard: Any) -> bool:
+    """注册表内且已分配牛牛的 worker 分片（含 test）；hub 角色除外。"""
+    role = (shard.role or "normal").strip().lower()
+    if role == "hub":
+        return False
+    return reg.count_on_shard(int(shard.id)) > 0
+
+
+def registry_worker_log_stems() -> frozenset[str] | None:
+    """分片开启时：注册表内已挂牛的 worker 日志 stem（``worker-N``，含 test）；未开分片返回 None。"""
+    try:
+        from src.common.shard.registry.config import is_sharding_active
+        from src.common.shard.registry.store import get_shard_registry
+
+        if not is_sharding_active():
+            return None
+        reg = get_shard_registry()
+        stems: set[str] = set()
+        for shard in reg.shards:
+            if not shard_log_stem_in_registry_use(reg, shard):
+                continue
+            stems.add(f"worker-{int(shard.id)}")
+        return frozenset(stems)
+    except Exception:
+        return None
+
+
+def worker_log_stem_allowed(stem: str) -> bool:
+    """未在注册表在用列表中的 worker 落盘日志不参与合并/来源列表（遗留 worker-99.log 等）。"""
+    allowed = registry_worker_log_stems()
+    if allowed is None:
+        return True
+    return stem in allowed
+
+
 def list_shard_log_sources() -> list[str]:
-    """可供 WebUI 筛选的日志来源（hub + 各 worker 主日志）。"""
+    """可供 WebUI 筛选的日志来源（hub + 注册表内各 worker 主日志）。"""
     out = ["hub"]
     root = shard_logs_dir()
     if not root.is_dir():
         return out
-    out.extend(path.stem for path in sorted(root.glob("worker-*.log")) if _WORKER_MAIN_LOG_RE.match(path.name))
+    for path in sorted(root.glob("worker-*.log")):
+        if not _WORKER_MAIN_LOG_RE.match(path.name):
+            continue
+        stem = path.stem
+        if worker_log_stem_allowed(stem):
+            out.append(stem)
     return out
 
 
@@ -62,6 +102,8 @@ def _iter_shard_log_paths(source: str | None = None) -> list[tuple[Any, str]]:
         if not _WORKER_MAIN_LOG_RE.match(path.name):
             continue
         stem = path.stem
+        if not worker_log_stem_allowed(stem):
+            continue
         if want not in ("all", stem):
             continue
         paths.append((path, stem))
@@ -535,12 +577,18 @@ def collect_cluster_log_errors(
     if not skip_log_scan:
         root = shard_logs_dir()
         if root.is_dir():
-            paths = sorted(root.glob("worker-*.log"))
+            scan_paths: list[tuple[Any, str]] = []
             hub_log = root / "hub.log"
             if hub_log.is_file():
-                paths = [hub_log, *paths]
-            for path in paths:
-                source = "hub-file" if path.name == "hub.log" else path.stem
+                scan_paths.append((hub_log, "hub-file"))
+            for path in sorted(root.glob("worker-*.log")):
+                if not _WORKER_MAIN_LOG_RE.match(path.name):
+                    continue
+                stem = path.stem
+                if not worker_log_stem_allowed(stem):
+                    continue
+                scan_paths.append((path, stem))
+            for path, source in scan_paths:
                 log_rows.extend(_scan_log_file_errors(path, source, max_lines=per_file))
     merged = merge_error_rows_prefer_longer_tb(*jsonl_rows, *log_rows)
     if not merged:

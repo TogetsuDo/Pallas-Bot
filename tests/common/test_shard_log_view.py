@@ -9,6 +9,7 @@ from src.common.shard.logs.view import (
     prefix_log_source,
     tail_log_file,
 )
+from src.common.shard.registry.store import ShardRecord, ShardRegistry, TestShardConfig
 
 
 def test_prefix_log_source():
@@ -16,6 +17,83 @@ def test_prefix_log_source():
     out = prefix_log_source(line, "worker-1")
     assert "[worker-1]" in out
     assert "hello" in out
+
+
+def test_list_shard_log_sources_skips_orphan_worker_log(tmp_path, monkeypatch):
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    (log_dir / "worker-0.log").write_text(
+        "05-21 12:00:00 | INFO     | a:1 - ok0\n",
+        encoding="utf-8",
+    )
+    (log_dir / "worker-99.log").write_text(
+        "05-21 12:00:00 | INFO     | a:1 - orphan\n",
+        encoding="utf-8",
+    )
+    reg = ShardRegistry(
+        shards=[
+            ShardRecord(id=0, port=8090, bot_ids=["111"]),
+        ],
+        assignments={"111": 0},
+    )
+    monkeypatch.setattr("src.common.shard.logs.view.shard_logs_dir", lambda: log_dir)
+    monkeypatch.setattr("src.common.shard.registry.config.is_sharding_active", lambda: True)
+    monkeypatch.setattr("src.common.shard.registry.store.get_shard_registry", lambda: reg)
+
+    sources = list_shard_log_sources()
+    assert sources == ["hub", "worker-0"]
+    merged = merge_cluster_log_lines(20, "all", hub_ring_lines=[])
+    assert any("ok0" in row for row in merged)
+    assert not any("orphan" in row for row in merged)
+
+
+def test_list_shard_log_sources_includes_test_shard_with_bots(tmp_path, monkeypatch):
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    (log_dir / "worker-0.log").write_text(
+        "05-21 12:00:00 | INFO     | a:1 - ok0\n",
+        encoding="utf-8",
+    )
+    (log_dir / "worker-99.log").write_text(
+        "05-21 12:00:00 | INFO     | a:1 - test ok\n",
+        encoding="utf-8",
+    )
+    reg = ShardRegistry(
+        shards=[
+            ShardRecord(id=0, port=8090, bot_ids=["111"]),
+            ShardRecord(id=99, port=8199, role="test", bot_ids=["222"]),
+        ],
+        assignments={"111": 0, "222": 99},
+        test=TestShardConfig(enabled=True, shard_id=99, port=8199),
+    )
+    monkeypatch.setattr("src.common.shard.logs.view.shard_logs_dir", lambda: log_dir)
+    monkeypatch.setattr("src.common.shard.registry.config.is_sharding_active", lambda: True)
+    monkeypatch.setattr("src.common.shard.registry.store.get_shard_registry", lambda: reg)
+
+    sources = list_shard_log_sources()
+    assert sources == ["hub", "worker-0", "worker-99"]
+    merged = merge_cluster_log_lines(20, "all", hub_ring_lines=[])
+    assert any("test ok" in row for row in merged)
+
+
+def test_list_shard_log_sources_skips_test_shard_without_bots(tmp_path, monkeypatch):
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    (log_dir / "worker-99.log").write_text(
+        "05-21 12:00:00 | INFO     | a:1 - idle test\n",
+        encoding="utf-8",
+    )
+    reg = ShardRegistry(
+        shards=[ShardRecord(id=99, port=8199, role="test", bot_ids=[])],
+        test=TestShardConfig(enabled=True, shard_id=99, port=8199),
+    )
+    monkeypatch.setattr("src.common.shard.logs.view.shard_logs_dir", lambda: log_dir)
+    monkeypatch.setattr("src.common.shard.registry.config.is_sharding_active", lambda: True)
+    monkeypatch.setattr("src.common.shard.registry.store.get_shard_registry", lambda: reg)
+
+    assert list_shard_log_sources() == ["hub"]
+    merged = merge_cluster_log_lines(20, "all", hub_ring_lines=[])
+    assert not any("idle test" in row for row in merged)
 
 
 def test_merge_cluster_sorts_and_limits(tmp_path, monkeypatch):
