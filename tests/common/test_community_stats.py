@@ -97,6 +97,34 @@ def test_parse_stats_body():
     assert data["online_ttl_sec"] == 900
 
 
+@pytest.mark.asyncio
+async def test_fetch_community_public_stats_parallel_fallback(monkeypatch):
+    monkeypatch.delenv("PALLAS_COMMUNITY_STATS_ENDPOINT", raising=False)
+    cfg_mod.clear_community_stats_config_cache()
+
+    stats_body = {
+        "deployments_total": 1,
+        "deployments_online": 1,
+        "bots_online_sum": 2,
+    }
+
+    async def fake_get(self, url, **kwargs):
+        if url.endswith("/monitor/overview"):
+            raise httpx.ReadTimeout("overview slow", request=MagicMock())
+        mock = MagicMock()
+        mock.status_code = 200
+        mock.json.return_value = stats_body
+        mock.raise_for_status = MagicMock()
+        return mock
+
+    with patch.object(httpx.AsyncClient, "get", fake_get):
+        from src.common.community_stats.public_stats import fetch_community_public_stats
+
+        data = await fetch_community_public_stats()
+    assert data["deployments_online"] == 1
+    assert data["stats_url"].endswith("/v1/stats")
+
+
 def test_parse_monitor_overview_body():
     data = _parse_stats_body(
         {

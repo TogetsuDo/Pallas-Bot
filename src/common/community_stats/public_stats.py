@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import httpx
@@ -11,7 +12,8 @@ from src.common.community_stats.config import get_community_stats_config
 from src.common.community_stats.endpoints import monitor_overview_urls_for_config, stats_urls_for_config
 from src.common.message_scrub.quiet_http_loggers import scrub_http_log_noise
 
-_HTTP_TIMEOUT_SEC = 12.0
+_MONITOR_TIMEOUT_SEC = 5.0
+_STATS_TIMEOUT_SEC = 12.0
 _REQUIRED_KEYS = ("deployments_total", "deployments_online", "bots_online_sum")
 _CORPUS_KEYS = (
     "contexts_total",
@@ -116,10 +118,10 @@ def _parse_stats_body(body: Any, stats_url: str) -> dict[str, Any]:
     return out
 
 
-async def _fetch_from_urls(urls: list[str]) -> dict[str, Any]:
+async def _fetch_from_urls(urls: list[str], *, timeout_sec: float) -> dict[str, Any]:
     scrub_http_log_noise()
     last_err: Exception | None = None
-    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_SEC) as client:
+    async with httpx.AsyncClient(timeout=timeout_sec) as client:
         for stats_url in urls:
             try:
                 resp = await client.get(stats_url)
@@ -139,13 +141,39 @@ async def fetch_community_public_stats() -> dict[str, Any]:
     stats_urls = stats_urls_for_config(cfg)
     if not monitor_urls and not stats_urls:
         raise ValueError("no community stats URL configured")
-    try:
-        data = await _fetch_from_urls(monitor_urls)
-    except Exception as monitor_err:
-        if not stats_urls:
-            raise monitor_err
-        logger.debug("community_stats: monitor overview unavailable, fallback to /v1/stats: {}", monitor_err)
-        data = await _fetch_from_urls(stats_urls)
+
+    monitor_task: asyncio.Task[dict[str, Any]] | None = None
+    stats_task: asyncio.Task[dict[str, Any]] | None = None
+    if monitor_urls:
+        monitor_task = asyncio.create_task(
+            _fetch_from_urls(monitor_urls, timeout_sec=_MONITOR_TIMEOUT_SEC),
+        )
+    if stats_urls:
+        stats_task = asyncio.create_task(
+            _fetch_from_urls(stats_urls, timeout_sec=_STATS_TIMEOUT_SEC),
+        )
+
+    data: dict[str, Any] | None = None
+    monitor_err: Exception | None = None
+    if monitor_task is not None:
+        try:
+            data = await monitor_task
+            if stats_task is not None and not stats_task.done():
+                stats_task.cancel()
+        except Exception as e:
+            monitor_err = e
+            logger.debug("community_stats: monitor overview unavailable, fallback to /v1/stats: {}", e)
+
+    if data is None:
+        if stats_task is None:
+            raise monitor_err or ValueError("community stats fetch failed")
+        try:
+            data = await stats_task
+        except Exception as stats_err:
+            if monitor_err is not None:
+                raise stats_err from monitor_err
+            raise
+
     logger.debug(
         "community stats fetched: total={} online={} bots_sum={} url={}",
         data["deployments_total"],
