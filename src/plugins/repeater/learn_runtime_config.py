@@ -37,7 +37,7 @@ class RepeaterLearnRuntimeConfig(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="ignore")
 
     learn_concurrency: int = Field(
-        default=24,
+        default=8,
         ge=1,
         le=128,
         description=field_help(
@@ -60,9 +60,9 @@ class RepeaterLearnRuntimeConfig(BaseModel):
     @classmethod
     def from_env(cls) -> Self:
         try:
-            concurrency = int(_learn_env_str("PALLAS_REPEATER_LEARN_CONCURRENCY", default="24") or "24")
+            concurrency = int(_learn_env_str("PALLAS_REPEATER_LEARN_CONCURRENCY", default="8") or "8")
         except ValueError:
-            concurrency = 24
+            concurrency = 8
         try:
             queue_max = int(_learn_env_str("PALLAS_REPEATER_LEARN_QUEUE_SIZE", default="2048") or "2048")
         except ValueError:

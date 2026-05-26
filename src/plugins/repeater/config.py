@@ -80,7 +80,7 @@ class Config(BaseModel, extra="ignore"):
         description="持久化后每个群在内存中保留的最近消息条数。",
     )
     learn_concurrency: int = Field(
-        default=24,
+        default=8,
         ge=1,
         le=128,
         description=("后台 learn 并发；WebUI「通用配置 → 复读 / 后台 learn」或 PALLAS_REPEATER_LEARN_CONCURRENCY。"),

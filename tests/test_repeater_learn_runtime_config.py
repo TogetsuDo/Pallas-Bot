@@ -13,8 +13,17 @@ def test_repeater_learn_webui_section_registered():
 
 
 def test_repeater_learn_from_env(monkeypatch):
-    monkeypatch.setenv("PALLAS_REPEATER_LEARN_CONCURRENCY", "8")
-    monkeypatch.setenv("PALLAS_REPEATER_LEARN_QUEUE_SIZE", "512")
+    def fake_raw(name_upper: str):
+        if name_upper == "PALLAS_REPEATER_LEARN_CONCURRENCY":
+            return "8"
+        if name_upper == "PALLAS_REPEATER_LEARN_QUEUE_SIZE":
+            return "512"
+        return None
+
+    monkeypatch.setattr(
+        "src.plugins.repeater.learn_runtime_config.repo_env_raw_value",
+        fake_raw,
+    )
     clear_repeater_learn_runtime_config_cache()
     cfg = get_repeater_learn_runtime_config()
     assert cfg.learn_concurrency == 8

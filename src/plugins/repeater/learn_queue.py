@@ -20,7 +20,7 @@ _LEARN_PLUGIN = "repeater_learn"
 _queue: asyncio.Queue[Chat] | None = None
 _sem: asyncio.Semaphore | None = None
 _sem_limit: int | None = None
-_worker_task: asyncio.Task | None = None
+_worker_tasks: list[asyncio.Task[None]] = []
 _dropped_full: int = 0
 _completed: int = 0
 
@@ -57,29 +57,28 @@ def learn_queue() -> asyncio.Queue[Chat]:
     return _queue
 
 
-async def run_learn_worker() -> None:
+async def run_learn_consumer() -> None:
     while True:
         chat = await learn_queue().get()
         try:
-            asyncio.create_task(execute_repeater_learn(chat))
+            await execute_repeater_learn(chat)
         finally:
             learn_queue().task_done()
 
 
 async def execute_repeater_learn(chat: Chat) -> None:
     global _completed
-    async with learn_sem():
-        try:
-            ok = await chat.learn()
-            if ok:
-                _completed += 1
-        except Exception as e:
-            logger.warning(
-                "repeater learn background failed bot={} group={}: {}",
-                chat.chat_data.bot_id,
-                chat.chat_data.group_id,
-                e,
-            )
+    try:
+        ok = await chat.learn()
+        if ok:
+            _completed += 1
+    except Exception as e:
+        logger.warning(
+            "repeater learn background failed bot={} group={}: {}",
+            chat.chat_data.bot_id,
+            chat.chat_data.group_id,
+            e,
+        )
 
 
 async def enqueue_repeater_learn(chat: Chat, event: GroupMessageEvent) -> bool:
@@ -101,28 +100,33 @@ async def enqueue_repeater_learn(chat: Chat, event: GroupMessageEvent) -> bool:
         return False
 
 
+def _learn_workers_running() -> bool:
+    return bool(_worker_tasks) and any(not t.done() for t in _worker_tasks)
+
+
 async def start_repeater_learn_worker() -> None:
-    global _worker_task
-    if _worker_task is not None and not _worker_task.done():
+    global _worker_tasks
+    if _learn_workers_running():
         return
-    _worker_task = asyncio.create_task(run_learn_worker(), name="repeater_learn_worker")
+    await stop_repeater_learn_worker()
+    n = learn_concurrency()
+    _worker_tasks = [asyncio.create_task(run_learn_consumer(), name=f"repeater_learn_consumer_{i}") for i in range(n)]
     logger.info(
-        "repeater learn worker started: concurrency={} queue_max={}",
-        learn_concurrency(),
+        "repeater learn workers started: consumers={} queue_max={}",
+        n,
         learn_queue_max_size(),
     )
 
 
 async def stop_repeater_learn_worker() -> None:
-    global _worker_task
-    if _worker_task is None:
+    global _worker_tasks
+    if not _worker_tasks:
         return
-    _worker_task.cancel()
-    try:
-        await _worker_task
-    except asyncio.CancelledError:
-        pass
-    _worker_task = None
+    tasks = list(_worker_tasks)
+    _worker_tasks = []
+    for t in tasks:
+        t.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def reload_repeater_learn_worker_runtime() -> None:
@@ -134,7 +138,7 @@ async def reload_repeater_learn_worker_runtime() -> None:
     await stop_repeater_learn_worker()
     await start_repeater_learn_worker()
     logger.info(
-        "repeater learn runtime reloaded: concurrency={} queue_max={}",
+        "repeater learn runtime reloaded: consumers={} queue_max={}",
         learn_concurrency(),
         learn_queue_max_size(),
     )
