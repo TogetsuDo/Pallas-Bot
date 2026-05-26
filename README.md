@@ -77,9 +77,12 @@ uv run nb run
 
 部署、配置、插件、迁移与排障等完整说明见在线文档站。
 
-| | |
-| --- | --- |
-| **文档** | [![docs on GitHub Pages](https://img.shields.io/badge/docs%20on-GitHub.Pages-FE7D37)](https://PallasBot.github.io/Pallas-Bot-Docs/) |
+<table>
+<tr>
+<td><strong>文档</strong></td>
+<td><a href="https://PallasBot.github.io/Pallas-Bot-Docs/"><img src="https://img.shields.io/badge/docs%20on-GitHub.Pages-FE7D37" alt="docs on GitHub Pages"></a></td>
+</tr>
+</table>
 
 <a id="开发与贡献指南"></a>
 ## 💻 开发与贡献指南
