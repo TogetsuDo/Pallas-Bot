@@ -1,5 +1,8 @@
+from pathlib import Path
+
 import pytest
 
+from src.common.multi_bot import claim as claim_mod
 from src.common.multi_bot.group import (
     claim_group_handler,
     cross_bot_group_message_key,
@@ -10,9 +13,11 @@ from src.common.multi_bot.group import (
     try_acquire_group_broadcast_slot,
     try_begin_group_draw_cheer,
     try_begin_group_owned_gate,
+    try_claim_cross_bot_message,
     try_claim_cross_bot_message_memory,
     try_claim_group_message_once,
 )
+from src.common.shard.registry import config as shard_cfg
 
 
 def test_normalize_group_raw_message_matches_chatdata_pattern() -> None:
@@ -49,6 +54,43 @@ def test_cross_bot_key_includes_message_time_when_requested() -> None:
 
 def test_normalize_plaintext_collapses_whitespace() -> None:
     assert normalize_group_plaintext("牛牛画画  一只羊") == "牛牛画画 一只羊"
+
+
+@pytest.fixture
+def claim_plugin_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    root = tmp_path / "pallas_image"
+    monkeypatch.setattr(
+        claim_mod,
+        "plugin_data_dir",
+        lambda name, create=True: root if name == "pallas_image" else tmp_path / name,
+    )
+    return root
+
+
+@pytest.mark.asyncio
+async def test_group_message_once_single_process_skips_claim_file(
+    claim_plugin_data: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(shard_cfg, "is_sharding_active", lambda: False)
+    gid, uid, body, t = 12345, 999, "单进程", 100
+    assert await try_claim_group_message_once("repeater_ingress", gid, uid, body, t) is True
+    assert await try_claim_group_message_once("repeater_ingress", gid, uid, body, t) is False
+    claims = claim_plugin_data / "message_claims"
+    assert not claims.exists() or list(claims.glob("*.claim")) == []
+
+
+@pytest.mark.asyncio
+async def test_cross_bot_single_process_skips_claim_file(
+    claim_plugin_data: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(shard_cfg, "is_sharding_active", lambda: False)
+    gid, uid, body, t = 12345, 999, "单进程跨牛", 100
+    assert await try_claim_cross_bot_message("pallas_image", gid, uid, body, t, 111) is True
+    assert await try_claim_cross_bot_message("pallas_image", gid, uid, body, t, 222) is False
+    claims = claim_plugin_data / "message_claims"
+    assert not claims.exists() or list(claims.glob("*.claim")) == []
 
 
 @pytest.mark.asyncio

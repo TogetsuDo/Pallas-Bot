@@ -27,6 +27,13 @@ _group_message_once_keys: set[tuple[str, CrossBotSig]] = set()
 _group_message_once_order: deque[tuple[str, CrossBotSig]] = deque()
 
 
+def needs_persistent_message_claim() -> bool:
+    """分片等多进程场景才写 Redis/文件 claim；单进程仅用内存。"""
+    from src.common.shard.registry.config import is_sharding_active
+
+    return is_sharding_active()
+
+
 def normalize_group_raw_message(raw_message: str) -> str:
     # 与 ChatData / learn 侧一致，避免图片子类型差异导致去重失败
     return re.sub(r"\.image,.+?\]", ".image]", raw_message)
@@ -137,7 +144,7 @@ async def try_claim_cross_bot_message(
     use_plaintext: bool = True,
     include_message_time: bool = False,
 ) -> bool:
-    """同进程内存抢占 + 跨进程文件抢占（共享 data/ 时生效）。"""
+    """同进程内存抢占；分片等多进程时再走 Redis/文件 claim。"""
     if not await try_claim_cross_bot_message_memory(
         plugin,
         group_id,
@@ -149,6 +156,8 @@ async def try_claim_cross_bot_message(
         include_message_time=include_message_time,
     ):
         return False
+    if not needs_persistent_message_claim():
+        return True
     claim_key = cross_bot_group_message_key(
         group_id,
         user_id,
@@ -186,6 +195,8 @@ async def try_claim_group_message_once(
         _group_message_once_keys.add(key)
         _group_message_once_order.append(key)
         _prune_group_message_once_keys()
+    if not needs_persistent_message_claim():
+        return True
     claim_key = cross_bot_group_message_key(
         group_id,
         user_id,

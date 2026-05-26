@@ -52,3 +52,34 @@ def test_prune_tolerates_deleted_claim_file(claim_plugin_data: Path, monkeypatch
 
     monkeypatch.setattr(Path, "stat", stat)
     claim_mod._prune_old_claims("pallas_image", max_files=500)
+
+
+def test_maybe_prune_old_claims_throttled(claim_plugin_data: Path) -> None:
+    claim_mod._last_prune_at.clear()
+    claim_mod._claim_file_estimate.clear()
+    calls: list[str] = []
+
+    def spy(plugin: str, *, max_files: int = 500) -> int:
+        calls.append(plugin)
+        return 0
+
+    claim_mod._prune_old_claims = spy  # type: ignore[method-assign]
+    claim_mod._maybe_prune_old_claims("pallas_image")
+    claim_mod._maybe_prune_old_claims("pallas_image")
+    assert calls == ["pallas_image"]
+
+
+def test_maybe_prune_old_claims_forced_when_estimate_high(claim_plugin_data: Path) -> None:
+    import time
+
+    claim_mod._last_prune_at["pallas_image"] = time.monotonic()
+    claim_mod._claim_file_estimate["pallas_image"] = claim_mod._PRUNE_FORCE_ENTRY_COUNT
+    calls: list[str] = []
+
+    def spy(plugin: str, *, max_files: int = 500) -> int:
+        calls.append(plugin)
+        return 100
+
+    claim_mod._prune_old_claims = spy  # type: ignore[method-assign]
+    claim_mod._maybe_prune_old_claims("pallas_image")
+    assert calls == ["pallas_image"]
