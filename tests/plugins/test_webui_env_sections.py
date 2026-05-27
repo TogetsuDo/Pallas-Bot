@@ -94,7 +94,7 @@ def test_service_gateways_payload_shape():
     assert data.get("gateway_editor") is True
     assert data.get("supports_connectivity_check") is True
     groups = data.get("field_groups") or []
-    assert {g["id"] for g in groups} == {"pallas_image", "maa", "sing"}
+    assert {g["id"] for g in groups} == {"draw", "maa", "sing"}
     names = {f["name"] for f in data["fields"]}
     assert "pallas_image_base_url" in names
     assert "maa_public_base_url" in names

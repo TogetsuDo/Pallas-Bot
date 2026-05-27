@@ -211,7 +211,7 @@ async def _dream_worker_content_tick_once(
             return sent_images
 
     if sent_images < image_cap and random.random() < dream_plugin_config.dream_archive_image_probability:
-        from src.plugins.pallas_image.draw_archive import random_archived_png_bytes
+        from src.plugins.draw.draw_archive import random_archived_png_bytes
 
         for _ in range(_ARCHIVE_RESAMPLE_ATTEMPTS):
             data = await random_archived_png_bytes()

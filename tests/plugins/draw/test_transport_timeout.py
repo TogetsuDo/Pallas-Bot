@@ -1,4 +1,4 @@
-from src.plugins.pallas_image.image_api import (
+from src.plugins.draw.image_api import (
     cffi_error_is_timeout,
     effective_request_timeout,
     httpx_cap_after_cffi_timeout,

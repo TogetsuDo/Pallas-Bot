@@ -20,7 +20,7 @@ _pallas_draw_usage: dict[tuple[int, int], tuple[date, int]] = {}
 
 
 def usage_store_path() -> Path:
-    return plugin_data_dir("pallas_image") / _USAGE_FILE
+    return plugin_data_dir("draw") / _USAGE_FILE
 
 
 def _key_str(group_id: int, user_id: int) -> str:
@@ -72,7 +72,7 @@ def _load() -> None:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except Exception as e:
-        logger.warning(f"pallas_image draw_usage file invalid, ignored: {e}")
+        logger.warning(f"draw draw_usage file invalid, ignored: {e}")
         return
     if not isinstance(raw, dict):
         return
@@ -136,10 +136,10 @@ def bump_pallas_draw_usage(usage_key: tuple[int, int], count_usage: bool) -> Non
         try:
             _persist()
         except OSError as e:
-            logger.error(f"pallas_image draw_usage persist failed: {e}")
+            logger.error(f"draw draw_usage persist failed: {e}")
             return
     logger.info(
-        f"pallas_image draw usage bumped group={group_id} user={user_id} count={new_count} day={today.isoformat()}",
+        f"draw draw usage bumped group={group_id} user={user_id} count={new_count} day={today.isoformat()}",
     )
 
 

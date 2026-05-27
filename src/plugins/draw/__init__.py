@@ -21,7 +21,7 @@ __plugin_meta__ = PluginMetadata(
         "version": PLUGIN_EXTRA_VERSION,
         "menu_template": PLUGIN_MENU_TEMPLATE,
         "command_permissions": [
-            {"id": "pallas_image.draw", "label": "牛牛画画", "default": "everyone"},
+            {"id": "draw.draw", "label": "牛牛画画", "default": "everyone"},
         ],
         "menu_data": [
             {
@@ -29,7 +29,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_method": "on_cmd",
                 "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛画画 …",
-                "command_permission": "pallas_image.draw",
+                "command_permission": "draw.draw",
                 "brief_des": "生图或改图",
                 "detail_des": "可纯文字，也可附图或回复图片作参考；次数用尽时会提示。",
             },

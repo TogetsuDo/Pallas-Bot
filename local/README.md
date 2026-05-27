@@ -4,7 +4,7 @@
 
 将自有 NoneBot 插件放在 `local/plugins/<name>/`（需含 `__init__.py`）。
 
-**修改主仓已有插件**时，把**整包**复制到同名目录（例如 `local/plugins/pallas_image/`），不要只拷部分 `.py` 指望与 `src/plugins/` 合并——NoneBot 只能整包 override 或继续 patch 主仓文件。
+**修改主仓已有插件**时，把**整包**复制到同名目录（例如 `local/plugins/draw/`），不要只拷部分 `.py` 指望与 `src/plugins/` 合并——NoneBot 只能整包 override 或继续 patch 主仓文件。
 
 在 `config/pallas.toml` 的 **`[bootstrap]`** 段启用：
 

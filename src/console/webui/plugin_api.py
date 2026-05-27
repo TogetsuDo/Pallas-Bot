@@ -155,11 +155,11 @@ def plugin_config_payload(
     """GET 用默认 ``current``；PUT 落盘后应传 ``validated``，避免 ``get_plugin_config`` 仍为旧内存。"""
     p, module_name, cfg_cls = plugin_config_model_by_name(plugin_name)
     cfg_obj = read_current_plugin_config(module_name, cfg_cls)
-    if plugin_name == "pallas_image":
-        from src.plugins.pallas_image.config import Config as PallasImageConfig
-        from src.plugins.pallas_image.config import migrate_legacy_gateway_config
+    if plugin_name == "draw":
+        from src.plugins.draw.config import Config as DrawConfig
+        from src.plugins.draw.config import migrate_legacy_gateway_config
 
-        if isinstance(cfg_obj, PallasImageConfig):
+        if isinstance(cfg_obj, DrawConfig):
             cfg_obj = migrate_legacy_gateway_config(cfg_obj)
     fields: list[dict[str, Any]] = []
     for key, f in cfg_cls.model_fields.items():
@@ -203,8 +203,8 @@ def apply_plugin_config_patch(
     merged = {**current, **normalized}
     try:
         validated_obj = cfg_cls(**merged)
-        if plugin_name == "pallas_image":
-            from src.plugins.pallas_image.config import migrate_legacy_gateway_config
+        if plugin_name == "draw":
+            from src.plugins.draw.config import migrate_legacy_gateway_config
 
             validated_obj = migrate_legacy_gateway_config(validated_obj)
         validated = validated_obj.model_dump(mode="python")

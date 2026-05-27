@@ -25,8 +25,9 @@
 | [duel](./duel/README.md) | 决斗、八角笼牛 |
 | [dream](./dream/README.md) | 做梦、跨群漂流、历史梦 |
 | [chat](./chat/README.md) | 酒后聊天（AI） |
+| [ollama](./ollama/README.md) | 随时闲聊（Ollama） |
 | [sing](./sing/README.md) | 唱歌（AI） |
-| [pallas_image](./pallas_image/README.md) | 画画（AI） |
+| [draw](./draw/README.md) | 画画（AI） |
 | [take_name](./take_name/README.md) | 自动夺舍（群名片） |
 
 ## 帮助与管理

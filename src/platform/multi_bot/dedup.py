@@ -422,8 +422,8 @@ async def try_acquire_group_broadcast_slot(
 
 
 async def try_begin_group_draw_cheer(group_id: int, bot_id: int, *, gate_sec: float) -> bool:
-    """兼容：等同 try_begin_group_owned_gate(\"pallas_image\", ...)。"""
-    return await try_begin_group_owned_gate("pallas_image", group_id, bot_id, gate_sec=gate_sec)
+    """兼容：等同 try_begin_group_owned_gate(\"draw\", ...)。"""
+    return await try_begin_group_owned_gate("draw", group_id, bot_id, gate_sec=gate_sec)
 
 
 async def claim_group_message_event(

@@ -1,4 +1,4 @@
-from src.plugins.pallas_image.config import Config, ImageGenSettings, migrate_legacy_gateway_config
+from src.plugins.draw.config import Config, ImageGenSettings, migrate_legacy_gateway_config
 
 
 def test_migrate_legacy_gateway_promotes_first_backend() -> None:

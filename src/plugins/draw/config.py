@@ -198,7 +198,7 @@ class Config(BaseModel, extra="ignore"):
 
     @classmethod
     def from_env(cls) -> Self:
-        return migrate_legacy_gateway_config(config_from_env(cls, parse_env_value=parse_pallas_image_env_value))
+        return migrate_legacy_gateway_config(config_from_env(cls, parse_env_value=parse_draw_env_value))
 
 
 def migrate_legacy_gateway_config(c: Config) -> Config:
@@ -227,7 +227,7 @@ def migrate_legacy_gateway_config(c: Config) -> Config:
     return c.model_copy(update=updates)
 
 
-def parse_pallas_image_env_value(name: str, raw: str, ann: Any) -> Any:
+def parse_draw_env_value(name: str, raw: str, ann: Any) -> Any:
     text = raw.strip()
     ann_text = str(ann).lower()
     if "bool" in ann_text:
@@ -454,7 +454,7 @@ class ImageGenSettings:
         return self._c.pallas_image_draw_max_pending
 
 
-def on_pallas_image_config_reload(cfg: Config) -> None:
+def on_draw_config_reload(cfg: Config) -> None:
     image_gen_config.reload(cfg)
     from .runtime_state import sync_image_gen_semaphore
 
@@ -464,12 +464,12 @@ def on_pallas_image_config_reload(cfg: Config) -> None:
 plugin_webui = install_hot_reload_config(
     Config,
     config_module=__name__,
-    parse_env_value=parse_pallas_image_env_value,
-    on_reload=on_pallas_image_config_reload,
+    parse_env_value=parse_draw_env_value,
+    on_reload=on_draw_config_reload,
 )
-get_pallas_image_config = plugin_webui.get
+get_draw_config = plugin_webui.get
 reload_image_gen_config = plugin_webui.reload
-clear_pallas_image_config_cache = plugin_webui.clear_cache
+clear_draw_config_cache = plugin_webui.clear_cache
 
 
 def active_image_gen_settings() -> ImageGenSettings:
@@ -478,4 +478,4 @@ def active_image_gen_settings() -> ImageGenSettings:
     return image_gen_config
 
 
-image_gen_config = ImageGenSettings(get_pallas_image_config())
+image_gen_config = ImageGenSettings(get_draw_config())

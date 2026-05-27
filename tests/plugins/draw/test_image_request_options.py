@@ -1,4 +1,4 @@
-from src.plugins.pallas_image.image_request_options import (
+from src.plugins.draw.image_request_options import (
     ImageGenRequestOptions,
     capped_param_attempts,
     image_gen_fast_attempts,
@@ -42,9 +42,9 @@ def test_capped_param_attempts_ref_image_variant() -> None:
 
 
 def test_capped_without_slow_fallback_is_fast_only(monkeypatch) -> None:
-    from src.plugins.pallas_image import config as cfg_mod
+    from src.plugins.draw import config as cfg_mod
 
-    cfg = cfg_mod.get_pallas_image_config()
+    cfg = cfg_mod.get_draw_config()
     cfg_mod.image_gen_config.reload(cfg.model_copy(update={"pallas_image_slow_param_fallback": False}))
     try:
         fast = image_gen_fast_attempts(with_ref_urls=False)

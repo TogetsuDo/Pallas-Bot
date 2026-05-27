@@ -50,7 +50,7 @@ plugin_webui = install_hot_reload_config(
 )
 ```
 
-可参考 [`src/plugins/pallas_image/config.py`](../../../src/plugins/pallas_image/config.py)。
+可参考 [`src/plugins/draw/config.py`](../../../src/plugins/draw/config.py)。
 
 ### 热重载后刷新运行时单例
 
@@ -67,7 +67,7 @@ plugin_webui = install_hot_reload_config(
 )
 ```
 
-可参考 [`src/plugins/pallas_image/config.py`](../../../src/plugins/pallas_image/config.py) 中的 `on_pallas_image_config_reload`。
+可参考 [`src/plugins/draw/config.py`](../../../src/plugins/draw/config.py) 中的 `on_draw_config_reload`。
 
 ## 命令权限（与配置分开）
 
@@ -116,7 +116,7 @@ my_cmd = on_command("某命令", permission=permission_for_command("my_plugin.ac
 | 插件 | 说明 |
 |------|------|
 | [`sing`](../../plugins/sing/README.md) | 标准 `install_hot_reload_config` |
-| [`pallas_image`](../../plugins/pallas_image/README.md) | 自定义解析 + `on_reload` |
+| [`draw`](../../plugins/draw/README.md) | 自定义解析 + `on_reload` |
 | [`pallas_webui`](../../plugins/pallas_webui/README.md) | 调用 `plugin_api` / `env_sections` 的 HTTP 层 |
 
 ## 相关源文件

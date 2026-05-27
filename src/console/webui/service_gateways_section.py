@@ -27,7 +27,7 @@ SERVICE_GATEWAYS_SECTION_ID = "service_gateways"
 SERVICE_GATEWAYS_TITLE = "外部服务地址与连通检测"
 
 _PLUGIN_SPECS: tuple[tuple[str, str, frozenset[str], str], ...] = (
-    ("pallas_image", "牛牛画画", PALLAS_IMAGE_GATEWAY_FIELDS, "src.plugins.pallas_image.config"),
+    ("draw", "牛牛画画", PALLAS_IMAGE_GATEWAY_FIELDS, "src.plugins.draw.config"),
     ("maa", "MAA 远控", MAA_GATEWAY_FIELDS, "src.plugins.maa.config"),
     ("sing", "点歌 / 唱歌", SING_GATEWAY_FIELDS, "src.plugins.sing.config"),
 )
@@ -52,8 +52,8 @@ def _load_config_module(config_module: str) -> tuple[type[BaseModel], Any]:
 def _read_gateway_cfg(plugin_name: str, config_module: str) -> Any:
     cfg_cls, getter = _load_config_module(config_module)
     cfg_obj = getter()
-    if plugin_name == "pallas_image":
-        from src.plugins.pallas_image.config import migrate_legacy_gateway_config
+    if plugin_name == "draw":
+        from src.plugins.draw.config import migrate_legacy_gateway_config
 
         cfg_obj = migrate_legacy_gateway_config(cfg_obj)
     return cfg_cls, cfg_obj

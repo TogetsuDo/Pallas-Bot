@@ -48,8 +48,8 @@ async def probe_image_gateways() -> list[ServiceProbeResult]:
     """画画网关；刷新配置后探测，与牛牛画画命令共用 active_image_gen_settings。"""
     from nonebot import logger
 
-    from src.plugins.pallas_image.config import active_image_gen_settings
-    from src.plugins.pallas_image.gateway_probe import probe_all_backends
+    from src.plugins.draw.config import active_image_gen_settings
+    from src.plugins.draw.gateway_probe import probe_all_backends
 
     try:
         settings = active_image_gen_settings()
@@ -182,10 +182,10 @@ def _draft_subset(values: dict[str, Any], keys: frozenset[str]) -> dict[str, Any
     return {k: v for k, v in values.items() if k in keys}
 
 
-def _pallas_image_draft(values: dict[str, Any]) -> dict[str, Any]:
-    from src.plugins.pallas_image.config import get_pallas_image_config
+def _draw_draft(values: dict[str, Any]) -> dict[str, Any]:
+    from src.plugins.draw.config import get_draw_config
 
-    base = get_pallas_image_config().model_dump(mode="python")
+    base = get_draw_config().model_dump(mode="python")
     base.update(_draft_subset(values, PALLAS_IMAGE_GATEWAY_FIELDS))
     return base
 
@@ -219,10 +219,10 @@ async def probe_all_connectivity_from_draft(
     unknown = set(raw.keys()) - ALL_GATEWAY_FIELDS
     if unknown:
         raise ValueError(f"未知配置项: {', '.join(sorted(unknown))}")
-    from src.plugins.pallas_image.gateway_probe import image_gen_settings_from_draft, probe_all_backends
+    from src.plugins.draw.gateway_probe import image_gen_settings_from_draft, probe_all_backends
 
     async def image_from_draft() -> list[ServiceProbeResult]:
-        settings = image_gen_settings_from_draft(_pallas_image_draft(raw))
+        settings = image_gen_settings_from_draft(_draw_draft(raw))
         results = await probe_all_backends(settings)
         if not results:
             return [

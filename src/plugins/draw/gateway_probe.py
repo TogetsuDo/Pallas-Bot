@@ -12,7 +12,7 @@ from nonebot import logger
 
 from src.shared.service_probe import ServiceProbeResult, format_probe_lines, format_probe_text
 
-from .config import Config, ImageApiBackend, ImageGenSettings, get_pallas_image_config
+from .config import Config, ImageApiBackend, ImageGenSettings, get_draw_config
 from .image_api import (
     cffi_error_is_timeout,
     image_api_base,
@@ -77,7 +77,7 @@ def image_gen_settings_from_draft(draft: dict[str, Any] | None) -> ImageGenSetti
         return image_gen_config
     from src.console.webui.plugin_api import normalize_patch_value
 
-    current = get_pallas_image_config().model_dump(mode="python")
+    current = get_draw_config().model_dump(mode="python")
     merged = dict(current)
     for key, value in draft.items():
         if key not in Config.model_fields:
@@ -139,7 +139,7 @@ async def probe_url(
             return await cffi_probe_get(url, headers, settings, timeout_sec)
         except (CffiRequestsError, OSError, ValueError) as e:
             if not cffi_error_is_timeout(e):
-                logger.warning(f"pallas_image gateway probe cffi failed, fallback httpx: {e}")
+                logger.warning(f"draw gateway probe cffi failed, fallback httpx: {e}")
     return await httpx_probe_get(client, url, headers, timeout_sec)
 
 
@@ -193,7 +193,7 @@ async def probe_single_backend(
             last_error = str(e)[:120]
         except Exception as e:  # noqa: BLE001
             last_error = str(e)[:120]
-            logger.debug(f"pallas_image gateway probe {backend.label} {url}: {e}")
+            logger.debug(f"draw gateway probe {backend.label} {url}: {e}")
     elapsed_ms = int((time.perf_counter() - started) * 1000)
     if last_status is not None:
         return ServiceProbeResult(

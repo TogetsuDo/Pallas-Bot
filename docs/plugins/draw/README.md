@@ -1,4 +1,4 @@
-# pallas_image（牛牛画画）
+# draw（牛牛画画）
 
 群内 AI 生图；可纯文字或带参考图（附图/回复图）。依赖画画网关，次数受限。
 
@@ -12,11 +12,11 @@
 
 | 命令 ID | 默认等级 |
 | --- | --- |
-| `pallas_image.draw` | everyone |
+| `draw.draw` | everyone |
 
 ## 配置
 
-[`config.py`](../../../src/plugins/pallas_image/config.py) 与 WebUI **插件 → 牛牛画画**；网关亦可在 **服务网关 / 连通性** 配置。
+[`config.py`](../../../src/plugins/draw/config.py) 与 WebUI **插件 → 牛牛画画**；网关亦可在 **服务网关 / 连通性** 配置。
 
 ## 排障
 
@@ -27,4 +27,4 @@
 
 ## 实现
 
-[`src/plugins/pallas_image/`](../../../src/plugins/pallas_image/)
+[`src/plugins/draw/`](../../../src/plugins/draw/)

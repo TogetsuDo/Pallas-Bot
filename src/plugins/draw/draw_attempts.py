@@ -27,6 +27,7 @@ from .image_api import (
     reply_from_image_api_json,
 )
 from .image_request_options import ImageGenRequestOptions, capped_param_attempts
+from .replies import DRAW_VAGUE_REPLY
 from .runtime_state import image_gen_semaphore
 
 
@@ -58,12 +59,12 @@ def log_image_backend_unusable(
     snippet = body_text[:200]
     if has_more:
         logger.info(
-            f"bot [{bot_id}] pallas_image {op} backend={backend_label} unusable "
+            f"bot [{bot_id}] draw {op} backend={backend_label} unusable "
             f"in group [{group_id}] issue={issue} body={snippet!r}, trying next",
         )
     else:
         logger.warning(
-            f"bot [{bot_id}] pallas_image {op} backend={backend_label} unusable "
+            f"bot [{bot_id}] draw {op} backend={backend_label} unusable "
             f"in group [{group_id}] issue={issue} body={snippet!r}",
         )
 
@@ -117,11 +118,11 @@ async def run_backend_param_attempts(
             still_retrying = has_more_backend or has_more_opts
             if opt_idx > 0:
                 logger.info(
-                    f"bot [{bot_id}] pallas_image {op} retry params "
+                    f"bot [{bot_id}] draw {op} retry params "
                     f"({req_opts.log_label()}) backend={backend.label} group=[{group_id}]",
                 )
             logger.info(
-                f"bot [{bot_id}] pallas_image {op} request in group [{group_id}] "
+                f"bot [{bot_id}] draw {op} request in group [{group_id}] "
                 f"backend={backend.label} params=({req_opts.log_label()})",
             )
             req_started = time.perf_counter()
@@ -141,25 +142,25 @@ async def run_backend_param_attempts(
                 err_text = format_transport_error(e)
                 if has_more_opts:
                     logger.info(
-                        f"bot [{bot_id}] pallas_image {op} transport error "
+                        f"bot [{bot_id}] draw {op} transport error "
                         f"backend={backend.label} group=[{group_id}]: {err_text}, trying next params",
                     )
                     continue
                 if has_more_backend:
                     logger.info(
-                        f"bot [{bot_id}] pallas_image {op} transport error "
+                        f"bot [{bot_id}] draw {op} transport error "
                         f"backend={backend.label} group=[{group_id}]: {err_text}, trying next backend",
                     )
                 else:
                     logger.warning(
-                        f"bot [{bot_id}] pallas_image {op} transport error "
+                        f"bot [{bot_id}] draw {op} transport error "
                         f"backend={backend.label} group=[{group_id}]: {err_text}",
                     )
                 break
             last_body_holder[:] = [body_text]
             last_status_holder[:] = [status]
             logger.info(
-                f"bot [{bot_id}] pallas_image {op} response in group [{group_id}]: "
+                f"bot [{bot_id}] draw {op} response in group [{group_id}]: "
                 f"backend={backend.label} status={status} "
                 f"elapsed_ms={(time.perf_counter() - req_started) * 1000:.0f} "
                 f"body_len={len(body_text)}",
@@ -186,7 +187,12 @@ async def run_backend_param_attempts(
                 )
                 if issue == "upstream_error":
                     if upstream_error_visible_to_user(body_text):
-                        await matcher.finish(message_at_user(user_id, user_failure_reply(body_text)))
+                        await matcher.finish(
+                            message_at_user(
+                                user_id,
+                                user_failure_reply(body_text, vague_reply=DRAW_VAGUE_REPLY),
+                            )
+                        )
                         return True
                     if upstream_error_should_skip_backend(body_text):
                         skip_backend = True
@@ -203,12 +209,12 @@ async def run_backend_param_attempts(
                     edits_abort_holder[0] = True
                 if still_retrying:
                     logger.info(
-                        f"bot [{bot_id}] pallas_image {op} backend={backend.label} "
+                        f"bot [{bot_id}] draw {op} backend={backend.label} "
                         f"status={status} in group [{group_id}], trying next backend",
                     )
                 else:
                     logger.warning(
-                        f"bot [{bot_id}] pallas_image {op} failed in group [{group_id}]: "
+                        f"bot [{bot_id}] draw {op} failed in group [{group_id}]: "
                         f"backend={backend.label} status={status} body={body_text[:500]}",
                     )
                 break
@@ -216,24 +222,24 @@ async def run_backend_param_attempts(
                 skip_backend = True
                 if still_retrying:
                     logger.info(
-                        f"bot [{bot_id}] pallas_image {op} backend={backend.label} "
+                        f"bot [{bot_id}] draw {op} backend={backend.label} "
                         f"rejects response_format in group [{group_id}], trying next backend",
                     )
                 break
             if http_status_should_try_next_param(status) and has_more_opts:
                 logger.info(
-                    f"bot [{bot_id}] pallas_image {op} backend={backend.label} "
+                    f"bot [{bot_id}] draw {op} backend={backend.label} "
                     f"status={status} in group [{group_id}], trying next params",
                 )
                 continue
             if still_retrying:
                 logger.info(
-                    f"bot [{bot_id}] pallas_image {op} backend={backend.label} "
+                    f"bot [{bot_id}] draw {op} backend={backend.label} "
                     f"status={status} in group [{group_id}], trying next",
                 )
             else:
                 logger.warning(
-                    f"bot [{bot_id}] pallas_image {op} failed in group [{group_id}]: "
+                    f"bot [{bot_id}] draw {op} failed in group [{group_id}]: "
                     f"backend={backend.label} status={status} body={body_text[:500]}",
                 )
             break
@@ -245,4 +251,4 @@ async def run_backend_param_attempts(
 
 
 async def finish_draw_failure(matcher, user_id: int, last_body: str) -> None:
-    await matcher.finish(message_at_user(user_id, user_failure_reply(last_body)))
+    await matcher.finish(message_at_user(user_id, user_failure_reply(last_body, vague_reply=DRAW_VAGUE_REPLY)))

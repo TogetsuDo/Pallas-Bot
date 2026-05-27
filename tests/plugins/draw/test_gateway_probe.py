@@ -1,6 +1,6 @@
 from src.shared.service_probe import ServiceProbeResult
-from src.plugins.pallas_image.config import Config, ImageApiBackend, ImageGenSettings
-from src.plugins.pallas_image.gateway_probe import (
+from src.plugins.draw.config import Config, ImageApiBackend, ImageGenSettings
+from src.plugins.draw.gateway_probe import (
     IMAGE_PROBE_CATEGORY,
     backend_display_site,
     backend_site_name,

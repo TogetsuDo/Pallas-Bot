@@ -3,16 +3,17 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.shared.utils.http_msg import PALLAS_VAGUE_REPLY, upstream_error_visible_to_user
-from src.plugins.pallas_image.config import ImageApiBackend
-from src.plugins.pallas_image.image_api import (
+from src.plugins.draw.replies import DRAW_VAGUE_REPLY
+from src.shared.utils.http_msg import upstream_error_visible_to_user
+from src.plugins.draw.config import ImageApiBackend
+from src.plugins.draw.image_api import (
     extract_image_from_generation_payload,
     generations_payload,
     image_api_body_issue_label,
     is_valid_generated_image,
     reply_from_image_api_json,
 )
-from src.plugins.pallas_image.image_request_options import ImageGenRequestOptions
+from src.plugins.draw.image_request_options import ImageGenRequestOptions
 
 # 1x1 PNG，用于单测校验
 _TEST_PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
@@ -119,7 +120,7 @@ async def test_reply_finish_on_error_true_on_internal_upstream_error() -> None:
     )
     assert ok is False
     matcher.finish.assert_awaited_once()
-    assert matcher.finish.await_args.args[0] == PALLAS_VAGUE_REPLY
+    assert matcher.finish.await_args.args[0] == DRAW_VAGUE_REPLY
 
 
 @pytest.mark.asyncio

@@ -7,22 +7,22 @@ from src.platform.multi_bot import claim as claim_mod
 
 @pytest.fixture
 def claim_plugin_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    root = tmp_path / "pallas_image"
-    monkeypatch.setattr(claim_mod, "plugin_data_dir", lambda name, create=True: root if name == "pallas_image" else tmp_path / name)
+    root = tmp_path / "draw"
+    monkeypatch.setattr(claim_mod, "plugin_data_dir", lambda name, create=True: root if name == "draw" else tmp_path / name)
     return root
 
 
 def test_only_one_bot_claims_same_message(claim_plugin_data: Path) -> None:
     gid, mid = 12345, 999
-    assert claim_mod.try_claim_message_sync("pallas_image", gid, mid, 111) is True
-    assert claim_mod.try_claim_message_sync("pallas_image", gid, mid, 222) is False
-    assert claim_mod.try_claim_message_sync("pallas_image", gid, mid, 111) is True
+    assert claim_mod.try_claim_message_sync("draw", gid, mid, 111) is True
+    assert claim_mod.try_claim_message_sync("draw", gid, mid, 222) is False
+    assert claim_mod.try_claim_message_sync("draw", gid, mid, 111) is True
 
 
 def test_different_message_id_both_claim(claim_plugin_data: Path) -> None:
     gid = 12345
-    assert claim_mod.try_claim_message_sync("pallas_image", gid, 1, 111) is True
-    assert claim_mod.try_claim_message_sync("pallas_image", gid, 2, 222) is True
+    assert claim_mod.try_claim_message_sync("draw", gid, 1, 111) is True
+    assert claim_mod.try_claim_message_sync("draw", gid, 2, 222) is True
 
 
 def test_same_cross_bot_key_only_one_bot_claims(claim_plugin_data: Path) -> None:
@@ -30,9 +30,9 @@ def test_same_cross_bot_key_only_one_bot_claims(claim_plugin_data: Path) -> None
 
     gid, uid, raw, t = 12345, 999, "牛牛画画 测试", 100
     key = cross_bot_group_message_key(gid, uid, raw, t, use_plaintext=True)
-    assert claim_mod.try_claim_message_sync("pallas_image", gid, key, 111) is True
-    assert claim_mod.try_claim_message_sync("pallas_image", gid, key, 222) is False
-    assert claim_mod.try_claim_message_sync("pallas_image", gid, key, 111) is True
+    assert claim_mod.try_claim_message_sync("draw", gid, key, 111) is True
+    assert claim_mod.try_claim_message_sync("draw", gid, key, 222) is False
+    assert claim_mod.try_claim_message_sync("draw", gid, key, 111) is True
 
 
 def test_prune_tolerates_deleted_claim_file(claim_plugin_data: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -51,7 +51,7 @@ def test_prune_tolerates_deleted_claim_file(claim_plugin_data: Path, monkeypatch
         return real_stat(self, *args, **kwargs)
 
     monkeypatch.setattr(Path, "stat", stat)
-    claim_mod._prune_old_claims("pallas_image", max_files=500)
+    claim_mod._prune_old_claims("draw", max_files=500)
 
 
 def test_maybe_prune_old_claims_throttled(claim_plugin_data: Path) -> None:
@@ -64,16 +64,16 @@ def test_maybe_prune_old_claims_throttled(claim_plugin_data: Path) -> None:
         return 0
 
     claim_mod._prune_old_claims = spy  # type: ignore[method-assign]
-    claim_mod._maybe_prune_old_claims("pallas_image")
-    claim_mod._maybe_prune_old_claims("pallas_image")
-    assert calls == ["pallas_image"]
+    claim_mod._maybe_prune_old_claims("draw")
+    claim_mod._maybe_prune_old_claims("draw")
+    assert calls == ["draw"]
 
 
 def test_maybe_prune_old_claims_forced_when_estimate_high(claim_plugin_data: Path) -> None:
     import time
 
-    claim_mod._last_prune_at["pallas_image"] = time.monotonic()
-    claim_mod._claim_file_estimate["pallas_image"] = claim_mod._PRUNE_FORCE_ENTRY_COUNT
+    claim_mod._last_prune_at["draw"] = time.monotonic()
+    claim_mod._claim_file_estimate["draw"] = claim_mod._PRUNE_FORCE_ENTRY_COUNT
     calls: list[str] = []
 
     def spy(plugin: str, *, max_files: int = 500) -> int:
@@ -81,5 +81,5 @@ def test_maybe_prune_old_claims_forced_when_estimate_high(claim_plugin_data: Pat
         return 100
 
     claim_mod._prune_old_claims = spy  # type: ignore[method-assign]
-    claim_mod._maybe_prune_old_claims("pallas_image")
-    assert calls == ["pallas_image"]
+    claim_mod._maybe_prune_old_claims("draw")
+    assert calls == ["draw"]

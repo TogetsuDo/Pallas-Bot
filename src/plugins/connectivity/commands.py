@@ -23,7 +23,7 @@ def connectivity_message_permission() -> Permission:
             bot,
             event,
             "connectivity.probe",
-        ) or await satisfies_command_permission(bot, event, "pallas_image.gateway")
+        ) or await satisfies_command_permission(bot, event, "draw.gateway")
 
     return Permission(_checker)
 
@@ -37,7 +37,7 @@ connectivity_probe = on_command(
 
 connectivity_gateway_alias = on_command(
     "牛牛网关",
-    priority=5,  # 与 pallas_image_min_priority 默认一致，避免加载期 import pallas_image
+    priority=5,  # 与 pallas_image_min_priority 默认一致，避免加载期 import draw
     block=True,
     permission=connectivity_message_permission(),
 )

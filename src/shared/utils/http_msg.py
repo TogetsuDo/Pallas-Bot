@@ -161,18 +161,19 @@ def upstream_error_visible_to_user(body_or_empty: str) -> bool:
     return upstream_error_is_user_visible(clean, code, err_type)
 
 
-def user_failure_reply(body_or_empty: str) -> str:
+def user_failure_reply(body_or_empty: str, *, vague_reply: str | None = None) -> str:
     """失败回复：可展示类返回脱敏上游文案，内部/未识别类返回兜底句。"""
+    fallback = vague_reply or PALLAS_VAGUE_REPLY
     if not body_or_empty:
-        return PALLAS_VAGUE_REPLY
+        return fallback
     msg, code, err_type = extract_upstream_error_fields(body_or_empty)
     if not msg:
-        return PALLAS_VAGUE_REPLY
+        return fallback
     clean = sanitize_user_visible_message(msg)
     if upstream_error_is_internal(clean, code, err_type):
         logger.warning(f"upstream failure (user sees vague reply): {clean} code={code!r}")
-        return PALLAS_VAGUE_REPLY
+        return fallback
     if upstream_error_is_user_visible(clean, code, err_type):
-        return clean or PALLAS_VAGUE_REPLY
+        return clean or fallback
     logger.warning(f"upstream failure (unclassified, vague reply): {clean} code={code!r}")
-    return PALLAS_VAGUE_REPLY
+    return fallback

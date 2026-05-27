@@ -26,7 +26,7 @@ extra_plugin_dirs = ["local/plugins"]
 
 3. 重启 Bot（分片需重启 **hub 与对应 worker**）。  
    - **hub / worker / unified** 均会加载 `extra_plugin_dirs`；与 `src/plugins/` 或 hub 内置模块**同名时优先 local**（如 `help`、`callback`）。
-4. **覆盖主仓同名插件**：若 `local/plugins/pallas_image/` 与 `src/plugins/pallas_image/` 同名，会**先加载 local**，再跳过 `src` 中同名项。适合「整包 fork 式定制」；只改少量核心文件见下文「改动主仓已有插件」。
+4. **覆盖主仓同名插件**：若 `local/plugins/draw/` 与 `src/plugins/draw/` 同名，会**先加载 local**，再跳过 `src` 中同名项。适合「整包 fork 式定制」；只改少量核心文件见下文「改动主仓已有插件」。
 
 也可在 `pyproject.toml` 的 `[tool.nonebot] plugin_dirs` 追加目录，但改 `pyproject.toml` 本身会被 git 跟踪；**推荐只用 `pallas.toml`**。
 

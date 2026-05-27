@@ -10,9 +10,9 @@ from src.console.webui.plugin_catalog import (
 )
 
 
-def test_discover_includes_pallas_image():
+def test_discover_includes_draw():
     pkgs = discover_plugin_packages()
-    assert "pallas_image" in pkgs
+    assert "draw" in pkgs
     assert "pallas_webui" in pkgs
     assert "ingress_gate" in pkgs
     assert "pallas_console_metrics" in pkgs
@@ -24,7 +24,7 @@ def test_package_load_role_sharded(monkeypatch):
     from src.platform.shard.registry.config import get_shard_registry_settings
 
     get_shard_registry_settings.cache_clear()
-    assert package_load_role("pallas_image") == "worker"
+    assert package_load_role("draw") == "worker"
     assert package_load_role("pallas_webui") == "hub"
     assert package_load_role("callback") == "hub"
 
@@ -95,13 +95,13 @@ def test_catalog_lists_worker_plugin(monkeypatch):
     get_shard_registry_settings.cache_clear()
     rows = build_plugin_catalog_rows()
     by_name = {r["name"]: r for r in rows}
-    assert "pallas_image" in by_name
-    assert by_name["pallas_image"]["load_role"] == "worker"
-    assert by_name["pallas_image"]["metadata"] is not None
-    assert by_name["pallas_image"]["plugin_source"] == "main"
-    assert by_name["pallas_image"]["catalog_process_role"] == "hub"
-    assert by_name["pallas_image"]["expected_in_catalog_process"] is False
-    assert by_name["pallas_image"]["loaded_in_process"] is False
+    assert "draw" in by_name
+    assert by_name["draw"]["load_role"] == "worker"
+    assert by_name["draw"]["metadata"] is not None
+    assert by_name["draw"]["plugin_source"] == "main"
+    assert by_name["draw"]["catalog_process_role"] == "hub"
+    assert by_name["draw"]["expected_in_catalog_process"] is False
+    assert by_name["draw"]["loaded_in_process"] is False
     assert by_name["pallas_webui"]["expected_in_catalog_process"] is True
 
 
@@ -153,12 +153,12 @@ def test_catalog_lists_pyproject_status_on_hub(monkeypatch):
     assert row["load_role"] == "infra"
 
 
-def test_resolve_catalog_prefers_local_pallas_image(tmp_path, monkeypatch) -> None:
+def test_resolve_catalog_prefers_local_draw(tmp_path, monkeypatch) -> None:
     root = tmp_path / "repo"
-    local_pkg = root / "local" / "plugins" / "pallas_image"
+    local_pkg = root / "local" / "plugins" / "draw"
     local_pkg.mkdir(parents=True)
     (local_pkg / "__init__.py").write_text("x = 1\n", encoding="utf-8")
-    src_pkg = root / "src" / "plugins" / "pallas_image"
+    src_pkg = root / "src" / "plugins" / "draw"
     src_pkg.mkdir(parents=True)
     (src_pkg / "__init__.py").write_text("x = 1\n", encoding="utf-8")
     monkeypatch.setattr("src.console.webui.plugin_catalog.PROJECT_ROOT", root)
@@ -168,4 +168,4 @@ def test_resolve_catalog_prefers_local_pallas_image(tmp_path, monkeypatch) -> No
     )
     from src.console.webui.plugin_catalog import resolve_catalog_plugin_module
 
-    assert resolve_catalog_plugin_module("pallas_image") == "local.plugins.pallas_image"
+    assert resolve_catalog_plugin_module("draw") == "local.plugins.draw"

@@ -4223,9 +4223,9 @@ def register_extended_api(
         x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
     ) -> JSONResponse:
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
-        if plugin_name != "pallas_image":
+        if plugin_name != "draw":
             raise HTTPException(status_code=400, detail="该插件暂不支持配置检测")
-        from src.plugins.pallas_image.gateway_probe import (
+        from src.plugins.draw.gateway_probe import (
             format_gateway_status_lines,
             image_gen_settings_from_draft,
             probe_all_backends,

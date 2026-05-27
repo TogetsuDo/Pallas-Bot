@@ -13,10 +13,11 @@ from curl_cffi.requests import RequestsError as CffiRequestsError
 from nonebot import logger
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
-from src.shared.utils.http_msg import PALLAS_VAGUE_REPLY, user_failure_reply
+from src.shared.utils.http_msg import user_failure_reply
 
 from .config import ImageApiBackend, image_gen_config
 from .image_request_options import ImageGenRequestOptions
+from .replies import DRAW_VAGUE_REPLY
 
 
 def schedule_persist_generated_draw(data: bytes, group_id: int, user_id: int) -> None:
@@ -28,7 +29,7 @@ def schedule_persist_generated_draw(data: bytes, group_id: int, user_id: int) ->
 
             await persist_generated_draw(data, group_id, user_id)
         except Exception as e:
-            logger.warning(f"pallas_image persist archive failed group={group_id}: {e}")
+            logger.warning(f"draw persist archive failed group={group_id}: {e}")
 
     asyncio.create_task(job(), name=f"pallas_draw_archive:{group_id}:{user_id}")
 
@@ -101,7 +102,7 @@ async def try_httpx_after_cffi_timeout(
     cap = httpx_cap_after_cffi_timeout(req_timeout_cap)
     if cap is None:
         return None
-    logger.info(f"pallas_image cffi read timeout, retry httpx cap={cap:.0f}s (prioritize image)")
+    logger.info(f"draw cffi read timeout, retry httpx cap={cap:.0f}s (prioritize image)")
     return await httpx_call(cap)
 
 
@@ -249,11 +250,11 @@ async def post_generations_with_transport(
                 return ret
             if cffi_error_is_timeout(e):
                 raise
-            logger.warning(f"pallas_image generations curl_cffi failed, fallback httpx: {e}")
+            logger.warning(f"draw generations curl_cffi failed, fallback httpx: {e}")
     try:
         return await httpx_post_generations(client, url, headers, payload, req_timeout_cap=tcap)
     except httpx.ConnectError as e:
-        logger.warning(f"pallas_image generations httpx connect failed, fallback curl: {e}")
+        logger.warning(f"draw generations httpx connect failed, fallback curl: {e}")
         return await curl_post_generations(url, headers, payload, req_timeout_cap=req_timeout_cap)
 
 
@@ -427,11 +428,11 @@ async def post_edits_with_transport(
                 return ret
             if cffi_error_is_timeout(e):
                 raise
-            logger.warning(f"pallas_image edits curl_cffi failed, fallback httpx: {e}")
+            logger.warning(f"draw edits curl_cffi failed, fallback httpx: {e}")
     try:
         return await httpx_post_edits(client, image_blobs, prompt, backend, options=options, req_timeout_cap=tcap)
     except httpx.ConnectError as e:
-        logger.warning(f"pallas_image edits httpx connect failed, fallback curl: {e}")
+        logger.warning(f"draw edits httpx connect failed, fallback curl: {e}")
         return await curl_post_edits(image_blobs, prompt, backend, options=options, req_timeout_cap=tcap)
 
 
@@ -535,7 +536,7 @@ async def bytes_from_image_reference(
         )
         return None
     except Exception as exc:
-        logger.debug(f"pallas_image download ref image error url={u[:160]!r} exc={exc!r}")
+        logger.debug(f"draw download ref image error url={u[:160]!r} exc={exc!r}")
         return None
 
 
@@ -632,19 +633,21 @@ async def reply_from_image_api_json(
     try:
         data = json.loads(body_text)
     except Exception:
-        logger.error(f"pallas_image api invalid json body_prefix={body_text[:500]!r}")
+        logger.error(f"draw api invalid json body_prefix={body_text[:500]!r}")
         if finish_on_error:
-            await matcher.finish(optional_message_at_user(at_user_id, PALLAS_VAGUE_REPLY))
+            await matcher.finish(optional_message_at_user(at_user_id, DRAW_VAGUE_REPLY))
         return False
 
     if not isinstance(data, dict):
         if finish_on_error:
-            await matcher.finish(optional_message_at_user(at_user_id, PALLAS_VAGUE_REPLY))
+            await matcher.finish(optional_message_at_user(at_user_id, DRAW_VAGUE_REPLY))
         return False
 
     if data.get("error") is not None:
         if finish_on_error:
-            await matcher.finish(optional_message_at_user(at_user_id, user_failure_reply(body_text)))
+            await matcher.finish(
+                optional_message_at_user(at_user_id, user_failure_reply(body_text, vague_reply=DRAW_VAGUE_REPLY))
+            )
         return False
 
     remote_url, raw = extract_image_from_generation_payload(data)
@@ -652,7 +655,7 @@ async def reply_from_image_api_json(
     async def send_validated_image(image_bytes: bytes) -> bool:
         if not is_valid_generated_image(image_bytes):
             logger.warning(
-                f"pallas_image generated image rejected: len={len(image_bytes)} head={image_bytes[:16]!r}",
+                f"draw generated image rejected: len={len(image_bytes)} head={image_bytes[:16]!r}",
             )
             return False
         await matcher.send(optional_message_at_user(at_user_id, MessageSegment.image(image_bytes)))
@@ -664,7 +667,7 @@ async def reply_from_image_api_json(
         if await send_validated_image(raw):
             return True
         if finish_on_error:
-            await matcher.finish(optional_message_at_user(at_user_id, PALLAS_VAGUE_REPLY))
+            await matcher.finish(optional_message_at_user(at_user_id, DRAW_VAGUE_REPLY))
         return False
     if remote_url:
         inline = decode_inline_image_reference(remote_url)
@@ -672,7 +675,7 @@ async def reply_from_image_api_json(
             if await send_validated_image(inline):
                 return True
             if finish_on_error:
-                await matcher.finish(optional_message_at_user(at_user_id, PALLAS_VAGUE_REPLY))
+                await matcher.finish(optional_message_at_user(at_user_id, DRAW_VAGUE_REPLY))
             return False
         try:
             img_resp = await client.get(remote_url)
@@ -680,11 +683,11 @@ async def reply_from_image_api_json(
                 return True
         except httpx.HTTPError:
             pass
-        logger.error(f"pallas_image download generated image failed url={remote_url}")
+        logger.error(f"draw download generated image failed url={remote_url}")
         if finish_on_error:
-            await matcher.finish(optional_message_at_user(at_user_id, PALLAS_VAGUE_REPLY))
+            await matcher.finish(optional_message_at_user(at_user_id, DRAW_VAGUE_REPLY))
         return False
-    logger.warning(f"pallas_image response missing image url/b64 data_prefix={str(data)[:800]!r}")
+    logger.warning(f"draw response missing image url/b64 data_prefix={str(data)[:800]!r}")
     if finish_on_error:
-        await matcher.finish(optional_message_at_user(at_user_id, PALLAS_VAGUE_REPLY))
+        await matcher.finish(optional_message_at_user(at_user_id, DRAW_VAGUE_REPLY))
     return False

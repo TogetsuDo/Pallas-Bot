@@ -44,7 +44,7 @@ PLUGIN_NAMES = [
     "greeting",
     "help",
     "maa",
-    "pallas_image",
+    "draw",
     "pallas_protocol",
     "pallas_webui",
     "relogin_bot",

@@ -58,11 +58,11 @@ def test_normalize_plaintext_collapses_whitespace() -> None:
 
 @pytest.fixture
 def claim_plugin_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    root = tmp_path / "pallas_image"
+    root = tmp_path / "draw"
     monkeypatch.setattr(
         claim_mod,
         "plugin_data_dir",
-        lambda name, create=True: root if name == "pallas_image" else tmp_path / name,
+        lambda name, create=True: root if name == "draw" else tmp_path / name,
     )
     return root
 
@@ -87,8 +87,8 @@ async def test_cross_bot_single_process_skips_claim_file(
 ) -> None:
     monkeypatch.setattr(shard_cfg, "is_sharding_active", lambda: False)
     gid, uid, body, t = 12345, 999, "单进程跨牛", 100
-    assert await try_claim_cross_bot_message("pallas_image", gid, uid, body, t, 111) is True
-    assert await try_claim_cross_bot_message("pallas_image", gid, uid, body, t, 222) is False
+    assert await try_claim_cross_bot_message("draw", gid, uid, body, t, 111) is True
+    assert await try_claim_cross_bot_message("draw", gid, uid, body, t, 222) is False
     claims = claim_plugin_data / "message_claims"
     assert not claims.exists() or list(claims.glob("*.claim")) == []
 
@@ -104,9 +104,9 @@ async def test_group_message_once_same_sig_only_first() -> None:
 @pytest.mark.asyncio
 async def test_cross_bot_memory_claim_only_one_bot() -> None:
     gid, uid, body, t = 12345, 999, "牛牛画画 测试", 100
-    assert await try_claim_cross_bot_message_memory("pallas_image", gid, uid, body, t, 111) is True
-    assert await try_claim_cross_bot_message_memory("pallas_image", gid, uid, body, t, 222) is False
-    assert await try_claim_cross_bot_message_memory("pallas_image", gid, uid, body, t, 111) is True
+    assert await try_claim_cross_bot_message_memory("draw", gid, uid, body, t, 111) is True
+    assert await try_claim_cross_bot_message_memory("draw", gid, uid, body, t, 222) is False
+    assert await try_claim_cross_bot_message_memory("draw", gid, uid, body, t, 111) is True
 
 
 @pytest.mark.asyncio
@@ -141,7 +141,7 @@ async def test_draw_cheer_gate_only_one_bot() -> None:
 @pytest.mark.asyncio
 async def test_owned_gate_scoped_by_plugin() -> None:
     gid = 88888
-    assert await try_begin_group_owned_gate("pallas_image", gid, 111, gate_sec=5) is True
+    assert await try_begin_group_owned_gate("draw", gid, 111, gate_sec=5) is True
     assert await try_begin_group_owned_gate("duel", gid, 222, gate_sec=5) is True
 
 
