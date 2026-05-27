@@ -75,9 +75,7 @@ class RemoteCorpusRepository(ContextRepositoryExistenceMixin):
                             return None
                         if resp.status_code != 200:
                             preview = (resp.text or "")[:200]
-                            logger.warning(
-                                f"corpus community find HTTP {resp.status_code} api_base={base}: {preview}"
-                            )
+                            logger.warning(f"corpus community find HTTP {resp.status_code} api_base={base}: {preview}")
                             continue
                         data = resp.json()
                         if not isinstance(data, dict):
