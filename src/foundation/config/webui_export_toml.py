@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 import re
 from functools import lru_cache
-from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from src.foundation.paths import PROJECT_ROOT
 

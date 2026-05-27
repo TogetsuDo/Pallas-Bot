@@ -12,8 +12,10 @@ import json
 import logging
 import os
 import tomllib
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from src.foundation.paths import PROJECT_ROOT as _REPO_ROOT
 

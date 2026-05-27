@@ -7,7 +7,10 @@ import os
 import re
 import subprocess
 import tomllib
-from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 _SHA_TAIL_RE = re.compile(r"\s*·\s*[0-9a-f]{4,40}\b", re.IGNORECASE)
 _GIT_TAIL_RE = re.compile(r"\s+git\s+[0-9a-f]{4,40}\s*$", re.IGNORECASE)
