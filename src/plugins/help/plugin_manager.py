@@ -13,6 +13,7 @@ from src.foundation.db import make_bot_config_repository, make_group_config_repo
 from src.foundation.db.modules import BotConfigModule, GroupConfigModule
 from src.foundation.paths import plugin_data_dir
 
+from .plugin_availability import is_plugin_help_available
 from .plugin_match import find_matching_plugins
 from .styles import load_config
 from .visibility import resolve_help_hidden_plugins, resolve_help_ignored_plugins
@@ -55,12 +56,18 @@ def get_help_menu_plugins(
 ) -> list[Any]:
     """与一级帮助总览相同的插件集合（已排序）。"""
     plugins = [p for p in get_loaded_plugins() if p.name]
-    if show_ignored:
-        return sorted(plugins, key=plugin_display_name)
-
-    ignored = set(ignored_plugins if ignored_plugins is not None else resolve_help_ignored_plugins())
     hidden = set(resolve_help_hidden_plugins())
-    filtered = [p for p in plugins if p.name not in ignored and p.name not in hidden and is_user_help_plugin(p)]
+    plugins = [p for p in plugins if p.name not in hidden]
+
+    if show_ignored:
+        filtered = [p for p in plugins if is_plugin_help_available(p.name)]
+    else:
+        ignored = set(ignored_plugins if ignored_plugins is not None else resolve_help_ignored_plugins())
+        filtered = [
+            p
+            for p in plugins
+            if p.name not in ignored and is_user_help_plugin(p) and is_plugin_help_available(p.name)
+        ]
     return sorted(filtered, key=plugin_display_name)
 
 

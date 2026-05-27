@@ -32,3 +32,12 @@ def test_ambiguous_substring():
     b = _plugin("chat", "酒后聊天")
     matches = find_matching_plugins("酒", [a, b])
     assert len(matches) >= 2
+
+
+def test_casual_chat_vs_drunk_chat():
+    ollama = _plugin("ollama", "随时闲聊", extra_aliases=["牛牛聊天"])
+    chat = _plugin("chat", "酒后聊天")
+    pool = [ollama, chat]
+    assert find_matching_plugins("随时闲聊", pool) == [ollama]
+    assert find_matching_plugins("牛牛聊天", pool) == [ollama]
+    assert find_matching_plugins("聊天", pool) == [chat]
