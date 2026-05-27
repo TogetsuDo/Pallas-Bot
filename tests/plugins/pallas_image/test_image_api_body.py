@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.common.utils.http_msg import PALLAS_VAGUE_REPLY, upstream_error_visible_to_user
+from src.shared.utils.http_msg import PALLAS_VAGUE_REPLY, upstream_error_visible_to_user
 from src.plugins.pallas_image.config import ImageApiBackend
 from src.plugins.pallas_image.image_api import (
     extract_image_from_generation_payload,

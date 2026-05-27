@@ -31,11 +31,11 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    from src.common.config.dotenv import apply_repo_settings_to_environ
+    from src.foundation.config.dotenv import apply_repo_settings_to_environ
 
     apply_repo_settings_to_environ()
 
-    from src.common.coord.redis_settings import (
+    from src.platform.coord.redis_settings import (
         clear_coord_redis_settings_cache,
         coord_redis_enabled,
         coord_redis_mode,

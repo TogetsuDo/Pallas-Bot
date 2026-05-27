@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.common.shard.coord import duel_group as mod
+from src.platform.shard.coord import duel_group as mod
 
 
 def test_duel_group_lock_exclusive(tmp_path, monkeypatch):

@@ -20,15 +20,15 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot_plugin_apscheduler import scheduler
 
-from src.common.cmd_perm import satisfies_command_permission
-from src.common.cmd_perm.metadata_defaults import (
+from src.features.cmd_perm import satisfies_command_permission
+from src.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.cmd_perm.metadata_text import SCENE_GROUP, SCENE_PRIVATE, join_usage, usage_line
-from src.common.config import BotConfig, GroupConfig, UserConfig, get_bot_admins, user_is_bot_admin
-from src.common.paths import plugin_data_dir
+from src.features.cmd_perm.metadata_text import SCENE_GROUP, SCENE_PRIVATE, join_usage, usage_line
+from src.foundation.config import BotConfig, GroupConfig, UserConfig, get_bot_admins, user_is_bot_admin
+from src.foundation.paths import plugin_data_dir
 from src.plugins.request_handler.config import Config
 
 PLUGIN_NAME = "request_handler"

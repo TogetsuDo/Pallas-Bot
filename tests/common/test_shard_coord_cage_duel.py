@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import time
 
-from src.common.shard.coord import cage_duel as mod
+from src.platform.shard.coord import cage_duel as mod
 
 
 def test_cross_shard_pair_finalize(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(mod, "_coord_dir", lambda: tmp_path)
     monkeypatch.setattr(
-        "src.common.shard.registry.config.get_shard_registry_settings",
+        "src.platform.shard.registry.config.get_shard_registry_settings",
         lambda: type("S", (), {"shard_id": 2})(),
     )
 

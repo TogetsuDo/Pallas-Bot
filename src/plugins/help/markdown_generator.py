@@ -2,7 +2,7 @@ import re
 import textwrap
 from enum import StrEnum
 
-from src.common.cmd_perm import (
+from src.features.cmd_perm import (
     effective_permission_avail_text,
     help_say_phrase,
     help_scene_text,

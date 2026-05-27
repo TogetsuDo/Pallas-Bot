@@ -1,6 +1,6 @@
 import json
 
-from src.common.shard.coord import maa_route_registry as reg
+from src.platform.shard.coord import maa_route_registry as reg
 
 
 def test_register_and_resolve_user_route(tmp_path, monkeypatch) -> None:

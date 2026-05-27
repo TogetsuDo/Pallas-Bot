@@ -1,6 +1,6 @@
 # WebUI 插件配置与热重载
 
-控制台（`pallas_webui`）通过统一 `data/pallas_config/webui.json` 读写插件配置（主配置见 `config/pallas.toml`）。本包 `src/common/webui/` 供**插件作者**接入「保存后立即生效」，无需再改 `extended_api.py`。
+控制台（`pallas_webui`）通过统一 `data/pallas_config/webui.json` 读写插件配置（主配置见 `config/pallas.toml`）。本包 `src/console/webui/` 供**插件作者**接入「保存后立即生效」，无需再改 `extended_api.py`。
 
 ## 目录结构
 
@@ -13,7 +13,7 @@
 | `service_gateways_section.py` | 画画 / MAA / 唱歌网关集中编辑与连通检测 API |
 | `gateway_fields.py` | 服务网关段字段名常量 |
 
-命令权限声明见 [`cmd_perm`](../cmd_perm/README.md) 与 `src/common/cmd_perm/declare.py`。
+命令权限声明见 [`cmd_perm`](../cmd_perm/README.md) 与 `src/features/cmd_perm/declare.py`。
 
 ## 快速接入（推荐）
 
@@ -21,7 +21,7 @@
 
 ```python
 from pydantic import BaseModel, Field
-from src.common.webui import install_hot_reload_config
+from src.console.webui import install_hot_reload_config
 
 class Config(BaseModel, extra="ignore"):
     my_enable: bool = Field(default=False, description="是否启用某功能。")
@@ -74,7 +74,7 @@ plugin_webui = install_hot_reload_config(
 在 `PluginMetadata.extra` 中声明可配置权限，matcher 使用 `permission_for_command`：
 
 ```python
-from src.common.cmd_perm import (
+from src.features.cmd_perm import (
     command_perm_list,
     command_perm_row,
     permission_for_command,
@@ -105,11 +105,11 @@ my_cmd = on_command("某命令", permission=permission_for_command("my_plugin.ac
 
 ## 出现在「通用配置」页
 
-若希望插件配置出现在「通用配置」列表（而非仅「插件」页），在 [`env_sections.py`](../../../src/common/webui/env_sections.py) 的 `_registered_sections()` 中增加 `_plugin_env_section_from_module(...)`。已 `install_hot_reload_config` 的插件会通过注册表读取当前值；保存段配置时会尝试 `reload_plugin_config`。
+若希望插件配置出现在「通用配置」列表（而非仅「插件」页），在 [`env_sections.py`](../../../src/console/webui/env_sections.py) 的 `_registered_sections()` 中增加 `_plugin_env_section_from_module(...)`。已 `install_hot_reload_config` 的插件会通过注册表读取当前值；保存段配置时会尝试 `reload_plugin_config`。
 
 ### 服务网关 / 连通性（`service_gateways`）
 
-[`service_gateways_section.py`](../../../src/common/webui/service_gateways_section.py) 聚合 **牛牛画画** 网关字段、**MAA** 对外端点、**点歌** 主机与开关，对应键写入 `webui.json` 的 `env`（按插件分组到 `sections`）。WebUI 提供网关列表编辑器与 `POST /common-config/service_gateways/connectivity-check`（可按表单草稿探测，无需先保存）。各插件 **插件配置** 页保留完整参数与专用入口（如画画仅测画画网关）。
+[`service_gateways_section.py`](../../../src/console/webui/service_gateways_section.py) 聚合 **牛牛画画** 网关字段、**MAA** 对外端点、**点歌** 主机与开关，对应键写入 `webui.json` 的 `env`（按插件分组到 `sections`）。WebUI 提供网关列表编辑器与 `POST /common-config/service_gateways/connectivity-check`（可按表单草稿探测，无需先保存）。各插件 **插件配置** 页保留完整参数与专用入口（如画画仅测画画网关）。
 
 ## 实现参考
 
@@ -121,6 +121,6 @@ my_cmd = on_command("某命令", permission=permission_for_command("my_plugin.ac
 
 ## 相关源文件
 
-- `src/common/webui/` — 本包
+- `src/console/webui/` — 本包
 - `src/plugins/pallas_webui/extended_api.py` — 路由注册（宜保持薄，逻辑放在 `webui` 包内）
-- `src/common/config/repo_settings.py` — `pallas.toml` + `webui.json` 合并读写
+- `src/foundation/config/repo_settings.py` — `pallas.toml` + `webui.json` 合并读写

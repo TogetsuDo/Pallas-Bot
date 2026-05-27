@@ -8,7 +8,7 @@ from pathlib import Path
 
 from nonebot import logger
 
-from src.common.paths import plugin_data_dir
+from src.foundation.paths import plugin_data_dir
 
 _ARCHIVE_SUBDIR = "draw_archive"
 _INDEX_NAME = "index.json"

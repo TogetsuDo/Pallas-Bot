@@ -1,4 +1,4 @@
-from src.common.webui.plugin_catalog import (
+from src.console.webui.plugin_catalog import (
     build_plugin_catalog_rows,
     discover_extra_plugin_packages,
     discover_plugin_packages,
@@ -14,14 +14,14 @@ def test_discover_includes_pallas_image():
     pkgs = discover_plugin_packages()
     assert "pallas_image" in pkgs
     assert "pallas_webui" in pkgs
-    assert "_ingress_gate" in pkgs
+    assert "ingress_gate" in pkgs
     assert "pallas_console_metrics" in pkgs
 
 
 def test_package_load_role_sharded(monkeypatch):
     monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
     monkeypatch.setenv("PALLAS_BOT_ROLE", "hub")
-    from src.common.shard.registry.config import get_shard_registry_settings
+    from src.platform.shard.registry.config import get_shard_registry_settings
 
     get_shard_registry_settings.cache_clear()
     assert package_load_role("pallas_image") == "worker"
@@ -37,14 +37,60 @@ def test_expected_loaded_in_catalog_hub_vs_worker():
     assert expected_loaded_in_catalog_process("hub", "worker") is False
 
 
+def test_expected_loaded_in_catalog_unified():
+    assert expected_loaded_in_catalog_process("both", "unified") is True
+    assert expected_loaded_in_catalog_process("infra", "unified") is True
+    assert expected_loaded_in_catalog_process("hub", "unified") is False
+    assert expected_loaded_in_catalog_process("worker", "unified") is False
+    assert expected_loaded_in_catalog_process("internal", "unified") is False
+
+
+def test_catalog_hides_shard_only_in_unified(monkeypatch):
+    monkeypatch.delenv("PALLAS_SHARD_ENABLED", raising=False)
+    monkeypatch.delenv("PALLAS_BOT_ROLE", raising=False)
+    monkeypatch.setattr(
+        "src.foundation.config.repo_settings.read_bootstrap_extra_plugin_dirs",
+        list,
+    )
+    from src.platform.shard.registry.config import get_shard_registry_settings
+
+    get_shard_registry_settings.cache_clear()
+    rows = build_plugin_catalog_rows()
+    names = {r["name"] for r in rows}
+    assert "relogin_forward" not in names
+    assert "maa_hub" not in names
+    assert "ingress_gate" in names
+    assert "pallas_console_metrics" not in names
+    assert "relogin_bot" in names
+    assert "maa" in names
+    assert rows[0]["catalog_process_role"] == "unified"
+
+
+def test_catalog_shows_shard_only_on_sharded_hub(monkeypatch):
+    monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
+    monkeypatch.setenv("PALLAS_BOT_ROLE", "hub")
+    monkeypatch.setattr(
+        "src.foundation.config.repo_settings.read_bootstrap_extra_plugin_dirs",
+        list,
+    )
+    from src.platform.shard.registry.config import get_shard_registry_settings
+
+    get_shard_registry_settings.cache_clear()
+    rows = build_plugin_catalog_rows()
+    names = {r["name"] for r in rows}
+    assert "relogin_forward" in names
+    assert "maa_hub" in names
+    assert "ingress_gate" in names
+
+
 def test_catalog_lists_worker_plugin(monkeypatch):
     monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
     monkeypatch.setenv("PALLAS_BOT_ROLE", "hub")
     monkeypatch.setattr(
-        "src.common.config.repo_settings.read_bootstrap_extra_plugin_dirs",
+        "src.foundation.config.repo_settings.read_bootstrap_extra_plugin_dirs",
         lambda: [],
     )
-    from src.common.shard.registry.config import get_shard_registry_settings
+    from src.platform.shard.registry.config import get_shard_registry_settings
 
     get_shard_registry_settings.cache_clear()
     rows = build_plugin_catalog_rows()
@@ -64,9 +110,9 @@ def test_infer_plugin_source_local_dir(tmp_path, monkeypatch) -> None:
     pkg = root / "local" / "plugins" / "demo"
     pkg.mkdir(parents=True)
     (pkg / "__init__.py").write_text("x = 1\n", encoding="utf-8")
-    monkeypatch.setattr("src.common.webui.plugin_catalog.PROJECT_ROOT", root)
+    monkeypatch.setattr("src.console.webui.plugin_catalog.PROJECT_ROOT", root)
     monkeypatch.setattr(
-        "src.common.config.repo_settings.read_bootstrap_extra_plugin_dirs",
+        "src.foundation.config.repo_settings.read_bootstrap_extra_plugin_dirs",
         lambda: ["local/plugins"],
     )
     extra = discover_extra_plugin_packages()
@@ -77,7 +123,7 @@ def test_infer_plugin_source_local_dir(tmp_path, monkeypatch) -> None:
 
 
 def test_plugin_source_from_main_path() -> None:
-    from src.common.paths import PROJECT_ROOT
+    from src.foundation.paths import PROJECT_ROOT
 
     main_py = PROJECT_ROOT / "src" / "plugins" / "callback" / "handler.py"
     if main_py.is_file():
@@ -93,10 +139,10 @@ def test_catalog_lists_pyproject_status_on_hub(monkeypatch):
     monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
     monkeypatch.setenv("PALLAS_BOT_ROLE", "hub")
     monkeypatch.setattr(
-        "src.common.config.repo_settings.read_bootstrap_extra_plugin_dirs",
+        "src.foundation.config.repo_settings.read_bootstrap_extra_plugin_dirs",
         lambda: [],
     )
-    from src.common.shard.registry.config import get_shard_registry_settings
+    from src.platform.shard.registry.config import get_shard_registry_settings
 
     get_shard_registry_settings.cache_clear()
     rows = build_plugin_catalog_rows()
@@ -115,11 +161,11 @@ def test_resolve_catalog_prefers_local_pallas_image(tmp_path, monkeypatch) -> No
     src_pkg = root / "src" / "plugins" / "pallas_image"
     src_pkg.mkdir(parents=True)
     (src_pkg / "__init__.py").write_text("x = 1\n", encoding="utf-8")
-    monkeypatch.setattr("src.common.webui.plugin_catalog.PROJECT_ROOT", root)
+    monkeypatch.setattr("src.console.webui.plugin_catalog.PROJECT_ROOT", root)
     monkeypatch.setattr(
-        "src.common.config.repo_settings.read_bootstrap_extra_plugin_dirs",
+        "src.foundation.config.repo_settings.read_bootstrap_extra_plugin_dirs",
         lambda: ["local/plugins"],
     )
-    from src.common.webui.plugin_catalog import resolve_catalog_plugin_module
+    from src.console.webui.plugin_catalog import resolve_catalog_plugin_module
 
     assert resolve_catalog_plugin_module("pallas_image") == "local.plugins.pallas_image"

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 
-from src.common.shard import data_sync as sync_mod
-from src.common.multi_bot import fleet as fleet_mod
-from src.common.shard.registry import store as reg_mod
+from src.platform.shard import data_sync as sync_mod
+from src.platform.multi_bot import fleet as fleet_mod
+from src.platform.shard.registry import store as reg_mod
 
 
 def test_refresh_on_accounts_mtime_change(tmp_path, monkeypatch):

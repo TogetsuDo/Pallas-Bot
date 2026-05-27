@@ -15,7 +15,7 @@ def test_control_phrase_case_insensitive() -> None:
 
 
 def test_maa_status_command_prefix() -> None:
-    from src.common.command_prefix import extract_command_tail_any, matches_command_prefix
+    from src.foundation.command_prefix import extract_command_tail_any, matches_command_prefix
     from src.plugins.maa.command_match import STATUS_COMMAND
 
     assert matches_command_prefix("牛牛maa状态", STATUS_COMMAND)

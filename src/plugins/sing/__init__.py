@@ -8,15 +8,15 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State
 from ulid import ULID
 
-from src.common.cmd_perm.metadata_defaults import (
+from src.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.cmd_perm.metadata_text import SCENE_GROUP, SCENE_PRIVATE, join_usage, usage_line
-from src.common.config import GroupConfig, TaskManager
-from src.common.db import SingProgress
-from src.common.utils import HTTPXClient
+from src.features.cmd_perm.metadata_text import SCENE_GROUP, SCENE_PRIVATE, join_usage, usage_line
+from src.foundation.config import GroupConfig, TaskManager
+from src.foundation.db import SingProgress
+from src.shared.utils import HTTPXClient
 
 from .config import get_sing_config, sing_server_url
 from .ncm_login import get_song_id, get_song_title

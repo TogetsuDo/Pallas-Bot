@@ -1,0 +1,6 @@
+# 由 apply_deploy_profile.py shard 合并；键写入 data/pallas_config/webui.json [env]
+
+[env]
+PALLAS_SHARD_ENABLED = "true"
+PALLAS_COORD_REDIS_ENABLED = "auto"
+# REDIS_URL = "redis://127.0.0.1:6379/0"

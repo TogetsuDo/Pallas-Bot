@@ -55,6 +55,17 @@ uv sync --extra perf
 
 **如何确认成功**：命令退出码为 `0`，且 `.venv` 已创建；可执行 `uv run python -c "import nonebot"` 无报错。
 
+### 可选部署模板
+
+除默认单进程外，可选用 [deploy/](deploy/README.md) 中的模板（**不默认启用**）：
+
+| 场景 | 依赖 | 应用配置 |
+| --- | --- | --- |
+| 多进程分片 | `uv sync --extra deploy-shard` | `uv run python tools/apply_deploy_profile.py shard` → `./scripts/run_sharded_bot.sh start` |
+| 消息审查 | `uv sync --extra message-scrub` | `uv run python tools/apply_deploy_profile.py message-scrub` |
+
+分片仅用文件 claim、不装 Redis 时可 `uv sync --extra shard`（无额外包）。`deploy-shard` 与 `coord-redis` 均安装 `redis`。
+
 ---
 
 ## 步骤 3：准备主配置 `config/pallas.toml`（必做）
@@ -262,7 +273,7 @@ WantedBy=multi-user.target
 > 面向已有 NoneBot 项目的开发者；仅部署独立牛牛可跳过本节。
 
 1. 获取源码并 `uv sync`（PG 用 `--extra pg`）。
-2. 将 `src/common` 与所需 `src/plugins/*` 复制到现有 Bot。
+2. 将 `src/foundation` 等内核层与所需 `src/plugins/*` 复制到现有 Bot。
 3. 在 `bot.py` 中于启动时调用 `init_db()`、`ensure_voices()`（参见仓库 [`bot.py`](../bot.py)）。
 4. 配置使用 **`config/pallas.toml`** + **`webui.json`**。
 

@@ -120,14 +120,14 @@ def should_schedule_bot_qte_auto_answer(responder: str) -> bool:
         return False
     if not is_fleet_bot_qq(qq):
         return False
-    from src.common.shard.presence import bot_has_local_connection
+    from src.platform.shard.presence import bot_has_local_connection
 
     return bot_has_local_connection(qq)
 
 
 def should_delegate_bot_qte_to_coord(responder: str) -> bool:
     """分片且应答牛在其它 worker：走 data/coord/duel_qte 共享会话。"""
-    from src.common.shard.registry.config import is_sharding_active
+    from src.platform.shard.registry.config import is_sharding_active
 
     if not is_sharding_active():
         return False
@@ -137,13 +137,13 @@ def should_delegate_bot_qte_to_coord(responder: str) -> bool:
         return False
     if not is_fleet_bot_qq(qq):
         return False
-    from src.common.shard.presence import bot_has_local_connection
+    from src.platform.shard.presence import bot_has_local_connection
 
     return not bot_has_local_connection(qq)
 
 
 def race_qte_needs_coord(challenger_id: str, defender_id: str) -> bool:
-    from src.common.shard.registry.config import is_sharding_active
+    from src.platform.shard.registry.config import is_sharding_active
 
     if not is_sharding_active():
         return False
@@ -162,7 +162,7 @@ def schedule_bot_qte_auto_answer(
 ) -> None:
     """应答方为牛时自动咏名/拆招，按概率成功或嘴瓢失败。"""
     if should_delegate_bot_qte_to_coord(responder):
-        from src.common.shard.coord.duel_qte import schedule_cross_shard_single_qte
+        from src.platform.shard.coord.duel_qte import schedule_cross_shard_single_qte
 
         schedule_cross_shard_single_qte(
             group_id,
@@ -217,7 +217,7 @@ def schedule_bot_race_qte_auto_answer(
     """双方均为牛时各自自动抢答，先成功者写入 future。"""
     coord_sid: str | None = None
     if race_qte_needs_coord(challenger_id, defender_id):
-        from src.common.shard.coord.duel_qte import (
+        from src.platform.shard.coord.duel_qte import (
             bridge_race_qte_coord,
             schedule_cross_shard_race_qte,
         )
@@ -265,7 +265,7 @@ def schedule_bot_race_qte_auto_answer(
             if not success_roll or outgoing != required_key:
                 return
             if race_coord_sid:
-                from src.common.shard.coord.duel_qte import try_claim_race_coord_winner
+                from src.platform.shard.coord.duel_qte import try_claim_race_coord_winner
 
                 await try_claim_race_coord_winner(race_coord_sid, responder_id)
             elif not fut.done():

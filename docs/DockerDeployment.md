@@ -100,6 +100,49 @@ curl -s http://127.0.0.1:8088/pallas/api/health   # 返回正常
 
 ---
 
+## 自建镜像与精简（可选）
+
+官方镜像 `pallasbot/pallas-bot:latest` 为**单进程**用途。若自行 `docker build`，仓库根目录已提供 **`.dockerignore`**，构建时默认不打包 `tests/`、`docs/`、`.git`、`data/`、`local/` 等与运行无关的内容。
+
+### `PALLAS_UV_EXTRAS` 对照
+
+构建参数 **`PALLAS_UV_EXTRAS`** 对应 `pyproject.toml` 的 optional-dependencies（逗号分隔，无空格）：
+
+| 场景 | 建议 `PALLAS_UV_EXTRAS` | 说明 |
+| --- | --- | --- |
+| 单进程 + MongoDB | `perf` | 默认 compose 栈；不含 PostgreSQL 驱动 |
+| 单进程 + PostgreSQL | `perf,pg` | **Dockerfile 默认值** |
+| 单进程 + 消息审查 | `perf,pg,message-scrub` | 无额外 pip 包；仍须在容器内 `apply_deploy_profile message-scrub` 或 WebUI 开启 |
+| 多进程分片 | `perf,pg,deploy-shard` | 额外安装 `redis`；运行时见 [多进程分片](#多进程分片可选) |
+
+单进程镜像**不必**加 `deploy-shard`。分片专用插件（`relogin_forward`、`maa_hub` 等）仍在源码树中，单进程由 **`UNIFIED_SKIP_PLUGIN_NAMES`** 跳过加载，体积可忽略；精简镜像主要靠 **extras** 与 **`.dockerignore`**，而非删插件目录。
+
+示例：
+
+```bash
+# 单进程 + Mongo（比默认少 pg 驱动）
+docker build \
+  --build-arg PALLAS_UV_EXTRAS=perf \
+  --build-arg PALLAS_BOT_VERSION=3.0.0 \
+  -t pallasbot:unified .
+
+# 单进程 + PostgreSQL（与官方默认接近）
+docker build \
+  --build-arg PALLAS_UV_EXTRAS=perf,pg \
+  --build-arg PALLAS_BOT_VERSION=3.0.0 \
+  -t pallasbot:local .
+
+# 分片（需自建 compose / 入口，见 docker-compose.shard.example.yml）
+docker build \
+  --build-arg PALLAS_UV_EXTRAS=perf,pg,deploy-shard \
+  --build-arg PALLAS_BOT_VERSION=3.0.0 \
+  -t pallasbot:shard .
+```
+
+国内拉取基础镜像失败时见 [排障 · python:3.12-slim](#拉取-python312-slim-失败)。
+
+---
+
 ## 步骤 4：协议端与 QQ
 
 默认 **不** 在 compose 中编排 NapCat。浏览器打开：

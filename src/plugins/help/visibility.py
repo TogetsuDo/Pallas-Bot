@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from src.common.paths import plugin_data_dir
+from src.foundation.paths import plugin_data_dir
 
 _VISIBILITY_FILE = "help_visibility.json"
 
@@ -10,10 +10,11 @@ _VISIBILITY_FILE = "help_visibility.json"
 BUILTIN_HELP_HIDDEN_PLUGINS = frozenset({
     "pallas_webui",
     "pallas_protocol",
-    "_ingress_gate",
+    "ingress_gate",
     "pallas_console_metrics",
     "community_stats",
     "relogin_forward",
+    "maa_hub",
 })
 
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.common.multi_bot import group_online_cache as mod
+from src.platform.multi_bot import group_online_cache as mod
 
 
 async def test_local_connected_bots_uses_cache(monkeypatch) -> None:

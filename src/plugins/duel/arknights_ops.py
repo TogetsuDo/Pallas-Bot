@@ -9,7 +9,7 @@ from typing import Any
 
 from nonebot import logger
 
-from src.common.paths import resource_dir
+from src.foundation.paths import resource_dir
 
 _PROF_CN: dict[str, str] = {
     "WARRIOR": "近卫",
@@ -300,14 +300,14 @@ async def resolve_operator_avatar_image(op_id: str) -> bytes | None:
     cid = str(op_id or "").strip()
     if not cid:
         return None
-    from src.common.arknights.duel_sync import operator_avatar_bytes
+    from src.domain.arknights.duel_sync import operator_avatar_bytes
     from src.plugins.duel.config import plugin_config
 
     data = operator_avatar_bytes(cid)
     if data:
         return data
     if plugin_config.duel_avatar_download_on_use:
-        from src.common.utils.arknights_duel_resource import ensure_duel_avatar
+        from src.shared.utils.arknights_duel_resource import ensure_duel_avatar
 
         path = await ensure_duel_avatar(cid, allow_download=True)
         if path:

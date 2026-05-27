@@ -2,7 +2,7 @@
 
 本仓库将**部分命令/入口**的鉴权抽象为可配置等级：默认由代码声明，运行中可通过环境变量或 WebUI「通用配置 → 命令权限」覆盖。帮助系统会根据元数据在**二级/三级帮助图**中展示**当前生效**的权限文案。
 
-实现代码位于 `src/common/cmd_perm/`。
+实现代码位于 `src/features/cmd_perm/`。
 
 ## 权限等级
 
@@ -25,7 +25,7 @@
 ### 命令 / Matcher 权限
 
 ```python
-from src.common.cmd_perm import permission_for_command
+from src.features.cmd_perm import permission_for_command
 
 on_command("示例", permission=permission_for_command("my_plugin.do_something"))
 ```
@@ -33,7 +33,7 @@ on_command("示例", permission=permission_for_command("my_plugin.do_something")
 当前 NoneBot 版本**禁止** `Permission & Permission`（会抛 `RuntimeError`）。若命令必须限定在 **OneBot V11 群消息**或**私聊**上，请使用合并后的 helper，勿写 `permission.GROUP & permission_for_command(...)`：
 
 ```python
-from src.common.cmd_perm import (
+from src.features.cmd_perm import (
     group_message_permission_for_command,
     private_message_permission_for_command,
 )
@@ -45,7 +45,7 @@ on_command("私聊示例", permission=private_message_permission_for_command("my
 ### 在消息处理中手动判断
 
 ```python
-from src.common.cmd_perm import satisfies_command_permission
+from src.features.cmd_perm import satisfies_command_permission
 
 if not await satisfies_command_permission(bot, event, "my_plugin.do_something"):
     return
@@ -53,7 +53,7 @@ if not await satisfies_command_permission(bot, event, "my_plugin.do_something"):
 
 ## 全局默认表 `registry`
 
-- 文件：`src/common/cmd_perm/registry.py` 中 `DEFAULT_COMMAND_PERMISSIONS`。
+- 文件：`src/features/cmd_perm/registry.py` 中 `DEFAULT_COMMAND_PERMISSIONS`。
 - 作用：为尚未在插件 metadata 中声明的命令提供**兜底默认等级**；`resolved_level` 会结合覆盖配置算出最终等级。
 - 新插件：若希望 WebUI 与帮助一致展示，**至少**在下列之一中给出默认：
   - 本插件 `PluginMetadata.extra["command_permissions"]`（推荐，与展示名写在一起），或
@@ -105,7 +105,7 @@ if not await satisfies_command_permission(bot, event, "my_plugin.do_something"):
 
 `docs/plugins/*/README.md` 面向维护者，结构见 [插件文档模板](../../plugins/TEMPLATE.md)；可用表格列出**代码默认等级**，并注明实际以 WebUI 为准。
 
-`PluginMetadata` 共用常量：`src/common/cmd_perm/metadata_defaults.py`（`PLUGIN_HOMEPAGE`、`PLUGIN_EXTRA_VERSION`、`PLUGIN_MENU_TEMPLATE`）。
+`PluginMetadata` 共用常量：`src/features/cmd_perm/metadata_defaults.py`（`PLUGIN_HOMEPAGE`、`PLUGIN_EXTRA_VERSION`、`PLUGIN_MENU_TEMPLATE`）。
 
 **帮助解析别名**：`牛牛帮助 远控` 等口令除包名、展示名外，还可匹配 `src/plugins/help/plugin_aliases.py` 中的简称；单插件可在 `extra["help_aliases"]` 追加。匹配时会忽略空格与英文大小写。
 
@@ -126,15 +126,15 @@ if not await satisfies_command_permission(bot, event, "my_plugin.do_something"):
 
 | 路径 | 职责 |
 |------|------|
-| `src/common/cmd_perm/check.py` | `permission_for_command`、`group_message_permission_for_command`、`private_message_permission_for_command`、`satisfies_command_permission` |
-| `src/common/cmd_perm/config.py` | 从环境读取覆盖、`get_cmd_perm_config`、`clear_cmd_perm_cache` |
-| `src/common/cmd_perm/registry.py` | 合法等级、`DEFAULT_COMMAND_PERMISSIONS`、`resolved_level` |
-| `src/common/cmd_perm/schema.py` | 合并 metadata 默认、WebUI `command_perm_ui` 数据结构 |
-| `src/common/cmd_perm/menu_display.py` | `raw_trigger_condition`、`effective_permission_avail_text`、帮助用权限文案 |
-| `src/common/webui/env_sections.py` | `cmd_perm` 配置段与 payload 附加字段 |
-| `src/common/cmd_perm/declare.py` | `command_perm_row` / `command_perm_list` 声明辅助 |
-| `src/common/cmd_perm/metadata_defaults.py` | `PLUGIN_HOMEPAGE`、`PLUGIN_EXTRA_VERSION`、`PLUGIN_MENU_TEMPLATE` |
-| `src/common/cmd_perm/metadata_text.py` | `usage_line`、`join_usage`、`SCENE_*` |
+| `src/features/cmd_perm/check.py` | `permission_for_command`、`group_message_permission_for_command`、`private_message_permission_for_command`、`satisfies_command_permission` |
+| `src/features/cmd_perm/config.py` | 从环境读取覆盖、`get_cmd_perm_config`、`clear_cmd_perm_cache` |
+| `src/features/cmd_perm/registry.py` | 合法等级、`DEFAULT_COMMAND_PERMISSIONS`、`resolved_level` |
+| `src/features/cmd_perm/schema.py` | 合并 metadata 默认、WebUI `command_perm_ui` 数据结构 |
+| `src/features/cmd_perm/menu_display.py` | `raw_trigger_condition`、`effective_permission_avail_text`、帮助用权限文案 |
+| `src/console/webui/env_sections.py` | `cmd_perm` 配置段与 payload 附加字段 |
+| `src/features/cmd_perm/declare.py` | `command_perm_row` / `command_perm_list` 声明辅助 |
+| `src/features/cmd_perm/metadata_defaults.py` | `PLUGIN_HOMEPAGE`、`PLUGIN_EXTRA_VERSION`、`PLUGIN_MENU_TEMPLATE` |
+| `src/features/cmd_perm/metadata_text.py` | `usage_line`、`join_usage`、`SCENE_*` |
 | `src/plugins/help/markdown_generator.py` | 二/三级帮助 Markdown 生成 |
 
 ## 自检清单（新插件上线前）

@@ -6,8 +6,8 @@ from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.common.webui import config_from_env, install_hot_reload_config
-from src.common.webui.field_help import field_help
+from src.console.webui import config_from_env, install_hot_reload_config
+from src.console.webui.field_help import field_help
 
 
 class ImageBackendEntry(BaseModel):

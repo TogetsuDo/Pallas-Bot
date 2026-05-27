@@ -83,6 +83,7 @@ uv run ruff format --check src/
 - **插件专项说明**：[docs/plugins/README.md](docs/plugins/README.md)（各子目录 `README.md` 与 `src/plugins/<name>/` 对应）。
 - **命令权限（cmd_perm）**：[docs/common/cmd_perm/README.md](docs/common/cmd_perm/README.md)（可配置等级、WebUI 覆盖、帮助菜单「何人可用」）。
 - **运行配置存储**：[docs/architecture/settings-storage.md](docs/architecture/settings-storage.md)（`pallas.toml` + `webui.json`，勿再向根目录 `.env` 写入新项）。
+- **`src/` 内核分层**：[docs/architecture/common-layers.md](docs/architecture/common-layers.md)（`foundation` / `platform` / `features` / `console` / `domain` / `shared`）。
 - **常见问题与部署排障**：[docs/FAQ.md](docs/FAQ.md)。
 
 ## 运行配置（Agent 必读）
@@ -90,9 +91,10 @@ uv run ruff format --check src/
 - **主配置**：复制 [`config/pallas.example.toml`](config/pallas.example.toml) 为 **`config/pallas.toml`**（已 gitignore），填写 `[bootstrap]`（监听、数据库等）。
 - **WebUI 落盘**：插件与通用项写入 **`data/pallas_config/webui.json`**；只读快照 **`config/pallas.webui.export.toml`** 由保存自动生成。
 - **合并顺序**：`pallas.toml` → 遗留 `.env` / `.env.{ENVIRONMENT}` → `webui.json`（后者覆盖前者；**WebUI 落盘最高**）。
-- **读取 API**：`src/common/config/repo_settings.py` 的 `repo_env_raw_value()` / `merged_repo_settings_upper()`；启动前 `apply_repo_settings_to_environ()`。
+- **读取 API**：`src/foundation/config/repo_settings.py` 的 `repo_env_raw_value()` / `merged_repo_settings_upper()`；启动前 `apply_repo_settings_to_environ()`。
 - **从旧 `.env` 迁移**：`uv run python tools/migrate_env_to_pallas.py`（一次性）；**`.env` 仍可保留**专放 nb/pip 插件项（见 `.env.example`），与 `webui.json` 避免同名键重复。
-- **分片可选 Redis**：在 `pallas.toml` 的 `[env]` 配置 `REDIS_URL`；`run_sharded_bot.sh` 自动探测。依赖：`uv sync --extra coord-redis`。
+- **分片可选 Redis**：在 `pallas.toml` 的 `[env]` 配置 `REDIS_URL`；`run_sharded_bot.sh` 自动探测。依赖：`uv sync --extra coord-redis` 或 `uv sync --extra deploy-shard`。
+- **可选部署模板**：`deploy/` 目录 + `uv sync --extra deploy-shard|message-scrub`；应用 `uv run python tools/apply_deploy_profile.py <profile>`。
 - **Docker Compose 数据库**：仍可用 [`config/compose.env.example`](config/compose.env.example)（仅编排插值，非 Bot 主配置）。
 
 ## Agent 工作约定

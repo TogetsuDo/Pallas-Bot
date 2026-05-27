@@ -5,9 +5,9 @@ from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent, Pr
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from src.common.cmd_perm import permission_for_command, private_message_permission_for_command
-from src.common.command_prefix import extract_command_tail_any, matches_text_prefix, peel_text_prefix
-from src.common.multi_bot.group import claim_group_handler
+from src.features.cmd_perm import permission_for_command, private_message_permission_for_command
+from src.foundation.command_prefix import extract_command_tail_any, matches_text_prefix, peel_text_prefix
+from src.platform.multi_bot.group import claim_group_handler
 
 from .command_match import (
     BIND_COMMAND,
@@ -227,7 +227,7 @@ async def handle_bind(event: PrivateMessageEvent):
     arg_text = extract_command_tail_any(event.get_plaintext() or "", BIND_COMMAND_ALT, BIND_COMMAND)
     raw_device, bind_alias = parse_bind_command_args(arg_text)
     qq = str(event.get_user_id())
-    from src.common.shard.coord.maa_route_registry import register_maa_user_route
+    from src.platform.shard.coord.maa_route_registry import register_maa_user_route
 
     register_maa_user_route(qq)
     fmt_err = bind_device_id_error(raw_device, qq)
@@ -270,7 +270,7 @@ async def handle_status(bot: Bot, event: MessageEvent):
     if not await ensure_maa_group_message_owner(event, bot):
         return
     qq = int(event.get_user_id())
-    from src.common.shard.coord.maa_route_registry import register_maa_user_route
+    from src.platform.shard.coord.maa_route_registry import register_maa_user_route
 
     register_maa_user_route(str(qq))
     devices = await store.list_devices(qq)

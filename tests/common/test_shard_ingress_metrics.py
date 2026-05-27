@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.common.shard.ingress_metrics import (
+from src.platform.shard.ingress_metrics import (
     ingress_metrics_snapshot,
     merge_ingress_metrics,
     record_ingress_claim,
@@ -35,7 +35,7 @@ def test_ingress_metrics_snapshot_and_merge():
 
 def test_should_record_ingress_metrics_unified(monkeypatch):
     monkeypatch.setattr(
-        "src.common.shard.registry.config.is_sharding_active",
+        "src.platform.shard.registry.config.is_sharding_active",
         lambda: False,
     )
     assert should_record_ingress_metrics(12345) is True
@@ -43,11 +43,11 @@ def test_should_record_ingress_metrics_unified(monkeypatch):
 
 def test_should_record_ingress_metrics_shard_rep(monkeypatch):
     monkeypatch.setattr(
-        "src.common.shard.registry.config.is_sharding_active",
+        "src.platform.shard.registry.config.is_sharding_active",
         lambda: True,
     )
     monkeypatch.setattr(
-        "src.common.shard.local_representative.is_local_worker_representative",
+        "src.platform.shard.local_representative.is_local_worker_representative",
         lambda bot_id: bot_id == 10001,
     )
     assert should_record_ingress_metrics(10001) is True

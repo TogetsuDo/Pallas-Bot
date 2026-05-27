@@ -7,7 +7,7 @@ from typing import Any
 
 from ulid import ULID
 
-from src.common.config import UserConfig
+from src.foundation.config import UserConfig
 
 from .tasks import MaaTaskSpec, build_task_payload, normalize_device_id
 
@@ -139,10 +139,10 @@ class MaaStore:
             self._seen[key] = now
             cutoff = now - ttl
             self._seen = {k: ts for k, ts in self._seen.items() if ts >= cutoff}
-        from src.common.shard.registry.config import is_sharding_active
+        from src.platform.shard.registry.config import is_sharding_active
 
         if is_sharding_active():
-            from src.common.shard.coord.maa_seen_registry import touch_maa_seen_sync
+            from src.platform.shard.coord.maa_seen_registry import touch_maa_seen_sync
 
             await asyncio.to_thread(touch_maa_seen_sync, user, norm)
 
@@ -156,10 +156,10 @@ class MaaStore:
             ts = self._seen.get(key)
             if ts is not None and now - ts <= ttl:
                 return True
-        from src.common.shard.registry.config import is_sharding_active
+        from src.platform.shard.registry.config import is_sharding_active
 
         if is_sharding_active():
-            from src.common.shard.coord.maa_seen_registry import was_maa_seen_sync
+            from src.platform.shard.coord.maa_seen_registry import was_maa_seen_sync
 
             return await asyncio.to_thread(was_maa_seen_sync, user, norm, ttl)
         return False
@@ -336,10 +336,10 @@ class MaaStore:
         if not any(d.device == device and d.verified for d in devices):
             return [], "当前设备未绑定或已失效，请重新绑定。"
 
-        from src.common.shard.coord.maa_route_registry import register_maa_user_route
+        from src.platform.shard.coord.maa_route_registry import register_maa_user_route
 
         register_maa_user_route(user_key)
-        from src.common.shard.registry.config import is_sharding_active
+        from src.platform.shard.registry.config import is_sharding_active
 
         shard_pending = is_sharding_active()
         task_ids: list[str] = []
@@ -374,7 +374,7 @@ class MaaStore:
                 to_enqueue.append(rec)
                 task_ids.append(shot_id)
         if shard_pending:
-            from src.common.shard.coord.maa_pending_registry import enqueue_task_sync
+            from src.platform.shard.coord.maa_pending_registry import enqueue_task_sync
 
             for rec in to_enqueue:
                 await asyncio.to_thread(enqueue_task_sync, pending_task_to_dict(rec))
@@ -384,10 +384,10 @@ class MaaStore:
         norm = normalize_device_id(device)
         if not norm:
             return []
-        from src.common.shard.registry.config import is_sharding_active
+        from src.platform.shard.registry.config import is_sharding_active
 
         if is_sharding_active():
-            from src.common.shard.coord.maa_pending_registry import list_pending_sync
+            from src.platform.shard.coord.maa_pending_registry import list_pending_sync
 
             raw = await asyncio.to_thread(list_pending_sync, user.strip(), norm)
             items = [pending_task_from_dict(x) for x in raw]
@@ -406,10 +406,10 @@ class MaaStore:
         ]
 
     async def mark_reported(self, task_id: str) -> PendingTask | None:
-        from src.common.shard.registry.config import is_sharding_active
+        from src.platform.shard.registry.config import is_sharding_active
 
         if is_sharding_active():
-            from src.common.shard.coord.maa_pending_registry import mark_reported_sync
+            from src.platform.shard.coord.maa_pending_registry import mark_reported_sync
 
             raw = await asyncio.to_thread(mark_reported_sync, task_id)
             return pending_task_from_dict(raw) if raw else None
@@ -422,10 +422,10 @@ class MaaStore:
 
     async def pending_count_for_user(self, qq_id: int) -> int:
         user_key = str(qq_id)
-        from src.common.shard.registry.config import is_sharding_active
+        from src.platform.shard.registry.config import is_sharding_active
 
         if is_sharding_active():
-            from src.common.shard.coord.maa_pending_registry import pending_count_for_user_sync
+            from src.platform.shard.coord.maa_pending_registry import pending_count_for_user_sync
 
             return await asyncio.to_thread(pending_count_for_user_sync, user_key)
         async with self._lock:
@@ -436,10 +436,10 @@ class MaaStore:
         if not norm:
             return 0
         user_key = str(qq_id)
-        from src.common.shard.registry.config import is_sharding_active
+        from src.platform.shard.registry.config import is_sharding_active
 
         if is_sharding_active():
-            from src.common.shard.coord.maa_pending_registry import pending_count_for_device_sync
+            from src.platform.shard.coord.maa_pending_registry import pending_count_for_device_sync
 
             return await asyncio.to_thread(pending_count_for_device_sync, user_key, norm)
         async with self._lock:
@@ -449,10 +449,10 @@ class MaaStore:
         """移除未汇报任务；device 为 None 时清空该 QQ 全部待拉取任务。"""
         user_key = str(qq_id)
         norm = normalize_device_id(device) if device else None
-        from src.common.shard.registry.config import is_sharding_active
+        from src.platform.shard.registry.config import is_sharding_active
 
         if is_sharding_active():
-            from src.common.shard.coord.maa_pending_registry import clear_pending_sync
+            from src.platform.shard.coord.maa_pending_registry import clear_pending_sync
 
             return await asyncio.to_thread(clear_pending_sync, user_key, device=norm)
         async with self._lock:
@@ -468,10 +468,10 @@ class MaaStore:
     async def pending_type_counts(self, qq_id: int, *, device: str | None = None) -> dict[str, int]:
         user_key = str(qq_id)
         norm = normalize_device_id(device) if device else None
-        from src.common.shard.registry.config import is_sharding_active
+        from src.platform.shard.registry.config import is_sharding_active
 
         if is_sharding_active():
-            from src.common.shard.coord.maa_pending_registry import pending_type_counts_sync
+            from src.platform.shard.coord.maa_pending_registry import pending_type_counts_sync
 
             return await asyncio.to_thread(pending_type_counts_sync, user_key, device=norm)
         counts: dict[str, int] = {}

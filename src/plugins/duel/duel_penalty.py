@@ -12,11 +12,11 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, permission
 from nonebot.exception import ActionFailed
 from nonebot.rule import Rule
 
-from src.common.config import BotConfig, GroupConfig
-from src.common.utils import is_bot_admin
+from src.foundation.config import BotConfig, GroupConfig
 from src.plugins.duel.config import plugin_config
 from src.plugins.duel.duel_bots import is_bot_qq
 from src.plugins.duel.duel_message import append_duel_message, duel_at, duel_text
+from src.shared.utils import is_bot_admin
 
 if TYPE_CHECKING:
     from src.plugins.duel.duel_round_engine import DuelStacks
@@ -138,8 +138,8 @@ async def get_active_penalty_async(group_id: int, user_id: int) -> ActivePenalty
 
 
 async def fetch_member_card(bot_id: int, group_id: int, user_id: int) -> str:
-    from src.common.shard.coord.bot_action import get_member_card_as_bot
-    from src.common.shard.presence import bot_has_local_connection
+    from src.platform.shard.coord.bot_action import get_member_card_as_bot
+    from src.platform.shard.presence import bot_has_local_connection
 
     if bot_has_local_connection(bot_id):
         bot = get_bots().get(str(bot_id))
@@ -157,8 +157,8 @@ async def fetch_member_card(bot_id: int, group_id: int, user_id: int) -> str:
 
 
 async def set_member_card(bot_id: int, group_id: int, user_id: int, card: str) -> bool:
-    from src.common.shard.coord.bot_action import set_group_card_as_bot
-    from src.common.shard.presence import bot_has_local_connection
+    from src.platform.shard.coord.bot_action import set_group_card_as_bot
+    from src.platform.shard.presence import bot_has_local_connection
 
     if bot_has_local_connection(bot_id):
         bot = get_bots().get(str(bot_id))

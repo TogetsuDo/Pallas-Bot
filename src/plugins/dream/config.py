@@ -2,7 +2,7 @@ from typing import Self
 
 from pydantic import BaseModel, Field, model_validator
 
-from src.common.webui import install_hot_reload_config, plugin_config_proxy
+from src.console.webui import install_hot_reload_config, plugin_config_proxy
 
 
 class Config(BaseModel, extra="ignore"):

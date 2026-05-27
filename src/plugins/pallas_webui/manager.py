@@ -13,13 +13,13 @@ from pathlib import Path
 import httpx
 from nonebot import logger
 
-from src.common.bot_version import (
+from src.foundation.bot_version import (
     get_bot_current_version,
     pallas_bot_repo_root,
 )
-from src.common.paths import plugin_data_dir
-from src.common.utils.format_exception import format_exception_for_log
-from src.common.utils.github_release import (
+from src.foundation.paths import plugin_data_dir
+from src.shared.utils.format_exception import format_exception_for_log
+from src.shared.utils.github_release import (
     fetch_latest_release,
     fetch_latest_release_tag_via_github_web,
     github_auth_headers,
@@ -28,7 +28,7 @@ from src.common.utils.github_release import (
     github_release_asset_url_candidates,
     github_request_ssl_env,
 )
-from src.common.utils.stream_download import (
+from src.shared.utils.stream_download import (
     StreamDownloadProgress,
     format_download_byte_size,
     sync_stream_download_to_file,
@@ -404,7 +404,7 @@ def bot_has_release_update(
     current_commit: str = "",
 ) -> bool:
     """是否落后于 GitHub 最新 release（开发超前 commit 不视为可更新）。"""
-    from src.common.utils.github_release import release_tags_equivalent
+    from src.shared.utils.github_release import release_tags_equivalent
 
     tag = (latest_tag or "").strip()
     if not tag:
@@ -428,7 +428,7 @@ def bot_is_development_build(
     current_commit: str = "",
 ) -> bool:
     """是否相对最新 release 为开发构建（超前 commit 或未打发行 tag）。"""
-    from src.common.utils.github_release import release_tags_equivalent
+    from src.shared.utils.github_release import release_tags_equivalent
 
     tag = (latest_tag or "").strip()
     if not tag:

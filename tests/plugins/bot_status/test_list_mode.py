@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from src.common.multi_bot import fleet as fleet_mod
+from src.platform.multi_bot import fleet as fleet_mod
 from src.plugins.bot_status import list_mode as mod
 
 
@@ -51,7 +51,7 @@ def test_cluster_online_connected_uses_presence_when_sharding(monkeypatch):
     def fake_presence():
         return frozenset({100, 200})
 
-    import src.common.shard.presence as presence_mod
+    import src.platform.shard.presence as presence_mod
 
     monkeypatch.setattr(presence_mod, "get_cluster_online_bot_ids", fake_presence)
     online = mod.cluster_online_bot_ids_for_status(list_mode="connected")

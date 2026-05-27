@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 
-from src.common.webui import install_hot_reload_config
-from src.common.webui.field_help import field_help
+from src.console.webui import install_hot_reload_config
+from src.console.webui.field_help import field_help
 
 
 class Config(BaseModel, extra="ignore"):

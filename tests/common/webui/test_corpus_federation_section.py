@@ -1,4 +1,4 @@
-from src.common.webui.corpus_federation_section import (
+from src.console.webui.corpus_federation_section import (
     CORPUS_FEDERATION_SECTION_ID,
     apply_corpus_federation_patch,
     corpus_federation_payload,
@@ -24,7 +24,7 @@ def test_corpus_federation_payload_phase1():
 
 
 def test_apply_corpus_federation_patch_writes_env(monkeypatch, tmp_path):
-    from src.common.config import repo_settings as rs
+    from src.foundation.config import repo_settings as rs
 
     webui = tmp_path / "data" / "pallas_config" / "webui.json"
     webui.parent.mkdir(parents=True, exist_ok=True)

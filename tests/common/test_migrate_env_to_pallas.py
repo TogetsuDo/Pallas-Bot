@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from src.common.config import migrate_env_to_pallas as mig
+from src.foundation.config import migrate_env_to_pallas as mig
 
 
 def test_inspect_no_legacy_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

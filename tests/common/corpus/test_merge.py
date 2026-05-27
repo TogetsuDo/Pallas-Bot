@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from src.common.corpus.merge import merge_contexts
-from src.common.db.modules import Answer, Context
+from src.features.corpus.merge import merge_contexts
+from src.foundation.db.modules import Answer, Context
 
 
 def test_merge_contexts_none_extra():

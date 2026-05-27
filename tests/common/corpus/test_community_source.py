@@ -3,8 +3,8 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-from src.common.community_stats.endpoints import FALLBACK_CORPUS_API_BASE, PRIMARY_CORPUS_API_BASE
-from src.common.corpus.community_source import RemoteCorpusRepository
+from src.features.community_stats.endpoints import FALLBACK_CORPUS_API_BASE, PRIMARY_CORPUS_API_BASE
+from src.features.corpus.community_source import RemoteCorpusRepository
 
 
 @pytest.mark.asyncio
@@ -37,6 +37,18 @@ async def test_find_by_keywords_failover_to_fallback():
     assert ctx.keywords == "test"
     assert calls[0] == f"{PRIMARY_CORPUS_API_BASE}/context"
     assert calls[1] == f"{FALLBACK_CORPUS_API_BASE}/context"
+
+
+@pytest.mark.asyncio
+async def test_find_by_keywords_404_returns_none():
+    async def fake_get(self, url, **kwargs):
+        mock = MagicMock()
+        mock.status_code = 404
+        return mock
+
+    repo = RemoteCorpusRepository(api_base=PRIMARY_CORPUS_API_BASE, token="pc_test")
+    with patch.object(httpx.AsyncClient, "get", fake_get):
+        assert await repo.find_by_keywords("四轮 成品") is None
 
 
 @pytest.mark.asyncio

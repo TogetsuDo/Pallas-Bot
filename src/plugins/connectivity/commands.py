@@ -4,9 +4,9 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, MessageEvent, permiss
 from nonebot.internal.adapter import Event
 from nonebot.permission import Permission
 
-from src.common.cmd_perm import satisfies_command_permission
-from src.common.config import GroupConfig
-from src.common.service_probe import format_probe_text
+from src.features.cmd_perm import satisfies_command_permission
+from src.foundation.config import GroupConfig
+from src.shared.service_probe import format_probe_text
 
 from .probe_collect import probe_all_connectivity
 

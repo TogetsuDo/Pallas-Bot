@@ -219,7 +219,7 @@ async def test_context_find_returns_none_no_context():
 
 @pytest.mark.asyncio
 async def test_context_find_threshold_filtering():
-    from src.common.db import Answer, Context
+    from src.foundation.db import Answer, Context
     from src.plugins.repeater.responder import Responder
 
     group_id = 789

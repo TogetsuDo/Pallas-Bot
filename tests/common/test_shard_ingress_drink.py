@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.common.ingress.drink_plaintext import is_drink_plaintext
+from src.platform.ingress.drink_plaintext import is_drink_plaintext
 
 
 def test_drink_plaintext_commands() -> None:
@@ -14,11 +14,11 @@ def test_drink_plaintext_commands() -> None:
 
 
 def test_ingress_fanout_whitelist_does_not_need_drink(monkeypatch) -> None:
-    from src.common.ingress.config import clear_ingress_fanout_config_cache
-    from src.common.shard.ingress_fanout import is_ingress_fanout_plaintext
+    from src.platform.ingress.config import clear_ingress_fanout_config_cache
+    from src.platform.shard.ingress_fanout import is_ingress_fanout_plaintext
 
     monkeypatch.setattr(
-        "src.common.ingress.config._ingress_env_str",
+        "src.platform.ingress.config._ingress_env_str",
         lambda name, default="": "牛牛,帕拉斯"
         if name == "PALLAS_INGRESS_FANOUT_GREETING"
         else default,

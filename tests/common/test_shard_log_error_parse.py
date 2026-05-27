@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.common.shard.logs.errors import parse_log_error_from_record
+from src.platform.shard.logs.errors import parse_log_error_from_record
 
 
 class _FakeExc:

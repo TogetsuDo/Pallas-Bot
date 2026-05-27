@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.common.shard import console_stats as mod
+from src.platform.shard import console_stats as mod
 
 
 def test_worker_stats_roundtrip_and_cluster_merge(tmp_path, monkeypatch):
@@ -74,7 +74,7 @@ def test_prune_stale_worker_stats_bots_sync(tmp_path, monkeypatch):
                 return ["111"]
             return []
 
-    monkeypatch.setattr("src.common.shard.registry.store.get_shard_registry", lambda: FakeReg())
+    monkeypatch.setattr("src.platform.shard.registry.store.get_shard_registry", lambda: FakeReg())
 
     mod.write_worker_stats_sync(
         shard_id=99,

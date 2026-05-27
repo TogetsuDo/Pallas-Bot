@@ -9,8 +9,8 @@ from nonebot.exception import ActionFailed
 from nonebot.rule import Rule, keyword, to_me
 from nonebot.typing import T_State  # noqa: TC002
 
-from src.common.cmd_perm import group_message_permission_for_command
-from src.common.utils.array2cqcode import try_convert_to_cqcode
+from src.features.cmd_perm import group_message_permission_for_command
+from src.shared.utils.array2cqcode import try_convert_to_cqcode
 
 from .ban_ack_state import DREAM_BAN_ACK_SENT_STATE_KEY
 from .ban_cleanup import delete_dream_messages_from_ban_reply

@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from src.common.webui import install_hot_reload_config
+from src.console.webui import install_hot_reload_config
 
 FIELD_TO_ENV: dict[str, str] = {
     "learn_concurrency": "PALLAS_REPEATER_LEARN_CONCURRENCY",

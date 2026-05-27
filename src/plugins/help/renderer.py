@@ -8,7 +8,7 @@ from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.matcher import Matcher
 from PIL import Image
 
-from src.common.paths import plugin_data_dir, project_path
+from src.foundation.paths import plugin_data_dir, project_path
 
 from .pillowmd_bold import apply_help_light_bold_patch
 from .styles import get_default_style

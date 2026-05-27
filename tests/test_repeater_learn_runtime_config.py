@@ -1,4 +1,4 @@
-from src.common.webui.env_sections import get_webui_env_section
+from src.console.webui.env_sections import get_webui_env_section
 from src.plugins.repeater.learn_runtime_config import (
     RepeaterLearnRuntimeConfig,
     clear_repeater_learn_runtime_config_cache,

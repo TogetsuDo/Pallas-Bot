@@ -11,7 +11,7 @@ _spec.loader.exec_module(_visibility)
 
 def test_builtin_help_hidden_includes_infra_plugins():
     hidden = _visibility.BUILTIN_HELP_HIDDEN_PLUGINS
-    assert "_ingress_gate" in hidden
+    assert "ingress_gate" in hidden
     assert "pallas_console_metrics" in hidden
     assert "community_stats" in hidden
     assert "relogin_forward" in hidden
@@ -21,6 +21,6 @@ def test_builtin_help_hidden_includes_infra_plugins():
 def test_console_stats_excluded_matches_help_hidden_infra():
     excluded = _visibility.resolve_console_stats_excluded_plugin_names()
     assert "pallas_webui" in excluded
-    assert "_ingress_gate" in excluded
+    assert "ingress_gate" in excluded
     assert "pallas_console_metrics" in excluded
     assert "ingress_gate" in excluded

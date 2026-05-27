@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import time
 
-from src.common.shard.registry.config import get_shard_registry_settings
+from src.platform.shard.registry.config import get_shard_registry_settings
 
-from src.common.shard.coord.ai_task_registry import (
+from src.platform.shard.coord.ai_task_registry import (
     get_ai_task_record,
     register_ai_task,
     remove_ai_task,
@@ -38,11 +38,11 @@ def test_register_and_resolve_worker_port(tmp_path, monkeypatch):
     monkeypatch.setenv("PALLAS_SHARD_ID", "2")
     get_shard_registry_settings.cache_clear()
     monkeypatch.setattr(
-        "src.common.shard.registry.store._registry_path",
+        "src.platform.shard.registry.store._registry_path",
         lambda: shard_root / "registry.json",
     )
     monkeypatch.setattr(
-        "src.common.shard.coord.ai_task_registry.plugin_data_dir",
+        "src.platform.shard.coord.ai_task_registry.plugin_data_dir",
         lambda *_a, **_k: shard_root,
     )
 

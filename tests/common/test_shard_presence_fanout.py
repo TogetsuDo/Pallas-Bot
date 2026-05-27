@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 
-from src.common.shard.coord import bot_action as ba_mod
-from src.common.shard import presence as presence_mod
+from src.platform.shard.coord import bot_action as ba_mod
+from src.platform.shard import presence as presence_mod
 from src.plugins.repeater import fanout_reply as fanout_mod
 
 

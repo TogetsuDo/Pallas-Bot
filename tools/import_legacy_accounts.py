@@ -33,7 +33,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from src.common.paths import plugin_data_dir  # noqa: E402
+from src.foundation.paths import plugin_data_dir  # noqa: E402
 from src.plugins.pallas_protocol.contract import normalize_instance_folder_segment  # noqa: E402
 
 _DEFAULT_INSTANCES_ROOT = plugin_data_dir("pallas_protocol") / "instances"

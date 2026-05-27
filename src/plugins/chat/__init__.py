@@ -7,14 +7,14 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from ulid import ULID
 
-from src.common.cmd_perm.metadata_defaults import (
+from src.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.cmd_perm.metadata_text import SCENE_GROUP, join_usage, usage_line
-from src.common.config import BotConfig, GroupConfig, TaskManager
-from src.common.utils import HTTPXClient
+from src.features.cmd_perm.metadata_text import SCENE_GROUP, join_usage, usage_line
+from src.foundation.config import BotConfig, GroupConfig, TaskManager
+from src.shared.utils import HTTPXClient
 
 from .config import Config, get_chat_config, plugin_config
 

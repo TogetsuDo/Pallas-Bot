@@ -1,4 +1,4 @@
-from src.common.bot_runtime.plugin_loader import _prioritize_scheduler_modules
+from src.platform.bot_runtime.plugin_loader import _prioritize_scheduler_modules
 
 
 def test_prioritize_scheduler_modules_puts_apscheduler_first():

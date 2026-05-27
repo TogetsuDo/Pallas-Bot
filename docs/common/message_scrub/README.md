@@ -15,6 +15,15 @@
 
 ## 上手：你可以这样开始
 
+自 3.7 起，**新部署默认不启用** message_scrub。启用方式：
+
+```bash
+uv sync --extra message-scrub
+uv run python tools/apply_deploy_profile.py message-scrub
+```
+
+或在配置中设置 `PALLAS_MESSAGE_SCRUB_ENABLED=true`。已有 `PALLAS_SCRUB_*` 等历史配置且未显式关闭时，仍会自动启用（向后兼容）。详见 [`deploy/message-scrub/README.md`](../../../deploy/message-scrub/README.md)。
+
 | 你的目标 | 你需要做的大致事情 |
 |----------|-------------------|
 | 先不用审查 | 什么都不配即可。 |
@@ -107,15 +116,15 @@
 
 ## 源码与二次调用
 
-实现位于 [`src/common/message_scrub/`](../../../src/common/message_scrub/)；配置模型见 [`config.py`](../../../src/common/message_scrub/config.py)。其它插件若要复用同一套判断，可：
+实现位于 [`src/features/message_scrub/`](../../../src/features/message_scrub/)；配置模型见 [`config.py`](../../../src/features/message_scrub/config.py)。其它插件若要复用同一套判断，可：
 
 ```python
-from src.common.message_scrub import (
+from src.features.message_scrub import (
     is_message_scrub_blocked_async,
     is_message_scrub_blocked_sync,
     reload_message_scrub_caches,
 )
-from src.common.message_scrub import MessageScrubConfig, get_message_scrub_config
+from src.features.message_scrub import MessageScrubConfig, get_message_scrub_config
 ```
 
 ---

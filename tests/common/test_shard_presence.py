@@ -6,8 +6,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.common.coord import redis_presence as rp
-from src.common.shard import presence as mod
+from src.platform.coord import redis_presence as rp
+from src.platform.shard import presence as mod
 
 
 @pytest.fixture(autouse=True)

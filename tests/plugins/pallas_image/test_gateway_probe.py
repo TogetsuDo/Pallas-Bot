@@ -1,4 +1,4 @@
-from src.common.service_probe import ServiceProbeResult
+from src.shared.service_probe import ServiceProbeResult
 from src.plugins.pallas_image.config import Config, ImageApiBackend, ImageGenSettings
 from src.plugins.pallas_image.gateway_probe import (
     IMAGE_PROBE_CATEGORY,

@@ -3,7 +3,7 @@ from pathlib import Path
 import pillowmd
 from nonebot import logger
 
-from src.common.paths import project_path
+from src.foundation.paths import project_path
 
 from .config import Config, get_help_config
 

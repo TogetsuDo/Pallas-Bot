@@ -11,10 +11,10 @@ def empty_bots():
 
 
 def test_console_bot_online_in_cluster(monkeypatch) -> None:
-    monkeypatch.setattr("src.common.shard.registry.config.is_sharding_active", lambda: True)
-    monkeypatch.setattr("src.common.bot_runtime.roles.is_sharded_hub", lambda: True)
+    monkeypatch.setattr("src.platform.shard.registry.config.is_sharding_active", lambda: True)
+    monkeypatch.setattr("src.platform.bot_runtime.roles.is_sharded_hub", lambda: True)
     monkeypatch.setattr(
-        "src.common.shard.presence.get_cluster_online_bot_ids",
+        "src.platform.shard.presence.get_cluster_online_bot_ids",
         lambda: frozenset({10001}),
     )
     assert mod._console_bot_online_in_cluster("10001") is True
@@ -25,7 +25,7 @@ def test_console_bot_connection_meta_from_presence(monkeypatch) -> None:
     monkeypatch.setattr(mod, "get_bots", empty_bots)
     monkeypatch.setattr(mod, "_console_bot_online_in_cluster", lambda _sid: True)
     monkeypatch.setattr(
-        "src.common.shard.presence.read_presence_bots",
+        "src.platform.shard.presence.read_presence_bots",
         lambda: {
             "10001": {
                 "qq": 10001,

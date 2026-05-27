@@ -2,9 +2,9 @@ import asyncio
 from collections import deque
 from typing import TYPE_CHECKING
 
-from src.common.db import Answer, Context
-from src.common.db import Message as MessageModel
-from src.common.db.context_repo_access import context_repo
+from src.foundation.db import Answer, Context
+from src.foundation.db import Message as MessageModel
+from src.foundation.db.context_repo_access import context_repo
 
 from .context_exists_cache import context_exists_for_learn, note_context_exists
 from .learner_context import group_messages_before, user_message_before_in_group

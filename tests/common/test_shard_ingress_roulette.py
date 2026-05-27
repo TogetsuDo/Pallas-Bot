@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.common.ingress.roulette_plaintext import is_roulette_plaintext
+from src.platform.ingress.roulette_plaintext import is_roulette_plaintext
 
 
 def test_roulette_plaintext_commands() -> None:

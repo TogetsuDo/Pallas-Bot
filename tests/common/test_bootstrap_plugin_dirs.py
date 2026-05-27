@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from src.common.config.repo_settings import read_bootstrap_extra_plugin_dirs
+from src.foundation.config.repo_settings import read_bootstrap_extra_plugin_dirs
 
 
 def test_read_bootstrap_extra_plugin_dirs_empty_when_missing(tmp_path, monkeypatch) -> None:
     root = tmp_path / "repo"
     (root / "config").mkdir(parents=True)
-    monkeypatch.setattr("src.common.config.repo_settings._REPO_ROOT", root)
+    monkeypatch.setattr("src.foundation.config.repo_settings._REPO_ROOT", root)
     assert read_bootstrap_extra_plugin_dirs() == []
 
 
@@ -21,7 +21,7 @@ extra_plugin_dirs = ["local/plugins", "./local/plugins", "plugins/custom"]
 """,
         encoding="utf-8",
     )
-    monkeypatch.setattr("src.common.config.repo_settings._REPO_ROOT", root)
+    monkeypatch.setattr("src.foundation.config.repo_settings._REPO_ROOT", root)
     assert read_bootstrap_extra_plugin_dirs() == ["local/plugins", "plugins/custom"]
 
 
@@ -35,5 +35,5 @@ extra_plugin_dirs = ["local/plugins"]
 """,
         encoding="utf-8",
     )
-    monkeypatch.setattr("src.common.config.repo_settings._REPO_ROOT", root)
+    monkeypatch.setattr("src.foundation.config.repo_settings._REPO_ROOT", root)
     assert read_bootstrap_extra_plugin_dirs() == ["local/plugins"]

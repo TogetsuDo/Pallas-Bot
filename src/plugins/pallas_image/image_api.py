@@ -13,7 +13,7 @@ from curl_cffi.requests import RequestsError as CffiRequestsError
 from nonebot import logger
 from nonebot.adapters.onebot.v11 import Message, MessageSegment
 
-from src.common.utils.http_msg import PALLAS_VAGUE_REPLY, user_failure_reply
+from src.shared.utils.http_msg import PALLAS_VAGUE_REPLY, user_failure_reply
 
 from .config import ImageApiBackend, image_gen_config
 from .image_request_options import ImageGenRequestOptions

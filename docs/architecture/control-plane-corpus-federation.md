@@ -3,7 +3,7 @@
 本文描述 **全量 Provision（Tenant + Bootstrap + 联邦）** 与 **外接社区语料** 在同一控制面下的 Bot 侧接入方式。
 
 > **Phase 1**：`local` + **community** 多读源、auto enroll、contribute 默认开、主/备语料读 failover、WebUI 语料联邦配置与 `/corpus-status`。  
-> **Phase 2（进行中）**：**ingress 去重**（`src/common/federate/` + `_ingress_gate`）已接入；**fed** 第二 PG、`bootstrap`、fleet 快照仍待交付。
+> **Phase 2（进行中）**：**ingress 去重**（`src/platform/federate/` + `ingress_gate`）已接入；**fed** 第二 PG、`bootstrap`、fleet 快照仍待交付。
 
 用户向说明见 [语料联邦（corpus）](../common/corpus/README.md)。
 
@@ -66,12 +66,12 @@ learn / upsert_answer / insert:
 
 ## CompositeContextRepository
 
-实现 `ContextRepository` Protocol（`src/common/db/repository.py`），对 repeater 透明替换 `make_context_repository()` 的默认返回值。
+实现 `ContextRepository` Protocol（`src/foundation/db/repository.py`），对 repeater 透明替换 `make_context_repository()` 的默认返回值。
 
 ### 模块布局（建议）
 
 ```text
-src/common/corpus/
+src/features/corpus/
   __init__.py
   config.py              # [corpus] / bootstrap 合并配置
   merge.py               # Context / Answer 合并
@@ -398,8 +398,8 @@ DbConn:
 
 | 路径 | 说明 |
 |------|------|
-| `src/common/corpus/` | config、merge、composite、community HTTP、enroll、status |
-| `src/common/webui/corpus_federation_section.py` | WebUI「语料联邦」配置段 |
+| `src/features/corpus/` | config、merge、composite、community HTTP、enroll、status |
+| `src/console/webui/corpus_federation_section.py` | WebUI「语料联邦」配置段 |
 | `src/plugins/pallas_webui/extended_api.py` | `GET /corpus-status`、`/community-stats` 代理 |
 | `tests/common/corpus/` | merge、composite、enroll、failover 等单测 |
 | `tools/seed_community_corpus.py` | 向中心预灌语料（运维） |
@@ -409,17 +409,17 @@ DbConn:
 
 | 路径 | 说明 |
 |------|------|
-| `src/common/db/__init__.py` | `make_context_repository()` 委托 composite |
-| `src/common/config/repo_settings.py` | flatten `[corpus]`、`[community_stats]` |
+| `src/foundation/db/__init__.py` | `make_context_repository()` 委托 composite |
+| `src/foundation/config/repo_settings.py` | flatten `[corpus]`、`[community_stats]` |
 | `config/pallas.example.toml` | `[corpus]` 示例注释 |
 
 ### Phase 2（ingress 已交付 / 其余待做）
 
 | 路径 | 说明 |
 |------|------|
-| `src/common/federate/` | ✅ `try_claim_cross_federate_message`、Redis 前缀 claim；⏳ fleet snapshot 客户端 |
-| `src/common/multi_bot/fleet.py` | ⏳ 合并远程 fleet QQ |
-| `src/plugins/_ingress_gate/__init__.py` | ✅ 联邦 ingress 抢占（fanout 前） |
+| `src/platform/federate/` | ✅ `try_claim_cross_federate_message`、Redis 前缀 claim；⏳ fleet snapshot 客户端 |
+| `src/platform/multi_bot/fleet.py` | ⏳ 合并远程 fleet QQ |
+| `src/plugins/ingress_gate/__init__.py` | ✅ 联邦 ingress 抢占（fanout 前） |
 | `src/plugins/repeater/__init__.py` | ✅ 复读路径二次校验 |
 
 ### 不宜改动

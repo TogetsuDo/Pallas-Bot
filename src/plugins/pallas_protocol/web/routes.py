@@ -51,7 +51,7 @@ def register_pallas_protocol_routes(
             raw = "/" + raw
         return raw.rstrip("/") or "/pallas"
 
-    from src.common.webui.console_login import install_pallas_http_request_context_middleware
+    from src.console.webui.console_login import install_pallas_http_request_context_middleware
 
     install_pallas_http_request_context_middleware(app)
 
@@ -81,7 +81,7 @@ def register_pallas_protocol_routes(
         *,
         request: Request | None = None,
     ) -> None:
-        from src.common.webui.console_login import (
+        from src.console.webui.console_login import (
             current_http_request,
             extract_session_from_request,
             is_console_auth_configured,
@@ -133,7 +133,7 @@ def register_pallas_protocol_routes(
         return target
 
     def _render_login_page(*, target: str, err: str, detail: str) -> HTMLResponse:
-        from src.common.webui.login_page import render_pallas_login_page_html
+        from src.console.webui.login_page import render_pallas_login_page_html
 
         head = shell_font_stylesheet_link(base)
         footer_note = (detail or "").strip()
@@ -172,7 +172,7 @@ def register_pallas_protocol_routes(
     ) -> RedirectResponse | HTMLResponse:
         target = _resolve_login_target(next_path)
         detail = ""
-        from src.common.webui.console_login import (
+        from src.console.webui.console_login import (
             SESSION_COOKIE_NAME,
             SESSION_TTL_SEC,
             mint_session_token,
@@ -201,7 +201,7 @@ def register_pallas_protocol_routes(
 
     @app.post(f"{base}/logout", response_model=None)
     async def napcat_logout(request: Request) -> RedirectResponse:  # noqa: ARG001
-        from src.common.webui.console_login import SESSION_COOKIE_NAME
+        from src.console.webui.console_login import SESSION_COOKIE_NAME
 
         response = RedirectResponse(url=f"{base}/login", status_code=303)
         response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
@@ -222,7 +222,7 @@ def register_pallas_protocol_routes(
     ) -> JSONResponse:
         cookie_token = request.cookies.get(page_cookie_name)
         _auth(x_pallas_protocol_token, token, cookie_token, request=request)
-        from src.common.webui.console_login import set_shared_console_login_token
+        from src.console.webui.console_login import set_shared_console_login_token
 
         try:
             set_shared_console_login_token(body.new_password)
@@ -429,7 +429,7 @@ def register_pallas_protocol_routes(
             return redirect
         if not manager.has_account(account_id):
             raise HTTPException(status_code=404, detail="账号不存在")
-        from src.common.webui.console_login import extract_session_from_request
+        from src.console.webui.console_login import extract_session_from_request
 
         page_session = (
             extract_session_from_request(
@@ -474,18 +474,18 @@ def register_pallas_protocol_routes(
     ):
         cookie_token = request.cookies.get(page_cookie_name)
         _auth(x_pallas_protocol_token, token, cookie_token, request=request)
-        from src.common.web import install_nonebot_log_sink
+        from src.console.web import install_nonebot_log_sink
 
         install_nonebot_log_sink()
 
         sc = scope if scope in ("all", "webui", "protocol") else "all"
 
         def _load() -> dict[str, object]:
-            from src.common.bot_runtime.roles import is_sharded_hub
-            from src.common.web import (
+            from src.console.web import (
                 tail_nonebot_log_entries_scoped,
                 tail_nonebot_log_lines_scoped,
             )
+            from src.platform.bot_runtime.roles import is_sharded_hub
 
             cap = min(lines, 220) if is_sharded_hub() else lines
             return {
@@ -505,7 +505,7 @@ def register_pallas_protocol_routes(
     ):
         cookie_token = request.cookies.get(page_cookie_name)
         _auth(x_pallas_protocol_token, token, cookie_token, request=request)
-        from src.common.web import install_nonebot_log_sink, iter_nonebot_log_sse
+        from src.console.web import install_nonebot_log_sink, iter_nonebot_log_sse
 
         install_nonebot_log_sink()
         sc = scope if scope in ("all", "webui", "protocol") else "all"
