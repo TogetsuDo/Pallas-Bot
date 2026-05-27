@@ -37,6 +37,51 @@ def test_expected_loaded_in_catalog_hub_vs_worker():
     assert expected_loaded_in_catalog_process("hub", "worker") is False
 
 
+def test_expected_loaded_in_catalog_unified():
+    assert expected_loaded_in_catalog_process("both", "unified") is True
+    assert expected_loaded_in_catalog_process("infra", "unified") is True
+    assert expected_loaded_in_catalog_process("hub", "unified") is False
+    assert expected_loaded_in_catalog_process("worker", "unified") is False
+    assert expected_loaded_in_catalog_process("internal", "unified") is False
+
+
+def test_catalog_hides_shard_only_in_unified(monkeypatch):
+    monkeypatch.delenv("PALLAS_SHARD_ENABLED", raising=False)
+    monkeypatch.delenv("PALLAS_BOT_ROLE", raising=False)
+    monkeypatch.setattr(
+        "src.foundation.config.repo_settings.read_bootstrap_extra_plugin_dirs",
+        list,
+    )
+    from src.platform.shard.registry.config import get_shard_registry_settings
+
+    get_shard_registry_settings.cache_clear()
+    rows = build_plugin_catalog_rows()
+    names = {r["name"] for r in rows}
+    assert "relogin_forward" not in names
+    assert "maa_hub" not in names
+    assert "_ingress_gate" not in names
+    assert "relogin_bot" in names
+    assert "maa" in names
+    assert rows[0]["catalog_process_role"] == "unified"
+
+
+def test_catalog_shows_shard_only_on_sharded_hub(monkeypatch):
+    monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
+    monkeypatch.setenv("PALLAS_BOT_ROLE", "hub")
+    monkeypatch.setattr(
+        "src.foundation.config.repo_settings.read_bootstrap_extra_plugin_dirs",
+        list,
+    )
+    from src.platform.shard.registry.config import get_shard_registry_settings
+
+    get_shard_registry_settings.cache_clear()
+    rows = build_plugin_catalog_rows()
+    names = {r["name"] for r in rows}
+    assert "relogin_forward" in names
+    assert "maa_hub" in names
+    assert "_ingress_gate" in names
+
+
 def test_catalog_lists_worker_plugin(monkeypatch):
     monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
     monkeypatch.setenv("PALLAS_BOT_ROLE", "hub")

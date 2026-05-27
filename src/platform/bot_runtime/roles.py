@@ -23,6 +23,17 @@ WORKER_SKIP_PLUGIN_NAMES: frozenset[str] = frozenset({
     "relogin_bot",
 })
 
+# unified：跳过仅分片 hub/worker 使用的插件（单进程用 relogin_bot、maa，不经 hub 转发）
+UNIFIED_SKIP_PLUGIN_NAMES: frozenset[str] = frozenset({
+    "relogin_forward",
+    "maa_hub",
+})
+
+# unified WebUI 插件目录不展示（含未扫描的 _ingress_gate）
+UNIFIED_CATALOG_HIDDEN_PLUGIN_NAMES: frozenset[str] = UNIFIED_SKIP_PLUGIN_NAMES | frozenset({
+    "_ingress_gate",
+})
+
 
 def bot_role() -> BotRole:
     return get_shard_registry_settings().role
@@ -51,3 +62,11 @@ def hub_plugin_modules() -> tuple[str, ...]:
 
 def worker_skip_plugin_names() -> frozenset[str]:
     return WORKER_SKIP_PLUGIN_NAMES
+
+
+def unified_skip_plugin_names() -> frozenset[str]:
+    return UNIFIED_SKIP_PLUGIN_NAMES
+
+
+def unified_catalog_hidden_plugin_names() -> frozenset[str]:
+    return UNIFIED_CATALOG_HIDDEN_PLUGIN_NAMES

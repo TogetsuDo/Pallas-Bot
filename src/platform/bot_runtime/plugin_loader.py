@@ -16,6 +16,7 @@ from src.platform.bot_runtime.pyproject_plugins import (
 )
 from src.platform.bot_runtime.roles import (
     HUB_PLUGIN_MODULES,
+    UNIFIED_SKIP_PLUGIN_NAMES,
     WORKER_SKIP_PLUGIN_NAMES,
     is_unified_role,
 )
@@ -191,18 +192,42 @@ def load_pyproject_extra_plugins(
 
 def load_plugins_for_role() -> None:
     if is_unified_role():
-        nonebot.load_from_toml("pyproject.toml")
-        register_apscheduler_startup_hook()
+        loaded_short: set[str] = set()
+        load_apscheduler_plugin_first(role_label="unified", loaded_short=loaded_short)
+
         bootstrap_dirs = read_bootstrap_extra_plugin_dirs()
+        bootstrap_loaded = 0
         if bootstrap_dirs:
-            loaded_short: set[str] = set()
-            n = _load_toml_extra_plugin_dirs(
+            bootstrap_loaded = _load_toml_extra_plugin_dirs(
                 bootstrap_dirs,
                 role_label="unified",
                 loaded_short=loaded_short,
             )
-            logger.info("bot_runtime: role=unified, bootstrap extra plugin_dirs={} -> {}", bootstrap_dirs, n)
-        logger.info("bot_runtime: role=unified, load_from_toml(all plugins)")
+
+        loaded = 0
+        for mod in _discover_plugin_modules():
+            short = _short_name(mod)
+            if short in UNIFIED_SKIP_PLUGIN_NAMES:
+                continue
+            if short in loaded_short:
+                continue
+            if _load_plugin_module(mod, role_label="unified", loaded_short=loaded_short):
+                loaded += 1
+
+        extra = load_pyproject_extra_plugins(
+            role_label="unified",
+            skip_short=UNIFIED_SKIP_PLUGIN_NAMES,
+            loaded_short=loaded_short,
+            include_extra_dirs=True,
+            include_bootstrap_dirs=False,
+        )
+        logger.info(
+            "bot_runtime: role=unified, local_plugins={} src_plugins={} pyproject_extra={} skip={}",
+            bootstrap_loaded,
+            loaded,
+            extra,
+            sorted(UNIFIED_SKIP_PLUGIN_NAMES),
+        )
         return
 
     if not _PLUGINS_ROOT.is_dir():

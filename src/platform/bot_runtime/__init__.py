@@ -8,6 +8,7 @@ from src.platform.bot_runtime.roles import (
     is_sharded_hub,
     is_sharded_worker,
     is_unified_role,
+    unified_skip_plugin_names,
     worker_skip_plugin_names,
 )
 
@@ -19,5 +20,6 @@ __all__ = [
     "is_sharded_worker",
     "is_unified_role",
     "load_plugins_for_role",
+    "unified_skip_plugin_names",
     "worker_skip_plugin_names",
 ]

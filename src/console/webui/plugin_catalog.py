@@ -174,6 +174,12 @@ def package_load_role(package: str) -> str:
         is_unified_role,
     )
 
+    if package == "_ingress_gate":
+        return "internal"
+    if package == "relogin_forward":
+        return "worker"
+    if package == "maa_hub":
+        return "hub"
     if is_unified_role() or not is_sharding_active():
         return "both"
     if package == "pallas_console_metrics":
@@ -265,11 +271,23 @@ def expected_loaded_in_catalog_process(load_role: str, catalog_role: str) -> boo
     """该插件是否应在 catalog_process_role 对应进程中加载。"""
     role = (load_role or "").strip()
     if catalog_role == "unified":
-        return True
+        return role in ("both", "infra")
     if catalog_role == "hub":
         return role in ("hub", "infra", "both")
     if catalog_role == "worker":
         return role in ("worker", "internal")
+    return True
+
+
+def should_show_in_plugin_catalog(package: str) -> bool:
+    """单进程 unified 下不展示分片专用、本进程未加载的插件。"""
+    from src.platform.bot_runtime.roles import (
+        is_unified_role,
+        unified_catalog_hidden_plugin_names,
+    )
+
+    if is_unified_role() and package in unified_catalog_hidden_plugin_names():
+        return False
     return True
 
 
@@ -340,6 +358,8 @@ def build_plugin_catalog_rows(
 
     all_packages = sorted(set(discover_plugin_packages()) | set(extra_pkgs.keys()))
     for package in all_packages:
+        if not should_show_in_plugin_catalog(package):
+            continue
         seen_packages.add(package)
         local_root = extra_pkgs.get(package)
         main_root = _PLUGINS_ROOT / package

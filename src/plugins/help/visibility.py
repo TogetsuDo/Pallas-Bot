@@ -14,6 +14,7 @@ BUILTIN_HELP_HIDDEN_PLUGINS = frozenset({
     "pallas_console_metrics",
     "community_stats",
     "relogin_forward",
+    "maa_hub",
 })
 
 
