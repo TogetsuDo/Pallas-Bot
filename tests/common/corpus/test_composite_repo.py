@@ -4,10 +4,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.common.features.corpus.composite_repo import CompositeContextRepository
-from src.common.features.corpus.config import CorpusConfig
-from src.common.foundation.db.modules import Answer, Context
-from src.common.foundation.db.repository import ContextRepositoryExistenceMixin
+from src.features.corpus.composite_repo import CompositeContextRepository
+from src.features.corpus.config import CorpusConfig
+from src.foundation.db.modules import Answer, Context
+from src.foundation.db.repository import ContextRepositoryExistenceMixin
 
 
 class FakeContextRepo(ContextRepositoryExistenceMixin):
@@ -103,7 +103,7 @@ async def test_composite_upsert_writes_local_and_schedules_mirror(corpus_cfg: Co
     local = FakeContextRepo(label="local")
     remote = FakeContextRepo(label="community")
     repo = CompositeContextRepository(local, community=remote, cfg=corpus_cfg)
-    with patch("src.common.features.corpus.composite_repo.schedule_mirror_upsert_answer") as mock_schedule:
+    with patch("src.features.corpus.composite_repo.schedule_mirror_upsert_answer") as mock_schedule:
         await repo.upsert_answer("kw", 1, "ans", 99, "msg", True)
     assert len(local.upsert_calls) == 1
     mock_schedule.assert_called_once()
@@ -134,7 +134,7 @@ async def test_composite_remote_find_failure_degrades(corpus_cfg: CorpusConfig):
 
 @pytest.mark.asyncio
 async def test_maybe_wrap_composite_disabled(monkeypatch):
-    from src.common.features.corpus import factory as factory_mod
+    from src.features.corpus import factory as factory_mod
 
     monkeypatch.setattr(factory_mod, "corpus_composite_enabled", lambda: False)
     local = FakeContextRepo(label="local")

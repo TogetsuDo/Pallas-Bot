@@ -9,21 +9,21 @@ from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State
 
-from src.common.features.cmd_perm import private_message_permission_for_command
-from src.common.features.cmd_perm.metadata_defaults import (
+from src.features.cmd_perm import private_message_permission_for_command
+from src.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.features.cmd_perm.metadata_text import SCENE_PRIVATE, join_usage, usage_line
-from src.common.foundation.config import BotConfig, user_is_bot_admin
-from src.common.foundation.db import make_bot_config_repository
-from src.common.platform.bot_runtime.roles import is_hub_role
+from src.features.cmd_perm.metadata_text import SCENE_PRIVATE, join_usage, usage_line
+from src.foundation.config import BotConfig, user_is_bot_admin
+from src.foundation.db import make_bot_config_repository
+from src.platform.bot_runtime.roles import is_hub_role
 
 if is_hub_role():
     from nonebot import get_app
 
-    from src.common.platform.shard.coord.relogin_hub_routes import mount_relogin_hub_routes
+    from src.platform.shard.coord.relogin_hub_routes import mount_relogin_hub_routes
 
     mount_relogin_hub_routes(get_app())
 
@@ -286,7 +286,7 @@ async def _create_got_owners(
     try:
         repo = make_bot_config_repository()
         await repo.upsert_field(int(qq), "admins", owner_ids)
-        from src.common.foundation.config.bot_admins_cache import invalidate_bot_admins_cache
+        from src.foundation.config.bot_admins_cache import invalidate_bot_admins_cache
 
         await invalidate_bot_admins_cache(int(qq))
     except Exception as e:

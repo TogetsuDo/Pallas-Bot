@@ -8,10 +8,10 @@ from typing import Any
 
 from nonebot import get_loaded_plugins, logger
 
-from src.common.features.cmd_perm.help_menu import is_user_help_plugin
-from src.common.foundation.db import make_bot_config_repository, make_group_config_repository
-from src.common.foundation.db.modules import BotConfigModule, GroupConfigModule
-from src.common.foundation.paths import plugin_data_dir
+from src.features.cmd_perm.help_menu import is_user_help_plugin
+from src.foundation.db import make_bot_config_repository, make_group_config_repository
+from src.foundation.db.modules import BotConfigModule, GroupConfigModule
+from src.foundation.paths import plugin_data_dir
 
 from .plugin_match import find_matching_plugins
 from .styles import load_config
@@ -95,8 +95,8 @@ async def is_plugin_disabled(
     """
     检查插件是否被禁用
     """
-    from src.common.foundation.db import get_db_backend
-    from src.common.foundation.db.repository_pg import is_pg_initialized
+    from src.foundation.db import get_db_backend
+    from src.foundation.db.repository_pg import is_pg_initialized
 
     if get_db_backend() == "postgresql" and not is_pg_initialized():
         logger.debug("help is_plugin_disabled skipped: PostgreSQL not ready plugin={}", plugin_name)

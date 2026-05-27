@@ -13,20 +13,20 @@ from nonebot import (
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent, NoticeEvent
 from nonebot.plugin import PluginMetadata
 
-from src.common.features.cmd_perm import permission_for_command
-from src.common.features.cmd_perm.metadata_defaults import (
+from src.features.cmd_perm import permission_for_command
+from src.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.features.cmd_perm.metadata_text import (
+from src.features.cmd_perm.metadata_text import (
     SCENE_BOTH,
     SCENE_GROUP,
     SCENE_PRIVATE,
     join_usage,
     usage_line,
 )
-from src.common.platform.shard.registry.config import is_sharding_active
+from src.platform.shard.registry.config import is_sharding_active
 
 from .bot_monitor import (
     get_bot_status_info,
@@ -173,7 +173,7 @@ async def _(bot: Bot, event: MessageEvent) -> None:
 @bot_status_cmd.handle()
 async def handle_bot_status(bot: Bot, event: MessageEvent) -> None:
     """处理状态查询命令"""
-    from src.common.foundation.config import GroupConfig
+    from src.foundation.config import GroupConfig
 
     if isinstance(event, GroupMessageEvent):
         config = GroupConfig(group_id=event.group_id, cooldown=10)
@@ -211,8 +211,8 @@ async def handle_bot_status(bot: Bot, event: MessageEvent) -> None:
 @bot_count_cmd.handle()
 async def handle_bot_count(bot: Bot, event: MessageEvent) -> None:
     """处理牛牛报数命令"""
-    from src.common.foundation.config import GroupConfig
-    from src.common.platform.shard.coord.bot_count import STAGGER_SEC, run_shard_coordinated_bot_count
+    from src.foundation.config import GroupConfig
+    from src.platform.shard.coord.bot_count import STAGGER_SEC, run_shard_coordinated_bot_count
 
     if not isinstance(event, GroupMessageEvent):
         await bot_count_cmd.finish("牛牛报数仅支持群聊中使用")
@@ -220,8 +220,8 @@ async def handle_bot_count(bot: Bot, event: MessageEvent) -> None:
     self_id = int(bot.self_id)
 
     if is_sharding_active():
-        from src.common.platform.shard.coord.bot_count import update_shard_bot_count_registration
-        from src.common.platform.shard.local_representative import is_local_worker_representative
+        from src.platform.shard.coord.bot_count import update_shard_bot_count_registration
+        from src.platform.shard.local_representative import is_local_worker_representative
         from src.plugins.duel.duel_bots import list_local_fleet_bots_in_group
 
         plain = (event.get_plaintext() or "").strip()

@@ -14,7 +14,7 @@ import pytest
 @pytest.mark.asyncio
 async def test_learn_db_fallback_when_memory_empty(beanie_fixture):
     """分片等场景内存无近期链时，从 MessageRepository 拉群上下文。"""
-    from src.common.foundation.db import Message as MessageModel
+    from src.foundation.db import Message as MessageModel
     from src.plugins.repeater.learner import Learner
     from src.plugins.repeater.message_store import MessageStore
     from src.plugins.repeater.model import ChatData
@@ -83,7 +83,7 @@ async def test_learn_basic_flow(beanie_fixture):
     """
     Test that learn() inserts message and calls context_insert for previous message.
     """
-    from src.common.foundation.db import Message as MessageModel
+    from src.foundation.db import Message as MessageModel
     from src.plugins.repeater.learner import Learner
     from src.plugins.repeater.message_store import MessageStore
     from src.plugins.repeater.model import ChatData
@@ -146,7 +146,7 @@ async def test_learn_basic_flow(beanie_fixture):
 @pytest.mark.asyncio
 async def test_learn_skips_repeat_ignore_user_ids(beanie_fixture):
     """repeat_ignore / 本进程 Bot QQ 不参与学习：不插库、不写上下文。"""
-    from src.common.foundation.db import Message as MessageModel
+    from src.foundation.db import Message as MessageModel
     from src.plugins.repeater.learner import Learner
     from src.plugins.repeater.message_store import MessageStore
     from src.plugins.repeater.model import ChatData
@@ -308,7 +308,7 @@ async def test_context_insert_skip_repeat(beanie_fixture):
     """
     Test that _context_insert skips when message is a repeat.
     """
-    from src.common.foundation.db import Message as MessageModel
+    from src.foundation.db import Message as MessageModel
     from src.plugins.repeater.learner import Learner
     from src.plugins.repeater.model import ChatData
 
@@ -345,7 +345,7 @@ async def test_context_insert_skip_reply(beanie_fixture):
     """
     Test that _context_insert skips when message is a reply.
     """
-    from src.common.foundation.db import Message as MessageModel
+    from src.foundation.db import Message as MessageModel
     from src.plugins.repeater.learner import Learner
     from src.plugins.repeater.model import ChatData
 
@@ -407,7 +407,7 @@ async def test_context_insert_calls_upsert_answer_when_context_exists(beanie_fix
     Context 已存在时，_context_insert 应委托 upsert_answer（而非读-改-写 save），
     以便在拆表后具备原子 inc count 的能力。
     """
-    from src.common.foundation.db import Message as MessageModel
+    from src.foundation.db import Message as MessageModel
     from src.plugins.repeater.learner import Learner
     from src.plugins.repeater.model import ChatData
 
@@ -462,7 +462,7 @@ async def test_context_insert_no_append_when_non_plain_text(beanie_fixture):
     非纯文本（含 CQ 码的）消息对已有 answer 不应 push message，
     通过 upsert_answer 的 append_on_existing=False 表达。
     """
-    from src.common.foundation.db import Message as MessageModel
+    from src.foundation.db import Message as MessageModel
     from src.plugins.repeater.learner import Learner
     from src.plugins.repeater.model import ChatData
 
@@ -506,7 +506,7 @@ async def test_context_insert_creates_new_context_when_missing(beanie_fixture):
     """
     Context 不存在时应走 insert(Context(...)) 路径，不调用 upsert_answer。
     """
-    from src.common.foundation.db import Message as MessageModel
+    from src.foundation.db import Message as MessageModel
     from src.plugins.repeater.learner import Learner
     from src.plugins.repeater.model import ChatData
 
@@ -553,7 +553,7 @@ async def test_learn_user_backtracking(beanie_fixture):
     """
     Test that learn() finds user's previous message within last 3 messages.
     """
-    from src.common.foundation.db import Message as MessageModel
+    from src.foundation.db import Message as MessageModel
     from src.plugins.repeater.learner import Learner
     from src.plugins.repeater.message_store import MessageStore
     from src.plugins.repeater.model import ChatData

@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import json
 
-from src.common.platform.multi_bot import session_seen as mod
+from src.platform.multi_bot import session_seen as mod
 
 
 def test_note_and_load_cluster_seen(tmp_path, monkeypatch):
-    from src.common.platform.multi_bot import fleet as fleet_mod
+    from src.platform.multi_bot import fleet as fleet_mod
 
     shard_dir = tmp_path / "pallas_shard"
     shard_dir.mkdir()
@@ -29,7 +29,7 @@ def test_note_and_load_cluster_seen(tmp_path, monkeypatch):
 
 
 def test_unified_session_seen_from_fleet_memory(monkeypatch):
-    from src.common.platform.multi_bot import fleet as fleet_mod
+    from src.platform.multi_bot import fleet as fleet_mod
 
     monkeypatch.setattr(mod, "is_sharding_active", lambda: False)
     monkeypatch.setattr(fleet_mod, "get_enabled_protocol_bot_ids", lambda: frozenset({999}))
@@ -40,7 +40,7 @@ def test_unified_session_seen_from_fleet_memory(monkeypatch):
 
 
 def test_session_seen_intersects_enabled_protocol(monkeypatch):
-    from src.common.platform.multi_bot import fleet as fleet_mod
+    from src.platform.multi_bot import fleet as fleet_mod
 
     monkeypatch.setattr(mod, "is_sharding_active", lambda: False)
     monkeypatch.setattr(fleet_mod, "get_enabled_protocol_bot_ids", lambda: frozenset({100}))

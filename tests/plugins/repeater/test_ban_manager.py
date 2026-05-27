@@ -59,7 +59,7 @@ async def test_find_ban_keywords_aggregation():
     Test BanManager.find_ban_keywords() aggregates group-specific and global bans.
     Verify that it correctly combines blacklist from multiple sources.
     """
-    from src.common.foundation.db import Ban
+    from src.foundation.db import Ban
     from src.plugins.repeater.ban_manager import BanManager
 
     group_id = 10002

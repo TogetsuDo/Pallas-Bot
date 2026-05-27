@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.common.domain.arknights.duel_sync import (  # noqa: E402
+from src.domain.arknights.duel_sync import (  # noqa: E402
     OPERATORS_JSON,
     operator_ids_from_payload,
     sync_avatars_sync,
@@ -33,7 +33,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.avatars_only:
-        from src.common.domain.arknights.duel_sync import load_operators_payload
+        from src.domain.arknights.duel_sync import load_operators_payload
 
         payload = load_operators_payload()
         if not payload:

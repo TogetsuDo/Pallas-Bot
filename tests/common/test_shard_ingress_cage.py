@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.common.platform.ingress.cage_plaintext import is_cage_plaintext
+from src.platform.ingress.cage_plaintext import is_cage_plaintext
 
 
 def test_cage_plaintext_variants() -> None:
@@ -12,11 +12,11 @@ def test_cage_plaintext_variants() -> None:
 
 
 def test_ingress_fanout_whitelist_does_not_need_cage(monkeypatch) -> None:
-    from src.common.platform.ingress.config import clear_ingress_fanout_config_cache
-    from src.common.platform.shard.ingress_fanout import is_ingress_fanout_plaintext
+    from src.platform.ingress.config import clear_ingress_fanout_config_cache
+    from src.platform.shard.ingress_fanout import is_ingress_fanout_plaintext
 
     monkeypatch.setattr(
-        "src.common.platform.ingress.config._ingress_env_str",
+        "src.platform.ingress.config._ingress_env_str",
         lambda name, default="": "牛牛,帕拉斯"
         if name == "PALLAS_INGRESS_FANOUT_GREETING"
         else default,

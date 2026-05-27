@@ -1,4 +1,4 @@
-from src.common.shared.service_probe import ServiceProbeResult, format_probe_line, format_probe_lines, format_probe_text
+from src.shared.service_probe import ServiceProbeResult, format_probe_line, format_probe_lines, format_probe_text
 
 
 def test_format_probe_line() -> None:

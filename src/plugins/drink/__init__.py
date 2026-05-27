@@ -9,13 +9,13 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot_plugin_apscheduler import scheduler
 
-from src.common.features.cmd_perm.metadata_defaults import (
+from src.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.features.cmd_perm.metadata_text import SCENE_GROUP, join_usage, usage_line
-from src.common.foundation.config import BotConfig
+from src.features.cmd_perm.metadata_text import SCENE_GROUP, join_usage, usage_line
+from src.foundation.config import BotConfig
 from src.plugins.dream.runtime import send_dream_wake_text, stop_dream_worker
 
 __plugin_meta__ = PluginMetadata(

@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
-from src.common.platform.shard.registry.startup_ports import evaluate_shard_startup_ports
-from src.common.platform.shard.registry.sync_protocol_ports import (
+from src.platform.shard.registry.startup_ports import evaluate_shard_startup_ports
+from src.platform.shard.registry.sync_protocol_ports import (
     merge_ws_url_for_shard_update,
     sync_accounts_ws_urls,
     ws_url_aligned_with_worker,
@@ -74,10 +74,10 @@ def test_evaluate_skips_protocol_when_only_host_differs(tmp_path, monkeypatch):
     )
     monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
     monkeypatch.setattr(
-        "src.common.platform.shard.registry.store._registry_path",
+        "src.platform.shard.registry.store._registry_path",
         lambda: reg_dir / "registry.json",
     )
-    with patch("src.common.platform.shard.registry.port_alloc.is_tcp_port_in_use", return_value=False):
+    with patch("src.platform.shard.registry.port_alloc.is_tcp_port_in_use", return_value=False):
         ev = evaluate_shard_startup_ports(
             1,
             8090,

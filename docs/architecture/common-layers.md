@@ -1,15 +1,15 @@
-# src/common 分层
+# src 内核分层
 
-`src/common` 按职责分为六层，插件与脚本应优先从各层包的公开 API 导入，避免深层 `import` 内部实现文件。
+`src/` 下除 `plugins/` 外按职责分为六层，插件与脚本应优先从各层包的公开 API 导入，避免深层 `import` 内部实现文件。
 
 | 层 | 路径 | 内容 |
 | --- | --- | --- |
-| foundation | `src/common/foundation/` | `config`、`paths`、`logging`、`db`；`bot_version`、`command_prefix`、`apscheduler_runtime` |
-| platform | `src/common/platform/` | `shard`、`multi_bot`、`coord`、`federate`、`ingress`、`bot_runtime` |
-| features | `src/common/features/` | `cmd_perm`、`message_scrub`、`community_stats`、`corpus`、`control_plane`、`ban_gate` |
-| console | `src/common/console/` | `webui`、`web` |
-| domain | `src/common/domain/` | `arknights` 等域共享 |
-| shared | `src/common/shared/` | `utils`、`adapters`、`service_probe` |
+| foundation | `src/foundation/` | `config`、`paths`、`logging`、`db`；`bot_version`、`command_prefix`、`apscheduler_runtime` |
+| platform | `src/platform/` | `shard`、`multi_bot`、`coord`、`federate`、`ingress`、`bot_runtime` |
+| features | `src/features/` | `cmd_perm`、`message_scrub`、`community_stats`、`corpus`、`control_plane`、`ban_gate` |
+| console | `src/console/` | `webui`、`web` |
+| domain | `src/domain/` | `arknights` 等域共享 |
+| shared | `src/shared/` | `utils`、`adapters`、`service_probe` |
 
 ## 依赖方向（建议）
 
@@ -22,9 +22,9 @@
 ## 导入示例
 
 ```python
-from src.common.foundation.config.repo_settings import repo_env_raw_value
-from src.common.platform.multi_bot.dedup import should_skip_group_message
-from src.common.features.cmd_perm import check_command_permission
+from src.foundation.config.repo_settings import repo_env_raw_value
+from src.platform.multi_bot.dedup import should_skip_group_message
+from src.features.cmd_perm import check_command_permission
 ```
 
-旧路径 `src.common.platform.shard` 等已移除，请使用上表中的分层路径。
+旧路径 `src.common.*` 已移除，请使用上表中的分层路径。

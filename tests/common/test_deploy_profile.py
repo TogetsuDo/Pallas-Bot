@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from src.common.foundation.deploy_profile import (
+from src.foundation.deploy_profile import (
     clear_deploy_profile_cache,
     is_deploy_profile_active,
     message_scrub_webui_available,
@@ -21,7 +21,7 @@ from src.common.foundation.deploy_profile import (
 def reset_deploy_marker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     marker = tmp_path / "deploy_profiles.json"
     monkeypatch.setattr(
-        "src.common.foundation.deploy_profile.DEPLOY_MARKER_PATH",
+        "src.foundation.deploy_profile.DEPLOY_MARKER_PATH",
         marker,
     )
     clear_deploy_profile_cache()
@@ -36,7 +36,7 @@ def test_read_message_scrub_fragment_has_enabled() -> None:
 
 def test_record_deploy_profile_merges(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     marker = tmp_path / "deploy_profiles.json"
-    monkeypatch.setattr("src.common.foundation.deploy_profile.DEPLOY_MARKER_PATH", marker)
+    monkeypatch.setattr("src.foundation.deploy_profile.DEPLOY_MARKER_PATH", marker)
     clear_deploy_profile_cache()
     record_deploy_profile("message-scrub")
     record_deploy_profile("shard")
@@ -66,26 +66,26 @@ def test_message_scrub_webui_hidden_by_default(monkeypatch: pytest.MonkeyPatch, 
     phantom = tmp_path / "missing.toml"
     with monkeypatch.context() as mp:
         mp.setattr(
-            "src.common.foundation.config.repo_settings.repo_env_path",
+            "src.foundation.config.repo_settings.repo_env_path",
             lambda: phantom,
         )
         mp.setattr(
-            "src.common.foundation.config.repo_settings.repo_config_path",
+            "src.foundation.config.repo_settings.repo_config_path",
             lambda: phantom,
         )
         mp.setattr(
-            "src.common.foundation.config.repo_settings.repo_webui_settings_path",
+            "src.foundation.config.repo_settings.repo_webui_settings_path",
             lambda: tmp_path / "missing.json",
         )
         mp.setattr(
-            "src.common.foundation.config.dotenv.merged_repo_dotenv_upper",
+            "src.foundation.config.dotenv.merged_repo_dotenv_upper",
             lambda: {},
         )
         mp.setattr(
-            "src.common.foundation.config.dotenv.repo_layered_dotenv_files_exist",
+            "src.foundation.config.dotenv.repo_layered_dotenv_files_exist",
             lambda: True,
         )
-        from src.common.features.message_scrub import reload_message_scrub_caches
+        from src.features.message_scrub import reload_message_scrub_caches
 
         reload_message_scrub_caches()
         clear_deploy_profile_cache()

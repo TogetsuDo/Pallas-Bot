@@ -11,7 +11,7 @@ from typing import Literal
 
 from nonebot import get_bots, logger
 
-from src.common.foundation.db import get_db_backend
+from src.foundation.db import get_db_backend
 
 from .config import plugin_config
 from .dedupe_keys import dream_image_dedupe_key, dream_text_dedupe_key
@@ -183,11 +183,11 @@ def first_http_image_url_from_cq_raw(raw: str) -> str | None:
 
 def dream_history_bot_ids(process_fallback_self_id: int) -> list[int]:
     """参与历史梦库采样的牛牛 QQ；分片时为全集群在线 catalog，单进程为本进程连接。"""
-    from src.common.platform.shard.registry.config import is_sharding_active
+    from src.platform.shard.registry.config import is_sharding_active
 
     if is_sharding_active():
-        from src.common.platform.multi_bot.fleet import get_catalog_bot_ids
-        from src.common.platform.shard.presence import get_cluster_online_bot_ids
+        from src.platform.multi_bot.fleet import get_catalog_bot_ids
+        from src.platform.shard.presence import get_cluster_online_bot_ids
 
         ids = set(get_catalog_bot_ids()) & set(get_cluster_online_bot_ids())
     else:
@@ -215,7 +215,7 @@ async def sample_historical_drift(
 
 
 async def _mongo_pick(bot_ids: list[int], exclude_gid: int | None, exclude_send: set[str]) -> DriftPayload | None:
-    from src.common.foundation.db.modules import Message
+    from src.foundation.db.modules import Message
 
     coll = Message.get_pymongo_collection()
     now = int(time.time())
@@ -262,7 +262,7 @@ async def _mongo_pick(bot_ids: list[int], exclude_gid: int | None, exclude_send:
 async def _pg_pick(bot_ids: list[int], exclude_gid: int | None, exclude_send: set[str]) -> DriftPayload | None:
     from sqlalchemy import func, select
 
-    from src.common.foundation.db.repository_pg import MessageRow, get_session
+    from src.foundation.db.repository_pg import MessageRow, get_session
 
     now = int(time.time())
     cutoff = _history_cutoff_ts(now)

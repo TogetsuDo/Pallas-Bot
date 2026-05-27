@@ -8,9 +8,9 @@ from typing import TYPE_CHECKING
 from nonebot import get_bots
 from nonebot.adapters.onebot.v11 import Message
 
-from src.common.foundation.config import BotConfig
-from src.common.foundation.db import Answer
-from src.common.foundation.db.context_repo_access import context_repo
+from src.foundation.config import BotConfig
+from src.foundation.db import Answer
+from src.foundation.db.context_repo_access import context_repo
 
 from .ban_manager import BanManager
 from .config import get_repeater_config
@@ -54,8 +54,8 @@ class Responder:
 
     @staticmethod
     def _repeat_ignore_user_ids() -> set[int]:
-        from src.common.platform.multi_bot.fleet import get_catalog_bot_ids
-        from src.common.platform.shard.registry.config import is_sharding_active
+        from src.platform.multi_bot.fleet import get_catalog_bot_ids
+        from src.platform.shard.registry.config import is_sharding_active
 
         if is_sharding_active():
             ids = set(get_catalog_bot_ids())

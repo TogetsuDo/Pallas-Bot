@@ -9,14 +9,14 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from src.common.features.cmd_perm import group_message_permission_for_command
-from src.common.features.cmd_perm.metadata_defaults import (
+from src.features.cmd_perm import group_message_permission_for_command
+from src.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.features.cmd_perm.metadata_text import SCENE_GROUP, join_usage, usage_line
-from src.common.platform.ingress.cage_plaintext import is_cage_plaintext
+from src.features.cmd_perm.metadata_text import SCENE_GROUP, join_usage, usage_line
+from src.platform.ingress.cage_plaintext import is_cage_plaintext
 from src.plugins.duel import duel_penalty  # noqa: F401 — 注册惩罚消息 matcher
 from src.plugins.duel.config import plugin_config
 from src.plugins.duel.duel_bots import (
@@ -45,7 +45,7 @@ from src.plugins.duel.duel_session import clear_duel_pair, start_duel_pair
 
 @get_driver().on_startup
 async def _ensure_duel_arknights_resources() -> None:
-    from src.common.shared.utils.arknights_duel_resource import schedule_arknights_duel_resource_sync
+    from src.shared.utils.arknights_duel_resource import schedule_arknights_duel_resource_sync
 
     schedule_arknights_duel_resource_sync(
         sync_json=plugin_config.duel_auto_sync_operators,
@@ -398,15 +398,15 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State) -> None:
         return
 
     plain = (event.get_plaintext() or "").strip() or "八角笼牛"
-    from src.common.platform.shard.registry.config import is_sharding_active
+    from src.platform.shard.registry.config import is_sharding_active
 
     if is_sharding_active():
-        from src.common.platform.shard.local_representative import is_local_worker_representative
+        from src.platform.shard.local_representative import is_local_worker_representative
 
         self_id = int(bot.self_id)
         if not await fleet_bot_confirmed_in_group(bot, event.group_id):
             return
-        from src.common.platform.shard.coord.cage_duel import (
+        from src.platform.shard.coord.cage_duel import (
             run_shard_cage_duel_coord,
             update_shard_cage_duel_registration,
         )
@@ -457,7 +457,7 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State) -> None:
     a, b = str(pair[0]), str(pair[1])
     narrator = min(int(a), int(b))
     if is_sharding_active():
-        from src.common.platform.shard.presence import bot_has_local_connection, get_cluster_online_bot_ids
+        from src.platform.shard.presence import bot_has_local_connection, get_cluster_online_bot_ids
 
         if not bot_has_local_connection(narrator):
             if narrator not in get_cluster_online_bot_ids():
@@ -479,7 +479,7 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State) -> None:
             pair,
         )
         return
-    from src.common.platform.shard.coord.duel_group import try_reclaim_orphan_duel_group
+    from src.platform.shard.coord.duel_group import try_reclaim_orphan_duel_group
 
     await try_reclaim_orphan_duel_group(event.group_id)
     gate = await begin_duel_command(event.group_id)

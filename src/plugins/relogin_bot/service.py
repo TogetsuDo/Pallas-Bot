@@ -11,9 +11,9 @@ from typing import Any, Literal
 
 from nonebot import get_driver
 
-from src.common.foundation.config import user_is_bot_admin
-from src.common.foundation.db import make_bot_config_repository
-from src.common.platform.shard.coord.relogin_payload import ReloginHandleResult, ReplyItem
+from src.foundation.config import user_is_bot_admin
+from src.foundation.db import make_bot_config_repository
+from src.platform.shard.coord.relogin_payload import ReloginHandleResult, ReplyItem
 
 _CANCEL_WORDS = {"取消", "cancel", "退出", "quit"}
 
@@ -336,7 +336,7 @@ async def handle_create_session(
     try:
         repo = make_bot_config_repository()
         await repo.upsert_field(int(qq), "admins", owner_ids)
-        from src.common.foundation.config.bot_admins_cache import invalidate_bot_admins_cache
+        from src.foundation.config.bot_admins_cache import invalidate_bot_admins_cache
 
         await invalidate_bot_admins_cache(int(qq))
     except Exception as err:

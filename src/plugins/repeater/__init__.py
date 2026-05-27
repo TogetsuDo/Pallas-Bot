@@ -13,26 +13,26 @@ from nonebot.rule import Rule, keyword, to_me
 from nonebot.typing import T_State
 from nonebot_plugin_apscheduler import scheduler
 
-from src.common.features.cmd_perm import group_message_permission_for_command
-from src.common.features.cmd_perm.metadata_defaults import (
+from src.features.cmd_perm import group_message_permission_for_command
+from src.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.features.cmd_perm.metadata_text import SCENE_AUTO, SCENE_GROUP, join_usage, usage_line
-from src.common.features.message_scrub import is_message_scrub_blocked_async
-from src.common.features.message_scrub.log_preview import scrub_intercept_log_preview
-from src.common.foundation.config import BotConfig
-from src.common.platform.bot_runtime.send_unavailable import BOT_SEND_UNAVAILABLE_ERRORS, log_bot_send_unavailable
-from src.common.platform.multi_bot.dedup import (
+from src.features.cmd_perm.metadata_text import SCENE_AUTO, SCENE_GROUP, join_usage, usage_line
+from src.features.message_scrub import is_message_scrub_blocked_async
+from src.features.message_scrub.log_preview import scrub_intercept_log_preview
+from src.foundation.config import BotConfig
+from src.platform.bot_runtime.send_unavailable import BOT_SEND_UNAVAILABLE_ERRORS, log_bot_send_unavailable
+from src.platform.multi_bot.dedup import (
     normalize_group_raw_message as _normalize_group_raw_message,
 )
-from src.common.platform.multi_bot.dedup import (
+from src.platform.multi_bot.dedup import (
     should_skip_duplicate_group_event as _should_skip_duplicate_group_event,
 )
-from src.common.shared.utils.array2cqcode import try_convert_to_cqcode
-from src.common.shared.utils.media_cache import get_image, insert_image
 from src.plugins.dream.ban_ack_state import DREAM_BAN_ACK_SENT_STATE_KEY
+from src.shared.utils.array2cqcode import try_convert_to_cqcode
+from src.shared.utils.media_cache import get_image, insert_image
 
 from .ban_state import REPEATER_BAN_ACK_SENT_STATE_KEY
 from .emoji_reaction import reaction_msg
@@ -193,16 +193,16 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if await _should_skip_duplicate_group_event(event.group_id, event.user_id, norm_raw, event.time):
         return
 
-    from src.common.platform.federate.ingress import claim_federate_group_message_ingress
+    from src.platform.federate.ingress import claim_federate_group_message_ingress
 
     if not await claim_federate_group_message_ingress(event, include_message_time=True):
         return
 
-    from src.common.platform.shard.registry.config import is_sharding_active
+    from src.platform.shard.registry.config import is_sharding_active
 
     # 单进程多连接：协议可能对同条消息重复进 matcher；分片由 ingress_gate 已去重。
     if not is_sharding_active():
-        from src.common.platform.multi_bot.dedup import try_claim_group_message_once
+        from src.platform.multi_bot.dedup import try_claim_group_message_once
 
         if not await try_claim_group_message_once(
             "repeater_ingress",
@@ -217,7 +217,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         from .fanout_reply import repeater_fanout_enabled
 
         if not repeater_fanout_enabled():  # 配置关闭 fanout 时片内单牛 claim
-            from src.common.platform.multi_bot.dedup import try_claim_cross_bot_message
+            from src.platform.multi_bot.dedup import try_claim_cross_bot_message
 
             if not await try_claim_cross_bot_message(
                 "repeater_reply",

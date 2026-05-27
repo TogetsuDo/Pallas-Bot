@@ -116,15 +116,15 @@ uv run python tools/apply_deploy_profile.py message-scrub
 
 ## 源码与二次调用
 
-实现位于 [`src/common/features/message_scrub/`](../../../src/common/features/message_scrub/)；配置模型见 [`config.py`](../../../src/common/features/message_scrub/config.py)。其它插件若要复用同一套判断，可：
+实现位于 [`src/features/message_scrub/`](../../../src/features/message_scrub/)；配置模型见 [`config.py`](../../../src/features/message_scrub/config.py)。其它插件若要复用同一套判断，可：
 
 ```python
-from src.common.features.message_scrub import (
+from src.features.message_scrub import (
     is_message_scrub_blocked_async,
     is_message_scrub_blocked_sync,
     reload_message_scrub_caches,
 )
-from src.common.features.message_scrub import MessageScrubConfig, get_message_scrub_config
+from src.features.message_scrub import MessageScrubConfig, get_message_scrub_config
 ```
 
 ---

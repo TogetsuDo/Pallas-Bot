@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from src.common.console.webui import install_hot_reload_config, plugin_config_proxy
+from src.console.webui import install_hot_reload_config, plugin_config_proxy
 
 
 class Config(BaseModel, extra="ignore"):

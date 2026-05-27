@@ -23,11 +23,11 @@ async def test_list_local_fleet_bots_does_not_return_full_scope_on_probe_miss(mo
 
     monkeypatch.setattr(mod, "get_bots", lambda: {str(q): object() for q in scope})
     monkeypatch.setattr(
-        "src.common.platform.shard.presence.pick_local_query_bot",
+        "src.platform.shard.presence.pick_local_query_bot",
         lambda: Caller(),
     )
     monkeypatch.setattr(
-        "src.common.platform.multi_bot.fleet.get_catalog_bot_ids",
+        "src.platform.multi_bot.fleet.get_catalog_bot_ids",
         lambda: set(scope),
     )
     monkeypatch.setattr(mod, "probe_fleet_bots_in_group", fake_probe)

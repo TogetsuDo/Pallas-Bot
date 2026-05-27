@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from src.common.foundation.apscheduler_runtime import ensure_apscheduler_running, register_apscheduler_startup_hook
-from src.common.features.community_stats import config as cfg_mod
-from src.common.features.community_stats.endpoints import (
+from src.foundation.apscheduler_runtime import ensure_apscheduler_running, register_apscheduler_startup_hook
+from src.features.community_stats import config as cfg_mod
+from src.features.community_stats.endpoints import (
     FALLBACK_CORPUS_API_BASE,
     FALLBACK_HEARTBEAT,
     PRIMARY_CORPUS_API_BASE,
@@ -16,15 +16,15 @@ from src.common.features.community_stats.endpoints import (
     heartbeat_urls_for_config,
     is_auto_endpoint_mode,
 )
-from src.common.features.community_stats.public_stats import _parse_stats_body
-from src.common.features.community_stats.reporter import (
+from src.features.community_stats.public_stats import _parse_stats_body
+from src.features.community_stats.reporter import (
     build_heartbeat_payload,
     send_community_stats_heartbeat,
     should_run_community_stats_reporter,
 )
-from src.common.features.community_stats.scheduler import start_community_stats_reporter
-from src.common.features.community_stats.stats_url import monitor_overview_url_from_endpoint, stats_url_from_endpoint
-from src.common.features.community_stats.store import community_stats_state_path, load_or_create_deployment_id
+from src.features.community_stats.scheduler import start_community_stats_reporter
+from src.features.community_stats.stats_url import monitor_overview_url_from_endpoint, stats_url_from_endpoint
+from src.features.community_stats.store import community_stats_state_path, load_or_create_deployment_id
 
 
 @pytest.fixture(autouse=True)
@@ -74,7 +74,7 @@ def test_corpus_api_base_urls_follow_heartbeat_order(monkeypatch):
 def test_resolved_community_api_base_urls_auto_mode(monkeypatch):
     monkeypatch.delenv("PALLAS_CORPUS_COMMUNITY_API_BASE", raising=False)
     monkeypatch.delenv("PALLAS_COMMUNITY_STATS_ENDPOINT", raising=False)
-    from src.common.features.corpus.config import clear_corpus_config_cache, resolved_community_api_base_urls
+    from src.features.corpus.config import clear_corpus_config_cache, resolved_community_api_base_urls
 
     cfg_mod.clear_community_stats_config_cache()
     clear_corpus_config_cache()
@@ -118,7 +118,7 @@ async def test_fetch_community_public_stats_parallel_fallback(monkeypatch):
         return mock
 
     with patch.object(httpx.AsyncClient, "get", fake_get):
-        from src.common.features.community_stats.public_stats import fetch_community_public_stats
+        from src.features.community_stats.public_stats import fetch_community_public_stats
 
         data = await fetch_community_public_stats()
     assert data["deployments_online"] == 1
@@ -161,7 +161,7 @@ def test_parse_monitor_overview_body():
 
 def test_config_enabled_default_true(monkeypatch):
     monkeypatch.delenv("PALLAS_COMMUNITY_STATS_ENABLED", raising=False)
-    with patch("src.common.features.community_stats.config.repo_env_raw_value", return_value=None):
+    with patch("src.features.community_stats.config.repo_env_raw_value", return_value=None):
         cfg_mod.clear_community_stats_config_cache()
         assert cfg_mod.get_community_stats_config().enabled is True
 
@@ -170,7 +170,7 @@ def test_config_enabled_from_toml_without_section(tmp_path, monkeypatch):
     cfg = tmp_path / "pallas.toml"
     cfg.write_text('[bootstrap]\nhost = "127.0.0.1"\nport = 8080\n', encoding="utf-8")
     monkeypatch.delenv("PALLAS_COMMUNITY_STATS_ENABLED", raising=False)
-    from src.common.foundation.config import repo_settings as rs
+    from src.foundation.config import repo_settings as rs
 
     monkeypatch.setattr(rs, "repo_config_path", lambda: cfg)
     monkeypatch.setattr(rs, "repo_webui_settings_path", lambda: tmp_path / "missing.json")
@@ -184,7 +184,7 @@ def test_config_disabled_from_toml(tmp_path, monkeypatch):
     cfg = tmp_path / "pallas.toml"
     cfg.write_text("[community_stats]\nenabled = false\n", encoding="utf-8")
     monkeypatch.delenv("PALLAS_COMMUNITY_STATS_ENABLED", raising=False)
-    from src.common.foundation.config import repo_settings as rs
+    from src.foundation.config import repo_settings as rs
 
     monkeypatch.setattr(rs, "repo_config_path", lambda: cfg)
     monkeypatch.setattr(rs, "repo_webui_settings_path", lambda: tmp_path / "missing.json")
@@ -203,7 +203,7 @@ def test_config_can_disable(monkeypatch):
 def test_deployment_id_persisted(tmp_path, monkeypatch):
     path = tmp_path / "pallas_config" / "community_stats.json"
     monkeypatch.setattr(
-        "src.common.features.community_stats.store.community_stats_state_path",
+        "src.features.community_stats.store.community_stats_state_path",
         lambda: path,
     )
     a = load_or_create_deployment_id()
@@ -216,7 +216,7 @@ def test_deployment_id_persisted(tmp_path, monkeypatch):
 def test_should_not_run_on_worker(monkeypatch):
     monkeypatch.setenv("PALLAS_COMMUNITY_STATS_ENABLED", "true")
     cfg_mod.clear_community_stats_config_cache()
-    with patch("src.common.features.community_stats.reporter.is_sharded_worker", return_value=True):
+    with patch("src.features.community_stats.reporter.is_sharded_worker", return_value=True):
         assert should_run_community_stats_reporter() is False
 
 
@@ -231,7 +231,7 @@ def test_ensure_apscheduler_running_starts_when_stopped():
 def test_register_apscheduler_startup_hook_idempotent():
     import sys
 
-    import src.common.foundation.apscheduler_runtime as mod
+    import src.foundation.apscheduler_runtime as mod
 
     mod._HOOK_REGISTERED = False
     mock_driver = MagicMock()
@@ -253,9 +253,9 @@ async def test_start_community_stats_reporter_registers_job(monkeypatch):
     mock_sched.get_job.return_value = None
     cfg_mod.clear_community_stats_config_cache()
     with (
-        patch("src.common.features.community_stats.scheduler.scheduler", mock_sched),
+        patch("src.features.community_stats.scheduler.scheduler", mock_sched),
         patch(
-            "src.common.features.community_stats.scheduler.should_run_community_stats_reporter",
+            "src.features.community_stats.scheduler.should_run_community_stats_reporter",
             return_value=True,
         ),
     ):
@@ -280,19 +280,19 @@ async def test_send_heartbeat_success(monkeypatch):
 
     with (
         patch(
-            "src.common.features.community_stats.store.community_stats_state_path",
+            "src.features.community_stats.store.community_stats_state_path",
             return_value=community_stats_state_path(),
         ),
         patch(
-            "src.common.features.community_stats.reporter.load_or_create_deployment_id",
+            "src.features.community_stats.reporter.load_or_create_deployment_id",
             return_value="550e8400-e29b-41d4-a716-446655440000",
         ),
         patch(
-            "src.common.platform.shard.presence.count_connected_bots_for_reporting",
+            "src.platform.shard.presence.count_connected_bots_for_reporting",
             return_value=1,
         ),
-        patch("src.common.features.community_stats.reporter.get_fleet_bot_ids", return_value=frozenset({1, 2})),
-        patch("src.common.features.community_stats.reporter.httpx.AsyncClient", return_value=mock_client),
+        patch("src.features.community_stats.reporter.get_fleet_bot_ids", return_value=frozenset({1, 2})),
+        patch("src.features.community_stats.reporter.httpx.AsyncClient", return_value=mock_client),
     ):
         assert await send_community_stats_heartbeat() is True
         mock_client.post.assert_awaited_once()
@@ -306,16 +306,16 @@ def test_build_payload_sharded():
     shard = MagicMock()
     shard.id = 0
     with (
-        patch("src.common.features.community_stats.reporter.is_sharding_active", return_value=True),
+        patch("src.features.community_stats.reporter.is_sharding_active", return_value=True),
         patch(
-            "src.common.platform.shard.presence.count_connected_bots_for_reporting",
+            "src.platform.shard.presence.count_connected_bots_for_reporting",
             return_value=2,
         ),
-        patch("src.common.features.community_stats.reporter.get_fleet_bot_ids", return_value=frozenset({111, 222, 333})),
-        patch("src.common.features.community_stats.reporter.get_shard_registry") as mock_reg,
-        patch("src.common.features.community_stats.reporter.is_test_shard_record", return_value=False),
+        patch("src.features.community_stats.reporter.get_fleet_bot_ids", return_value=frozenset({111, 222, 333})),
+        patch("src.features.community_stats.reporter.get_shard_registry") as mock_reg,
+        patch("src.features.community_stats.reporter.is_test_shard_record", return_value=False),
         patch(
-            "src.common.features.community_stats.reporter.load_or_create_deployment_id",
+            "src.features.community_stats.reporter.load_or_create_deployment_id",
             return_value="550e8400-e29b-41d4-a716-446655440000",
         ),
     ):
@@ -333,7 +333,7 @@ async def test_send_heartbeat_fallback_after_primary_fails(monkeypatch, tmp_path
     cfg_mod.clear_community_stats_config_cache()
     state_path = tmp_path / "pallas_config" / "community_stats.json"
     monkeypatch.setattr(
-        "src.common.features.community_stats.store.community_stats_state_path",
+        "src.features.community_stats.store.community_stats_state_path",
         lambda: state_path,
     )
 
@@ -350,14 +350,14 @@ async def test_send_heartbeat_fallback_after_primary_fails(monkeypatch, tmp_path
 
     with (
         patch(
-            "src.common.features.community_stats.reporter.load_or_create_deployment_id",
+            "src.features.community_stats.reporter.load_or_create_deployment_id",
             return_value="550e8400-e29b-41d4-a716-446655440000",
         ),
         patch(
-            "src.common.platform.shard.presence.count_connected_bots_for_reporting",
+            "src.platform.shard.presence.count_connected_bots_for_reporting",
             return_value=1,
         ),
-        patch("src.common.features.community_stats.reporter.get_fleet_bot_ids", return_value=frozenset({1})),
+        patch("src.features.community_stats.reporter.get_fleet_bot_ids", return_value=frozenset({1})),
         patch.object(httpx.AsyncClient, "post", fake_post),
     ):
         assert await send_community_stats_heartbeat() is True

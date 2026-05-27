@@ -20,7 +20,7 @@ from nonebot.message import event_preprocessor
 from nonebot.plugin import PluginMetadata
 from nonebot.utils import run_coro_with_shield
 
-from src.common.features.ban_gate.snapshot import (
+from src.features.ban_gate.snapshot import (
     fallback_db_timeout_sec,
     is_user_blocked_in_group_fast,
     is_user_globally_banned_fast,
@@ -28,14 +28,14 @@ from src.common.features.ban_gate.snapshot import (
     patch_user_banned,
     refresh_ban_gate_snapshot,
 )
-from src.common.features.cmd_perm import permission_for_command, satisfies_command_permission
-from src.common.features.cmd_perm.metadata_defaults import (
+from src.features.cmd_perm import permission_for_command, satisfies_command_permission
+from src.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.features.cmd_perm.metadata_text import SCENE_BOTH, join_usage, usage_line
-from src.common.foundation.config import GroupConfig, UserConfig
+from src.features.cmd_perm.metadata_text import SCENE_BOTH, join_usage, usage_line
+from src.foundation.config import GroupConfig, UserConfig
 
 _IS_BANNED_DB_TIMEOUT_SEC = fallback_db_timeout_sec()
 _BAN_GATE_CACHE_TTL_SEC = 45.0

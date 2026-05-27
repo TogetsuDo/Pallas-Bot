@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from src.common.features.cmd_perm.help_menu import (
+from src.features.cmd_perm.help_menu import (
     help_say_phrase,
     help_scene_text,
     is_user_help_menu_item,

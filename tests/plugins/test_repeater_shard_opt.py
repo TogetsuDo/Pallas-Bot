@@ -34,7 +34,7 @@ async def test_repeater_fanout_enabled_for_group_requires_two_bots(monkeypatch):
 
 def test_repeater_worker_handles_unified(monkeypatch):
     monkeypatch.setattr(
-        "src.common.platform.shard.registry.config.is_sharding_active",
+        "src.platform.shard.registry.config.is_sharding_active",
         lambda: False,
     )
     assert repeater_worker_handles_message(999) is True
@@ -42,11 +42,11 @@ def test_repeater_worker_handles_unified(monkeypatch):
 
 def test_repeater_worker_handles_only_representative(monkeypatch):
     monkeypatch.setattr(
-        "src.common.platform.shard.registry.config.is_sharding_active",
+        "src.platform.shard.registry.config.is_sharding_active",
         lambda: True,
     )
     monkeypatch.setattr(
-        "src.common.platform.shard.local_representative.is_local_worker_representative",
+        "src.platform.shard.local_representative.is_local_worker_representative",
         lambda bid: bid == 100,
     )
     assert repeater_worker_handles_message(100) is True
@@ -55,11 +55,11 @@ def test_repeater_worker_handles_only_representative(monkeypatch):
 
 def test_scheduler_skips_worker_without_rep(monkeypatch):
     monkeypatch.setattr(
-        "src.common.platform.shard.registry.config.is_sharding_active",
+        "src.platform.shard.registry.config.is_sharding_active",
         lambda: True,
     )
     monkeypatch.setattr(
-        "src.common.platform.shard.local_representative.local_worker_representative_bot_id",
+        "src.platform.shard.local_representative.local_worker_representative_bot_id",
         lambda: None,
     )
     assert repeater_scheduler_runs_on_worker() is False

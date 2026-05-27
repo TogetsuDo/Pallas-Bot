@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 
-from src.common.console.webui import install_hot_reload_config
-from src.common.console.webui.field_help import field_help
+from src.console.webui import install_hot_reload_config
+from src.console.webui.field_help import field_help
 
 
 class Config(BaseModel, extra="ignore"):
@@ -68,12 +68,12 @@ class Config(BaseModel, extra="ignore"):
 def on_maa_config_reload(cfg: Config) -> None:  # noqa: ARG001
     from nonebot import get_app
 
-    from src.common.platform.bot_runtime.roles import is_hub_role, is_sharded_worker
-    from src.common.platform.shard.registry.config import is_sharding_active
+    from src.platform.bot_runtime.roles import is_hub_role, is_sharded_worker
+    from src.platform.shard.registry.config import is_sharding_active
 
     app = get_app()
     if is_hub_role():
-        from src.common.platform.shard.coord.maa_hub_routes import remount_maa_hub_forward_routes
+        from src.platform.shard.coord.maa_hub_routes import remount_maa_hub_forward_routes
 
         from .http_routes import unmount_maa_http_routes
 

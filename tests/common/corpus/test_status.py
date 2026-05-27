@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.common.features.corpus.status import build_corpus_status_snapshot
+from src.features.corpus.status import build_corpus_status_snapshot
 
 
 async def _mock_no_usage():
@@ -12,11 +12,11 @@ async def _mock_no_usage():
 @pytest.mark.asyncio
 async def test_build_corpus_status_snapshot_shape(monkeypatch, tmp_path):
     monkeypatch.setattr(
-        "src.common.features.corpus.usage.fetch_corpus_community_usage",
+        "src.features.corpus.usage.fetch_corpus_community_usage",
         _mock_no_usage,
     )
     monkeypatch.setattr(
-        "src.common.features.corpus.status.load_corpus_community_state",
+        "src.features.corpus.status.load_corpus_community_state",
         lambda: {
             "api_base": "https://stats.example/v1/corpus",
             "corpus_token": "pc_test",
@@ -24,14 +24,14 @@ async def test_build_corpus_status_snapshot_shape(monkeypatch, tmp_path):
             "enrolled_at": 1_700_000_000,
         },
     )
-    monkeypatch.setattr("src.common.features.corpus.status.corpus_community_enrollment_valid", lambda _state=None: True)
-    monkeypatch.setattr("src.common.features.corpus.status.community_manual_configured", lambda: False)
-    monkeypatch.setattr("src.common.features.corpus.status.fed_configured", lambda: False)
+    monkeypatch.setattr("src.features.corpus.status.corpus_community_enrollment_valid", lambda _state=None: True)
+    monkeypatch.setattr("src.features.corpus.status.community_manual_configured", lambda: False)
+    monkeypatch.setattr("src.features.corpus.status.fed_configured", lambda: False)
     monkeypatch.setattr(
-        "src.common.features.corpus.config.repo_env_raw_value",
+        "src.features.corpus.config.repo_env_raw_value",
         lambda name: "auto" if name.startswith("PALLAS_CORPUS_") else None,
     )
-    from src.common.features.corpus.config import clear_corpus_config_cache
+    from src.features.corpus.config import clear_corpus_config_cache
 
     clear_corpus_config_cache()
     snap = await build_corpus_status_snapshot()

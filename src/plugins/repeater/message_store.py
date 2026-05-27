@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 
 from nonebot import logger
 
-from src.common.foundation.db import Message as MessageModel
-from src.common.foundation.db import make_message_repository
+from src.foundation.db import Message as MessageModel
+from src.foundation.db import make_message_repository
 
 from .config import get_repeater_config
 
@@ -86,10 +86,10 @@ class MessageStore:
         if should_sync:
             await MessageStore._sync(cur_time)
 
-        from src.common.platform.shard.registry.config import is_sharding_active
+        from src.platform.shard.registry.config import is_sharding_active
 
         if is_sharding_active():
-            from src.common.platform.shard.coord.repeater_buffer import schedule_publish_repeater_buffer
+            from src.platform.shard.coord.repeater_buffer import schedule_publish_repeater_buffer
 
             schedule_publish_repeater_buffer(chat_data)
 

@@ -10,7 +10,7 @@ from curl_cffi.requests import AsyncSession as CffiAsyncSession
 from curl_cffi.requests import RequestsError as CffiRequestsError
 from nonebot import logger
 
-from src.common.shared.service_probe import ServiceProbeResult, format_probe_lines, format_probe_text
+from src.shared.service_probe import ServiceProbeResult, format_probe_lines, format_probe_text
 
 from .config import Config, ImageApiBackend, ImageGenSettings, get_pallas_image_config
 from .image_api import (
@@ -75,7 +75,7 @@ def format_gateway_status_text(results: list[ServiceProbeResult]) -> str:
 def image_gen_settings_from_draft(draft: dict[str, Any] | None) -> ImageGenSettings:
     if not draft:
         return image_gen_config
-    from src.common.console.webui.plugin_api import normalize_patch_value
+    from src.console.webui.plugin_api import normalize_patch_value
 
     current = get_pallas_image_config().model_dump(mode="python")
     merged = dict(current)

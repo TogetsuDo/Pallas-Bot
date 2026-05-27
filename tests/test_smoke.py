@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.common.foundation.db.modules import Context
+from src.foundation.db.modules import Context
 
 
 def test_pytest_works() -> None:

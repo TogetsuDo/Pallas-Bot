@@ -4,19 +4,19 @@ import asyncio
 from nonebot import get_app, get_driver, logger
 from nonebot.plugin import PluginMetadata
 
-from src.common.console.web import public_base_url
-from src.common.console.webui.console_login import (
+from src.console.web import public_base_url
+from src.console.webui.console_login import (
     install_pallas_http_request_context_middleware,
     prime_shared_console_login,
 )
-from src.common.features.cmd_perm.metadata_defaults import (
+from src.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.features.cmd_perm.metadata_text import join_usage, usage_line
-from src.common.platform.bot_runtime.roles import is_sharded_worker
-from src.common.shared.utils.format_exception import format_exception_for_log
+from src.features.cmd_perm.metadata_text import join_usage, usage_line
+from src.platform.bot_runtime.roles import is_sharded_worker
+from src.shared.utils.format_exception import format_exception_for_log
 
 from .api import register_api
 from .config import Config, plugin_config

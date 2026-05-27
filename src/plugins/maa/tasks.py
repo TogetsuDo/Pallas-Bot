@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
-from src.common.foundation.command_prefix import matches_text_prefix, peel_text_prefix
+from src.foundation.command_prefix import matches_text_prefix, peel_text_prefix
 
 # MAA 客户端常见为 32 位十六进制（无连字符）；协议示例亦可能出现标准 UUID
 _DEVICE_HEX32_RE = re.compile(r"^[0-9a-fA-F]{32}$")

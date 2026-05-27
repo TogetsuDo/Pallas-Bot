@@ -1,5 +1,5 @@
-from src.common.platform.shard.logs.view import dedupe_log_lines_preserve_order, merge_cluster_log_lines
-from src.common.console.web.bot_web import fill_missing_log_entry_times, parse_nonebot_log_line
+from src.platform.shard.logs.view import dedupe_log_lines_preserve_order, merge_cluster_log_lines
+from src.console.web.bot_web import fill_missing_log_entry_times, parse_nonebot_log_line
 
 
 def test_dedupe_log_lines():
@@ -61,7 +61,7 @@ def test_merge_traceback_stays_near_error_not_latest_time(tmp_path, monkeypatch)
         "05-22 02:13:20 | DEBUG    | nonebot:178 - Running PreProcessors...\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr("src.common.platform.shard.logs.view.shard_logs_dir", lambda: log_dir)
+    monkeypatch.setattr("src.platform.shard.logs.view.shard_logs_dir", lambda: log_dir)
     merged = merge_cluster_log_lines(20, "all", hub_ring_lines=[])
     entries = fill_missing_log_entry_times([parse_nonebot_log_line(ln) for ln in merged])
     err = [e for e in entries if "Cannot add middleware" in str(e.get("message") or "")]
@@ -81,7 +81,7 @@ def test_fill_time_on_exception_continuation():
 
 
 def test_merge_log_line_continuations_tree_dump():
-    from src.common.console.web.bot_web import merge_log_line_continuations
+    from src.console.web.bot_web import merge_log_line_continuations
 
     lines = [
         "[worker-99] 05-24 20:49:06 | INFO     | nonebot:178 - Event will be handled",
@@ -97,7 +97,7 @@ def test_merge_log_line_continuations_tree_dump():
 
 
 def test_merge_log_entry_continuations():
-    from src.common.console.web.bot_web import merge_log_entry_continuations
+    from src.console.web.bot_web import merge_log_entry_continuations
 
     rows = fill_missing_log_entry_times(
         [

@@ -1,4 +1,4 @@
-from src.common.console.webui.plugin_catalog import (
+from src.console.webui.plugin_catalog import (
     build_plugin_catalog_rows,
     discover_extra_plugin_packages,
     discover_plugin_packages,
@@ -21,7 +21,7 @@ def test_discover_includes_pallas_image():
 def test_package_load_role_sharded(monkeypatch):
     monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
     monkeypatch.setenv("PALLAS_BOT_ROLE", "hub")
-    from src.common.platform.shard.registry.config import get_shard_registry_settings
+    from src.platform.shard.registry.config import get_shard_registry_settings
 
     get_shard_registry_settings.cache_clear()
     assert package_load_role("pallas_image") == "worker"
@@ -41,10 +41,10 @@ def test_catalog_lists_worker_plugin(monkeypatch):
     monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
     monkeypatch.setenv("PALLAS_BOT_ROLE", "hub")
     monkeypatch.setattr(
-        "src.common.foundation.config.repo_settings.read_bootstrap_extra_plugin_dirs",
+        "src.foundation.config.repo_settings.read_bootstrap_extra_plugin_dirs",
         lambda: [],
     )
-    from src.common.platform.shard.registry.config import get_shard_registry_settings
+    from src.platform.shard.registry.config import get_shard_registry_settings
 
     get_shard_registry_settings.cache_clear()
     rows = build_plugin_catalog_rows()
@@ -64,9 +64,9 @@ def test_infer_plugin_source_local_dir(tmp_path, monkeypatch) -> None:
     pkg = root / "local" / "plugins" / "demo"
     pkg.mkdir(parents=True)
     (pkg / "__init__.py").write_text("x = 1\n", encoding="utf-8")
-    monkeypatch.setattr("src.common.console.webui.plugin_catalog.PROJECT_ROOT", root)
+    monkeypatch.setattr("src.console.webui.plugin_catalog.PROJECT_ROOT", root)
     monkeypatch.setattr(
-        "src.common.foundation.config.repo_settings.read_bootstrap_extra_plugin_dirs",
+        "src.foundation.config.repo_settings.read_bootstrap_extra_plugin_dirs",
         lambda: ["local/plugins"],
     )
     extra = discover_extra_plugin_packages()
@@ -77,7 +77,7 @@ def test_infer_plugin_source_local_dir(tmp_path, monkeypatch) -> None:
 
 
 def test_plugin_source_from_main_path() -> None:
-    from src.common.foundation.paths import PROJECT_ROOT
+    from src.foundation.paths import PROJECT_ROOT
 
     main_py = PROJECT_ROOT / "src" / "plugins" / "callback" / "handler.py"
     if main_py.is_file():
@@ -93,10 +93,10 @@ def test_catalog_lists_pyproject_status_on_hub(monkeypatch):
     monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
     monkeypatch.setenv("PALLAS_BOT_ROLE", "hub")
     monkeypatch.setattr(
-        "src.common.foundation.config.repo_settings.read_bootstrap_extra_plugin_dirs",
+        "src.foundation.config.repo_settings.read_bootstrap_extra_plugin_dirs",
         lambda: [],
     )
-    from src.common.platform.shard.registry.config import get_shard_registry_settings
+    from src.platform.shard.registry.config import get_shard_registry_settings
 
     get_shard_registry_settings.cache_clear()
     rows = build_plugin_catalog_rows()
@@ -115,11 +115,11 @@ def test_resolve_catalog_prefers_local_pallas_image(tmp_path, monkeypatch) -> No
     src_pkg = root / "src" / "plugins" / "pallas_image"
     src_pkg.mkdir(parents=True)
     (src_pkg / "__init__.py").write_text("x = 1\n", encoding="utf-8")
-    monkeypatch.setattr("src.common.console.webui.plugin_catalog.PROJECT_ROOT", root)
+    monkeypatch.setattr("src.console.webui.plugin_catalog.PROJECT_ROOT", root)
     monkeypatch.setattr(
-        "src.common.foundation.config.repo_settings.read_bootstrap_extra_plugin_dirs",
+        "src.foundation.config.repo_settings.read_bootstrap_extra_plugin_dirs",
         lambda: ["local/plugins"],
     )
-    from src.common.console.webui.plugin_catalog import resolve_catalog_plugin_module
+    from src.console.webui.plugin_catalog import resolve_catalog_plugin_module
 
     assert resolve_catalog_plugin_module("pallas_image") == "local.plugins.pallas_image"

@@ -273,7 +273,7 @@ WantedBy=multi-user.target
 > 面向已有 NoneBot 项目的开发者；仅部署独立牛牛可跳过本节。
 
 1. 获取源码并 `uv sync`（PG 用 `--extra pg`）。
-2. 将 `src/common` 与所需 `src/plugins/*` 复制到现有 Bot。
+2. 将 `src/foundation` 等内核层与所需 `src/plugins/*` 复制到现有 Bot。
 3. 在 `bot.py` 中于启动时调用 `init_db()`、`ensure_voices()`（参见仓库 [`bot.py`](../bot.py)）。
 4. 配置使用 **`config/pallas.toml`** + **`webui.json`**。
 

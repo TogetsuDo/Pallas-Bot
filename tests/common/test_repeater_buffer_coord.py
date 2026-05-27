@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 
-from src.common.foundation.db import Message as MessageModel
-from src.common.platform.shard.coord import repeater_buffer as mod
+from src.foundation.db import Message as MessageModel
+from src.platform.shard.coord import repeater_buffer as mod
 from src.plugins.repeater.message_store import MessageStore
 
 

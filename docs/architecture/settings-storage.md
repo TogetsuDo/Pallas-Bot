@@ -38,7 +38,7 @@
 本地已有 `webui.json` 但未触发保存时，可执行：
 
 ```bash
-uv run python -c "from src.common.foundation.config.webui_export_toml import export_webui_inspection_toml; export_webui_inspection_toml()"
+uv run python -c "from src.foundation.config.webui_export_toml import export_webui_inspection_toml; export_webui_inspection_toml()"
 ```
 
 ## Docker 挂载
@@ -60,5 +60,5 @@ uv run python tools/migrate_env_to_pallas.py
 
 ## 实现
 
-- `src/common/foundation/config/repo_settings.py` — 读写与合并
-- `src/common/foundation/config/dotenv.py` — 兼容导出
+- `src/foundation/config/repo_settings.py` — 读写与合并
+- `src/foundation/config/dotenv.py` — 兼容导出

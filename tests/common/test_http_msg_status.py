@@ -1,4 +1,4 @@
-from src.common.shared.utils.http_msg import (
+from src.shared.utils.http_msg import (
     http_status_should_skip_backend,
     http_status_should_try_next_param,
 )

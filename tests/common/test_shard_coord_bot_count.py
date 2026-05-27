@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import time
 
-from src.common.platform.shard.coord import bot_count as mod
+from src.platform.shard.coord import bot_count as mod
 
 
 def test_fanout_plaintext(monkeypatch):
-    from src.common.platform.ingress.config import clear_ingress_fanout_config_cache
+    from src.platform.ingress.config import clear_ingress_fanout_config_cache
 
     monkeypatch.setattr(
-        "src.common.platform.ingress.config._ingress_env_str",
+        "src.platform.ingress.config._ingress_env_str",
         lambda name, default="": "牛牛,帕拉斯,牛牛报数,牛牛出列"
         if name == "PALLAS_INGRESS_FANOUT_GREETING"
         else default,
@@ -21,11 +21,11 @@ def test_fanout_plaintext(monkeypatch):
 
 
 def test_bot_count_ingress_fanout_without_greeting_whitelist(monkeypatch):
-    from src.common.platform.ingress.config import clear_ingress_fanout_config_cache
+    from src.platform.ingress.config import clear_ingress_fanout_config_cache
 
-    monkeypatch.setattr("src.common.platform.shard.registry.config.is_sharding_active", lambda: True)
+    monkeypatch.setattr("src.platform.shard.registry.config.is_sharding_active", lambda: True)
     monkeypatch.setattr(
-        "src.common.platform.ingress.config._ingress_env_str",
+        "src.platform.ingress.config._ingress_env_str",
         lambda name, default="": "牛牛,帕拉斯,牛牛赞我,赞我"
         if name == "PALLAS_INGRESS_FANOUT_GREETING"
         else default,
@@ -39,7 +39,7 @@ def test_bot_count_ingress_fanout_without_greeting_whitelist(monkeypatch):
 def test_cross_shard_order_finalize(tmp_path, monkeypatch):
     monkeypatch.setattr(mod, "_coord_dir", lambda: tmp_path)
     monkeypatch.setattr(
-        "src.common.platform.shard.registry.config.get_shard_registry_settings",
+        "src.platform.shard.registry.config.get_shard_registry_settings",
         lambda: type("S", (), {"shard_id": 0})(),
     )
 
@@ -53,7 +53,7 @@ def test_cross_shard_order_finalize(tmp_path, monkeypatch):
     )
     mod._register_shard_bots(path, 0, [300, 100])
     monkeypatch.setattr(
-        "src.common.platform.shard.registry.config.get_shard_registry_settings",
+        "src.platform.shard.registry.config.get_shard_registry_settings",
         lambda: type("S", (), {"shard_id": 1})(),
     )
     mod._register_shard_bots(path, 1, [200])

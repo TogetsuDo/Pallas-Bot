@@ -14,7 +14,7 @@ from urllib.parse import quote
 
 import httpx
 
-from src.common.foundation.paths import resource_dir
+from src.foundation.paths import resource_dir
 
 from .backends import ProtocolRuntimeBackend, make_protocol_runtime_backend
 from .config import (
@@ -960,7 +960,7 @@ class PallasProtocolService:
     def _save_accounts(self) -> None:
         self._accounts_file.write_text(json.dumps(self._accounts, ensure_ascii=False, indent=2), encoding="utf-8")
         try:
-            from src.common.platform.multi_bot.fleet import invalidate_fleet_bot_cache
+            from src.platform.multi_bot.fleet import invalidate_fleet_bot_cache
 
             invalidate_fleet_bot_cache()
         except Exception:
@@ -1164,8 +1164,8 @@ class PallasProtocolService:
         if account_id in self._accounts:
             raise ValueError("该 QQ 对应账号已存在")
 
-        from src.common.platform.shard.registry.config import is_sharding_active
-        from src.common.platform.shard.registry.store import assign_bot_to_shard
+        from src.platform.shard.registry.config import is_sharding_active
+        from src.platform.shard.registry.store import assign_bot_to_shard
 
         if is_sharding_active():
             assign_bot_to_shard(qq)
@@ -1858,11 +1858,11 @@ class PallasProtocolService:
         if not qq or not qq.isdigit():
             return False
         try:
-            from src.common.platform.bot_runtime.roles import is_sharded_hub
-            from src.common.platform.shard.registry.config import is_sharding_active
+            from src.platform.bot_runtime.roles import is_sharded_hub
+            from src.platform.shard.registry.config import is_sharding_active
 
             if is_sharding_active() and is_sharded_hub():
-                from src.common.platform.shard.presence import get_cluster_online_bot_ids
+                from src.platform.shard.presence import get_cluster_online_bot_ids
 
                 return int(qq) in get_cluster_online_bot_ids()
         except Exception:

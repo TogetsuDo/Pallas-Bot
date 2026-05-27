@@ -12,15 +12,15 @@ import os
 os.environ.setdefault("PALLAS_SHARD_ENABLED", "true")
 os.environ.setdefault("PALLAS_BOT_ROLE", "hub")
 
-from src.common.foundation.config.dotenv import apply_repo_settings_to_environ
+from src.foundation.config.dotenv import apply_repo_settings_to_environ
 
 apply_repo_settings_to_environ()
 
 
 def pin_hub_listen_port() -> None:
     """覆盖 .env 中 PORT，确保 hub 监听注册表 hub_port 而非统一进程 PORT。"""
-    from src.common.platform.shard.registry.config import get_shard_registry_settings
-    from src.common.platform.shard.registry.listen_port import apply_listen_port
+    from src.platform.shard.registry.config import get_shard_registry_settings
+    from src.platform.shard.registry.listen_port import apply_listen_port
 
     apply_listen_port(get_shard_registry_settings().hub_port)
 
@@ -31,18 +31,18 @@ pin_hub_listen_port()
 import nonebot
 from nonebot.adapters.onebot.v11 import Adapter as ONEBOT_V11Adapter
 
-from src.common.console.web import install_nonebot_log_sink
-from src.common.features.ban_gate.snapshot import start_ban_gate_snapshot, stop_ban_gate_snapshot
-from src.common.features.message_scrub import start_message_scrub_if_enabled
-from src.common.foundation.db import init_db
-from src.common.foundation.logging import apply_stdlib_logging_channel_prefix
-from src.common.platform.bot_runtime import load_plugins_for_role
-from src.common.platform.shard.logs.process import install_shard_process_logging
-from src.common.platform.shard.registry import get_shard_registry
-from src.common.platform.shard.registry.config import get_shard_registry_settings
-from src.common.platform.shard.registry.listen_port import apply_listen_port
-from src.common.shared.adapters import register_onebot_v11_custom_events
-from src.common.shared.utils.voice_downloader import ensure_voices
+from src.console.web import install_nonebot_log_sink
+from src.features.ban_gate.snapshot import start_ban_gate_snapshot, stop_ban_gate_snapshot
+from src.features.message_scrub import start_message_scrub_if_enabled
+from src.foundation.db import init_db
+from src.foundation.logging import apply_stdlib_logging_channel_prefix
+from src.platform.bot_runtime import load_plugins_for_role
+from src.platform.shard.logs.process import install_shard_process_logging
+from src.platform.shard.registry import get_shard_registry
+from src.platform.shard.registry.config import get_shard_registry_settings
+from src.platform.shard.registry.listen_port import apply_listen_port
+from src.shared.adapters import register_onebot_v11_custom_events
+from src.shared.utils.voice_downloader import ensure_voices
 
 apply_stdlib_logging_channel_prefix()
 nonebot.init()
@@ -68,7 +68,7 @@ async def startup():
     )
     await ensure_voices()
     try:
-        from src.common.platform.shard.logs.view import cleanup_stale_shard_log_files
+        from src.platform.shard.logs.view import cleanup_stale_shard_log_files
 
         removed = cleanup_stale_shard_log_files()
         if removed:

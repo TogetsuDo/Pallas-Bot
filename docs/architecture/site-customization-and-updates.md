@@ -57,13 +57,13 @@ extra_plugin_dirs = ["local/plugins"]
 | 方式 | 适用 | 更新后 |
 |------|------|--------|
 | **整包放入 `local/plugins/<原名>/`** | 改动多、行为差分大 | hub/worker 优先用 local；主仓 `src/plugins/<原名>/` 保持上游干净 |
-| **`local/patches/*.patch` 记录 diff** | 只改少量核心文件（`src/common/*`、`bot.py`） | 更新后 `git apply` 或手工合并；见 `local/patches/README.md` |
+| **`local/patches/*.patch` 记录 diff** | 只改少量核心文件（`src/*`、`bot.py`） | 更新后 `git apply` 或手工合并；见 `local/patches/README.md` |
 | **提 PR / 维护 fork** | 希望长期与上游合并 | 从 fork 拉取 |
 
 NoneBot **不能**两个目录各加载一半同名插件；要么整包 override，要么 patch 主仓文件。
 
 ## 相关实现
 
-- `read_bootstrap_extra_plugin_dirs()`：`src/common/config/repo_settings.py`
-- 插件加载：`src/common/bot_runtime/plugin_loader.py`
+- `read_bootstrap_extra_plugin_dirs()`：`src/config/repo_settings.py`
+- 插件加载：`src/bot_runtime/plugin_loader.py`
 - 更新与部署检测：`src/plugins/pallas_webui/manager.py`（`apply_bot_repository_update` / `inspect_bot_deployment`）

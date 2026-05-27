@@ -6,13 +6,13 @@ from urllib.parse import urljoin
 
 import httpx
 
-from src.common.console.webui.gateway_fields import (
+from src.console.webui.gateway_fields import (
     ALL_GATEWAY_FIELDS,
     MAA_GATEWAY_FIELDS,
     PALLAS_IMAGE_GATEWAY_FIELDS,
     SING_GATEWAY_FIELDS,
 )
-from src.common.shared.service_probe import ServiceProbeResult, probe_http_get, probe_http_post_json
+from src.shared.service_probe import ServiceProbeResult, probe_http_get, probe_http_post_json
 
 if TYPE_CHECKING:
     from src.plugins.maa.config import Config as MaaConfig
@@ -97,8 +97,8 @@ async def probe_maa_endpoints(
     cfg: MaaConfig | None = None,
     timeout_sec: float = 15.0,
 ) -> list[ServiceProbeResult]:
-    from src.common.platform.bot_runtime.roles import is_sharded_hub
-    from src.common.platform.shard.registry.config import is_sharding_active
+    from src.platform.bot_runtime.roles import is_sharded_hub
+    from src.platform.shard.registry.config import is_sharding_active
     from src.plugins.maa.endpoints import resolve_maa_probe_http_endpoints
 
     ep = resolve_maa_probe_http_endpoints(cfg)

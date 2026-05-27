@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import Message
 
-from src.common.foundation.config import BotConfig
+from src.foundation.config import BotConfig
 
 from .ban_manager import BanManager
 from .message_store import MessageStore
@@ -18,7 +18,7 @@ from .responder import Responder
 if TYPE_CHECKING:
     import asyncio
 
-    from src.common.foundation.db import Message as MessageModel
+    from src.foundation.db import Message as MessageModel
 
 
 class Speaker:

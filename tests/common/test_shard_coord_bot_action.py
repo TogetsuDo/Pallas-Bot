@@ -4,7 +4,7 @@ import asyncio
 import json
 import time
 
-from src.common.platform.shard.coord import bot_action as mod
+from src.platform.shard.coord import bot_action as mod
 
 
 def test_bot_action_request_roundtrip(tmp_path, monkeypatch):

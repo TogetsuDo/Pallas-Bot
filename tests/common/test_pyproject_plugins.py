@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path  # noqa: TC003
 
-from src.common.platform.bot_runtime.pyproject_plugins import (
+from src.platform.bot_runtime.pyproject_plugins import (
     extra_plugin_dirs_for_role,
     parse_nonebot_plugin_config,
 )

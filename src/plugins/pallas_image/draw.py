@@ -12,13 +12,13 @@ from nonebot.exception import FinishedException
 from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
 
-from src.common.features.cmd_perm import group_message_permission_for_command
-from src.common.foundation.config import GroupConfig
-from src.common.platform.multi_bot.group import (
+from src.features.cmd_perm import group_message_permission_for_command
+from src.foundation.config import GroupConfig
+from src.platform.multi_bot.group import (
     claim_group_handler,
     try_begin_group_owned_gate,
 )
-from src.common.shared.utils.http_msg import PALLAS_VAGUE_REPLY
+from src.shared.utils.http_msg import PALLAS_VAGUE_REPLY
 
 from .config import ImageApiBackend, active_image_gen_settings, image_gen_config
 from .draw_attempts import (

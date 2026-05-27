@@ -8,15 +8,15 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot_plugin_apscheduler import scheduler
 
-from src.common.features.cmd_perm.metadata_defaults import (
+from src.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.features.cmd_perm.metadata_text import SCENE_AUTO, join_usage, usage_line
-from src.common.foundation.config import BotConfig
-from src.common.shared.utils import is_bot_admin
+from src.features.cmd_perm.metadata_text import SCENE_AUTO, join_usage, usage_line
+from src.foundation.config import BotConfig
 from src.plugins.repeater.message_store import MessageStore
+from src.shared.utils import is_bot_admin
 
 __plugin_meta__ = PluginMetadata(
     name="自动夺舍",

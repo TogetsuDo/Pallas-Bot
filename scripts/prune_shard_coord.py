@@ -15,7 +15,7 @@ if str(REPO_ROOT) not in sys.path:
 
 
 def prune_all_done_bot_action() -> int:
-    from src.common.platform.shard.coord.bot_action import _coord_dir, _read
+    from src.platform.shard.coord.bot_action import _coord_dir, _read
 
     removed = 0
     for path in _coord_dir().glob("*.json"):
@@ -39,13 +39,13 @@ async def main() -> int:
         help="删除全部 bot_action done 文件（运维一次性减压，不影响进行中的 open）",
     )
     args = parser.parse_args()
-    from src.common.platform.shard.coord.bot_action import prune_stale_bot_action_files
-    from src.common.platform.shard.coord.bot_count import prune_stale_bot_count_files
-    from src.common.platform.shard.coord.cage_duel import prune_stale_cage_duel_files
-    from src.common.platform.shard.coord.duel_group import prune_stale_duel_group_files
-    from src.common.platform.shard.coord.duel_qte import prune_stale_duel_qte_files
-    from src.common.platform.shard.coord.repeater_buffer import prune_stale_repeater_buffer_files
-    from src.common.platform.shard.coord_pending import coord_pending_snapshot_sync
+    from src.platform.shard.coord.bot_action import prune_stale_bot_action_files
+    from src.platform.shard.coord.bot_count import prune_stale_bot_count_files
+    from src.platform.shard.coord.cage_duel import prune_stale_cage_duel_files
+    from src.platform.shard.coord.duel_group import prune_stale_duel_group_files
+    from src.platform.shard.coord.duel_qte import prune_stale_duel_qte_files
+    from src.platform.shard.coord.repeater_buffer import prune_stale_repeater_buffer_files
+    from src.platform.shard.coord_pending import coord_pending_snapshot_sync
 
     before = coord_pending_snapshot_sync()
     purged_done = prune_all_done_bot_action() if args.purge_done else 0

@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.common.foundation.db.repository import (
+from src.foundation.db.repository import (
     BlackListRepository,
     ContextRepository,
     ContextRepositoryExistenceMixin,

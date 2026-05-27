@@ -11,8 +11,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from src.common.foundation.config.repo_settings import repo_config_path  # noqa: E402
-from src.common.foundation.deploy_profile import (  # noqa: E402
+from src.foundation.config.repo_settings import repo_config_path  # noqa: E402
+from src.foundation.deploy_profile import (  # noqa: E402
     DEPLOY_PROFILES,
     merge_profile_env_into_webui,
     read_profile_env_fragment,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from src.common.platform.multi_bot import fleet as mod
+from src.platform.multi_bot import fleet as mod
 
 
 def test_load_enabled_account_qq(tmp_path, monkeypatch):

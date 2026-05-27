@@ -1,14 +1,14 @@
 from nonebot import get_driver, logger
 from nonebot.plugin import PluginMetadata
 
-from src.common.features.cmd_perm.metadata_defaults import (
+from src.features.cmd_perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from src.common.features.community_stats.scheduler import start_community_stats_reporter
-from src.common.features.control_plane.bootstrap_client import ensure_control_plane_bootstrap
-from src.common.features.corpus.enroll import ensure_corpus_community_enrolled
+from src.features.community_stats.scheduler import start_community_stats_reporter
+from src.features.control_plane.bootstrap_client import ensure_control_plane_bootstrap
+from src.features.corpus.enroll import ensure_corpus_community_enrolled
 
 __plugin_meta__ = PluginMetadata(
     name="社区统计上报",

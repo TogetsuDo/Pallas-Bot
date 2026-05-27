@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.common.foundation.db.repository import ContextRepositoryExistenceMixin
+from src.foundation.db.repository import ContextRepositoryExistenceMixin
 
 
 class _FakeContextRepo(ContextRepositoryExistenceMixin):
@@ -59,7 +59,7 @@ async def _fake_init():
 @pytest.fixture
 def fake_backend():
     """注册名为 'fake' 的内存后端，测试结束后清理。"""
-    from src.common.foundation.db import (
+    from src.foundation.db import (
         BLACKLIST_REPO_REGISTRY,
         CONTEXT_REPO_REGISTRY,
         INIT_DB_REGISTRY,
@@ -102,7 +102,7 @@ def _set_db_backend(monkeypatch, backend: str) -> None:
 
 def test_factories_switch_by_db_backend_env(monkeypatch, fake_backend):
     """当 DB_BACKEND=fake 时，所有 Repository 工厂应返回 fake 实例。"""
-    from src.common.foundation.db import (
+    from src.foundation.db import (
         make_blacklist_repository,
         make_context_repository,
         make_message_repository,
@@ -121,7 +121,7 @@ def test_factories_switch_by_db_backend_env(monkeypatch, fake_backend):
 
 def test_unknown_backend_raises(monkeypatch):
     """未注册的后端应抛 ValueError，明确提示已注册的后端列表。"""
-    from src.common.foundation.db import make_context_repository
+    from src.foundation.db import make_context_repository
 
     _set_db_backend(monkeypatch, "nonexistent-backend")
 
@@ -132,7 +132,7 @@ def test_unknown_backend_raises(monkeypatch):
 @pytest.mark.asyncio
 async def test_init_db_dispatches_to_registered_backend(fake_backend):
     """init_db 应根据 backend 参数分发到对应后端的 init 函数。"""
-    from src.common.foundation.db import init_db
+    from src.foundation.db import init_db
 
     # fake backend 的 init 直接返回 None 不抛异常
     await init_db(backend=fake_backend)

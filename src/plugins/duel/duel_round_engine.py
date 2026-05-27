@@ -12,8 +12,8 @@ from nonebot.adapters import Bot  # noqa: TC002
 from nonebot.adapters.onebot.v11 import Message
 from nonebot.matcher import Matcher  # noqa: TC002
 
-from src.common.foundation.config import GroupConfig
-from src.common.platform.multi_bot.group import claim_group_message_event, try_acquire_group_broadcast_slot
+from src.foundation.config import GroupConfig
+from src.platform.multi_bot.group import claim_group_message_event, try_acquire_group_broadcast_slot
 from src.plugins.duel.config import plugin_config
 from src.plugins.duel.duel_labels import bind_duel_labels, duel_label_for, reset_duel_labels, resolve_duel_labels
 from src.plugins.duel.duel_message import (
@@ -148,14 +148,14 @@ async def try_claim_duel_user_reply(group_id: int, *, ttl_sec: float | None = No
 
 def try_begin_duel_group(group_id: int) -> bool:
     """同群同时进行中的决斗至多一场。"""
-    from src.common.platform.shard.coord.duel_group import try_begin_duel_group as acquire
+    from src.platform.shard.coord.duel_group import try_begin_duel_group as acquire
 
     return acquire(group_id)
 
 
 def end_duel_group(group_id: int) -> None:
     """释放群决斗占用。"""
-    from src.common.platform.shard.coord.duel_group import end_duel_group as release
+    from src.platform.shard.coord.duel_group import end_duel_group as release
 
     release(group_id)
 
@@ -163,7 +163,7 @@ def end_duel_group(group_id: int) -> None:
 async def begin_duel_command(group_id: int) -> DuelCommandGate:
     """群级互斥 + 群级指令 CD（多 Bot 共用）。"""
     if not try_begin_duel_group(group_id):
-        from src.common.platform.shard.coord.duel_group import try_reclaim_orphan_duel_group
+        from src.platform.shard.coord.duel_group import try_reclaim_orphan_duel_group
 
         if not (await try_reclaim_orphan_duel_group(group_id) and try_begin_duel_group(group_id)):
             return "busy"
