@@ -21,6 +21,7 @@ COPY pyproject.toml ./
 
 # perf：jieba-next；pg：PostgreSQL 后端
 # deploy-shard / message-scrub：见 deploy/README.md
+# 构建上下文排除见 .dockerignore；extras 对照见 docs/DockerDeployment.md
 ARG PALLAS_UV_EXTRAS=perf,pg
 RUN uv pip install --system ".[${PALLAS_UV_EXTRAS}]" --no-cache-dir && \
     apt-get purge -y build-essential && \
