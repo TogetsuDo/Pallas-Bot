@@ -20,7 +20,9 @@ RUN apt-get update && \
 COPY pyproject.toml ./
 
 # perf：jieba-next；pg：PostgreSQL 后端
-RUN uv pip install --system ".[perf,pg]" --no-cache-dir && \
+# deploy-shard / message-scrub：见 deploy/README.md
+ARG PALLAS_UV_EXTRAS=perf,pg
+RUN uv pip install --system ".[${PALLAS_UV_EXTRAS}]" --no-cache-dir && \
     apt-get purge -y build-essential && \
     apt-get autoremove -y && \
     rm -rf /root/.cache/pip

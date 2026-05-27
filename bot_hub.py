@@ -31,21 +31,23 @@ pin_hub_listen_port()
 import nonebot
 from nonebot.adapters.onebot.v11 import Adapter as ONEBOT_V11Adapter
 
-from src.common.shared.adapters import register_onebot_v11_custom_events
+from src.common.console.web import install_nonebot_log_sink
 from src.common.features.ban_gate.snapshot import start_ban_gate_snapshot, stop_ban_gate_snapshot
-from src.common.platform.bot_runtime import load_plugins_for_role
+from src.common.features.message_scrub import start_message_scrub_if_enabled
 from src.common.foundation.db import init_db
 from src.common.foundation.logging import apply_stdlib_logging_channel_prefix
+from src.common.platform.bot_runtime import load_plugins_for_role
 from src.common.platform.shard.logs.process import install_shard_process_logging
 from src.common.platform.shard.registry import get_shard_registry
 from src.common.platform.shard.registry.config import get_shard_registry_settings
 from src.common.platform.shard.registry.listen_port import apply_listen_port
+from src.common.shared.adapters import register_onebot_v11_custom_events
 from src.common.shared.utils.voice_downloader import ensure_voices
-from src.common.console.web import install_nonebot_log_sink
 
 apply_stdlib_logging_channel_prefix()
 nonebot.init()
 apply_listen_port(get_shard_registry_settings().hub_port)
+start_message_scrub_if_enabled()
 install_shard_process_logging()
 install_nonebot_log_sink()
 driver = nonebot.get_driver()

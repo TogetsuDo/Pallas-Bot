@@ -81,6 +81,34 @@ def _scrub_review_providers_key_explicit(merged_dotenv: dict[str, str]) -> bool:
     return False
 
 
+def message_scrub_has_active_config(cfg: MessageScrubConfig | None = None) -> bool:
+    """未显式设置 ``PALLAS_MESSAGE_SCRUB_ENABLED`` 时，根据是否已有审查配置推断（兼容旧部署）。"""
+    c = cfg or get_message_scrub_config()
+    if (c.inbound_filter_substrings or "").strip():
+        return True
+    if (c.scrub_lexicon_path or "").strip():
+        return True
+    if (c.scrub_lexicon_extra or "").strip():
+        return True
+    if c.scrub_review_providers_key_present and (c.scrub_review_providers or "").strip():
+        return True
+    if not c.scrub_review_providers_key_present:
+        if (c.scrub_api_url or c.inbound_filter_api_url or "").strip():
+            return True
+        if (c.scrub_baidu_api_key or "").strip() and (c.scrub_baidu_secret_key or "").strip():
+            return True
+    return False
+
+
+def is_message_scrub_enabled() -> bool:
+    """运行时是否执行入站审查；显式 ``PALLAS_MESSAGE_SCRUB_ENABLED=false`` 可覆盖旧配置。"""
+    merged = merged_repo_dotenv_upper()
+    raw = _scrub_env_str("PALLAS_MESSAGE_SCRUB_ENABLED", merged_dotenv=merged, default="")
+    if raw:
+        return raw.lower() not in ("0", "false", "no", "off")
+    return message_scrub_has_active_config()
+
+
 class MessageScrubConfig(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="ignore")
 

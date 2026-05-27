@@ -15,6 +15,15 @@
 
 ## 上手：你可以这样开始
 
+自 3.7 起，**新部署默认不启用** message_scrub。启用方式：
+
+```bash
+uv sync --extra message-scrub
+uv run python tools/apply_deploy_profile.py message-scrub
+```
+
+或在配置中设置 `PALLAS_MESSAGE_SCRUB_ENABLED=true`。已有 `PALLAS_SCRUB_*` 等历史配置且未显式关闭时，仍会自动启用（向后兼容）。详见 [`deploy/message-scrub/README.md`](../../../deploy/message-scrub/README.md)。
+
 | 你的目标 | 你需要做的大致事情 |
 |----------|-------------------|
 | 先不用审查 | 什么都不配即可。 |

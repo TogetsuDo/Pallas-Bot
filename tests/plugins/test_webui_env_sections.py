@@ -21,12 +21,57 @@ def test_list_webui_env_sections_contains_control_plane():
     assert any(r["id"] == "control_plane" for r in rows)
 
 
-def test_list_webui_env_sections_contains_message_scrub():
+def test_list_webui_env_sections_contains_message_scrub(monkeypatch: pytest.MonkeyPatch):
     from src.common.console.webui import list_webui_env_sections
+    from src.common.console.webui.env_sections import clear_webui_env_sections_cache
 
+    monkeypatch.setenv("PALLAS_MESSAGE_SCRUB_ENABLED", "true")
+    clear_webui_env_sections_cache()
     rows = list_webui_env_sections()
     ids = {r["id"] for r in rows}
     assert "message_scrub" in ids
+    clear_webui_env_sections_cache()
+
+
+def test_list_webui_env_sections_hides_message_scrub_by_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    from src.common.console.webui import list_webui_env_sections
+    from src.common.console.webui.env_sections import clear_webui_env_sections_cache
+
+    for key in (
+        "PALLAS_MESSAGE_SCRUB_ENABLED",
+        "PALLAS_INBOUND_FILTER_SUBSTRINGS",
+        "PALLAS_SCRUB_LEXICON_PATH",
+    ):
+        monkeypatch.delenv(key, raising=False)
+    phantom = tmp_path / "missing.toml"
+    monkeypatch.setattr(
+        "src.common.foundation.config.repo_settings.repo_env_path",
+        lambda: phantom,
+    )
+    monkeypatch.setattr(
+        "src.common.foundation.config.repo_settings.repo_config_path",
+        lambda: phantom,
+    )
+    monkeypatch.setattr(
+        "src.common.foundation.config.repo_settings.repo_webui_settings_path",
+        lambda: tmp_path / "missing.json",
+    )
+    monkeypatch.setattr(
+        "src.common.foundation.config.dotenv.merged_repo_dotenv_upper",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        "src.common.foundation.config.dotenv.repo_layered_dotenv_files_exist",
+        lambda: True,
+    )
+    from src.common.foundation.deploy_profile import clear_deploy_profile_cache
+
+    clear_deploy_profile_cache()
+    clear_webui_env_sections_cache()
+    rows = list_webui_env_sections()
+    ids = {r["id"] for r in rows}
+    assert "message_scrub" not in ids
+    clear_webui_env_sections_cache()
 
 
 def test_list_webui_env_sections_contains_plugin_common_sections():
@@ -92,9 +137,12 @@ def test_pallas_webui_patch_writes_uppercase_env(tmp_path, monkeypatch):
 
 
 @skip_no_message_scrub
-def test_message_scrub_payload_shape():
+def test_message_scrub_payload_shape(monkeypatch: pytest.MonkeyPatch):
     from src.common.console.webui import webui_env_section_payload
+    from src.common.console.webui.env_sections import clear_webui_env_sections_cache
 
+    monkeypatch.setenv("PALLAS_MESSAGE_SCRUB_ENABLED", "true")
+    clear_webui_env_sections_cache()
     data = webui_env_section_payload("message_scrub")
     assert data["plugin"] == "message_scrub"
     assert data["module"]
@@ -104,17 +152,22 @@ def test_message_scrub_payload_shape():
     for f in data["fields"]:
         assert f["env_key"]
         assert f["kind"] in ("bool", "int", "float", "json", "string")
+    clear_webui_env_sections_cache()
 
 
 @skip_no_message_scrub
 def test_message_scrub_patch_roundtrip(tmp_path, monkeypatch):
     import json
 
-    from src.common.foundation.config import repo_settings as rs
     from src.common.console.webui import apply_webui_env_section_patch
+    from src.common.console.webui.env_sections import clear_webui_env_sections_cache
+    from src.common.foundation.config import repo_settings as rs
 
+    monkeypatch.setenv("PALLAS_MESSAGE_SCRUB_ENABLED", "true")
+    clear_webui_env_sections_cache()
     webui_file = tmp_path / "webui.json"
     monkeypatch.setattr(rs, "repo_webui_settings_path", lambda: webui_file)
     apply_webui_env_section_patch("message_scrub", {"inbound_filter_substrings": "a,b"})
     data = json.loads(webui_file.read_text(encoding="utf-8"))
     assert data["env"]["PALLAS_INBOUND_FILTER_SUBSTRINGS"] == "a,b"
+    clear_webui_env_sections_cache()

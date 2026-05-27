@@ -143,6 +143,7 @@ def test_config_repo_dotenv_file_value_used_when_os_absent(tmp_path: Path, monke
 @pytest.fixture
 def scrub_env_cleanup(monkeypatch: pytest.MonkeyPatch):
     keys = [
+        "PALLAS_MESSAGE_SCRUB_ENABLED",
         "PALLAS_INBOUND_FILTER_SUBSTRINGS",
         "PALLAS_SCRUB_LEXICON_PATH",
         "PALLAS_SCRUB_LEXICON_EXTRA",
@@ -168,6 +169,18 @@ def test_sync_hits_env_substrings(scrub_env_cleanup: None, monkeypatch: pytest.M
     reload_message_scrub_caches()
     assert is_message_scrub_blocked_sync(plain_text="has BADWORD here", raw_message="")
     assert not is_message_scrub_blocked_sync(plain_text="clean", raw_message="")
+
+
+def test_blocked_false_when_explicitly_disabled(scrub_env_cleanup: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PALLAS_MESSAGE_SCRUB_ENABLED", "false")
+    monkeypatch.setenv("PALLAS_INBOUND_FILTER_SUBSTRINGS", "badword")
+    reload_message_scrub_caches()
+    assert not is_message_scrub_blocked_sync(plain_text="has badword here", raw_message="")
+
+
+def test_blocked_false_when_no_config(scrub_env_cleanup: None) -> None:
+    reload_message_scrub_caches()
+    assert not is_message_scrub_blocked_sync(plain_text="anything", raw_message="")
 
 
 def test_sync_hits_lexicon_file(scrub_env_cleanup: None, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
