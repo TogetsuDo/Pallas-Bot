@@ -1,4 +1,4 @@
-"""分片 worker 专用预处理器：fleet 识别、@ 定向、全局 claim、fanout。"""
+"""群消息入站预处理器：fleet 识别、@ 定向、联邦/跨 Bot claim。"""
 
 from __future__ import annotations
 
@@ -36,12 +36,11 @@ INGRESS_SHARD_CLAIM_PLUGIN = "ingress_gate_shard"
 driver = get_driver()
 
 __plugin_meta__ = PluginMetadata(
-    name="分片入站网关",
+    name="入站网关",
     description=(
-        "Worker 群消息预处理：牛牛舰队识别、@ 定向、跨 Bot/分片 claim、"
-        "问候与报数 fanout，避免同条消息被多个进程重复处理。"
+        "群消息预处理：牛牛舰队识别、@ 定向、联邦与跨 Bot claim；分片 worker 另含跨片 claim 与问候/报数 fanout。"
     ),
-    usage="（内部）无用户命令；分片 Worker 启动时自动注册 event_preprocessor。",
+    usage="（内部）无用户命令；unified / worker 启动时自动注册 event_preprocessor。",
     type="application",
     homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
@@ -109,13 +108,19 @@ async def ingress_group_message_gate(bot, event) -> None:
             record_ingress_early_discard("federate")
         raise IgnoredException("federate ingress claim lost")
 
-    if is_sharding_active() and (
-        is_ingress_fanout_plaintext(plain)
-        or should_skip_ingress_claim_for_shard_bot_count(plain)
-        or is_cage_plaintext(plain)
-        or is_drink_plaintext(plain)
-        or is_roulette_plaintext(plain)
-    ):
+    fanout_bypass = is_ingress_fanout_plaintext(plain)
+    if is_sharding_active():
+        fanout_bypass = fanout_bypass or (
+            should_skip_ingress_claim_for_shard_bot_count(plain)
+            or is_cage_plaintext(plain)
+            or is_drink_plaintext(plain)
+            or is_roulette_plaintext(plain)
+        )
+    else:
+        fanout_bypass = fanout_bypass or (
+            is_cage_plaintext(plain) or is_drink_plaintext(plain) or is_roulette_plaintext(plain)
+        )
+    if fanout_bypass:
         if metrics:
             record_ingress_fanout_bypass()
         return

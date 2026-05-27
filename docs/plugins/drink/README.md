@@ -19,7 +19,7 @@
 
 ## 分片（多 worker）
 
-喝酒/醒酒口令（`牛牛喝酒` 等）在代码侧**恒 fanout**（见 `src/ingress/drink_plaintext.py`），无需写入 WebUI「分片全员同响」白名单；各牛独立醉酒态。
+喝酒/醒酒口令（`牛牛喝酒` 等）在代码侧**恒 fanout**（见 `src/ingress/drink_plaintext.py`），无需写入 WebUI「入站：全员同响口令」白名单；各牛独立醉酒态。
 
 ## 排障
 

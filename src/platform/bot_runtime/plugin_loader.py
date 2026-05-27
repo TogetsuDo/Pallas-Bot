@@ -153,6 +153,16 @@ def _load_toml_extra_plugin_dirs(
     return count
 
 
+_INGRESS_GATE_MODULE = "src.plugins.ingress_gate"
+
+
+def load_ingress_gate_plugin(*, role_label: str, loaded_short: set[str]) -> bool:
+    gate_path = _PLUGINS_ROOT / "ingress_gate"
+    if not gate_path.is_dir() or not (gate_path / "__init__.py").is_file():
+        return False
+    return _load_plugin_module(_INGRESS_GATE_MODULE, role_label=role_label, loaded_short=loaded_short)
+
+
 def _append_bootstrap_plugin_dirs(plugin_dirs: list[str]) -> list[str]:
     out = list(plugin_dirs)
     seen = {d.strip().replace("\\", "/").rstrip("/") for d in out}
@@ -194,6 +204,7 @@ def load_plugins_for_role() -> None:
     if is_unified_role():
         loaded_short: set[str] = set()
         load_apscheduler_plugin_first(role_label="unified", loaded_short=loaded_short)
+        load_ingress_gate_plugin(role_label="unified", loaded_short=loaded_short)
 
         bootstrap_dirs = read_bootstrap_extra_plugin_dirs()
         bootstrap_loaded = 0
@@ -209,7 +220,7 @@ def load_plugins_for_role() -> None:
             short = _short_name(mod)
             if short in UNIFIED_SKIP_PLUGIN_NAMES:
                 continue
-            if short in loaded_short:
+            if mod == _INGRESS_GATE_MODULE or short in loaded_short:
                 continue
             if _load_plugin_module(mod, role_label="unified", loaded_short=loaded_short):
                 loaded += 1
@@ -269,10 +280,7 @@ def load_plugins_for_role() -> None:
 
     load_apscheduler_plugin_first(role_label="worker", loaded_short=loaded_short)
 
-    ingress_gate = "src.plugins._ingress_gate"
-    gate_path = _PLUGINS_ROOT / "_ingress_gate"
-    if gate_path.is_dir() and (gate_path / "__init__.py").is_file():
-        _load_plugin_module(ingress_gate, role_label="worker", loaded_short=loaded_short)
+    load_ingress_gate_plugin(role_label="worker", loaded_short=loaded_short)
 
     bootstrap_dirs = read_bootstrap_extra_plugin_dirs()
     bootstrap_loaded = 0
@@ -288,7 +296,7 @@ def load_plugins_for_role() -> None:
         short = _short_name(mod)
         if short in WORKER_SKIP_PLUGIN_NAMES:
             continue
-        if mod == ingress_gate:
+        if mod == _INGRESS_GATE_MODULE:
             continue
         if short in loaded_short:
             continue

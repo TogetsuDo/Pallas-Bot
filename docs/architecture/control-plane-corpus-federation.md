@@ -3,7 +3,7 @@
 本文描述 **全量 Provision（Tenant + Bootstrap + 联邦）** 与 **外接社区语料** 在同一控制面下的 Bot 侧接入方式。
 
 > **Phase 1**：`local` + **community** 多读源、auto enroll、contribute 默认开、主/备语料读 failover、WebUI 语料联邦配置与 `/corpus-status`。  
-> **Phase 2（进行中）**：**ingress 去重**（`src/federate/` + `_ingress_gate`）已接入；**fed** 第二 PG、`bootstrap`、fleet 快照仍待交付。
+> **Phase 2（进行中）**：**ingress 去重**（`src/federate/` + `ingress_gate`）已接入；**fed** 第二 PG、`bootstrap`、fleet 快照仍待交付。
 
 用户向说明见 [语料联邦（corpus）](../common/corpus/README.md)。
 
@@ -419,7 +419,7 @@ DbConn:
 |------|------|
 | `src/federate/` | ✅ `try_claim_cross_federate_message`、Redis 前缀 claim；⏳ fleet snapshot 客户端 |
 | `src/multi_bot/fleet.py` | ⏳ 合并远程 fleet QQ |
-| `src/plugins/_ingress_gate/__init__.py` | ✅ 联邦 ingress 抢占（fanout 前） |
+| `src/plugins/ingress_gate/__init__.py` | ✅ 联邦 ingress 抢占（fanout 前） |
 | `src/plugins/repeater/__init__.py` | ✅ 复读路径二次校验 |
 
 ### 不宜改动

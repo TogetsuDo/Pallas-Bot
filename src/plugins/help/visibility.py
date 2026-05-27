@@ -10,7 +10,7 @@ _VISIBILITY_FILE = "help_visibility.json"
 BUILTIN_HELP_HIDDEN_PLUGINS = frozenset({
     "pallas_webui",
     "pallas_protocol",
-    "_ingress_gate",
+    "ingress_gate",
     "pallas_console_metrics",
     "community_stats",
     "relogin_forward",

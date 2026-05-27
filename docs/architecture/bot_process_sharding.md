@@ -14,9 +14,9 @@
 
 | 角色 | 来源 |
 |------|------|
-| **unified** | 扫描 **`src/plugins/`**（跳过 `relogin_forward`、`maa_hub` 等分片专用项；不加载 `_ingress_gate`）+ **`pyproject.toml` 里额外的 `plugin_dirs`** + **`[tool.nonebot.plugins]`** + **`extra_plugin_dirs`** |
+| **unified** | 显式加载 **`ingress_gate`**（联邦 + 跨 Bot claim）+ 扫描 **`src/plugins/`**（跳过 `relogin_forward`、`maa_hub`、`pallas_console_metrics` 等分片专用项）+ **`pyproject.toml` 里额外的 `plugin_dirs`** + **`[tool.nonebot.plugins]`** + **`extra_plugin_dirs`** |
 | **hub** | 代码白名单（WebUI、协议端、relogin 等）+ **`[tool.nonebot.plugins]`** 中的 pip 包（如 `nonebot-plugin-apscheduler`） |
-| **worker** | 扫描 **`src/plugins/`**（跳过 webui / protocol / relogin）+ 显式加载 **`_ingress_gate`** + **`pyproject.toml` 里额外的 `plugin_dirs`** + **`[tool.nonebot.plugins]`** |
+| **worker** | 扫描 **`src/plugins/`**（跳过 webui / protocol / relogin）+ 显式加载 **`ingress_gate`** + **`pyproject.toml` 里额外的 `plugin_dirs`** + **`[tool.nonebot.plugins]`** |
 
 从别处下载的插件：用 `nb plugin install` 或 `pip` 安装后，在 **`pyproject.toml`** 声明，例如：
 
@@ -138,7 +138,7 @@ uv run python scripts/sync_shard_protocol_ports.py --dry-run
 - **顶层运行参数**（`bots_per_shard`、`worker_base_port`、`hub_port`、`ws_host` 等）在每次加载/保存注册表时会用 **`.env` / 进程环境** 覆盖，避免磁盘里残留的测试值（如 `bots_per_shard: 2`）影响生产。
 - 新建协议端账号 / relogin「创建牛牛」时自动 `assign_bot_to_shard(qq)`，并写入该牛专属的 `ws_url`（**不会**进入 `test` 分片）；保存时会**裁剪**无账号的空分片行。
 - 注册表异常膨胀时：`uv run python scripts/shard_registry_repair.py compact`；恢复生产 QQ 归属：`restore-production`（会备份当前文件）。
-- 跨进程 **claim**（`data/*/message_claims`）与 worker **`_ingress_gate`** 依赖共享 `data/`。
+- 跨进程 **claim**（`data/*/message_claims`）与 worker **`ingress_gate`** 依赖共享 `data/`。
 
 ### 测试 worker（`registry.test`）
 
@@ -218,8 +218,8 @@ worker 由 `src/shard/coord/worker_poll.py` 轮询 `duel_qte`、`bot_action` 待
 
 ## 多 Bot 同群行为摘要
 
-- **`_ingress_gate`**（worker）：全集群 fleet、@ 定向、ingress claim、greeting/报数 fanout。
-- **fanout 白名单**：WebUI「分片全员同响白名单」或 `PALLAS_INGRESS_FANOUT_GREETING`；**`牛牛报数` / `牛牛出列` 恒 fanout**；**喝酒酒/醒酒口令**（`牛牛喝酒` 等）见 `drink_plaintext` 恒 fanout。
+- **`ingress_gate`**（unified / worker）：fleet、@ 定向、ingress claim、greeting/报数 fanout。
+- **fanout 白名单**：WebUI「入站：全员同响口令」或 `PALLAS_INGRESS_FANOUT_GREETING`；**`牛牛报数` / `牛牛出列` 恒 fanout**；**喝酒酒/醒酒口令**（`牛牛喝酒` 等）见 `drink_plaintext` 恒 fanout。
 - **接话 / 主动发言**：ingress 为 **shard 级 claim**（每条消息一个 worker 片通过，该片上各牛可进 matcher）；复读由**本片代表牛**（最小 QQ）统一学习与接话判定；**近期群消息**经 `coord/repeater_buffer/`（可选 Redis Pub/Sub）同步到各 worker 内存；**learn 上下文**在内存链不足时回退 `MessageRepository.find_recent_in_group`；fanout 仅在群内 **≥2 只可复读在线牛** 时启用（与单进程一致），跨片经 `bot_action` 批量代发。主动发言定时任务仅代表牛 worker 执行。
 - **`duel` / 八角笼**：跨片 `coord/duel_group`、`bot_action`、`duel_qte`。
 - **`repeater`**：忽略全 fleet QQ；**`bot_status`**：建议 `bot_status_list_mode=auto`。

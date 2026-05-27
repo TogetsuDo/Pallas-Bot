@@ -1,4 +1,4 @@
-"""分片 worker：全员同响（跳过 ingress claim）明文白名单。"""
+"""入站门控：全员同响（跳过跨 Bot claim）明文白名单，单进程与分片 worker 均生效。"""
 
 from __future__ import annotations
 
@@ -48,9 +48,9 @@ class IngressFanoutConfig(BaseModel):
     greeting_fanout_texts: str = Field(
         default="牛牛,帕拉斯,牛牛报数,牛牛出列",
         description=field_help(
-            "在多台牛分片部署时，让某些固定口令被每一台牛都响应",
+            "同群多只牛时，让列出的口令由每一只牛都响应（跳过入站抢占）",
             "多个口令用英文逗号分隔；须与群消息全文完全一致（不能多字少字）",
-            "例如招呼、报数、出列等；保存后立即生效，默认可保留示例口令",
+            "单进程与分片均生效；例如招呼、报数、出列等；保存后立即生效",
         ),
     )
 

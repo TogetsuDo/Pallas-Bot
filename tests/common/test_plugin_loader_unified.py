@@ -20,12 +20,16 @@ def clear_shard_settings_cache():
 
 
 def test_unified_skip_plugin_names():
-    assert UNIFIED_SKIP_PLUGIN_NAMES == frozenset({"relogin_forward", "maa_hub"})
+    assert UNIFIED_SKIP_PLUGIN_NAMES == frozenset({
+        "relogin_forward",
+        "maa_hub",
+        "pallas_console_metrics",
+    })
 
 
 def test_discover_plugin_modules_excludes_underscore_packages():
     names = {_short_name(m) for m in _discover_plugin_modules()}
-    assert "_ingress_gate" not in names
+    assert "ingress_gate" in names
     assert "relogin_forward" in names
     assert "maa_hub" in names
 
@@ -41,5 +45,7 @@ def test_unified_role_skips_shard_only_plugins(monkeypatch: pytest.MonkeyPatch):
     loaded = {p.name for p in nonebot.get_loaded_plugins()}
     assert "relogin_forward" not in loaded
     assert "maa_hub" not in loaded
+    assert "pallas_console_metrics" not in loaded
     assert "relogin_bot" in loaded
     assert "maa" in loaded
+    assert "ingress_gate" in loaded

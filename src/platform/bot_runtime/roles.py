@@ -23,16 +23,15 @@ WORKER_SKIP_PLUGIN_NAMES: frozenset[str] = frozenset({
     "relogin_bot",
 })
 
-# unified：跳过仅分片 hub/worker 使用的插件（单进程用 relogin_bot、maa，不经 hub 转发）
+# unified：跳过仅分片 hub/worker 使用的插件（单进程指标由 pallas_webui 挂载）
 UNIFIED_SKIP_PLUGIN_NAMES: frozenset[str] = frozenset({
     "relogin_forward",
     "maa_hub",
+    "pallas_console_metrics",
 })
 
-# unified WebUI 插件目录不展示（含未扫描的 _ingress_gate）
-UNIFIED_CATALOG_HIDDEN_PLUGIN_NAMES: frozenset[str] = UNIFIED_SKIP_PLUGIN_NAMES | frozenset({
-    "_ingress_gate",
-})
+# unified WebUI 插件目录不展示分片专用项
+UNIFIED_CATALOG_HIDDEN_PLUGIN_NAMES: frozenset[str] = UNIFIED_SKIP_PLUGIN_NAMES
 
 
 def bot_role() -> BotRole:

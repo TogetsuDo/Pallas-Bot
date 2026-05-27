@@ -14,7 +14,7 @@ def test_discover_includes_pallas_image():
     pkgs = discover_plugin_packages()
     assert "pallas_image" in pkgs
     assert "pallas_webui" in pkgs
-    assert "_ingress_gate" in pkgs
+    assert "ingress_gate" in pkgs
     assert "pallas_console_metrics" in pkgs
 
 
@@ -59,7 +59,8 @@ def test_catalog_hides_shard_only_in_unified(monkeypatch):
     names = {r["name"] for r in rows}
     assert "relogin_forward" not in names
     assert "maa_hub" not in names
-    assert "_ingress_gate" not in names
+    assert "ingress_gate" in names
+    assert "pallas_console_metrics" not in names
     assert "relogin_bot" in names
     assert "maa" in names
     assert rows[0]["catalog_process_role"] == "unified"
@@ -79,7 +80,7 @@ def test_catalog_shows_shard_only_on_sharded_hub(monkeypatch):
     names = {r["name"] for r in rows}
     assert "relogin_forward" in names
     assert "maa_hub" in names
-    assert "_ingress_gate" in names
+    assert "ingress_gate" in names
 
 
 def test_catalog_lists_worker_plugin(monkeypatch):

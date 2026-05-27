@@ -29,9 +29,6 @@ _INFRA_EXACT = frozenset({
     "nonebot_plugin_alconna",
 })
 
-# 以下以 _ 开头但仍纳入 WebUI 插件目录（含中文 metadata）
-_CATALOG_UNDERSCORE_PACKAGES = frozenset({"_ingress_gate"})
-
 
 def discover_plugin_packages() -> list[str]:
     if not _PLUGINS_ROOT.is_dir():
@@ -40,7 +37,7 @@ def discover_plugin_packages() -> list[str]:
     for entry in sorted(_PLUGINS_ROOT.iterdir()):
         if not entry.is_dir() or entry.name.startswith("."):
             continue
-        if entry.name.startswith("_") and entry.name not in _CATALOG_UNDERSCORE_PACKAGES:
+        if entry.name.startswith("_"):
             continue
         if not (entry / "__init__.py").is_file():
             continue
@@ -174,18 +171,18 @@ def package_load_role(package: str) -> str:
         is_unified_role,
     )
 
-    if package == "_ingress_gate":
-        return "internal"
+    if package == "ingress_gate":
+        return "both"
     if package == "relogin_forward":
         return "worker"
     if package == "maa_hub":
         return "hub"
-    if is_unified_role() or not is_sharding_active():
-        return "both"
     if package == "pallas_console_metrics":
         return "internal"
+    if is_unified_role() or not is_sharding_active():
+        return "both"
     if package.startswith("_"):
-        return "worker" if package == "_ingress_gate" else "internal"
+        return "internal"
     hub_short = {m.rsplit(".", 1)[-1] for m in HUB_PLUGIN_MODULES}
     if package in WORKER_SKIP_PLUGIN_NAMES:
         return "hub"

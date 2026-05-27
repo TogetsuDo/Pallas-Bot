@@ -1,4 +1,4 @@
-"""分片 worker 门控：全员同响类明文（见 ``PALLAS_INGRESS_FANOUT_GREETING`` / WebUI）。"""
+"""入站门控：全员同响类明文（见 ``PALLAS_INGRESS_FANOUT_GREETING`` / WebUI「入站：全员同响口令」）。"""
 
 from __future__ import annotations
 

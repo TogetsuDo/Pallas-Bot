@@ -177,7 +177,7 @@ def _ingress_fanout_section() -> WebuiEnvSection:
 
     return WebuiEnvSection(
         id="ingress_fanout",
-        title="分片：全员同响应口令",
+        title="入站：全员同响口令",
         module_label="src.platform.ingress",
         model_cls=IngressFanoutConfig,
         read_current=get_ingress_fanout_config,
