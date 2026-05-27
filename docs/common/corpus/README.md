@@ -47,7 +47,7 @@ on_remote_failure = "local_only"
 # token = "pc_..."
 ```
 
-等价环境变量：`PALLAS_CORPUS_*`（见 `src/corpus/config.py`）。
+等价环境变量：`PALLAS_CORPUS_*`（见 `src/features/corpus/config.py`）。
 
 ### 开启社区语料
 

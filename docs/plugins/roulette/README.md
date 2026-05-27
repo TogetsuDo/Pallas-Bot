@@ -13,7 +13,7 @@
 
 ## 命令权限
 
-见 [`registry`](../../../src/cmd_perm/registry.py) 与 WebUI；轮盘相关 ID 以代码为准。
+见 [`registry`](../../../src/features/cmd_perm/registry.py) 与 WebUI；轮盘相关 ID 以代码为准。
 
 ## 配置
 

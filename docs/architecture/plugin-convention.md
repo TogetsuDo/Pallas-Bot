@@ -63,7 +63,7 @@
 
 新增或修改**可独立配置权限**的命令时：
 
-- 在 `PluginMetadata.extra["command_permissions"]` 和/或 `src/cmd_perm/registry.py` 声明默认等级；Matcher 使用 `permission_for_command` / `group_message_permission_for_command` 等同 ID。
+- 在 `PluginMetadata.extra["command_permissions"]` 和/或 `src/features/cmd_perm/registry.py` 声明默认等级；Matcher 使用 `permission_for_command` / `group_message_permission_for_command` 等同 ID。
 - **`usage`、`menu_data.trigger_condition` 不写死「群管/群主」等**；帮助二级/三级图的「何人可用」由 `command_permission(s)` 与运行中覆盖动态生成。
 - `usage` 末行可统一指向牛牛帮助（见 [cmd_perm 接入说明](../common/cmd_perm/README.md)）。
 - 与发送者权限无关的额外条件（如本 Bot 须为 QQ 群管）写在 `detail_des` 或 `docs/plugins/<name>/README.md`。
