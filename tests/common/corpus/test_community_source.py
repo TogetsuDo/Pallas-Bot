@@ -40,6 +40,18 @@ async def test_find_by_keywords_failover_to_fallback():
 
 
 @pytest.mark.asyncio
+async def test_find_by_keywords_404_returns_none():
+    async def fake_get(self, url, **kwargs):
+        mock = MagicMock()
+        mock.status_code = 404
+        return mock
+
+    repo = RemoteCorpusRepository(api_base=PRIMARY_CORPUS_API_BASE, token="pc_test")
+    with patch.object(httpx.AsyncClient, "get", fake_get):
+        assert await repo.find_by_keywords("四轮 成品") is None
+
+
+@pytest.mark.asyncio
 async def test_find_by_keywords_all_bases_fail_raises():
     repo = RemoteCorpusRepository(
         api_bases=[PRIMARY_CORPUS_API_BASE, FALLBACK_CORPUS_API_BASE],
