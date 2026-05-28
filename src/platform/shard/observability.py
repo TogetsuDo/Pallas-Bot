@@ -63,6 +63,19 @@ def log_pg_pool_warning_if_needed() -> None:
 
 
 def aggregate_shard_observability() -> dict[str, Any]:
+    from src.platform.shard.ingress_metrics import ingress_metrics_snapshot
+
+    if not is_sharding_active():
+        snap = ingress_metrics_snapshot()
+        return {
+            "sharded": False,
+            "ingress_cluster": snap,
+            "ingress_process": snap,
+            "coord_pending_live": coord_pending_snapshot_sync(),
+            "workers": [],
+            "pg_pool": pg_pool_estimate(),
+        }
+
     from src.platform.shard.console_stats import iter_worker_shard_ids, read_worker_stats_file
 
     workers: list[dict[str, Any]] = []

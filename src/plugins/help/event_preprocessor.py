@@ -4,7 +4,6 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.exception import IgnoredException
 from nonebot.internal.matcher import Matcher
 from nonebot.message import event_preprocessor, run_preprocessor
-from nonebot.utils import run_coro_with_shield
 
 from .plugin_manager import collect_disabled_plugin_names
 
@@ -29,22 +28,10 @@ def get_plugin_name_from_matcher(matcher: Matcher) -> str:
 
 @event_preprocessor
 async def block_disabled_plugins(bot: Bot, event: GroupMessageEvent):
-    """
-    在事件预处理阶段检查插件是否被禁用
-    """
+    """仅维护 event_id 缓存表；禁用列表在 run_preprocessor 首次命中时加载。"""
 
     if not isinstance(event, GroupMessageEvent):
         return
-
-    event_id = f"{bot.self_id}_{event.message_id}_{event.group_id}"
-
-    bot_id = int(bot.self_id)
-    group_id = event.group_id
-
-    disabled_names = await run_coro_with_shield(collect_disabled_plugin_names(bot_id, group_id))
-    _blocked_events[event_id] = disabled_names
-    if disabled_names:
-        logger.debug(f"bot [{bot_id}] help disabled plugins in group [{group_id}]: {', '.join(sorted(disabled_names))}")
 
     if len(_blocked_events) > 10000:
         keys = list(_blocked_events.keys())

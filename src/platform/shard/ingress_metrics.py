@@ -33,12 +33,16 @@ def _rollover_if_needed() -> None:
 
 
 def should_record_ingress_metrics(bot_id: int) -> bool:
-    """分片模式下仅代表牛记数，避免多牛重复放大 won/lost。"""
+    """分片 worker 仅代表牛记数；unified 仅最小 QQ 记数，避免多连接重复放大。"""
+    from src.platform.multi_bot.fleet import get_fleet_bot_ids
     from src.platform.shard.local_representative import is_local_worker_representative
     from src.platform.shard.registry.config import is_sharding_active
 
     if not is_sharding_active():
-        return True
+        fleet = get_fleet_bot_ids()
+        if not fleet:
+            return True
+        return int(bot_id) == min(int(x) for x in fleet)
     return is_local_worker_representative(bot_id)
 
 

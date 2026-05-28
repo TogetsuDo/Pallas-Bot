@@ -193,10 +193,14 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if await _should_skip_duplicate_group_event(event.group_id, event.user_id, norm_raw, event.time):
         return
 
-    from src.platform.federate.ingress import claim_federate_group_message_ingress
+    from src.platform.federate.ingress import (
+        claim_federate_group_message_ingress,
+        federate_ingress_cached_win,
+    )
 
-    if not await claim_federate_group_message_ingress(event, include_message_time=True):
-        return
+    if not federate_ingress_cached_win(event, include_message_time=True):
+        if not await claim_federate_group_message_ingress(event, include_message_time=True):
+            return
 
     from src.platform.shard.registry.config import is_sharding_active
 

@@ -38,6 +38,23 @@ def test_should_record_ingress_metrics_unified(monkeypatch):
         "src.platform.shard.registry.config.is_sharding_active",
         lambda: False,
     )
+    monkeypatch.setattr(
+        "src.platform.multi_bot.fleet.get_fleet_bot_ids",
+        lambda: frozenset({10002, 10001}),
+    )
+    assert should_record_ingress_metrics(10001) is True
+    assert should_record_ingress_metrics(10002) is False
+
+
+def test_should_record_ingress_metrics_unified_empty_fleet(monkeypatch):
+    monkeypatch.setattr(
+        "src.platform.shard.registry.config.is_sharding_active",
+        lambda: False,
+    )
+    monkeypatch.setattr(
+        "src.platform.multi_bot.fleet.get_fleet_bot_ids",
+        lambda: frozenset(),
+    )
     assert should_record_ingress_metrics(12345) is True
 
 

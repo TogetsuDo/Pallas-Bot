@@ -51,11 +51,16 @@ if typing.TYPE_CHECKING:
 
 _INIT_LOG_SINK = False
 _READ_CACHE: dict[str, dict[str, Any]] = {}
+_READ_INFLIGHT: dict[str, asyncio.Task[Any]] = {}
 
 
 def clear_extended_read_cache() -> None:
     """清空控制台扩展 JSON 的进程内读缓存（口令轮换或新登录后调用）。"""
     _READ_CACHE.clear()
+    for task in list(_READ_INFLIGHT.values()):
+        if not task.done():
+            task.cancel()
+    _READ_INFLIGHT.clear()
 
 
 def _cache_value_copy(data: Any) -> Any:
@@ -195,20 +200,35 @@ async def _cached_read(
     hit = _READ_CACHE.get(key)
     if hit and now < float(hit["exp"]):
         return _cache_value_copy(hit["data"])
+
+    inflight = _READ_INFLIGHT.get(key)
+    if inflight is not None and not inflight.done():
+        return await inflight
+
+    async def run() -> Any:
+        t = time.monotonic()
+        stale_hit = _READ_CACHE.get(key)
+        try:
+            data = await loader()
+        except Exception:
+            if stale_hit and t < float(stale_hit["stale_exp"]):
+                logger.warning("Pallas-Bot 控制台: 使用缓存兜底 key={}", key)
+                return _cache_value_copy(stale_hit["data"])
+            raise
+        stored = _cache_value_copy(data)
+        _READ_CACHE[key] = {
+            "data": stored,
+            "exp": t + max(0.05, ttl_sec),
+            "stale_exp": t + max(ttl_sec, stale_sec),
+        }
+        return _cache_value_copy(stored)
+
+    task = asyncio.create_task(run())
+    _READ_INFLIGHT[key] = task
     try:
-        data = await loader()
-    except Exception:
-        if hit and now < float(hit["stale_exp"]):
-            logger.warning("Pallas-Bot 控制台: 使用缓存兜底 key={}", key)
-            return _cache_value_copy(hit["data"])
-        raise
-    stored = _cache_value_copy(data)
-    _READ_CACHE[key] = {
-        "data": stored,
-        "exp": now + max(0.05, ttl_sec),
-        "stale_exp": now + max(ttl_sec, stale_sec),
-    }
-    return _cache_value_copy(stored)
+        return await task
+    finally:
+        _READ_INFLIGHT.pop(key, None)
 
 
 def _drop_read_cache(prefixes: tuple[str, ...]) -> None:
@@ -4072,7 +4092,7 @@ def register_extended_api(
         async def _load() -> dict[str, Any]:
             return await build_corpus_status_snapshot()
 
-        data = await _cached_read(key="corpus-status", loader=_load, ttl_sec=5.0, stale_sec=30.0)
+        data = await _cached_read(key="corpus-status", loader=_load, ttl_sec=15.0, stale_sec=90.0)
         return JSONResponse({"ok": True, "data": data})
 
     @router.get(f"{x}/federation-onboarding", include_in_schema=True)

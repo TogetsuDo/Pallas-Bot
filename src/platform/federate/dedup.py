@@ -61,7 +61,7 @@ async def try_claim_cross_federate_message(
     use_plaintext: bool = True,
     include_message_time: bool = False,
 ) -> bool:
-    """同 federate 池跨 deployment：仅一个 deployment 通过 ingress。"""
+    """同 federate 池跨 deployment：仅一个 deployment 通过 ingress（须 Redis，与 unified/分片无关）。"""
     from src.platform.federate.config import federate_ingress_active
 
     if not federate_ingress_active():

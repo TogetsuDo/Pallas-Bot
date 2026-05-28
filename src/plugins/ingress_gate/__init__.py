@@ -18,7 +18,11 @@ from src.platform.federate.ingress import claim_federate_group_message_ingress
 from src.platform.ingress.cage_plaintext import is_cage_plaintext
 from src.platform.ingress.drink_plaintext import is_drink_plaintext
 from src.platform.ingress.roulette_plaintext import is_roulette_plaintext
-from src.platform.multi_bot.dedup import try_claim_cross_bot_message, try_claim_cross_shard_message
+from src.platform.multi_bot.dedup import (
+    try_claim_cross_bot_message,
+    try_claim_cross_shard_message,
+    try_claim_group_message_once,
+)
 from src.platform.multi_bot.fleet import fleet_bot_ids_contains, get_fleet_bot_ids
 from src.platform.shard.coord.bot_count import should_skip_ingress_claim_for_shard_bot_count
 from src.platform.shard.ingress_fanout import is_ingress_fanout_plaintext
@@ -84,6 +88,23 @@ async def ingress_group_message_gate(bot, event) -> None:
     user_id = int(event.user_id)
     metrics = should_record_ingress_metrics(self_id)
 
+    plain = (event.get_plaintext() or "").strip()
+    body = plain or event.raw_message
+
+    if not is_sharding_active():
+        if not await try_claim_group_message_once(
+            INGRESS_CLAIM_PLUGIN,
+            event.group_id,
+            user_id,
+            body,
+            event.time,
+            use_plaintext=True,
+            include_message_time=True,
+        ):
+            if metrics:
+                record_ingress_claim(won=False)
+            raise IgnoredException("ingress unified once claim lost")
+
     if metrics:
         record_ingress_event()
 
@@ -101,8 +122,6 @@ async def ingress_group_message_gate(bot, event) -> None:
                 record_ingress_early_discard("not_at_target")
             raise IgnoredException("not at-target bot")
 
-    plain = (event.get_plaintext() or "").strip()
-    body = plain or event.raw_message
     if not await claim_federate_group_message_ingress(event):
         if metrics:
             record_ingress_early_discard("federate")
@@ -158,19 +177,6 @@ async def ingress_group_message_gate(bot, event) -> None:
             record_ingress_claim(won=True)
         return
 
-    if not await try_claim_cross_bot_message(
-        INGRESS_CLAIM_PLUGIN,
-        event.group_id,
-        user_id,
-        body,
-        event.time,
-        self_id,
-        use_plaintext=True,
-        include_message_time=True,
-    ):
-        if metrics:
-            record_ingress_claim(won=False)
-        raise IgnoredException("ingress claim lost")
     if metrics:
         record_ingress_claim(won=True)
 

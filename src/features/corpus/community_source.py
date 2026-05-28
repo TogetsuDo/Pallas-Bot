@@ -9,8 +9,19 @@ import httpx
 from nonebot import logger
 
 from src.features.message_scrub.quiet_http_loggers import scrub_http_log_noise
+from src.foundation.config.repo_settings import repo_env_raw_value
 from src.foundation.db.modules import Answer, Ban, Context
 from src.foundation.db.repository import ContextRepositoryExistenceMixin
+
+
+def remote_corpus_timeout_sec() -> float:
+    raw = repo_env_raw_value("PALLAS_CORPUS_REMOTE_TIMEOUT_SEC")
+    if raw is not None:
+        try:
+            return max(0.5, float(str(raw).strip()))
+        except ValueError:
+            pass
+    return 2.0
 
 
 class RemoteCorpusRepository(ContextRepositoryExistenceMixin):
@@ -20,7 +31,7 @@ class RemoteCorpusRepository(ContextRepositoryExistenceMixin):
         api_base: str = "",
         api_bases: list[str] | None = None,
         token: str,
-        timeout_sec: float = 15.0,
+        timeout_sec: float | None = None,
     ) -> None:
         bases = list(api_bases or [])
         if not bases and api_base:
@@ -33,7 +44,7 @@ class RemoteCorpusRepository(ContextRepositoryExistenceMixin):
                 seen.add(norm)
                 self._api_bases.append(norm)
         self._token = (token or "").strip()
-        self._timeout = timeout_sec
+        self._timeout = remote_corpus_timeout_sec() if timeout_sec is None else max(0.5, float(timeout_sec))
 
     def _headers(self) -> dict[str, str]:
         headers = {"Accept": "application/json"}

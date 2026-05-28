@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from nonebot import logger
 
-from src.features.corpus.config import CorpusConfig, get_corpus_config
+from src.features.corpus.config import CorpusConfig, get_corpus_config, remote_corpus_find_enabled
 from src.features.corpus.merge import merge_contexts
 from src.features.corpus.write_fanout import schedule_mirror_insert, schedule_mirror_upsert_answer
 
@@ -41,8 +41,16 @@ class CompositeContextRepository:
         return None
 
     async def find_by_keywords(self, keywords: str) -> Context | None:
+        from src.features.corpus.find_cache import cached_find_by_keywords
+
+        return await cached_find_by_keywords(keywords, self._find_by_keywords_merged)
+
+    async def _find_by_keywords_merged(self, keywords: str) -> Context | None:
         merged: Context | None = None
+        remote_find = remote_corpus_find_enabled(self._cfg)
         for source_id in self._cfg.merge_order:
+            if not remote_find and source_id != "local":
+                continue
             repo = self._repo_for(source_id)
             if repo is None:
                 continue
@@ -59,6 +67,8 @@ class CompositeContextRepository:
     async def context_exists_by_keywords(self, keywords: str) -> bool:
         if await self._local.context_exists_by_keywords(keywords):
             return True
+        if not remote_corpus_find_enabled(self._cfg):
+            return False
         for source_id in ("fed", "community"):
             repo = self._repo_for(source_id)
             if repo is None:
@@ -78,6 +88,9 @@ class CompositeContextRepository:
 
     async def insert(self, context: Context) -> None:
         await self._local.insert(context)
+        from src.features.corpus.find_cache import invalidate_find_cache
+
+        await invalidate_find_cache(context.keywords)
         schedule_mirror_insert(fed=self._fed, community=self._community, cfg=self._cfg, context=context)
 
     async def delete_expired(self, expiration: int, threshold: int) -> None:
@@ -103,6 +116,9 @@ class CompositeContextRepository:
             message=message,
             append_on_existing=append_on_existing,
         )
+        from src.features.corpus.find_cache import invalidate_find_cache
+
+        await invalidate_find_cache(keywords)
         schedule_mirror_upsert_answer(
             fed=self._fed,
             community=self._community,
