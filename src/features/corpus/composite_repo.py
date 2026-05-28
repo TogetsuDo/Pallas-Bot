@@ -64,7 +64,11 @@ class CompositeContextRepository:
             if repo is None:
                 continue
             try:
-                ctx = await repo.find_by_keywords(keywords)
+                find_reply = getattr(repo, "find_by_keywords_for_reply", None)
+                if source_id == "local" and callable(find_reply):
+                    ctx = await find_reply(keywords)
+                else:
+                    ctx = await repo.find_by_keywords(keywords)
             except Exception as e:
                 if source_id != "local" and self._cfg.on_remote_failure == "local_only":
                     logger.warning(f"corpus {source_id} find_by_keywords failed: {e}")

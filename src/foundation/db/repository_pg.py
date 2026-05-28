@@ -21,6 +21,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     delete,
+    func,
     insert,
     inspect,
     literal_column,
@@ -135,7 +136,10 @@ class ContextRow(Base):
 
 class MessageRow(Base):
     __tablename__ = "message"
-    __table_args__ = (Index("ix_message_time", "time"),)
+    __table_args__ = (
+        Index("ix_message_time", "time"),
+        Index("ix_message_group_time", "group_id", "time"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     group_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
@@ -235,6 +239,17 @@ def _ensure_pg_user_config_maa_devices(connection) -> None:
         connection.execute(text("ALTER TABLE user_config ADD COLUMN maa_stage_plan JSONB NOT NULL DEFAULT '[]'::jsonb"))
 
 
+def _ensure_pg_message_group_time_index(connection) -> None:
+    """旧库 message 补 (group_id, time) 复合索引，加速 find_recent_in_group。"""
+    insp = inspect(connection)
+    if not insp.has_table("message"):
+        return
+    names = {idx["name"] for idx in insp.get_indexes("message")}
+    if "ix_message_group_time" in names:
+        return
+    Index("ix_message_group_time", MessageRow.group_id, MessageRow.time).create(connection)
+
+
 def is_pg_initialized() -> bool:
     return _session_factory is not None
 
@@ -268,6 +283,7 @@ async def init_pg(engine: AsyncEngine) -> None:
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_ensure_pg_group_config_blocked_user_ids)
         await conn.run_sync(_ensure_pg_user_config_maa_devices)
+        await conn.run_sync(_ensure_pg_message_group_time_index)
 
 
 async def dispose_pg() -> None:
@@ -288,6 +304,13 @@ _LOAD_RELATED = [
     selectinload(ContextRow.answers).selectinload(ContextAnswerRow.messages),
     selectinload(ContextRow.ban),
 ]
+
+_LOAD_REPLY = [
+    selectinload(ContextRow.answers),
+    selectinload(ContextRow.ban),
+]
+
+_REPLY_MESSAGES_CAP = max(1, int(os.getenv("PALLAS_CORPUS_REPLY_MESSAGES_CAP", "16")))
 
 
 def keywords_hash(keywords: str) -> str:
@@ -350,19 +373,24 @@ async def _insert_bans_batched(session: AsyncSession, context_id: int, bans) -> 
         await session.flush()
 
 
-def row_to_context(row: ContextRow) -> Context:
+def row_to_context(row: ContextRow, *, reply_messages: dict[int, list[str]] | None = None) -> Context:
     from src.foundation.db.modules import Answer, Ban, Context
 
-    answers = [
-        Answer.model_construct(
-            keywords=a.keywords,
-            group_id=a.group_id,
-            count=a.count,
-            time=a.time,
-            messages=[m.message for m in a.messages],
+    answers = []
+    for a in row.answers:
+        if reply_messages is not None:
+            msgs = list(reply_messages.get(int(a.id), []))
+        else:
+            msgs = [m.message for m in a.messages]
+        answers.append(
+            Answer.model_construct(
+                keywords=a.keywords,
+                group_id=a.group_id,
+                count=a.count,
+                time=a.time,
+                messages=msgs,
+            )
         )
-        for a in row.answers
-    ]
     ban = [
         Ban.model_construct(
             keywords=b.keywords,
@@ -418,6 +446,51 @@ class PgContextRepository:
             )
             row = result.scalar_one_or_none()
             return row_to_context(row) if row else None
+
+    async def find_by_keywords_for_reply(self, keywords: str) -> Context | None:
+        """接话路径：每条 Answer 仅拉最近若干条 message，避免热词全量 selectinload。"""
+        khash = keywords_hash(keywords)
+        cap = _REPLY_MESSAGES_CAP
+        async with get_session() as session:
+            result = await session.execute(
+                select(ContextRow).options(*_LOAD_REPLY).where(ContextRow.keywords_hash == khash)
+            )
+            row = result.scalar_one_or_none()
+            if row is None:
+                return None
+            answer_ids = [int(a.id) for a in row.answers]
+            if not answer_ids:
+                return row_to_context(row, reply_messages={})
+            rn = (
+                func
+                .row_number()
+                .over(
+                    partition_by=ContextAnswerMessageRow.answer_id,
+                    order_by=ContextAnswerMessageRow.id.desc(),
+                )
+                .label("rn")
+            )
+            ranked = (
+                select(
+                    ContextAnswerMessageRow.answer_id,
+                    ContextAnswerMessageRow.message,
+                    ContextAnswerMessageRow.id,
+                    rn,
+                )
+                .where(ContextAnswerMessageRow.answer_id.in_(answer_ids))
+                .subquery()
+            )
+            msg_rows = (
+                await session.execute(
+                    select(ranked.c.answer_id, ranked.c.message, ranked.c.id)
+                    .where(ranked.c.rn <= cap)
+                    .order_by(ranked.c.answer_id, ranked.c.id)
+                )
+            ).all()
+            reply_messages: dict[int, list[str]] = {}
+            for aid, message, _mid in msg_rows:
+                reply_messages.setdefault(int(aid), []).append(message)
+            return row_to_context(row, reply_messages=reply_messages)
 
     async def save(self, context: Context) -> None:
         khash = keywords_hash(context.keywords)

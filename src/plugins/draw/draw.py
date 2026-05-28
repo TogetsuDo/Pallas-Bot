@@ -404,8 +404,7 @@ async def pallas_draw_execute(
                         )
                     else:
                         logger.warning(
-                            f"bot [{bot_id}] draw edits exhausted in group [{group_id}], "
-                            f"fallback to generations",
+                            f"bot [{bot_id}] draw edits exhausted in group [{group_id}], fallback to generations",
                         )
 
             payload_model = backends[0].model if backends else cfg.model

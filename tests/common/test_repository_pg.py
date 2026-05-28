@@ -89,6 +89,36 @@ async def test_upsert_answer_is_atomic(pg_engine):
 
 
 @pytest.mark.asyncio
+async def test_find_by_keywords_for_reply_caps_messages(pg_engine, monkeypatch):
+    """接话 find 仅加载最近 N 条 message，全量 find 不受影响。"""
+    from src.foundation.db import repository_pg as pg_mod
+    from src.foundation.db.modules import Context
+
+    monkeypatch.setattr(pg_mod, "_REPLY_MESSAGES_CAP", 8)
+    repo = pg_mod.PgContextRepository()
+    await repo.insert(Context.model_construct(keywords="kw", time=0, trigger_count=1, answers=[], ban=[], clear_time=0))
+
+    async def _u(i: int):
+        await repo.upsert_answer(
+            keywords="kw",
+            group_id=1,
+            answer_keywords="a",
+            answer_time=100 + i,
+            message=f"m{i}",
+            append_on_existing=True,
+        )
+
+    await asyncio.gather(*[_u(i) for i in range(20)])
+
+    lite = await repo.find_by_keywords_for_reply("kw")
+    full = await repo.find_by_keywords("kw")
+    assert lite is not None and full is not None
+    assert len(lite.answers[0].messages) == 8
+    assert len(full.answers[0].messages) == 20
+    assert lite.answers[0].messages[-1] == "m19"
+
+
+@pytest.mark.asyncio
 async def test_upsert_answer_append_flag(pg_engine):
     """append_on_existing=False 时 count 仍 +1，但不把新 message 追加到已有 Answer。"""
     from src.foundation.db.modules import Context
