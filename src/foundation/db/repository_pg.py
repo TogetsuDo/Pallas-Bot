@@ -305,8 +305,7 @@ _LOAD_RELATED = [
     selectinload(ContextRow.ban),
 ]
 
-_LOAD_REPLY = [
-    selectinload(ContextRow.answers),
+_LOAD_REPLY_CTX = [
     selectinload(ContextRow.ban),
 ]
 
@@ -446,20 +445,29 @@ class PgContextRepository:
             return row_to_context(row) if row else None
 
     async def find_by_keywords_for_reply(self, keywords: str) -> Context | None:
-        """接话路径：每条 Answer 仅拉最近若干条 message，避免热词全量 selectinload。"""
+        """接话路径：限量 Answer + 按 context 拉 message，避免热词 IN 参数超限。"""
         khash = keywords_hash(keywords)
-        from src.features.corpus.reply_perf_config import reply_messages_cap
+        from src.features.corpus.reply_perf_config import reply_answers_cap, reply_messages_cap
 
-        cap = reply_messages_cap()
+        msg_cap = reply_messages_cap()
+        ans_cap = reply_answers_cap()
         async with get_session() as session:
             result = await session.execute(
-                select(ContextRow).options(*_LOAD_REPLY).where(ContextRow.keywords_hash == khash)
+                select(ContextRow).options(*_LOAD_REPLY_CTX).where(ContextRow.keywords_hash == khash)
             )
             row = result.scalar_one_or_none()
             if row is None:
                 return None
-            answer_ids = [int(a.id) for a in row.answers]
-            if not answer_ids:
+            ctx_id = int(row.id)
+            ans_result = await session.execute(
+                select(ContextAnswerRow)
+                .where(ContextAnswerRow.context_id == ctx_id)
+                .order_by(ContextAnswerRow.count.desc(), ContextAnswerRow.time.desc())
+                .limit(ans_cap)
+            )
+            answer_rows = list(ans_result.scalars().all())
+            row.answers = answer_rows
+            if not answer_rows:
                 return row_to_context(row, reply_messages={})
             rn = (
                 func
@@ -477,13 +485,14 @@ class PgContextRepository:
                     ContextAnswerMessageRow.id,
                     rn,
                 )
-                .where(ContextAnswerMessageRow.answer_id.in_(answer_ids))
+                .join(ContextAnswerRow, ContextAnswerMessageRow.answer_id == ContextAnswerRow.id)
+                .where(ContextAnswerRow.context_id == ctx_id)
                 .subquery()
             )
             msg_rows = (
                 await session.execute(
                     select(ranked.c.answer_id, ranked.c.message, ranked.c.id)
-                    .where(ranked.c.rn <= cap)
+                    .where(ranked.c.rn <= msg_cap)
                     .order_by(ranked.c.answer_id, ranked.c.id)
                 )
             ).all()

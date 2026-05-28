@@ -121,6 +121,33 @@ async def test_find_by_keywords_for_reply_caps_messages(pg_engine, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_find_by_keywords_for_reply_many_answers_no_in_overflow(pg_engine, monkeypatch):
+    """热词大量 Answer 时不得用超大 IN (...)，接话 find 应成功且受 reply_answers_cap 限制。"""
+    from src.foundation.db import repository_pg as pg_mod
+    from src.foundation.db.modules import Context
+    from src.features.corpus.reply_perf_config import clear_corpus_reply_perf_config_cache
+
+    monkeypatch.setenv("PALLAS_CORPUS_REPLY_ANSWERS_CAP", "64")
+    clear_corpus_reply_perf_config_cache()
+    repo = pg_mod.PgContextRepository()
+    await repo.insert(Context.model_construct(keywords="hot", time=0, trigger_count=1, answers=[], ban=[], clear_time=0))
+
+    for gid in range(80):
+        await repo.upsert_answer(
+            keywords="hot",
+            group_id=gid,
+            answer_keywords=f"a{gid}",
+            answer_time=100 + gid,
+            message=f"m{gid}",
+            append_on_existing=True,
+        )
+
+    lite = await repo.find_by_keywords_for_reply("hot")
+    assert lite is not None
+    assert len(lite.answers) <= 64
+
+
+@pytest.mark.asyncio
 async def test_upsert_answer_append_flag(pg_engine):
     """append_on_existing=False 时 count 仍 +1，但不把新 message 追加到已有 Answer。"""
     from src.foundation.db.modules import Context

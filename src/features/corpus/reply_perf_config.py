@@ -34,6 +34,16 @@ class CorpusReplyPerfConfig(BaseModel):
             "仅影响接话查询，学习与全量清理仍读完整语料",
         ),
     )
+    reply_answers_cap: int = Field(
+        default=512,
+        ge=32,
+        le=4096,
+        description=field_help(
+            "接话时每个关键词最多加载多少条 Answer 候选",
+            "热梗语料 Answer 极多时必须限制，否则查询参数超限或占满内存",
+            "按 count 从高到低取前 N 条；全量 find / 学习路径不受影响",
+        ),
+    )
     find_cache_ttl_sec: int = Field(
         default=45,
         ge=5,
@@ -59,6 +69,7 @@ class CorpusReplyPerfConfig(BaseModel):
 def get_corpus_reply_perf_config() -> CorpusReplyPerfConfig:
     return CorpusReplyPerfConfig(
         reply_messages_cap=_int_read("PALLAS_CORPUS_REPLY_MESSAGES_CAP", 16, min_v=1, max_v=256),
+        reply_answers_cap=_int_read("PALLAS_CORPUS_REPLY_ANSWERS_CAP", 512, min_v=32, max_v=4096),
         find_cache_ttl_sec=_int_read("PALLAS_CORPUS_FIND_CACHE_SEC", 45, min_v=5, max_v=600),
         find_cache_max=_int_read("PALLAS_CORPUS_FIND_CACHE_MAX", 50000, min_v=1000, max_v=200000),
     )
@@ -70,6 +81,10 @@ def clear_corpus_reply_perf_config_cache() -> None:
 
 def reply_messages_cap() -> int:
     return get_corpus_reply_perf_config().reply_messages_cap
+
+
+def reply_answers_cap() -> int:
+    return get_corpus_reply_perf_config().reply_answers_cap
 
 
 def find_cache_ttl_sec() -> float:

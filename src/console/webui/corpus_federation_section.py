@@ -33,6 +33,7 @@ _PHASE1_FIELD_NAMES: tuple[str, ...] = (
 
 _REPLY_PERF_FIELD_NAMES: tuple[str, ...] = (
     "reply_messages_cap",
+    "reply_answers_cap",
     "find_cache_ttl_sec",
     "find_cache_max",
 )
@@ -56,6 +57,7 @@ _FIELD_TO_ENV: dict[str, str] = {
 
 _PERF_FIELD_TO_ENV: dict[str, str] = {
     "reply_messages_cap": "PALLAS_CORPUS_REPLY_MESSAGES_CAP",
+    "reply_answers_cap": "PALLAS_CORPUS_REPLY_ANSWERS_CAP",
     "find_cache_ttl_sec": "PALLAS_CORPUS_FIND_CACHE_SEC",
     "find_cache_max": "PALLAS_CORPUS_FIND_CACHE_MAX",
 }

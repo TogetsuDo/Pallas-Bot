@@ -69,6 +69,7 @@ db = "PallasBot"
 # on_remote_failure = "local_only"
 # 接话/查询性能（亦可在 WebUI「通用配置 → 语料联邦 → 接话与查询性能」）
 # PALLAS_CORPUS_REPLY_MESSAGES_CAP = "16"
+# PALLAS_CORPUS_REPLY_ANSWERS_CAP = "512"
 # PALLAS_CORPUS_FIND_CACHE_SEC = "45"
 # PALLAS_CORPUS_FIND_CACHE_MAX = "50000"
 # 手动指定时跳过 auto enroll：

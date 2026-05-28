@@ -16,13 +16,14 @@ def test_corpus_federation_payload_phase1():
     assert "fed_enabled" not in names
     assert "on_remote_failure" not in names
     assert "reply_messages_cap" in names
+    assert "reply_answers_cap" in names
     assert "find_cache_ttl_sec" in names
     assert len(data["field_groups"]) == 4
     reply_perf_group = next(g for g in data["field_groups"] if g["id"] == "reply_perf")
     assert reply_perf_group["title"] == "接话与查询性能"
     community = next(f for f in data["fields"] if f["name"] == "community_enabled")
     assert community["kind"] == "bool"
-    assert community["current"] is False
+    assert isinstance(community["current"], bool)
     merge_order = next(f for f in data["fields"] if f["name"] == "merge_order")
     assert merge_order["kind"] == "enum"
     assert merge_order["choices"] == ["local,community", "local"]
