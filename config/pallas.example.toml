@@ -6,6 +6,7 @@
 [bootstrap]
 host = "0.0.0.0"
 port = 8088
+# log_level = "INFO"   # 文件落盘与 NoneBot 默认过滤；排障时改为 DEBUG
 # superusers = ["123456789"]
 db_backend = "mongodb"
 # access_token = ""

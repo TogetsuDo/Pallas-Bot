@@ -103,7 +103,16 @@ async def bot_group_role(bot: Bot, event: GroupMessageEvent) -> str:
 
 
 async def bot_is_group_admin(bot: Bot, event: GroupMessageEvent) -> bool:
-    return await bot_group_role(bot, event) in {"admin", "owner"}
+    try:
+        return await bot_group_role(bot, event) in {"admin", "owner"}
+    except Exception as e:
+        logger.debug(
+            "roulette: group role check failed bot={} group={}: {}",
+            event.self_id,
+            event.group_id,
+            e,
+        )
+        return False
 
 
 roulette_player = PlayerList()

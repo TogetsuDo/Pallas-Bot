@@ -37,13 +37,15 @@ def install_shard_process_logging() -> str | None:
 
     from nonebot.log import logger
 
+    from src.foundation.logging import resolve_repo_log_level
+
     path = shard_log_file_path(role=role, shard_id=s.shard_id)
     stem = log_stem_for_shard(role=role, shard_id=s.shard_id)
     maybe_rotate_logs_for_new_session(stem=stem, main_log_path=pathlib.Path(path))
 
     logger.add(
         path,
-        level="DEBUG",
+        level=resolve_repo_log_level(),
         format=_SHARD_LOG_FORMAT,
         rotation=_FILE_ROTATION,
         retention=_FILE_RETENTION,

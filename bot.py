@@ -11,24 +11,25 @@ from src.console.web import install_nonebot_log_sink
 from src.features.ban_gate import start_ban_gate_snapshot, stop_ban_gate_snapshot
 from src.features.message_scrub import start_message_scrub_if_enabled
 from src.foundation.db import init_db
-from src.foundation.logging import apply_stdlib_logging_channel_prefix
+from src.foundation.logging import apply_stdlib_logging_channel_prefix, resolve_repo_log_level
 from src.foundation.paths import plugin_data_dir
 from src.platform.bot_runtime import load_plugins_for_role
 from src.shared.adapters import register_onebot_v11_custom_events
 from src.shared.utils.voice_downloader import ensure_voices
 
 apply_stdlib_logging_channel_prefix()
+file_log_level = resolve_repo_log_level()
 nonebot.init()
 bot_log_dir = plugin_data_dir("bot", create=True)
 logger.add(
     bot_log_dir / "nonebot_{time:YYYY-MM-DD_HH-mm-ss_SSSSSS}.log",
-    level="DEBUG",
+    level=file_log_level,
     rotation="50 MB",
     retention="14 days",
     encoding="utf-8",
     enqueue=True,
 )
-logger.info("bot file log dir: {}", bot_log_dir)
+logger.info("bot file log dir: {} level={}", bot_log_dir, file_log_level)
 start_message_scrub_if_enabled()
 install_nonebot_log_sink()
 driver = nonebot.get_driver()

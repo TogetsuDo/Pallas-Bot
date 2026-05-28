@@ -45,3 +45,19 @@ def apply_stdlib_logging_channel_prefix() -> None:
     import nonebot.log as nb_log
 
     nb_log.LoguruHandler = ChannelLoguruHandler  # type: ignore[misc, assignment]
+
+
+_VALID_LOG_LEVELS = frozenset({"TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"})
+
+
+def resolve_repo_log_level(*, default: str = "INFO") -> str:
+    """读取 LOG_LEVEL（pallas.toml [bootstrap] / webui.json / 环境变量），默认 INFO。"""
+    from src.foundation.config.repo_settings import repo_env_raw_value
+
+    raw = repo_env_raw_value("LOG_LEVEL")
+    if raw is None:
+        return default
+    level = str(raw).strip().upper()
+    if level in _VALID_LOG_LEVELS:
+        return level
+    return default
