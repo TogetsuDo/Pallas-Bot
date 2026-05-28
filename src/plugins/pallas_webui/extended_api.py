@@ -137,6 +137,7 @@ def _hist_bucket_start_local(ts: int, bucket_sec: int) -> int:
 _PLUGIN_RUN_STATS: dict[str, dict[str, Any]] = {}
 _PLUGIN_RUN_TRACKING_INIT = False
 _WORKER_STATS_SYNC_STARTED = False
+_UNIFIED_STATS_SYNC_STARTED = False
 _WORKER_STATS_FAST_FLUSH_SEC = 3.0
 _WORKER_STATS_HIST_FLUSH_SEC = 30.0
 _EMPTY_MATCHER_HIST_SERIES: dict[str, list[Any]] = {
@@ -1200,6 +1201,18 @@ def _console_daily_stats_disk_enabled() -> bool:
     return not is_sharded_worker()
 
 
+def _unified_console_live_stats_enabled() -> bool:
+    """单进程（非 worker、非分片 hub）写 console_live_stats.json 并在启动时恢复。"""
+    from src.platform.bot_runtime.roles import is_sharded_hub, is_sharded_worker
+    from src.platform.shard.registry.config import is_sharding_active
+
+    if is_sharded_worker():
+        return False
+    if is_sharding_active() and is_sharded_hub():
+        return False
+    return True
+
+
 def _day_totals_from_cluster_bot_blob(rec: dict[str, Any], *, fallback_day: str) -> tuple[str, int, int, int]:
     msg = rec.get("msg")
     if not isinstance(msg, dict):
@@ -1482,6 +1495,17 @@ def _collect_worker_console_stats_snapshot(*, include_hist: bool = False) -> dic
     return out
 
 
+def flush_unified_console_live_stats_sync(*, include_hist: bool = False) -> None:
+    if not _unified_console_live_stats_enabled():
+        return
+    from src.plugins.pallas_webui import console_live_stats
+
+    console_live_stats.write_bots_sync(
+        _collect_worker_console_stats_snapshot(include_hist=include_hist),
+        preserve_matcher_hist=not include_hist,
+    )
+
+
 def flush_worker_shard_console_stats_sync(*, include_hist: bool = False) -> None:
     from src.platform.bot_runtime.roles import is_sharded_worker
     from src.platform.shard.console_stats import write_worker_stats_sync
@@ -1511,15 +1535,9 @@ def flush_worker_shard_console_stats_sync(*, include_hist: bool = False) -> None
     )
 
 
-def _restore_worker_console_stats_from_shard_file() -> None:
-    from src.platform.bot_runtime.roles import is_sharded_worker
-    from src.platform.shard.console_stats import load_worker_console_stats_for_boot
-    from src.platform.shard.registry.config import get_shard_registry_settings
-
-    if not is_sharded_worker():
-        return
-    shard_id = int(get_shard_registry_settings().shard_id)
-    bots = load_worker_console_stats_for_boot(shard_id)
+def _apply_console_stats_boot_snapshot(bots: dict[str, dict[str, Any]]) -> bool:
+    if not bots:
+        return False
     today = time.strftime("%Y-%m-%d", time.localtime())
     for sid, rec in bots.items():
         if not isinstance(rec, dict):
@@ -1545,6 +1563,69 @@ def _restore_worker_console_stats_from_shard_file() -> None:
         if isinstance(msg, dict):
             _MSG_STATS[sid] = _msg_stats_shard_import(msg, today=today)
         _CONSOLE_CAL_DAY[sid] = str(bucket.get("day_key") or today)
+    return True
+
+
+def _restore_worker_console_stats_from_shard_file() -> None:
+    from src.platform.bot_runtime.roles import is_sharded_worker
+    from src.platform.shard.console_stats import load_worker_console_stats_for_boot
+    from src.platform.shard.registry.config import get_shard_registry_settings
+
+    if not is_sharded_worker():
+        return
+    shard_id = int(get_shard_registry_settings().shard_id)
+    _apply_console_stats_boot_snapshot(load_worker_console_stats_for_boot(shard_id))
+
+
+def _restore_unified_console_stats_from_daily_disk_fallback() -> bool:
+    """无 live 快照时，从已刷盘的按日汇总恢复当日收/发（升级兼容）。"""
+    from src.plugins.pallas_webui import daily_stats_store
+
+    today = time.strftime("%Y-%m-%d", time.localtime())
+    rows, _, _ = daily_stats_store.load_range(
+        self_id=None,
+        start_day=today,
+        end_day=today,
+    )
+    if not rows:
+        return False
+    for row in rows:
+        sid = str(row.get("self_id") or "").strip()
+        if not sid:
+            continue
+        dr = max(0, int(row.get("received", 0)))
+        ds = max(0, int(row.get("sent", 0)))
+        if dr == 0 and ds == 0:
+            continue
+        mem = _MSG_STATS.setdefault(
+            sid,
+            {
+                "sent": 0,
+                "received": 0,
+                "day_sent": 0,
+                "day_received": 0,
+                "day_key": today,
+                "day_api_total": 0,
+                "day_api_counts": {},
+                "api_call_buckets": [],
+                "msg_traffic_buckets": [],
+            },
+        )
+        mem["day_key"] = today
+        mem["day_received"] = max(int(mem.get("day_received", 0)), dr)
+        mem["day_sent"] = max(int(mem.get("day_sent", 0)), ds)
+        _CONSOLE_CAL_DAY[sid] = today
+    return True
+
+
+def _restore_unified_console_stats_from_live_file() -> bool:
+    if not _unified_console_live_stats_enabled():
+        return False
+    from src.plugins.pallas_webui import console_live_stats
+
+    if _apply_console_stats_boot_snapshot(console_live_stats.read_bots_for_boot()):
+        return True
+    return _restore_unified_console_stats_from_daily_disk_fallback()
 
 
 def start_worker_shard_console_stats_sync() -> None:
@@ -1578,11 +1659,41 @@ def start_worker_shard_console_stats_sync() -> None:
     asyncio.create_task(_hist_loop())
 
 
+def start_unified_console_stats_sync() -> None:
+    global _UNIFIED_STATS_SYNC_STARTED
+    if _UNIFIED_STATS_SYNC_STARTED:
+        return
+    if not _unified_console_live_stats_enabled():
+        return
+    _UNIFIED_STATS_SYNC_STARTED = True
+
+    async def _fast_loop() -> None:
+        while True:
+            try:
+                flush_unified_console_live_stats_sync(include_hist=False)
+                _flush_today_console_daily_stats_disk()
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(_WORKER_STATS_FAST_FLUSH_SEC)
+
+    async def _hist_loop() -> None:
+        while True:
+            try:
+                flush_unified_console_live_stats_sync(include_hist=True)
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(_WORKER_STATS_HIST_FLUSH_SEC)
+
+    asyncio.create_task(_fast_loop())
+    asyncio.create_task(_hist_loop())
+
+
 def ensure_console_metrics_hooks() -> None:
     """单进程 / hub WebUI 与分片 worker（pallas_console_metrics）共用。"""
     _ensure_bot_session_hooks()
     _init_message_tracking()
     _init_plugin_run_tracking()
+    start_unified_console_stats_sync()
 
 
 def _msg_stats_get_mut(sid: str) -> dict[str, Any]:
@@ -2878,7 +2989,7 @@ def _init_plugin_run_tracking() -> None:
 
     if is_sharded_worker():
         _restore_worker_console_stats_from_shard_file()
-    else:
+    elif not _restore_unified_console_stats_from_live_file():
         _load_matcher_duration_logs_from_disk()
 
     from nonebot.message import run_postprocessor, run_preprocessor
