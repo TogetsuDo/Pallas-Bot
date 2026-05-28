@@ -12,6 +12,7 @@ def test_corpus_federation_payload_phase1():
     names = {f["name"] for f in data["fields"]}
     assert "merge_order" in names
     assert "community_enabled" in names
+    assert "remote_find_enabled" in names
     assert "fed_enabled" not in names
     assert "on_remote_failure" not in names
     assert len(data["field_groups"]) == 3
@@ -21,6 +22,9 @@ def test_corpus_federation_payload_phase1():
     merge_order = next(f for f in data["fields"] if f["name"] == "merge_order")
     assert merge_order["kind"] == "enum"
     assert merge_order["choices"] == ["local,community", "local"]
+    remote_find = next(f for f in data["fields"] if f["name"] == "remote_find_enabled")
+    assert remote_find["kind"] == "enum"
+    assert remote_find["choices"] == ["auto", "true", "false"]
 
 
 def test_apply_corpus_federation_patch_writes_env(monkeypatch, tmp_path):

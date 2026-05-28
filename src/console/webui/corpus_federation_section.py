@@ -21,6 +21,7 @@ _PHASE1_FIELD_NAMES: tuple[str, ...] = (
     "community_enabled",
     "auto_enroll",
     "community_contribute",
+    "remote_find_enabled",
     "community_api_base",
     "community_token",
     "community_stats_enabled",
@@ -35,6 +36,7 @@ _FIELD_TO_ENV: dict[str, str] = {
     "community_enabled": "PALLAS_CORPUS_COMMUNITY_ENABLED",
     "auto_enroll": "PALLAS_CORPUS_AUTO_ENROLL",
     "community_contribute": "PALLAS_CORPUS_COMMUNITY_CONTRIBUTE",
+    "remote_find_enabled": "PALLAS_CORPUS_REMOTE_FIND_ENABLED",
     "community_api_base": "PALLAS_CORPUS_COMMUNITY_API_BASE",
     "community_token": "PALLAS_CORPUS_TOKEN",
     "community_stats_enabled": "PALLAS_COMMUNITY_STATS_ENABLED",
@@ -95,7 +97,7 @@ def _field_row(key: str, cur: Any) -> dict[str, Any]:
         row["choices"] = _MERGE_ORDER_CHOICES
         if row["current"] not in _MERGE_ORDER_CHOICES:
             row["current"] = _MERGE_ORDER_CHOICES[0]
-    elif key in ("auto_enroll", "community_contribute"):
+    elif key in ("auto_enroll", "community_contribute", "remote_find_enabled"):
         row["kind"] = "enum"
         row["choices"] = _TRI_CHOICES
     elif key == "community_stats_interval_sec":
@@ -129,6 +131,7 @@ def corpus_federation_payload(*, current_values: dict[str, Any] | None = None) -
                     "community_enabled",
                     "auto_enroll",
                     "community_contribute",
+                    "remote_find_enabled",
                     "community_api_base",
                     "community_token",
                 ],
@@ -184,6 +187,19 @@ def apply_corpus_federation_patch(patch: dict[str, Any]) -> dict[str, Any]:
         clear_corpus_config_cache()
     except Exception:
         pass
+    if "remote_find_enabled" in patch:
+        try:
+            import asyncio
+
+            from src.features.corpus.find_cache import invalidate_find_cache
+
+            coro = invalidate_find_cache(None)
+            try:
+                asyncio.get_running_loop().create_task(coro)
+            except RuntimeError:
+                asyncio.run(coro)
+        except Exception:
+            pass
     try:
         from src.foundation.db.context_repo_access import invalidate_shared_context_repository
 

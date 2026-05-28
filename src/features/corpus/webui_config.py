@@ -75,6 +75,14 @@ class CorpusFederationWebuiConfig(BaseModel):
             "上传前请确认符合共享语料规范",
         ),
     )
+    remote_find_enabled: _TRI = Field(
+        default="auto",
+        description=field_help(
+            "本机语料未命中时是否向共享池拉取",
+            "false / auto：不拉取（省 CPU，默认）；true：miss 时 HTTP 查社区 /context",
+            "与「是否使用共享语料池」独立；仅影响读，不影响学习上传",
+        ),
+    )
     fed_enabled: _TRI = Field(
         default="auto",
         description=field_help(
@@ -164,6 +172,7 @@ def get_corpus_federation_webui_config() -> CorpusFederationWebuiConfig:
         community_enabled=_tristate_read("PALLAS_CORPUS_COMMUNITY_ENABLED", default="false"),
         auto_enroll=_tristate_read("PALLAS_CORPUS_AUTO_ENROLL"),
         community_contribute=_tristate_read("PALLAS_CORPUS_COMMUNITY_CONTRIBUTE"),
+        remote_find_enabled=_tristate_read("PALLAS_CORPUS_REMOTE_FIND_ENABLED"),
         fed_enabled=_tristate_read("PALLAS_CORPUS_FED_ENABLED"),
         fed_contribute=_tristate_read("PALLAS_CORPUS_FED_CONTRIBUTE", default="false") == "true",
         on_remote_failure="local_only",
