@@ -24,6 +24,23 @@ def remote_corpus_timeout_sec() -> float:
     return 2.0
 
 
+_shared_client: httpx.AsyncClient | None = None
+_shared_client_timeout: float | None = None
+_shared_client_lock = asyncio.Lock()
+
+
+async def shared_remote_corpus_client(timeout_sec: float) -> httpx.AsyncClient:
+    global _shared_client, _shared_client_timeout
+    timeout = max(0.5, float(timeout_sec))
+    async with _shared_client_lock:
+        if _shared_client is None or _shared_client_timeout != timeout:
+            if _shared_client is not None:
+                await _shared_client.aclose()
+            _shared_client = httpx.AsyncClient(timeout=timeout)
+            _shared_client_timeout = timeout
+    return _shared_client
+
+
 class RemoteCorpusRepository(ContextRepositoryExistenceMixin):
     def __init__(
         self,
@@ -64,34 +81,34 @@ class RemoteCorpusRepository(ContextRepositoryExistenceMixin):
         last_error: httpx.HTTPError | None = None
         try:
             async with scrub_http_log_noise():
-                async with httpx.AsyncClient(timeout=self._timeout) as client:
-                    for base in self._api_bases:
-                        context_url = f"{base}/context"
-                        if not context_url.startswith("http"):
-                            continue
-                        try:
-                            resp = await client.get(
-                                context_url,
-                                params={"keywords": keywords},
-                                headers=self._headers(),
-                            )
-                        except httpx.HTTPError as e:
-                            last_error = e
-                            logger.warning(f"corpus community find failed api_base={base}: {e}")
-                            continue
-                        if resp.status_code == 401:
-                            asyncio.create_task(self.schedule_auth_refresh())
-                            return None
-                        if resp.status_code == 404:
-                            return None
-                        if resp.status_code != 200:
-                            preview = (resp.text or "")[:200]
-                            logger.warning(f"corpus community find HTTP {resp.status_code} api_base={base}: {preview}")
-                            continue
-                        data = resp.json()
-                        if not isinstance(data, dict):
-                            return None
-                        return self._context_from_payload(data)
+                client = await shared_remote_corpus_client(self._timeout)
+                for base in self._api_bases:
+                    context_url = f"{base}/context"
+                    if not context_url.startswith("http"):
+                        continue
+                    try:
+                        resp = await client.get(
+                            context_url,
+                            params={"keywords": keywords},
+                            headers=self._headers(),
+                        )
+                    except httpx.HTTPError as e:
+                        last_error = e
+                        logger.warning(f"corpus community find failed api_base={base}: {e}")
+                        continue
+                    if resp.status_code == 401:
+                        asyncio.create_task(self.schedule_auth_refresh())
+                        return None
+                    if resp.status_code == 404:
+                        return None
+                    if resp.status_code != 200:
+                        preview = (resp.text or "")[:200]
+                        logger.warning(f"corpus community find HTTP {resp.status_code} api_base={base}: {preview}")
+                        continue
+                    data = resp.json()
+                    if not isinstance(data, dict):
+                        return None
+                    return self._context_from_payload(data)
         except httpx.HTTPError as e:
             logger.warning(f"corpus community find failed: {e}")
             raise
@@ -142,23 +159,23 @@ class RemoteCorpusRepository(ContextRepositoryExistenceMixin):
         last_error: httpx.HTTPError | None = None
         try:
             async with scrub_http_log_noise():
-                async with httpx.AsyncClient(timeout=self._timeout) as client:
-                    for base in self._api_bases:
-                        contribute_url = f"{base}/contribute"
-                        if not contribute_url.startswith("http"):
-                            continue
-                        try:
-                            resp = await client.post(contribute_url, json=body, headers=self._headers())
-                        except httpx.HTTPError as e:
-                            last_error = e
-                            logger.warning(f"corpus community contribute failed api_base={base}: {e}")
-                            continue
-                        if resp.status_code in (200, 202):
-                            return
-                        body_preview = (resp.text or "")[:200]
-                        logger.warning(
-                            f"corpus community contribute HTTP {resp.status_code} api_base={base}: {body_preview}"
-                        )
+                client = await shared_remote_corpus_client(self._timeout)
+                for base in self._api_bases:
+                    contribute_url = f"{base}/contribute"
+                    if not contribute_url.startswith("http"):
+                        continue
+                    try:
+                        resp = await client.post(contribute_url, json=body, headers=self._headers())
+                    except httpx.HTTPError as e:
+                        last_error = e
+                        logger.warning(f"corpus community contribute failed api_base={base}: {e}")
+                        continue
+                    if resp.status_code in (200, 202):
+                        return
+                    body_preview = (resp.text or "")[:200]
+                    logger.warning(
+                        f"corpus community contribute HTTP {resp.status_code} api_base={base}: {body_preview}"
+                    )
         except httpx.HTTPError as e:
             logger.warning(f"corpus community contribute failed: {e}")
             raise

@@ -45,9 +45,18 @@ class CompositeContextRepository:
 
         return await cached_find_by_keywords(keywords, self._find_by_keywords_merged)
 
+    @staticmethod
+    def local_first_has_answers(ctx: Context | None) -> bool:
+        return ctx is not None and bool(ctx.answers)
+
+    async def local_context_exists_by_keywords(self, keywords: str) -> bool:
+        """学习路径专用：仅查本地库，不触发 fed/community。"""
+        return await self._local.context_exists_by_keywords(keywords)
+
     async def _find_by_keywords_merged(self, keywords: str) -> Context | None:
         merged: Context | None = None
         remote_find = remote_corpus_find_enabled(self._cfg)
+        strategy = str(self._cfg.merge_strategy or "local_first")
         for source_id in self._cfg.merge_order:
             if not remote_find and source_id != "local":
                 continue
@@ -61,7 +70,9 @@ class CompositeContextRepository:
                     logger.warning(f"corpus {source_id} find_by_keywords failed: {e}")
                     continue
                 raise
-            merged = merge_contexts(merged, ctx, strategy=self._cfg.merge_strategy)
+            merged = merge_contexts(merged, ctx, strategy=strategy)
+            if source_id == "local" and strategy == "local_first" and self.local_first_has_answers(merged):
+                return merged
         return merged
 
     async def context_exists_by_keywords(self, keywords: str) -> bool:

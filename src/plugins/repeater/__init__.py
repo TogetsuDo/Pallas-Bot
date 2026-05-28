@@ -190,6 +190,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
         message_id_dict[group_id].append(message_id)
 
     norm_raw = _normalize_group_raw_message(event.raw_message)
+    plain_body = event.get_plaintext()
     if await _should_skip_duplicate_group_event(event.group_id, event.user_id, norm_raw, event.time):
         return
 
@@ -212,7 +213,7 @@ async def _(bot: Bot, event: GroupMessageEvent):
             "repeater_ingress",
             event.group_id,
             event.user_id,
-            event.get_plaintext(),
+            plain_body,
             event.time,
         ):
             return
@@ -227,27 +228,28 @@ async def _(bot: Bot, event: GroupMessageEvent):
                 "repeater_reply",
                 event.group_id,
                 event.user_id,
-                event.get_plaintext(),
+                plain_body,
                 event.time,
                 int(bot.self_id),
                 use_plaintext=True,
             ):
                 return
 
-    if await is_message_scrub_blocked_async(plain_text=event.get_plaintext(), raw_message=norm_raw):
-        pv = scrub_intercept_log_preview(event.get_plaintext(), norm_raw)
+    if await is_message_scrub_blocked_async(plain_text=plain_body, raw_message=norm_raw):
+        pv = scrub_intercept_log_preview(plain_body, norm_raw)
         logger.info(
             f"bot [{event.self_id}] repeater capture skipped (message_scrub) in group [{event.group_id}] "
             f"user [{event.user_id}] msg_id [{event.message_id}] preview [{pv}]"
         )
         return
 
+    config = BotConfig(event.self_id, event.group_id)
+    can_reply = await config.is_cooldown("repeat")
     chat: Chat = Chat(event)
 
-    config = BotConfig(event.self_id, event.group_id)
     bundle = None
     fanout_gate = None
-    if await config.is_cooldown("repeat"):
+    if can_reply:
         from .fanout_reply import resolve_fanout_gate
 
         fanout_gate = await resolve_fanout_gate(event)

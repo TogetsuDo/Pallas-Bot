@@ -185,10 +185,12 @@ def corpus_composite_enabled(cfg: CorpusConfig | None = None) -> bool:
 
 
 def remote_corpus_find_enabled(cfg: CorpusConfig | None = None) -> bool:
-    """local 未命中时是否继续远程 find；false 可显著降低复读 HTTP（见 PALLAS_CORPUS_REMOTE_FIND_ENABLED）。"""
+    """local 未命中时是否继续远程 find（PALLAS_CORPUS_REMOTE_FIND_ENABLED）。
+
+    - false / 未配置时的 auto：不拉远程（默认，省 CPU）
+    - true：local 未命中时仍请求 community
+    """
     flag = parse_tristate(setting_str(f"{_PREFIX}REMOTE_FIND_ENABLED", "auto"), default=None)
-    if flag is False:
-        return False
     if flag is True:
         return True
-    return True
+    return False

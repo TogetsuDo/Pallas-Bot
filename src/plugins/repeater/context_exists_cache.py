@@ -57,7 +57,11 @@ async def note_context_exists(keywords: str) -> None:
 
 
 async def _fetch_exists_db(keywords: str) -> bool:
-    return await context_repo.context_exists_by_keywords(keywords)
+    repo = context_repo
+    local_exists = getattr(repo, "local_context_exists_by_keywords", None)
+    if callable(local_exists):
+        return await local_exists(keywords)
+    return await repo.context_exists_by_keywords(keywords)
 
 
 async def _await_exists_deduped(keywords: str) -> bool:

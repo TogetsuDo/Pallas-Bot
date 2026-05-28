@@ -91,7 +91,8 @@ async def test_composite_find_merges_sources(corpus_cfg: CorpusConfig):
         },
     )
     repo = CompositeContextRepository(local, community=remote, cfg=corpus_cfg)
-    ctx = await repo.find_by_keywords("kw")
+    with patch("src.features.corpus.composite_repo.remote_corpus_find_enabled", lambda _cfg=None: True):
+        ctx = await repo.find_by_keywords("kw")
     assert ctx is not None
     by_kw = {a.keywords: a for a in ctx.answers}
     assert by_kw["a"].count == 5
@@ -107,6 +108,41 @@ async def test_composite_upsert_writes_local_and_schedules_mirror(corpus_cfg: Co
         await repo.upsert_answer("kw", 1, "ans", 99, "msg", True)
     assert len(local.upsert_calls) == 1
     mock_schedule.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_local_first_skips_remote_when_local_has_answers():
+    local = FakeContextRepo(
+        label="local",
+        contexts={
+            "kw": Context.model_construct(
+                keywords="kw",
+                time=1,
+                trigger_count=1,
+                answers=[Answer(keywords="a", group_id=1, count=1, time=1, messages=["a"])],
+                ban=[],
+                clear_time=0,
+            )
+        },
+    )
+    remote = FakeContextRepo(label="community")
+    remote.find_by_keywords = AsyncMock(return_value=None)  # type: ignore[method-assign]
+    cfg = CorpusConfig(merge_order=["local", "community"], merge_strategy="local_first")
+    repo = CompositeContextRepository(local, community=remote, cfg=cfg)
+    ctx = await repo.find_by_keywords("kw")
+    assert ctx is not None
+    remote.find_by_keywords.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_local_context_exists_does_not_hit_remote():
+    local = FakeContextRepo(label="local", contexts={})
+    remote = FakeContextRepo(label="community")
+    remote.context_exists_by_keywords = AsyncMock(return_value=True)  # type: ignore[method-assign]
+    cfg = CorpusConfig(merge_order=["local", "community"], merge_strategy="local_first")
+    repo = CompositeContextRepository(local, community=remote, cfg=cfg)
+    assert await repo.local_context_exists_by_keywords("kw") is False
+    remote.context_exists_by_keywords.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -127,7 +163,8 @@ async def test_composite_remote_find_failure_degrades(corpus_cfg: CorpusConfig):
     remote = FakeContextRepo(label="community")
     remote.find_by_keywords = AsyncMock(side_effect=RuntimeError("network"))  # type: ignore[method-assign]
     repo = CompositeContextRepository(local, community=remote, cfg=corpus_cfg)
-    ctx = await repo.find_by_keywords("kw")
+    with patch("src.features.corpus.composite_repo.remote_corpus_find_enabled", lambda _cfg=None: True):
+        ctx = await repo.find_by_keywords("kw")
     assert ctx is not None
     assert len(ctx.answers) == 1
 
