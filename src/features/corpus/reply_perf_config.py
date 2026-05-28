@@ -1,0 +1,80 @@
+"""语料接话性能：WebUI / 环境变量可读，供热路径与 find 缓存使用。"""
+
+from __future__ import annotations
+
+from functools import lru_cache
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from src.console.webui.field_help import field_help
+from src.foundation.config.repo_settings import repo_env_raw_value
+
+
+def _int_read(env_key: str, default: int, *, min_v: int, max_v: int) -> int:
+    raw = repo_env_raw_value(env_key)
+    if raw is None:
+        return default
+    try:
+        value = int(str(raw).strip())
+    except ValueError:
+        return default
+    return max(min_v, min(max_v, value))
+
+
+class CorpusReplyPerfConfig(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    reply_messages_cap: int = Field(
+        default=16,
+        ge=1,
+        le=256,
+        description=field_help(
+            "接话时每条语料答案最多加载多少条历史回复",
+            "填 16～48：越大越完整、尖峰读库越重；热梗群可略调高",
+            "仅影响接话查询，学习与全量清理仍读完整语料",
+        ),
+    )
+    find_cache_ttl_sec: int = Field(
+        default=45,
+        ge=5,
+        le=600,
+        description=field_help(
+            "本机语料查询结果在内存中保留的秒数",
+            "重复句越多越省数据库；过大可能短暂用到稍旧的接话候选",
+            "保存后清空当前缓存并立即按新值生效",
+        ),
+    )
+    find_cache_max: int = Field(
+        default=50000,
+        ge=1000,
+        le=200000,
+        description=field_help(
+            "语料查询内存缓存最多保留多少条关键词",
+            "超高活跃群可调高；过大占用更多内存",
+        ),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_corpus_reply_perf_config() -> CorpusReplyPerfConfig:
+    return CorpusReplyPerfConfig(
+        reply_messages_cap=_int_read("PALLAS_CORPUS_REPLY_MESSAGES_CAP", 16, min_v=1, max_v=256),
+        find_cache_ttl_sec=_int_read("PALLAS_CORPUS_FIND_CACHE_SEC", 45, min_v=5, max_v=600),
+        find_cache_max=_int_read("PALLAS_CORPUS_FIND_CACHE_MAX", 50000, min_v=1000, max_v=200000),
+    )
+
+
+def clear_corpus_reply_perf_config_cache() -> None:
+    get_corpus_reply_perf_config.cache_clear()
+
+
+def reply_messages_cap() -> int:
+    return get_corpus_reply_perf_config().reply_messages_cap
+
+
+def find_cache_ttl_sec() -> float:
+    return float(get_corpus_reply_perf_config().find_cache_ttl_sec)
+
+
+def find_cache_max_entries() -> int:
+    return get_corpus_reply_perf_config().find_cache_max

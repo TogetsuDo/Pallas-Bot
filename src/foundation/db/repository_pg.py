@@ -310,8 +310,6 @@ _LOAD_REPLY = [
     selectinload(ContextRow.ban),
 ]
 
-_REPLY_MESSAGES_CAP = max(1, int(os.getenv("PALLAS_CORPUS_REPLY_MESSAGES_CAP", "16")))
-
 
 def keywords_hash(keywords: str) -> str:
     # 先剥除 \x00 再哈希，与 ContextRow.keywords 实际存储值保持一致
@@ -450,7 +448,9 @@ class PgContextRepository:
     async def find_by_keywords_for_reply(self, keywords: str) -> Context | None:
         """接话路径：每条 Answer 仅拉最近若干条 message，避免热词全量 selectinload。"""
         khash = keywords_hash(keywords)
-        cap = _REPLY_MESSAGES_CAP
+        from src.features.corpus.reply_perf_config import reply_messages_cap
+
+        cap = reply_messages_cap()
         async with get_session() as session:
             result = await session.execute(
                 select(ContextRow).options(*_LOAD_REPLY).where(ContextRow.keywords_hash == khash)

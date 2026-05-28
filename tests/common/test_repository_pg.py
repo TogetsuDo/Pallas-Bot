@@ -93,8 +93,10 @@ async def test_find_by_keywords_for_reply_caps_messages(pg_engine, monkeypatch):
     """接话 find 仅加载最近 N 条 message，全量 find 不受影响。"""
     from src.foundation.db import repository_pg as pg_mod
     from src.foundation.db.modules import Context
+    from src.features.corpus.reply_perf_config import clear_corpus_reply_perf_config_cache
 
-    monkeypatch.setattr(pg_mod, "_REPLY_MESSAGES_CAP", 8)
+    monkeypatch.setenv("PALLAS_CORPUS_REPLY_MESSAGES_CAP", "8")
+    clear_corpus_reply_perf_config_cache()
     repo = pg_mod.PgContextRepository()
     await repo.insert(Context.model_construct(keywords="kw", time=0, trigger_count=1, answers=[], ban=[], clear_time=0))
 

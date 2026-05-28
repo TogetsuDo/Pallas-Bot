@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import time
 from typing import TYPE_CHECKING
+
+from src.features.corpus.reply_perf_config import find_cache_max_entries, find_cache_ttl_sec
 
 if TYPE_CHECKING:
     from src.foundation.db.modules import Context
 
-_FIND_CACHE_TTL_SEC = float(os.getenv("PALLAS_CORPUS_FIND_CACHE_SEC", "45"))
-_FIND_CACHE_MAX = int(os.getenv("PALLAS_CORPUS_FIND_CACHE_MAX", "50000"))
 _find_cache: dict[str, tuple[float, Context | None]] = {}
 _find_lock = asyncio.Lock()
 
@@ -31,16 +30,17 @@ async def cached_find_by_keywords(
             if now < exp:
                 return val
             _find_cache.pop(key, None)
-        if len(_find_cache) > _FIND_CACHE_MAX:
+        cache_max = find_cache_max_entries()
+        if len(_find_cache) > cache_max:
             stale = [k for k, (e, _) in _find_cache.items() if now >= e]
             for k in stale:
                 _find_cache.pop(k, None)
-            if len(_find_cache) > _FIND_CACHE_MAX:
+            if len(_find_cache) > cache_max:
                 _find_cache.clear()
 
     ctx = await loader(key)
 
-    expire_at = time.monotonic() + _FIND_CACHE_TTL_SEC
+    expire_at = time.monotonic() + find_cache_ttl_sec()
     async with _find_lock:
         _find_cache[key] = (expire_at, ctx)
     return ctx
