@@ -19,6 +19,7 @@ import asyncio
 import uuid
 
 import pytest
+from sqlalchemy.dialects import postgresql
 
 
 @pytest.mark.asyncio
@@ -91,9 +92,9 @@ async def test_upsert_answer_is_atomic(pg_engine):
 @pytest.mark.asyncio
 async def test_find_by_keywords_for_reply_caps_messages(pg_engine, monkeypatch):
     """接话 find 仅加载最近 N 条 message，全量 find 不受影响。"""
+    from src.features.corpus.reply_perf_config import clear_corpus_reply_perf_config_cache
     from src.foundation.db import repository_pg as pg_mod
     from src.foundation.db.modules import Context
-    from src.features.corpus.reply_perf_config import clear_corpus_reply_perf_config_cache
 
     monkeypatch.setenv("PALLAS_CORPUS_REPLY_MESSAGES_CAP", "8")
     clear_corpus_reply_perf_config_cache()
@@ -114,23 +115,38 @@ async def test_find_by_keywords_for_reply_caps_messages(pg_engine, monkeypatch):
 
     lite = await repo.find_by_keywords_for_reply("kw")
     full = await repo.find_by_keywords("kw")
-    assert lite is not None and full is not None
+    assert lite is not None
+    assert full is not None
     assert len(lite.answers[0].messages) == 8
     assert len(full.answers[0].messages) == 20
     assert lite.answers[0].messages[-1] == "m19"
 
 
+def test_reply_message_query_limits_to_selected_answer_ids():
+    """接话消息查询必须只扫描已入选的 answer_id，不能退回按整个 context 扫描。"""
+    from src.foundation.db import repository_pg as pg_mod
+
+    stmt = pg_mod.build_reply_message_query(answer_ids=[11, 22], msg_cap=8)
+    sql = str(stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+
+    assert "context_answer_message.answer_id IN (11, 22)" in sql
+    assert "JOIN context_answer" not in sql
+    assert "context_answer.context_id" not in sql
+
+
 @pytest.mark.asyncio
 async def test_find_by_keywords_for_reply_many_answers_no_in_overflow(pg_engine, monkeypatch):
     """热词大量 Answer 时不得用超大 IN (...)，接话 find 应成功且受 reply_answers_cap 限制。"""
+    from src.features.corpus.reply_perf_config import clear_corpus_reply_perf_config_cache
     from src.foundation.db import repository_pg as pg_mod
     from src.foundation.db.modules import Context
-    from src.features.corpus.reply_perf_config import clear_corpus_reply_perf_config_cache
 
     monkeypatch.setenv("PALLAS_CORPUS_REPLY_ANSWERS_CAP", "64")
     clear_corpus_reply_perf_config_cache()
     repo = pg_mod.PgContextRepository()
-    await repo.insert(Context.model_construct(keywords="hot", time=0, trigger_count=1, answers=[], ban=[], clear_time=0))
+    await repo.insert(
+        Context.model_construct(keywords="hot", time=0, trigger_count=1, answers=[], ban=[], clear_time=0)
+    )
 
     for gid in range(80):
         await repo.upsert_answer(

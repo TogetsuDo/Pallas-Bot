@@ -442,6 +442,32 @@ def row_to_context(row: ContextRow, *, reply_messages: dict[int, list[str]] | No
     )
 
 
+def build_reply_message_query(answer_ids: list[int], msg_cap: int):
+    rn = (
+        func.row_number()
+        .over(
+            partition_by=ContextAnswerMessageRow.answer_id,
+            order_by=ContextAnswerMessageRow.id.desc(),
+        )
+        .label("rn")
+    )
+    ranked = (
+        select(
+            ContextAnswerMessageRow.answer_id,
+            ContextAnswerMessageRow.message,
+            ContextAnswerMessageRow.id,
+            rn,
+        )
+        .where(ContextAnswerMessageRow.answer_id.in_(answer_ids))
+        .subquery()
+    )
+    return (
+        select(ranked.c.answer_id, ranked.c.message, ranked.c.id)
+        .where(ranked.c.rn <= msg_cap)
+        .order_by(ranked.c.answer_id, ranked.c.id)
+    )
+
+
 def row_to_blacklist(row: BlackListRow):
     from src.foundation.db.modules import BlackList
 
@@ -480,7 +506,7 @@ class PgContextRepository:
             return row_to_context(row) if row else None
 
     async def find_by_keywords_for_reply(self, keywords: str) -> Context | None:
-        """接话路径：限量 Answer + 按 context 拉 message，避免热词 IN 参数超限。"""
+        """接话路径：限量 Answer + 仅按入选 answer 拉 message，避免热词全量扫描。"""
         khash = keywords_hash(keywords)
         from src.features.corpus.reply_perf_config import reply_answers_cap, reply_messages_cap
 
@@ -504,33 +530,8 @@ class PgContextRepository:
             row.answers = answer_rows
             if not answer_rows:
                 return row_to_context(row, reply_messages={})
-            rn = (
-                func
-                .row_number()
-                .over(
-                    partition_by=ContextAnswerMessageRow.answer_id,
-                    order_by=ContextAnswerMessageRow.id.desc(),
-                )
-                .label("rn")
-            )
-            ranked = (
-                select(
-                    ContextAnswerMessageRow.answer_id,
-                    ContextAnswerMessageRow.message,
-                    ContextAnswerMessageRow.id,
-                    rn,
-                )
-                .join(ContextAnswerRow, ContextAnswerMessageRow.answer_id == ContextAnswerRow.id)
-                .where(ContextAnswerRow.context_id == ctx_id)
-                .subquery()
-            )
-            msg_rows = (
-                await session.execute(
-                    select(ranked.c.answer_id, ranked.c.message, ranked.c.id)
-                    .where(ranked.c.rn <= msg_cap)
-                    .order_by(ranked.c.answer_id, ranked.c.id)
-                )
-            ).all()
+            answer_ids = [int(answer.id) for answer in answer_rows]
+            msg_rows = (await session.execute(build_reply_message_query(answer_ids, msg_cap))).all()
             reply_messages: dict[int, list[str]] = {}
             for aid, message, _mid in msg_rows:
                 reply_messages.setdefault(int(aid), []).append(message)
