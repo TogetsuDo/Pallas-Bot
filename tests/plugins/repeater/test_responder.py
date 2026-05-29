@@ -218,6 +218,47 @@ async def test_context_find_returns_none_no_context():
 
 
 @pytest.mark.asyncio
+async def test_context_find_skips_repo_lookup_when_keywords_empty():
+    from src.plugins.repeater.responder import Responder
+
+    group_id = 124
+    bot_id = 457
+    chat_data = SimpleNamespace(
+        group_id=group_id,
+        raw_message="[CQ:image,url=x]",
+        keywords="",
+        bot_id=bot_id,
+        keywords_len=0,
+        to_me=False,
+        is_image=False,
+    )
+    config = _Config(0)
+    reply_dict = defaultdict(lambda: defaultdict(list))
+    message_dict = defaultdict(list)
+    recent_topics = defaultdict(lambda: deque(maxlen=16))
+
+    try:
+        with patch(
+            "src.plugins.repeater.responder.context_repo.find_by_keywords_for_reply",
+            new_callable=AsyncMock,
+            create=True,
+        ) as mock_find_reply:
+            result = await Responder._context_find(
+                cast("Any", chat_data),
+                cast("Any", config),
+                reply_dict,
+                message_dict,
+                recent_topics,
+            )
+            assert result is None
+            mock_find_reply.assert_not_called()
+    finally:
+        reply_dict.clear()
+        message_dict.clear()
+        recent_topics.clear()
+
+
+@pytest.mark.asyncio
 async def test_context_find_threshold_filtering():
     from src.foundation.db import Answer, Context
     from src.plugins.repeater.responder import Responder

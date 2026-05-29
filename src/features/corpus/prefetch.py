@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import TYPE_CHECKING
 
 from nonebot import get_driver, logger
@@ -16,9 +17,12 @@ if TYPE_CHECKING:
 _prefetch_queue: asyncio.Queue[str] | None = None
 _prefetch_tasks: list[asyncio.Task[None]] = []
 _scheduled_keys: set[str] = set()
+_recent_prefetch_until: dict[str, float] = {}
 _prefetch_dropped_full: int = 0
 _prefetch_completed: int = 0
 _QUEUE_MAX = 4096
+_RECENT_PREFETCH_TTL_SEC = 20.0
+_RECENT_PREFETCH_MAX = 50_000
 
 
 def prefetch_queue() -> asyncio.Queue[str]:
@@ -29,18 +33,31 @@ def prefetch_queue() -> asyncio.Queue[str]:
 
 
 def clear_corpus_prefetch_runtime_state() -> None:
-    global _prefetch_queue, _scheduled_keys
+    global _prefetch_queue, _scheduled_keys, _recent_prefetch_until
     _prefetch_queue = None
     _scheduled_keys.clear()
+    _recent_prefetch_until.clear()
 
 
 def schedule_corpus_prefetch(keywords: str) -> None:
     """接话 local miss 时调用；不阻塞热路径。"""
     if remote_corpus_find_mode() != "prefetch":
         return
+    now = time.monotonic()
     key = (keywords or "").strip()
     if not key or key in _scheduled_keys:
         return
+    until = _recent_prefetch_until.get(key)
+    if until is not None:
+        if now < until:
+            return
+        _recent_prefetch_until.pop(key, None)
+    if len(_recent_prefetch_until) > _RECENT_PREFETCH_MAX:
+        stale = [k for k, exp in _recent_prefetch_until.items() if now >= exp]
+        for stale_key in stale:
+            _recent_prefetch_until.pop(stale_key, None)
+        if len(_recent_prefetch_until) > _RECENT_PREFETCH_MAX:
+            _recent_prefetch_until.clear()
     try:
         prefetch_queue().put_nowait(key)
         _scheduled_keys.add(key)
@@ -127,10 +144,11 @@ async def execute_corpus_prefetch(keywords: str) -> None:
 async def run_prefetch_consumer() -> None:
     while True:
         key = await prefetch_queue().get()
-        _scheduled_keys.discard(key)
         try:
             await execute_corpus_prefetch(key)
         finally:
+            _scheduled_keys.discard(key)
+            _recent_prefetch_until[key] = time.monotonic() + _RECENT_PREFETCH_TTL_SEC
             prefetch_queue().task_done()
 
 

@@ -692,6 +692,73 @@ class PgContextRepository:
             )
             await session.commit()
 
+    async def learn_answer(
+        self,
+        *,
+        keywords: str,
+        group_id: int,
+        answer_keywords: str,
+        answer_time: int,
+        message: str,
+        append_on_existing: bool,
+    ) -> bool:
+        """
+        学习热路径专用：
+          - Context 不存在时直接原子创建并写入首条 Answer
+          - Context 已存在时在同一事务内原子 upsert Answer
+        返回值表示本次是否新建了 Context。
+        """
+        khash = keywords_hash(keywords)
+        kw_s = _s(keywords) or ""
+        ans_kw_s = _s(answer_keywords) or ""
+        msg_s = _s(message) or ""
+
+        async with get_session() as session:
+            ctx_stmt = pg_insert(ContextRow).values(
+                keywords=kw_s,
+                keywords_hash=khash,
+                time=answer_time,
+                trigger_count=1,
+                clear_time=0,
+            )
+            ctx_stmt = ctx_stmt.on_conflict_do_update(
+                index_elements=[ContextRow.keywords_hash],
+                set_={
+                    "trigger_count": ContextRow.trigger_count + 1,
+                    "time": ctx_stmt.excluded.time,
+                },
+            ).returning(ContextRow.id, literal_column("(xmax = 0)").label("was_insert"))
+
+            ctx_row = (await session.execute(ctx_stmt)).first()
+            assert ctx_row is not None
+            ctx_id, ctx_created = int(ctx_row.id), bool(ctx_row.was_insert)
+
+            ans_stmt = pg_insert(ContextAnswerRow).values(
+                context_id=ctx_id,
+                keywords=ans_kw_s,
+                keywords_hash=keywords_hash(ans_kw_s),
+                group_id=group_id,
+                count=1,
+                time=answer_time,
+            )
+            ans_stmt = ans_stmt.on_conflict_do_update(
+                constraint="uq_context_answer_ctx_group_kw",
+                set_={
+                    "count": ContextAnswerRow.count + 1,
+                    "time": ans_stmt.excluded.time,
+                },
+            ).returning(ContextAnswerRow.id, literal_column("(xmax = 0)").label("was_insert"))
+
+            ans_row = (await session.execute(ans_stmt)).first()
+            assert ans_row is not None
+            ans_id, answer_created = int(ans_row.id), bool(ans_row.was_insert)
+
+            if answer_created or append_on_existing:
+                await session.execute(insert(ContextAnswerMessageRow).values(answer_id=ans_id, message=msg_s))
+
+            await session.commit()
+            return ctx_created
+
     async def replace_answers(self, keywords: str, answers: list[Answer], clear_time: int) -> None:
         khash = keywords_hash(keywords)
         async with get_session() as session:

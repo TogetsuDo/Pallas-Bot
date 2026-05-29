@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -89,6 +90,65 @@ async def test_schedule_prefetch_noop_when_off(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(mod, "remote_corpus_find_mode", lambda: "off")
     schedule_corpus_prefetch("kw")
     assert mod.prefetch_queue().empty()
+
+
+@pytest.mark.asyncio
+async def test_prefetch_consumer_keeps_keyword_deduped_while_running(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.features.corpus import prefetch as mod
+
+    mod.clear_corpus_prefetch_runtime_state()
+    monkeypatch.setattr(mod, "remote_corpus_find_mode", lambda: "prefetch")
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def fake_execute(keywords: str) -> None:
+        assert keywords == "kw"
+        started.set()
+        await release.wait()
+
+    monkeypatch.setattr(mod, "execute_corpus_prefetch", fake_execute)
+
+    task = asyncio.create_task(mod.run_prefetch_consumer())
+    try:
+        schedule_corpus_prefetch("kw")
+        await started.wait()
+
+        schedule_corpus_prefetch("kw")
+
+        assert mod.prefetch_queue().qsize() == 0
+    finally:
+        release.set()
+        await asyncio.sleep(0)
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        mod.clear_corpus_prefetch_runtime_state()
+
+
+@pytest.mark.asyncio
+async def test_prefetch_recently_finished_keyword_enters_cooldown(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.features.corpus import prefetch as mod
+
+    mod.clear_corpus_prefetch_runtime_state()
+    monkeypatch.setattr(mod, "remote_corpus_find_mode", lambda: "prefetch")
+
+    async def fake_execute(keywords: str) -> None:
+        assert keywords == "kw"
+
+    monkeypatch.setattr(mod, "execute_corpus_prefetch", fake_execute)
+
+    task = asyncio.create_task(mod.run_prefetch_consumer())
+    try:
+        schedule_corpus_prefetch("kw")
+        await asyncio.wait_for(mod.prefetch_queue().join(), timeout=1.0)
+
+        schedule_corpus_prefetch("kw")
+
+        assert mod.prefetch_queue().qsize() == 0
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        mod.clear_corpus_prefetch_runtime_state()
 
 
 @pytest.mark.asyncio

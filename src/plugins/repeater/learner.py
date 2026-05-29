@@ -83,6 +83,19 @@ class Learner:
         pre_keywords = pre_msg.keywords
         cur_time = chat_data.time
 
+        learn_answer = getattr(context_repo, "learn_answer", None)
+        if callable(learn_answer):
+            await learn_answer(
+                keywords=pre_keywords,
+                group_id=group_id,
+                answer_keywords=keywords,
+                answer_time=cur_time,
+                message=raw_message,
+                append_on_existing=chat_data.is_plain_text,
+            )
+            await note_context_exists(pre_keywords)
+            return
+
         if await context_exists_for_learn(pre_keywords):
             # 使用细粒度 upsert_answer：原子地 inc count / set time / 可选 push message
             # append_on_existing 保留原有 "仅 plain text 才追加 message" 的语义

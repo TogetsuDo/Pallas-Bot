@@ -29,9 +29,12 @@ _DISABLED_GATE_CACHE_TTL_SEC = 45.0
 _DISABLED_GATE_CACHE_MAX = 50_000
 _disabled_gate_cache: dict[tuple[int | None, int | None], tuple[float, frozenset[str]]] = {}
 _disabled_gate_lock = asyncio.Lock()
+_disabled_bot_scope_cache: dict[int, tuple[float, frozenset[str]]] = {}
+_disabled_group_scope_cache: dict[int, tuple[float, frozenset[str]]] = {}
 _disabled_bot_generation: dict[int, int] = {}
 _disabled_group_generation: dict[int, int] = {}
-_disabled_fetch_tasks: dict[tuple[int | None, int | None], asyncio.Task[frozenset[str]]] = {}
+_disabled_bot_fetch_tasks: dict[int, asyncio.Task[frozenset[str]]] = {}
+_disabled_group_fetch_tasks: dict[int, asyncio.Task[frozenset[str]]] = {}
 _disabled_fetch_tasks_lock = asyncio.Lock()
 
 
@@ -113,6 +116,8 @@ async def is_plugin_disabled(
     try:
         if not ignore_cache and (bot_id or group_id):
             disabled_names = await collect_disabled_plugin_names(bot_id, group_id)
+            if bot_id and await bot_config_repo.get(bot_id, ignore_cache=False) is None:
+                await bot_config_repo.get_or_create(bot_id, disabled_plugins=[])
             return plugin_name in disabled_names
 
         if bot_id:
@@ -146,17 +151,33 @@ async def load_disabled_plugin_names_from_db(
     """合并 Bot 全局与群级的禁用插件名（直读仓储，不经门禁 TTL）。"""
     if _pg_not_ready():
         return frozenset()
-    names: set[str] = set()
-    if bot_id:
-        bot_config = await bot_config_repo.get(bot_id, ignore_cache=ignore_cache)
-        if bot_config is None:
-            bot_config, _ = await bot_config_repo.get_or_create(bot_id, disabled_plugins=[])
-        names.update(bot_config.disabled_plugins)
-    if group_id:
-        group_config = await group_config_repo.get(group_id, ignore_cache=ignore_cache)
-        if group_config:
-            names.update(group_config.disabled_plugins)
-    return frozenset(names)
+    bot_names = await load_disabled_bot_names_from_db(bot_id, ignore_cache=ignore_cache)
+    if not group_id:
+        return bot_names
+    group_names = await load_disabled_group_names_from_db(group_id, ignore_cache=ignore_cache)
+    if not bot_names:
+        return group_names
+    if not group_names:
+        return bot_names
+    return frozenset((*bot_names, *group_names))
+
+
+async def load_disabled_bot_names_from_db(bot_id: int | None, *, ignore_cache: bool = False) -> frozenset[str]:
+    if not bot_id:
+        return frozenset()
+    bot_config = await bot_config_repo.get(bot_id, ignore_cache=ignore_cache)
+    if bot_config is None or not bot_config.disabled_plugins:
+        return frozenset()
+    return frozenset(bot_config.disabled_plugins)
+
+
+async def load_disabled_group_names_from_db(group_id: int | None, *, ignore_cache: bool = False) -> frozenset[str]:
+    if not group_id:
+        return frozenset()
+    group_config = await group_config_repo.get(group_id, ignore_cache=ignore_cache)
+    if group_config is None or not group_config.disabled_plugins:
+        return frozenset()
+    return frozenset(group_config.disabled_plugins)
 
 
 async def invalidate_disabled_plugin_gate_cache(
@@ -168,12 +189,15 @@ async def invalidate_disabled_plugin_gate_cache(
     """使禁用插件门禁缓存失效（toggle / WebUI 改 disabled_plugins 后应调用）。"""
     if clear_all:
         async with _disabled_fetch_tasks_lock:
-            for t in list(_disabled_fetch_tasks.values()):
+            for t in [*_disabled_bot_fetch_tasks.values(), *_disabled_group_fetch_tasks.values()]:
                 if not t.done():
                     t.cancel()
-            _disabled_fetch_tasks.clear()
+            _disabled_bot_fetch_tasks.clear()
+            _disabled_group_fetch_tasks.clear()
         async with _disabled_gate_lock:
             _disabled_gate_cache.clear()
+            _disabled_bot_scope_cache.clear()
+            _disabled_group_scope_cache.clear()
             _disabled_bot_generation.clear()
             _disabled_group_generation.clear()
         return
@@ -181,10 +205,12 @@ async def invalidate_disabled_plugin_gate_cache(
     async with _disabled_gate_lock:
         if bot_id is not None:
             _disabled_bot_generation[bot_id] = _disabled_bot_generation.get(bot_id, 0) + 1
+            _disabled_bot_scope_cache.pop(bot_id, None)
             for k in [k for k in _disabled_gate_cache if k[0] == bot_id]:
                 _disabled_gate_cache.pop(k, None)
         if group_id is not None:
             _disabled_group_generation[group_id] = _disabled_group_generation.get(group_id, 0) + 1
+            _disabled_group_scope_cache.pop(group_id, None)
             for k in [k for k in _disabled_gate_cache if k[1] == group_id]:
                 _disabled_gate_cache.pop(k, None)
 
@@ -194,31 +220,73 @@ async def reset_disabled_plugin_gate_cache() -> None:
     await invalidate_disabled_plugin_gate_cache(clear_all=True)
 
 
-async def _await_disabled_plugins_deduped(
-    bot_id: int | None,
-    group_id: int | None,
+async def _await_disabled_scope_deduped(
+    scope_id: int,
     *,
     ignore_cache: bool,
+    fetch_tasks: dict[int, asyncio.Task[frozenset[str]]],
+    loader,
 ) -> frozenset[str]:
-    key = _disabled_gate_key(bot_id, group_id)
-
     async def _runner() -> frozenset[str]:
         try:
-            return await load_disabled_plugin_names_from_db(bot_id, group_id, ignore_cache=ignore_cache)
+            return await loader(scope_id, ignore_cache=ignore_cache)
         finally:
             async with _disabled_fetch_tasks_lock:
                 cur = asyncio.current_task()
-                if _disabled_fetch_tasks.get(key) is cur:
-                    _disabled_fetch_tasks.pop(key, None)
+                if fetch_tasks.get(scope_id) is cur:
+                    fetch_tasks.pop(scope_id, None)
 
     async with _disabled_fetch_tasks_lock:
-        t = _disabled_fetch_tasks.get(key)
+        t = fetch_tasks.get(scope_id)
         if t is not None and not t.done():
             task = t
         else:
             task = asyncio.create_task(_runner())
-            _disabled_fetch_tasks[key] = task
+            fetch_tasks[scope_id] = task
     return await asyncio.shield(task)
+
+
+async def _collect_disabled_scope_names(
+    scope_id: int | None,
+    *,
+    cache: dict[int, tuple[float, frozenset[str]]],
+    generation: dict[int, int],
+    fetch_tasks: dict[int, asyncio.Task[frozenset[str]]],
+    loader,
+) -> frozenset[str]:
+    if scope_id is None:
+        return frozenset()
+
+    while True:
+        now = time.monotonic()
+        async with _disabled_gate_lock:
+            hit = cache.get(scope_id)
+            if hit is not None:
+                exp, val = hit
+                if now < exp:
+                    return val
+                cache.pop(scope_id, None)
+            if len(cache) > _DISABLED_GATE_CACHE_MAX:
+                stale = [k for k, (e, _) in cache.items() if now >= e]
+                for k in stale:
+                    cache.pop(k, None)
+                if len(cache) > _DISABLED_GATE_CACHE_MAX:
+                    cache.clear()
+            gen_snapshot = generation.get(scope_id, 0)
+
+        names = await _await_disabled_scope_deduped(
+            scope_id,
+            ignore_cache=False,
+            fetch_tasks=fetch_tasks,
+            loader=loader,
+        )
+
+        expire_at = time.monotonic() + _DISABLED_GATE_CACHE_TTL_SEC
+        async with _disabled_gate_lock:
+            if generation.get(scope_id, 0) != gen_snapshot:
+                continue
+            cache[scope_id] = (expire_at, names)
+        return names
 
 
 async def collect_disabled_plugin_names(
@@ -252,7 +320,26 @@ async def collect_disabled_plugin_names(
             bot_snap = _disabled_bot_generation.get(bot_id, 0) if bot_id is not None else 0
             group_snap = _disabled_group_generation.get(group_id, 0) if group_id is not None else 0
 
-        names = await _await_disabled_plugins_deduped(bot_id, group_id, ignore_cache=False)
+        bot_names = await _collect_disabled_scope_names(
+            bot_id,
+            cache=_disabled_bot_scope_cache,
+            generation=_disabled_bot_generation,
+            fetch_tasks=_disabled_bot_fetch_tasks,
+            loader=load_disabled_bot_names_from_db,
+        )
+        group_names = await _collect_disabled_scope_names(
+            group_id,
+            cache=_disabled_group_scope_cache,
+            generation=_disabled_group_generation,
+            fetch_tasks=_disabled_group_fetch_tasks,
+            loader=load_disabled_group_names_from_db,
+        )
+        if not bot_names:
+            names = group_names
+        elif not group_names:
+            names = bot_names
+        else:
+            names = frozenset((*bot_names, *group_names))
 
         expire_at = time.monotonic() + _DISABLED_GATE_CACHE_TTL_SEC
         async with _disabled_gate_lock:

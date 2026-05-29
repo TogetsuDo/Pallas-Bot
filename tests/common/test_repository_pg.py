@@ -194,6 +194,70 @@ async def test_upsert_answer_context_missing(pg_engine):
 
 
 @pytest.mark.asyncio
+async def test_learn_answer_creates_context_when_missing(pg_engine):
+    """learn_answer 缺 Context 时应直接建 Context + 首条 Answer，避免先 exists 再 insert。"""
+    from src.foundation.db.repository_pg import PgContextRepository
+
+    repo = PgContextRepository()
+    created = await repo.learn_answer(
+        keywords="learn-missing",
+        group_id=1,
+        answer_keywords="ans",
+        answer_time=100,
+        message="msg",
+        append_on_existing=False,
+    )
+
+    assert created is True
+    found = await repo.find_by_keywords("learn-missing")
+    assert found is not None
+    assert found.trigger_count == 1
+    assert len(found.answers) == 1
+    assert found.answers[0].keywords == "ans"
+    assert found.answers[0].count == 1
+    assert found.answers[0].messages == ["msg"]
+
+
+@pytest.mark.asyncio
+async def test_learn_answer_updates_existing_context(pg_engine):
+    """learn_answer 命中已存在 Context 时应原子累加 trigger_count / answer.count。"""
+    from src.foundation.db.modules import Context
+    from src.foundation.db.repository_pg import PgContextRepository
+
+    repo = PgContextRepository()
+    await repo.insert(
+        Context.model_construct(keywords="learn-hit", time=0, trigger_count=1, answers=[], ban=[], clear_time=0)
+    )
+
+    created = await repo.learn_answer(
+        keywords="learn-hit",
+        group_id=1,
+        answer_keywords="ans",
+        answer_time=100,
+        message="first",
+        append_on_existing=True,
+    )
+    created_again = await repo.learn_answer(
+        keywords="learn-hit",
+        group_id=1,
+        answer_keywords="ans",
+        answer_time=200,
+        message="second",
+        append_on_existing=False,
+    )
+
+    assert created is False
+    assert created_again is False
+    found = await repo.find_by_keywords("learn-hit")
+    assert found is not None
+    assert found.trigger_count == 3
+    assert found.answers[0].count == 2
+    assert found.answers[0].time == 200
+    assert "first" in found.answers[0].messages
+    assert "second" not in found.answers[0].messages
+
+
+@pytest.mark.asyncio
 async def test_delete_expired_chunked(pg_engine):
     """delete_expired 分块模式下应清掉所有过期行、保留未过期行。"""
     from src.foundation.db.modules import Context

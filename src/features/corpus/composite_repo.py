@@ -214,6 +214,100 @@ class CompositeContextRepository:
             append_on_existing=append_on_existing,
         )
 
+    async def learn_answer(
+        self,
+        *,
+        keywords: str,
+        group_id: int,
+        answer_keywords: str,
+        answer_time: int,
+        message: str,
+        append_on_existing: bool,
+    ) -> bool:
+        local_learn = getattr(self._local, "learn_answer", None)
+        if callable(local_learn):
+            created = bool(
+                await local_learn(
+                    keywords=keywords,
+                    group_id=group_id,
+                    answer_keywords=answer_keywords,
+                    answer_time=answer_time,
+                    message=message,
+                    append_on_existing=append_on_existing,
+                )
+            )
+        else:
+            from src.foundation.db.modules import Answer, Context
+
+            created = not await self._local.context_exists_by_keywords(keywords)
+            if created:
+                context = Context.model_construct(
+                    keywords=keywords,
+                    time=answer_time,
+                    trigger_count=1,
+                    answers=[
+                        Answer(
+                            keywords=answer_keywords,
+                            group_id=group_id,
+                            count=1,
+                            time=answer_time,
+                            messages=[message],
+                        )
+                    ],
+                    ban=[],
+                    clear_time=0,
+                )
+                await self._local.insert(context)
+            else:
+                await self._local.upsert_answer(
+                    keywords=keywords,
+                    group_id=group_id,
+                    answer_keywords=answer_keywords,
+                    answer_time=answer_time,
+                    message=message,
+                    append_on_existing=append_on_existing,
+                )
+
+        from src.features.corpus.find_cache import invalidate_find_cache
+        from src.foundation.db.modules import Answer, Context
+
+        await invalidate_find_cache(keywords)
+        if created:
+            schedule_mirror_insert(
+                fed=self._fed,
+                community=self._community,
+                cfg=self._cfg,
+                context=Context.model_construct(
+                    keywords=keywords,
+                    time=answer_time,
+                    trigger_count=1,
+                    answers=[
+                        Answer(
+                            keywords=answer_keywords,
+                            group_id=group_id,
+                            count=1,
+                            time=answer_time,
+                            messages=[message],
+                        )
+                    ],
+                    ban=[],
+                    clear_time=0,
+                ),
+            )
+        else:
+            schedule_mirror_upsert_answer(
+                fed=self._fed,
+                community=self._community,
+                cfg=self._cfg,
+                keywords=keywords,
+                group_id=group_id,
+                answer_keywords=answer_keywords,
+                answer_time=answer_time,
+                message=message,
+                append_on_existing=append_on_existing,
+            )
+        return created
+
     async def replace_answers(self, keywords: str, answers: list[Answer], clear_time: int) -> None:
         await self._local.replace_answers(keywords, answers, clear_time)
 

@@ -457,6 +457,58 @@ async def test_context_insert_calls_upsert_answer_when_context_exists(beanie_fix
 
 
 @pytest.mark.asyncio
+async def test_context_insert_prefers_repo_learn_answer_fast_path(beanie_fixture):
+    """
+    若仓储提供 learn_answer 快路径，_context_insert 应直接走单次写入，
+    不再先做 context_exists_for_learn 的额外查库。
+    """
+    from src.foundation.db import Message as MessageModel
+    from src.plugins.repeater.learner import Learner
+    from src.plugins.repeater.model import ChatData
+
+    chat_data = ChatData(
+        group_id=12345,
+        user_id=67890,
+        raw_message="Response message",
+        plain_text="Response message",
+        time=2000,
+        bot_id=11111,
+    )
+
+    pre_msg = MessageModel(
+        group_id=12345,
+        user_id=99999,
+        bot_id=11111,
+        raw_message="Trigger message",
+        is_plain_text=True,
+        plain_text="Trigger message",
+        keywords="Trigger message",
+        time=1000,
+    )
+
+    with (
+        patch(
+            "src.plugins.repeater.learner.context_repo.learn_answer",
+            new_callable=AsyncMock,
+            return_value=True,
+            create=True,
+        ) as mock_learn_answer,
+        patch(
+            "src.plugins.repeater.learner.context_exists_for_learn",
+            new_callable=AsyncMock,
+        ) as mock_exists,
+        patch("src.plugins.repeater.learner.context_repo.insert", new_callable=AsyncMock) as mock_insert,
+        patch("src.plugins.repeater.learner.context_repo.upsert_answer", new_callable=AsyncMock) as mock_upsert,
+    ):
+        await Learner._context_insert(chat_data, pre_msg)
+
+        mock_learn_answer.assert_awaited_once()
+        mock_exists.assert_not_called()
+        mock_insert.assert_not_called()
+        mock_upsert.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_context_insert_no_append_when_non_plain_text(beanie_fixture):
     """
     非纯文本（含 CQ 码的）消息对已有 answer 不应 push message，

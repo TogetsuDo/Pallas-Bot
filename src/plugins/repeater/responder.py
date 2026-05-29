@@ -245,7 +245,14 @@ class Responder:
                     # 复读过一次就不再回复这句话了
                     return None
 
-        context = await context_repo.find_by_keywords_for_reply(keywords)
+        if not keywords:
+            return None
+
+        find_reply = getattr(context_repo, "find_by_keywords_for_reply", None)
+        if callable(find_reply):
+            context = await find_reply(keywords)
+        else:
+            context = await context_repo.find_by_keywords(keywords)
 
         if not context:
             return None
