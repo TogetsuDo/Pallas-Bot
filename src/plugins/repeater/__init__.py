@@ -30,6 +30,7 @@ from src.platform.multi_bot.dedup import (
 from src.platform.multi_bot.dedup import (
     should_skip_duplicate_group_event as _should_skip_duplicate_group_event,
 )
+from src.platform.observability import SlowPathTimer, slow_path_threshold_ms
 from src.plugins.dream.ban_ack_state import DREAM_BAN_ACK_SENT_STATE_KEY
 from src.shared.utils.array2cqcode import try_convert_to_cqcode
 from src.shared.utils.media_cache import get_image, insert_image
@@ -261,7 +262,21 @@ async def _(bot: Bot, event: GroupMessageEvent):
         if fanout_gate.lost:
             bundle = None
         else:
+            reply_timer = SlowPathTimer(
+                "repeater.find_reply_bundle",
+                threshold_ms=slow_path_threshold_ms("PALLAS_SLOW_REPEATER_BUNDLE_MS", 120.0),
+            )
             bundle = await chat.find_reply_bundle()
+            reply_timer.mark("find_reply_bundle")
+            reply_timer.finish(
+                bot_id=int(event.self_id),
+                group_id=int(event.group_id),
+                user_id=int(event.user_id),
+                can_reply=can_reply,
+                found=bundle is not None,
+                keywords_len=chat.chat_data.keywords_len,
+                plain_text=chat.chat_data.is_plain_text,
+            )
 
     for seg in event.message:
         if seg.type == "image":

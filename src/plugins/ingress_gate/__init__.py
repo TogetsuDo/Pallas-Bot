@@ -22,6 +22,7 @@ from src.platform.multi_bot.dedup import (
     try_claim_group_message_once,
 )
 from src.platform.multi_bot.fleet import fleet_bot_ids_contains, get_fleet_bot_ids
+from src.platform.observability import SlowPathTimer, slow_path_threshold_ms
 from src.platform.shard.ingress_metrics import (
     record_ingress_claim,
     record_ingress_early_discard,
@@ -79,7 +80,7 @@ def _ingress_fanout_early_exit(
     self_id: int,
     user_id: int,
     metrics: bool,
-) -> bool:
+) -> None:
     """全员同响：仅 @ 定向 / 舰队过滤，跳过 once / federate / shard 抢占。"""
     if fleet_bot_ids_contains(user_id) and user_id != self_id:
         if metrics:
@@ -97,7 +98,6 @@ def _ingress_fanout_early_exit(
 
     if metrics:
         record_ingress_fanout_bypass()
-    return True
 
 
 @event_preprocessor
@@ -110,91 +110,118 @@ async def ingress_group_message_gate(bot, event) -> None:
     self_id = int(bot.self_id)
     user_id = int(event.user_id)
     metrics = should_record_ingress_metrics(self_id)
+    sharding_active = is_sharding_active()
+    timer = SlowPathTimer(
+        "ingress_gate",
+        threshold_ms=slow_path_threshold_ms("PALLAS_SLOW_INGRESS_GATE_MS", 20.0),
+    )
+    outcome = "pass"
+    fanout_bypass = False
 
-    plain = (event.get_plaintext() or "").strip()
-    body = plain or event.raw_message
-    fanout_bypass = ingress_fanout_bypasses_claim(plain)
+    try:
+        plain = (event.get_plaintext() or "").strip()
+        body = plain or event.raw_message
+        fanout_bypass = ingress_fanout_bypasses_claim(plain)
+        if fanout_bypass:
+            _ingress_fanout_early_exit(
+                event=event,
+                self_id=self_id,
+                user_id=user_id,
+                metrics=metrics,
+            )
+            outcome = "fanout_bypass"
+            return
 
-    if fanout_bypass:
-        _ingress_fanout_early_exit(
-            event=event,
-            self_id=self_id,
-            user_id=user_id,
-            metrics=metrics,
-        )
-        return
+        if not sharding_active:
+            if not await try_claim_group_message_once(
+                INGRESS_CLAIM_PLUGIN,
+                event.group_id,
+                user_id,
+                body,
+                event.time,
+                use_plaintext=True,
+                include_message_time=True,
+            ):
+                outcome = "once_claim_lost"
+                if metrics:
+                    record_ingress_claim(won=False)
+                raise IgnoredException("ingress unified once claim lost")
+            timer.mark("once_claim")
 
-    if not is_sharding_active():
-        if not await try_claim_group_message_once(
-            INGRESS_CLAIM_PLUGIN,
-            event.group_id,
-            user_id,
-            body,
-            event.time,
-            use_plaintext=True,
-            include_message_time=True,
-        ):
-            if metrics:
-                record_ingress_claim(won=False)
-            raise IgnoredException("ingress unified once claim lost")
-
-    if metrics:
-        record_ingress_event()
-
-    if fleet_bot_ids_contains(user_id) and user_id != self_id:
         if metrics:
-            record_ingress_early_discard("fleet")
-        raise IgnoredException("fleet bot message")
+            record_ingress_event()
 
-    ats = group_at_qq_ids(event)
-    if ats:
-        fleet = get_fleet_bot_ids()
-        pallas_ats = ats & fleet
-        if pallas_ats and self_id not in pallas_ats:
+        if fleet_bot_ids_contains(user_id) and user_id != self_id:
+            outcome = "fleet_discard"
             if metrics:
-                record_ingress_early_discard("not_at_target")
-            raise IgnoredException("not at-target bot")
+                record_ingress_early_discard("fleet")
+            raise IgnoredException("fleet bot message")
 
-    if not await claim_federate_group_message_ingress(event):
-        if metrics:
-            record_ingress_early_discard("federate")
-        raise IgnoredException("federate ingress claim lost")
+        ats = group_at_qq_ids(event)
+        if ats:
+            fleet = get_fleet_bot_ids()
+            pallas_ats = ats & fleet
+            if pallas_ats and self_id not in pallas_ats:
+                outcome = "not_at_target"
+                if metrics:
+                    record_ingress_early_discard("not_at_target")
+                raise IgnoredException("not at-target bot")
 
-    if is_sharding_active():
-        shard_id = get_shard_registry_settings().shard_id
-        # 不传 bot_id：避免「代表牛」不在群内时非代表牛永远无法通过文件 claim（如群内发牛牛网关）
-        if not await try_claim_cross_shard_message(
-            INGRESS_SHARD_CLAIM_PLUGIN,
-            event.group_id,
-            user_id,
-            body,
-            event.time,
-            shard_id,
-            use_plaintext=True,
-            include_message_time=True,
-        ):
+        if not await claim_federate_group_message_ingress(event):
+            outcome = "federate_lost"
             if metrics:
-                record_ingress_claim(won=False)
-            raise IgnoredException("ingress shard claim lost")
-        if not await try_claim_cross_bot_message(
-            INGRESS_CLAIM_PLUGIN,
-            event.group_id,
-            user_id,
-            body,
-            event.time,
-            self_id,
-            use_plaintext=True,
-            include_message_time=True,
-        ):
+                record_ingress_early_discard("federate")
+            raise IgnoredException("federate ingress claim lost")
+        timer.mark("federate")
+
+        if sharding_active:
+            shard_id = get_shard_registry_settings().shard_id
+            # 不传 bot_id：避免「代表牛」不在群内时非代表牛永远无法通过文件 claim（如群内发牛牛网关）
+            if not await try_claim_cross_shard_message(
+                INGRESS_SHARD_CLAIM_PLUGIN,
+                event.group_id,
+                user_id,
+                body,
+                event.time,
+                shard_id,
+                use_plaintext=True,
+                include_message_time=True,
+            ):
+                outcome = "shard_claim_lost"
+                if metrics:
+                    record_ingress_claim(won=False)
+                raise IgnoredException("ingress shard claim lost")
+            timer.mark("shard_claim")
+            if not await try_claim_cross_bot_message(
+                INGRESS_CLAIM_PLUGIN,
+                event.group_id,
+                user_id,
+                body,
+                event.time,
+                self_id,
+                use_plaintext=True,
+                include_message_time=True,
+            ):
+                outcome = "bot_claim_lost"
+                if metrics:
+                    record_ingress_claim(won=False)
+                raise IgnoredException("ingress bot claim lost")
+            timer.mark("bot_claim")
             if metrics:
-                record_ingress_claim(won=False)
-            raise IgnoredException("ingress bot claim lost")
+                record_ingress_claim(won=True)
+            return
+
         if metrics:
             record_ingress_claim(won=True)
-        return
-
-    if metrics:
-        record_ingress_claim(won=True)
+    finally:
+        timer.finish(
+            outcome=outcome,
+            bot_id=self_id,
+            group_id=int(event.group_id),
+            user_id=user_id,
+            fanout_bypass=fanout_bypass,
+            sharding=sharding_active,
+        )
 
 
 @driver.on_startup

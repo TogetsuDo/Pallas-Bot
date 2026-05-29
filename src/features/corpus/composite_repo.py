@@ -9,6 +9,7 @@ from nonebot import logger
 from src.features.corpus.config import CorpusConfig, get_corpus_config, remote_corpus_find_enabled
 from src.features.corpus.merge import merge_contexts
 from src.features.corpus.write_fanout import schedule_mirror_insert, schedule_mirror_upsert_answer
+from src.platform.observability import SlowPathTimer, slow_path_threshold_ms
 
 if TYPE_CHECKING:
     from src.foundation.db.modules import Answer, Ban, Context
@@ -51,12 +52,24 @@ class CompositeContextRepository:
 
     async def local_context_exists_by_keywords(self, keywords: str) -> bool:
         """学习路径专用：仅查本地库，不触发 fed/community。"""
-        return await self._local.context_exists_by_keywords(keywords)
+        timer = SlowPathTimer(
+            "corpus.local_context_exists",
+            threshold_ms=slow_path_threshold_ms("PALLAS_SLOW_CORPUS_EXISTS_MS", 30.0),
+        )
+        exists = await self._local.context_exists_by_keywords(keywords)
+        timer.mark("local_exists")
+        timer.finish(keyword_len=len(keywords), hit=exists)
+        return exists
 
     async def _find_by_keywords_merged(self, keywords: str) -> Context | None:
+        timer = SlowPathTimer(
+            "corpus.find_by_keywords",
+            threshold_ms=slow_path_threshold_ms("PALLAS_SLOW_CORPUS_FIND_MS", 80.0),
+        )
         merged: Context | None = None
         remote_find = remote_corpus_find_enabled(self._cfg)
         strategy = str(self._cfg.merge_strategy or "local_first")
+        outcome = "merged"
         for source_id in self._cfg.merge_order:
             if not remote_find and source_id != "local":
                 continue
@@ -74,14 +87,35 @@ class CompositeContextRepository:
                     ctx = await find_reply(keywords)
                 else:
                     ctx = await repo.find_by_keywords(keywords)
+                timer.mark(f"{source_id}_find")
             except Exception as e:
+                outcome = f"{source_id}_error"
                 if source_id != "local" and self._cfg.on_remote_failure == "local_only":
                     logger.warning(f"corpus {source_id} find_by_keywords failed: {e}")
                     continue
+                timer.finish(
+                    keyword_len=len(keywords),
+                    remote_find=remote_find,
+                    strategy=strategy,
+                    outcome=outcome,
+                )
                 raise
             merged = merge_contexts(merged, ctx, strategy=strategy)
             if source_id == "local" and strategy == "local_first" and self.local_first_has_answers(merged):
+                outcome = "local_short_circuit"
+                timer.finish(
+                    keyword_len=len(keywords),
+                    remote_find=remote_find,
+                    strategy=strategy,
+                    outcome=outcome,
+                )
                 return merged
+        timer.finish(
+            keyword_len=len(keywords),
+            remote_find=remote_find,
+            strategy=strategy,
+            outcome=outcome,
+        )
         return merged
 
     async def context_exists_by_keywords(self, keywords: str) -> bool:

@@ -37,6 +37,7 @@ async def test_composite_skips_remote_find_when_disabled(monkeypatch: pytest.Mon
     await reset_find_cache_for_tests()
     local = AsyncMock()
     local.find_by_keywords = AsyncMock(return_value=None)
+    local.find_by_keywords_for_reply = None
     community = AsyncMock()
     community.find_by_keywords = AsyncMock(return_value=None)
     cfg = CorpusConfig(merge_order=["local", "community"], merge_strategy="local_first")

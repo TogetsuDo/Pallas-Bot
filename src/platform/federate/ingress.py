@@ -8,6 +8,7 @@ import time
 from typing import TYPE_CHECKING
 
 from src.features.community_stats.store import load_or_create_deployment_id
+from src.platform.observability import SlowPathTimer, slow_path_threshold_ms
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import GroupMessageEvent
@@ -61,12 +62,18 @@ async def claim_federate_group_message_ingress(
     include_message_time: bool = True,
 ) -> bool:
     """未启用联邦 ingress 或本 deployment 抢占成功时返回 True。"""
+    timer = SlowPathTimer(
+        "federate_ingress",
+        threshold_ms=slow_path_threshold_ms("PALLAS_SLOW_FEDERATE_INGRESS_MS", 12.0),
+    )
     if not federate_ingress_active():
+        timer.finish(outcome="disabled")
         return True
     plain = (event.get_plaintext() or "").strip()
     body = plain or event.raw_message
     deployment_id = load_or_create_deployment_id().strip().lower()
     if not deployment_id:
+        timer.finish(outcome="missing_deployment_id", group_id=int(event.group_id), user_id=int(event.user_id))
         return False
     sig = cross_bot_message_signature(
         int(event.group_id),
@@ -81,6 +88,8 @@ async def claim_federate_group_message_ingress(
     async with _win_lock:
         exp = _win_cache.get(cache_key)
         if exp is not None and now < exp:
+            timer.mark("cache_hit")
+            timer.finish(outcome="cached_win", cache_hit=True, group_id=int(event.group_id), user_id=int(event.user_id))
             return True
         if len(_win_cache) > _WIN_CACHE_MAX:
             stale = [k for k, e in _win_cache.items() if now >= e]
@@ -99,8 +108,15 @@ async def claim_federate_group_message_ingress(
         use_plaintext=True,
         include_message_time=include_message_time,
     )
+    timer.mark("redis_claim")
     if won:
         expire_at = time.monotonic() + _WIN_CACHE_TTL_SEC
         async with _win_lock:
             _win_cache[cache_key] = expire_at
+    timer.finish(
+        outcome="won" if won else "lost",
+        cache_hit=False,
+        group_id=int(event.group_id),
+        user_id=int(event.user_id),
+    )
     return won
