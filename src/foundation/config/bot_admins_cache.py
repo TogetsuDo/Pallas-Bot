@@ -27,6 +27,13 @@ _any_bot_admin_fetch_lock = asyncio.Lock()
 _repo = make_bot_config_repository()
 
 
+def _pg_not_ready() -> bool:
+    from src.foundation.db import get_db_backend
+    from src.foundation.db.repository_pg import is_pg_initialized
+
+    return get_db_backend() == "postgresql" and not is_pg_initialized()
+
+
 async def invalidate_bot_admins_cache(bot_ids: int | Iterable[int] | None = None) -> None:
     """admins 字段变更后调用；不传参则清空全部 bot 与跨 bot 缓存。"""
     global _any_bot_admin_cache, _any_bot_admin_generation, _any_bot_admin_fetch_task
@@ -94,6 +101,8 @@ async def _await_admins_deduped(bot_id: int) -> list[int]:
 
 
 async def get_bot_admins_cached(bot_id: int) -> list[int]:
+    if _pg_not_ready():
+        return []
     while True:
         now = time.monotonic()
         async with _admins_lock:
@@ -165,6 +174,9 @@ async def _await_any_bot_admin_user_ids_deduped() -> frozenset[int]:
 async def any_bot_admin_user_ids_cached() -> frozenset[int]:
     """跨 Bot 管理员判定用；列表变更后由 invalidate 整体失效。"""
     global _any_bot_admin_cache
+
+    if _pg_not_ready():
+        return frozenset()
 
     while True:
         now = time.monotonic()

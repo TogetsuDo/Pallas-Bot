@@ -39,6 +39,13 @@ def _disabled_gate_key(bot_id: int | None, group_id: int | None) -> tuple[int | 
     return (bot_id, group_id)
 
 
+def _pg_not_ready() -> bool:
+    from src.foundation.db import get_db_backend
+    from src.foundation.db.repository_pg import is_pg_initialized
+
+    return get_db_backend() == "postgresql" and not is_pg_initialized()
+
+
 def plugin_display_name(plugin: Any) -> str:
     """用户可见的插件名：优先 PluginMetadata.name，否则回退包名。"""
     meta = getattr(plugin, "metadata", None)
@@ -100,10 +107,7 @@ async def is_plugin_disabled(
     """
     检查插件是否被禁用
     """
-    from src.foundation.db import get_db_backend
-    from src.foundation.db.repository_pg import is_pg_initialized
-
-    if get_db_backend() == "postgresql" and not is_pg_initialized():
+    if _pg_not_ready():
         logger.debug("help is_plugin_disabled skipped: PostgreSQL not ready plugin={}", plugin_name)
         return False
     try:
@@ -140,6 +144,8 @@ async def load_disabled_plugin_names_from_db(
     ignore_cache: bool = False,
 ) -> frozenset[str]:
     """合并 Bot 全局与群级的禁用插件名（直读仓储，不经门禁 TTL）。"""
+    if _pg_not_ready():
+        return frozenset()
     names: set[str] = set()
     if bot_id:
         bot_config = await bot_config_repo.get(bot_id, ignore_cache=ignore_cache)
@@ -222,6 +228,8 @@ async def collect_disabled_plugin_names(
     ignore_cache: bool = False,
 ) -> frozenset[str]:
     """合并 Bot 全局与群级的禁用插件名，供批量判断（与逐插件调用 is_plugin_disabled 语义一致）。"""
+    if _pg_not_ready():
+        return frozenset()
     if ignore_cache:
         return await load_disabled_plugin_names_from_db(bot_id, group_id, ignore_cache=True)
 

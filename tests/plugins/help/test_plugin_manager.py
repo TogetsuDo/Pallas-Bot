@@ -148,3 +148,20 @@ async def test_collect_disabled_plugin_names_gate_cache(beanie_fixture, monkeypa
     assert len(calls) == 2
 
     await plugin_manager.reset_disabled_plugin_gate_cache()
+
+
+@pytest.mark.asyncio
+async def test_collect_disabled_plugin_names_short_circuits_when_pg_not_ready(monkeypatch):
+    from src.plugins.help import plugin_manager
+
+    await plugin_manager.reset_disabled_plugin_gate_cache()
+
+    async def fail_load(bot_id, group_id, *, ignore_cache=False):  # noqa: ARG001
+        raise AssertionError("should not load disabled plugin names when PG is not ready")
+
+    monkeypatch.setattr(plugin_manager, "load_disabled_plugin_names_from_db", fail_load)
+    monkeypatch.setattr("src.foundation.db.get_db_backend", lambda: "postgresql")
+    monkeypatch.setattr("src.foundation.db.repository_pg.is_pg_initialized", lambda: False)
+
+    merged = await plugin_manager.collect_disabled_plugin_names(77, 5001)
+    assert merged == frozenset()

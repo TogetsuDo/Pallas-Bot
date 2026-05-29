@@ -30,9 +30,12 @@ async def satisfies_command_permission(bot: Bot, event: Event, command_id: str) 
         sid = int(event.self_id)
     except Exception:
         return False
-    bot_ok = await user_is_bot_admin(sid, uid) or await user_is_admin_of_any_bot(uid)
+
+    async def bot_ok() -> bool:
+        return await user_is_bot_admin(sid, uid) or await user_is_admin_of_any_bot(uid)
+
     if level == "bot_moderator":
-        return bot_ok
+        return await bot_ok()
     go = ga = False
     if isinstance(event, GroupMessageEvent):
         go = await permission.GROUP_OWNER(bot, event)
@@ -40,13 +43,15 @@ async def satisfies_command_permission(bot: Bot, event: Event, command_id: str) 
     is_oa = go or ga
     if level == "group_moderator":
         if isinstance(event, PrivateMessageEvent):
-            return bot_ok
+            return await bot_ok()
         return is_oa
     if level == "staff":
-        if bot_ok:
-            return True
         if isinstance(event, GroupMessageEvent):
-            return is_oa
+            if is_oa:
+                return True
+            return await bot_ok()
+        if await bot_ok():
+            return True
         return False
     return False
 
