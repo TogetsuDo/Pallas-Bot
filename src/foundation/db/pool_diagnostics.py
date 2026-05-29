@@ -106,6 +106,11 @@ async def emit_pool_diagnostics_tick() -> None:
     global _slow_session_total, _mirror_skipped_pressure, _slow_hold_max_ms
 
     from src.features.corpus.remote_budget import drain_remote_corpus_skip_counters
+    from src.foundation.db.pg_activity_diagnostics import (
+        collect_pg_activity_snapshot,
+        maybe_emit_pg_activity_diagnostics,
+        wait_summary,
+    )
     from src.foundation.db.pool_budget import pool_budget_status
 
     budget = pool_budget_status()
@@ -115,19 +120,22 @@ async def emit_pool_diagnostics_tick() -> None:
     idle_tx = await pg_idle_in_transaction_count()
     remote = drain_remote_corpus_skip_counters()
     learn = learn_runtime_snapshot()
+    activity = await collect_pg_activity_snapshot()
+    wait_s = wait_summary(activity)
 
     slow_top = ", ".join(f"{k}={v}" for k, v in _slow_by_caller.most_common(3))
     if not slow_top:
         slow_top = "-"
 
     logger.info(
-        "pg pool diag: checked_out={}/{} util={} idle_in_tx={} "
+        "pg pool diag: checked_out={}/{} util={} idle_in_tx={} pg_wait=[{}] "
         "remote_skip_pressure={} remote_skip_busy={} mirror_skip={} "
         "slow_sessions={} slow_max_ms={:.0f} learn_q={} learn_pool_wait={} slow_top=[{}]",
         live.get("checked_out", "?"),
         live.get("capacity", budget.get("capacity", "?")),
         util_pct,
         idle_tx if idle_tx is not None else "?",
+        wait_s,
         remote.get("skipped_pressure", 0),
         remote.get("skipped_busy", 0),
         _mirror_skipped_pressure,
@@ -136,6 +144,14 @@ async def emit_pool_diagnostics_tick() -> None:
         learn.get("learn_queue_size", "?"),
         learn.get("learn_pool_wait_spins", 0),
         slow_top,
+    )
+
+    await maybe_emit_pg_activity_diagnostics(
+        activity,
+        under_pressure=bool(budget.get("under_pressure")),
+        idle_in_tx_count=idle_tx,
+        slow_sessions=_slow_session_total,
+        slow_max_ms=_slow_hold_max_ms,
     )
 
     _slow_by_caller.clear()
