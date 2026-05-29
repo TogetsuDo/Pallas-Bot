@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from src.features.corpus.composite_repo import CompositeContextRepository
-from src.features.corpus.config import CorpusConfig, remote_corpus_find_enabled
+from src.features.corpus.config import CorpusConfig, remote_corpus_find_enabled, remote_corpus_find_mode
 
 
 def test_remote_find_auto_defaults_off(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -27,6 +27,19 @@ def test_remote_find_disabled_by_env(monkeypatch: pytest.MonkeyPatch) -> None:
     from src.features.corpus.config import clear_corpus_config_cache
 
     clear_corpus_config_cache()
+    assert remote_corpus_find_mode() == "off"
+    assert remote_corpus_find_enabled() is False
+
+
+def test_remote_find_true_is_prefetch_not_sync(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "src.features.corpus.config.setting_str",
+        lambda name, default="": "true" if name == "PALLAS_CORPUS_REMOTE_FIND_ENABLED" else default,
+    )
+    from src.features.corpus.config import clear_corpus_config_cache
+
+    clear_corpus_config_cache()
+    assert remote_corpus_find_mode() == "prefetch"
     assert remote_corpus_find_enabled() is False
 
 
@@ -48,7 +61,7 @@ async def test_composite_skips_remote_find_when_disabled(monkeypatch: pytest.Mon
 
     import src.features.corpus.composite_repo as mod
 
-    monkeypatch.setattr(mod, "remote_corpus_find_enabled", lambda _cfg=None: False)
+    monkeypatch.setattr(mod, "remote_corpus_find_mode", lambda _cfg=None: "off")
     try:
         assert await repo.find_by_keywords("kw") is None
         community.find_by_keywords.assert_not_called()

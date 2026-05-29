@@ -65,6 +65,7 @@ _PERF_FIELD_TO_ENV: dict[str, str] = {
 _FIELD_TO_ENV_ALL: dict[str, str] = {**_FIELD_TO_ENV, **_PERF_FIELD_TO_ENV}
 
 _TRI_CHOICES = ["auto", "true", "false"]
+_REMOTE_FIND_CHOICES = ["auto", "false", "prefetch", "sync"]
 _MERGE_ORDER_CHOICES = ["local,community", "local"]
 _INTERVAL_CHOICES = ["60", "120", "300", "600", "900", "1800", "3600"]
 
@@ -116,7 +117,16 @@ def _field_row(key: str, cur: Any, *, model_fields: dict) -> dict[str, Any]:
         row["choices"] = _MERGE_ORDER_CHOICES
         if row["current"] not in _MERGE_ORDER_CHOICES:
             row["current"] = _MERGE_ORDER_CHOICES[0]
-    elif key in ("auto_enroll", "community_contribute", "remote_find_enabled"):
+    elif key == "remote_find_enabled":
+        row["kind"] = "enum"
+        row["choices"] = _REMOTE_FIND_CHOICES
+        cur_s = str(cur).strip().lower() if cur is not None else "auto"
+        if cur_s == "true":
+            cur_s = "prefetch"
+        if cur_s not in _REMOTE_FIND_CHOICES:
+            cur_s = "auto"
+        row["current"] = cur_s
+    elif key in ("auto_enroll", "community_contribute"):
         row["kind"] = "enum"
         row["choices"] = _TRI_CHOICES
     elif key == "community_stats_interval_sec":
@@ -237,6 +247,18 @@ def apply_corpus_federation_patch(patch: dict[str, Any]) -> dict[str, Any]:
                 asyncio.get_running_loop().create_task(coro)
             except RuntimeError:
                 asyncio.run(coro)
+        except Exception:
+            pass
+    if "remote_find_enabled" in patch:
+        try:
+            import asyncio
+
+            from src.features.corpus.prefetch import reload_corpus_prefetch_workers
+
+            try:
+                asyncio.get_running_loop().create_task(reload_corpus_prefetch_workers())
+            except RuntimeError:
+                asyncio.run(reload_corpus_prefetch_workers())
         except Exception:
             pass
     if set(_REPLY_PERF_FIELD_NAMES) & set(patch):

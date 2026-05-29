@@ -29,7 +29,7 @@ def test_corpus_federation_payload_phase1():
     assert merge_order["choices"] == ["local,community", "local"]
     remote_find = next(f for f in data["fields"] if f["name"] == "remote_find_enabled")
     assert remote_find["kind"] == "enum"
-    assert remote_find["choices"] == ["auto", "true", "false"]
+    assert remote_find["choices"] == ["auto", "false", "prefetch", "sync"]
 
 
 def test_apply_corpus_federation_patch_writes_env(monkeypatch, tmp_path):

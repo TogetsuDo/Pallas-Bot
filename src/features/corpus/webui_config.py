@@ -79,7 +79,7 @@ class CorpusFederationWebuiConfig(BaseModel):
         default="auto",
         description=field_help(
             "本机语料未命中时是否向共享池拉取",
-            "false / auto：不拉取（省 CPU，默认）；true：miss 时 HTTP 查社区 /context",
+            "false/auto：不拉取；prefetch：后台写入本地、下次再接话（推荐）；sync：当场 HTTP 查社区",
             "与「是否使用共享语料池」独立；仅影响读，不影响学习上传",
         ),
     )

@@ -245,7 +245,7 @@ class Responder:
                     # 复读过一次就不再回复这句话了
                     return None
 
-        context = await context_repo.find_by_keywords(keywords)
+        context = await context_repo.find_by_keywords_for_reply(keywords)
 
         if not context:
             return None

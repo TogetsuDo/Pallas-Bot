@@ -1,0 +1,183 @@
+"""社区语料异步回填：接话热路径 local miss 后后台拉取并写入本地库。"""
+
+from __future__ import annotations
+
+import asyncio
+from typing import TYPE_CHECKING
+
+from nonebot import get_driver, logger
+
+from src.features.corpus.config import remote_corpus_find_mode
+from src.features.corpus.find_cache import invalidate_find_cache
+
+if TYPE_CHECKING:
+    from src.foundation.db.modules import Context
+
+_prefetch_queue: asyncio.Queue[str] | None = None
+_prefetch_tasks: list[asyncio.Task[None]] = []
+_scheduled_keys: set[str] = set()
+_prefetch_dropped_full: int = 0
+_prefetch_completed: int = 0
+_QUEUE_MAX = 4096
+
+
+def prefetch_queue() -> asyncio.Queue[str]:
+    global _prefetch_queue
+    if _prefetch_queue is None:
+        _prefetch_queue = asyncio.Queue(maxsize=_QUEUE_MAX)
+    return _prefetch_queue
+
+
+def clear_corpus_prefetch_runtime_state() -> None:
+    global _prefetch_queue, _scheduled_keys
+    _prefetch_queue = None
+    _scheduled_keys.clear()
+
+
+def schedule_corpus_prefetch(keywords: str) -> None:
+    """接话 local miss 时调用；不阻塞热路径。"""
+    if remote_corpus_find_mode() != "prefetch":
+        return
+    key = (keywords or "").strip()
+    if not key or key in _scheduled_keys:
+        return
+    try:
+        prefetch_queue().put_nowait(key)
+        _scheduled_keys.add(key)
+    except asyncio.QueueFull:
+        global _prefetch_dropped_full
+        _prefetch_dropped_full += 1
+        if _prefetch_dropped_full == 1 or _prefetch_dropped_full % 200 == 0:
+            logger.info(
+                "corpus prefetch queue full (max={}), dropped={}",
+                _QUEUE_MAX,
+                _prefetch_dropped_full,
+            )
+
+
+async def import_remote_context_to_local(local, ctx: Context) -> bool:
+    key = (ctx.keywords or "").strip()
+    if not key or not ctx.answers:
+        return False
+    exists = await local.context_exists_by_keywords(key)
+    if not exists:
+        await local.insert(ctx)
+        await invalidate_find_cache(key)
+        return True
+    for ans in ctx.answers:
+        if not ans.messages:
+            continue
+        for msg in ans.messages:
+            text = str(msg or "").strip()
+            if not text:
+                continue
+            await local.upsert_answer(
+                keywords=key,
+                group_id=int(ans.group_id),
+                answer_keywords=str(ans.keywords or ""),
+                answer_time=int(ans.time),
+                message=text,
+                append_on_existing=True,
+            )
+    await invalidate_find_cache(key)
+    return True
+
+
+async def execute_corpus_prefetch(keywords: str) -> None:
+    from src.features.corpus.factory import build_community_repository
+    from src.features.corpus.remote_budget import should_skip_remote_corpus
+
+    key = (keywords or "").strip()
+    if not key:
+        return
+    if should_skip_remote_corpus(hot_path=False):
+        return
+    community = build_community_repository()
+    if community is None:
+        return
+    from src.foundation.db.context_repo_access import get_shared_context_repository
+
+    repo = get_shared_context_repository()
+    local = getattr(repo, "_local", None)
+    if local is None:
+        return
+    if await local.context_exists_by_keywords(key):
+        find_reply = getattr(local, "find_by_keywords_for_reply", None)
+        if callable(find_reply):
+            local_ctx = await find_reply(key)
+        else:
+            local_ctx = await local.find_by_keywords(key)
+        if local_ctx is not None and local_ctx.answers:
+            return
+    try:
+        remote_ctx = await community.find_by_keywords(key)
+    except Exception as e:
+        logger.warning("corpus prefetch remote find failed keywords_len={}: {}", len(key), e)
+        return
+    if remote_ctx is None or not remote_ctx.answers:
+        return
+    try:
+        await import_remote_context_to_local(local, remote_ctx)
+        global _prefetch_completed
+        _prefetch_completed += 1
+    except Exception as e:
+        logger.warning("corpus prefetch local import failed keywords_len={}: {}", len(key), e)
+
+
+async def run_prefetch_consumer() -> None:
+    while True:
+        key = await prefetch_queue().get()
+        _scheduled_keys.discard(key)
+        try:
+            await execute_corpus_prefetch(key)
+        finally:
+            prefetch_queue().task_done()
+
+
+def prefetch_concurrency() -> int:
+    from src.foundation.db.pool_budget import cap_by_pg_pool, remote_corpus_concurrency_limit
+
+    return cap_by_pg_pool(remote_corpus_concurrency_limit(), workload_fraction=0.12)
+
+
+async def start_corpus_prefetch_workers() -> None:
+    global _prefetch_tasks
+    if _prefetch_tasks and any(not t.done() for t in _prefetch_tasks):
+        return
+    await stop_corpus_prefetch_workers()
+    n = prefetch_concurrency()
+    _prefetch_tasks = [
+        asyncio.create_task(run_prefetch_consumer(), name=f"corpus_prefetch_consumer_{i}") for i in range(n)
+    ]
+    logger.info("corpus prefetch workers started: consumers={} queue_max={}", n, _QUEUE_MAX)
+
+
+async def stop_corpus_prefetch_workers() -> None:
+    global _prefetch_tasks
+    if not _prefetch_tasks:
+        return
+    tasks = list(_prefetch_tasks)
+    _prefetch_tasks = []
+    for t in tasks:
+        t.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def reload_corpus_prefetch_workers() -> None:
+    clear_corpus_prefetch_runtime_state()
+    await stop_corpus_prefetch_workers()
+    if remote_corpus_find_mode() == "prefetch":
+        await start_corpus_prefetch_workers()
+
+
+def bind_corpus_prefetch_lifecycle() -> None:
+    driver = get_driver()
+
+    @driver.on_startup
+    async def _on_startup() -> None:
+        if remote_corpus_find_mode() == "prefetch":
+            await start_corpus_prefetch_workers()
+
+    @driver.on_shutdown
+    async def _on_shutdown() -> None:
+        await stop_corpus_prefetch_workers()

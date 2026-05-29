@@ -6,7 +6,12 @@ from typing import TYPE_CHECKING
 
 from nonebot import logger
 
-from src.features.corpus.config import CorpusConfig, get_corpus_config, remote_corpus_find_enabled
+from src.features.corpus.config import (
+    CorpusConfig,
+    get_corpus_config,
+    remote_corpus_find_enabled,
+    remote_corpus_find_mode,
+)
 from src.features.corpus.merge import merge_contexts
 from src.features.corpus.write_fanout import schedule_mirror_insert, schedule_mirror_upsert_answer
 from src.platform.observability import SlowPathTimer, slow_path_threshold_ms
@@ -46,6 +51,26 @@ class CompositeContextRepository:
 
         return await cached_find_by_keywords(keywords, self._find_by_keywords_merged)
 
+    async def find_by_keywords_for_reply(self, keywords: str) -> Context | None:
+        """接话热路径：prefetch 仅本地查库并异步回填；sync 保持合并远程。"""
+        mode = remote_corpus_find_mode(self._cfg)
+        if mode == "sync":
+            return await self.find_by_keywords(keywords)
+        ctx = await self._find_local_for_reply(keywords)
+        if self.local_first_has_answers(ctx):
+            return ctx
+        if mode == "prefetch":
+            from src.features.corpus.prefetch import schedule_corpus_prefetch
+
+            schedule_corpus_prefetch(keywords)
+        return None
+
+    async def _find_local_for_reply(self, keywords: str) -> Context | None:
+        find_reply = getattr(self._local, "find_by_keywords_for_reply", None)
+        if callable(find_reply):
+            return await find_reply(keywords)
+        return await self._local.find_by_keywords(keywords)
+
     @staticmethod
     def local_first_has_answers(ctx: Context | None) -> bool:
         return ctx is not None and bool(ctx.answers)
@@ -67,7 +92,7 @@ class CompositeContextRepository:
             threshold_ms=slow_path_threshold_ms("PALLAS_SLOW_CORPUS_FIND_MS", 80.0),
         )
         merged: Context | None = None
-        remote_find = remote_corpus_find_enabled(self._cfg)
+        remote_find = remote_corpus_find_mode(self._cfg) == "sync"
         strategy = str(self._cfg.merge_strategy or "local_first")
         outcome = "merged"
         for source_id in self._cfg.merge_order:

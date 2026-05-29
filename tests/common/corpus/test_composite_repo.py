@@ -61,6 +61,9 @@ def corpus_cfg() -> CorpusConfig:
 
 @pytest.mark.asyncio
 async def test_composite_find_merges_sources(corpus_cfg: CorpusConfig):
+    from src.features.corpus.find_cache import reset_find_cache_for_tests
+
+    await reset_find_cache_for_tests()
     local = FakeContextRepo(
         label="local",
         contexts={
@@ -91,7 +94,10 @@ async def test_composite_find_merges_sources(corpus_cfg: CorpusConfig):
         },
     )
     repo = CompositeContextRepository(local, community=remote, cfg=corpus_cfg)
-    with patch("src.features.corpus.composite_repo.remote_corpus_find_enabled", lambda _cfg=None: True):
+    with (
+        patch("src.features.corpus.composite_repo.remote_corpus_find_mode", lambda _cfg=None: "sync"),
+        patch("src.features.corpus.remote_budget.should_skip_remote_corpus", return_value=False),
+    ):
         ctx = await repo.find_by_keywords("kw")
     assert ctx is not None
     by_kw = {a.keywords: a for a in ctx.answers}
@@ -147,6 +153,9 @@ async def test_local_context_exists_does_not_hit_remote():
 
 @pytest.mark.asyncio
 async def test_composite_remote_find_failure_degrades(corpus_cfg: CorpusConfig):
+    from src.features.corpus.find_cache import reset_find_cache_for_tests
+
+    await reset_find_cache_for_tests()
     local = FakeContextRepo(
         label="local",
         contexts={
@@ -163,7 +172,10 @@ async def test_composite_remote_find_failure_degrades(corpus_cfg: CorpusConfig):
     remote = FakeContextRepo(label="community")
     remote.find_by_keywords = AsyncMock(side_effect=RuntimeError("network"))  # type: ignore[method-assign]
     repo = CompositeContextRepository(local, community=remote, cfg=corpus_cfg)
-    with patch("src.features.corpus.composite_repo.remote_corpus_find_enabled", lambda _cfg=None: True):
+    with (
+        patch("src.features.corpus.composite_repo.remote_corpus_find_mode", lambda _cfg=None: "sync"),
+        patch("src.features.corpus.remote_budget.should_skip_remote_corpus", return_value=False),
+    ):
         ctx = await repo.find_by_keywords("kw")
     assert ctx is not None
     assert len(ctx.answers) == 1

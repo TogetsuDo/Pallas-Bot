@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from src.foundation.config.repo_settings import repo_env_raw_value
 
+RemoteCorpusFindMode = Literal["off", "sync", "prefetch"]
+
 _PREFIX = "PALLAS_CORPUS_"
 _VALID_SOURCES = ("local", "fed", "community")
 TriState = Literal["auto", "true", "false"]
@@ -184,13 +186,22 @@ def corpus_composite_enabled(cfg: CorpusConfig | None = None) -> bool:
     return fed_on or community_on
 
 
-def remote_corpus_find_enabled(cfg: CorpusConfig | None = None) -> bool:
-    """local 未命中时是否继续远程 find（PALLAS_CORPUS_REMOTE_FIND_ENABLED）。
+def remote_corpus_find_mode(cfg: CorpusConfig | None = None) -> RemoteCorpusFindMode:
+    """local 未命中时的远程语料策略（PALLAS_CORPUS_REMOTE_FIND_ENABLED）。
 
-    - false / 未配置时的 auto：不拉远程（默认，省 CPU）
-    - true：local 未命中时仍请求 community
+    - off（false / auto / 空）：不拉远程
+    - sync：热路径同步 HTTP 查社区并当场接话
+    - prefetch（true / prefetch）：热路径仅本地；miss 时后台拉取并写入本地，下次再回
     """
-    flag = parse_tristate(setting_str(f"{_PREFIX}REMOTE_FIND_ENABLED", "auto"), default=None)
-    if flag is True:
-        return True
-    return False
+    _ = cfg
+    raw = setting_str(f"{_PREFIX}REMOTE_FIND_ENABLED", "auto").strip().lower()
+    if raw == "sync":
+        return "sync"
+    if raw in ("true", "prefetch", "1", "yes", "on"):
+        return "prefetch"
+    return "off"
+
+
+def remote_corpus_find_enabled(cfg: CorpusConfig | None = None) -> bool:
+    """是否在 local 未命中时访问远程语料（仅 sync 模式在热路径同步请求）。"""
+    return remote_corpus_find_mode(cfg) == "sync"
