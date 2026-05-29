@@ -32,9 +32,10 @@ def _format_field(value: Any) -> str:
 
 
 class SlowPathTimer:
-    def __init__(self, scope: str, *, threshold_ms: float) -> None:
+    def __init__(self, scope: str, *, threshold_ms: float, log_level: str = "warning") -> None:
         self.scope = scope
         self.threshold_ms = max(0.0, float(threshold_ms))
+        self.log_level = str(log_level or "warning").strip().lower() or "warning"
         self._started = time.perf_counter()
         self._last_mark = self._started
         self._stages: list[tuple[str, float]] = []
@@ -56,7 +57,8 @@ class SlowPathTimer:
             " ".join(f"{key}={_format_field(value)}" for key, value in sorted(fields.items()) if value is not None)
             or "-"
         )
-        logger.warning(
+        log_method = getattr(logger, self.log_level, logger.warning)
+        log_method(
             "{} slow_path elapsed_ms={:.1f} stages={} {}",
             self.scope,
             total_ms,

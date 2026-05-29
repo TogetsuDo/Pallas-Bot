@@ -32,3 +32,18 @@ def test_slow_path_skips_log_below_threshold(monkeypatch) -> None:
     timer.finish(outcome="pass", now=1.030, cache_hit=True)
 
     assert calls == []
+
+
+def test_slow_path_can_log_at_debug_level(monkeypatch) -> None:
+    debug_calls: list[tuple[str, tuple[object, ...]]] = []
+    warning_calls: list[tuple[str, tuple[object, ...]]] = []
+    monkeypatch.setattr(slow_path.logger, "debug", lambda msg, *args: debug_calls.append((msg, args)))
+    monkeypatch.setattr(slow_path.logger, "warning", lambda msg, *args: warning_calls.append((msg, args)))
+
+    timer = slow_path.SlowPathTimer("federate_ingress", threshold_ms=10.0, log_level="debug")
+    timer._started = 1.0
+    timer.mark("redis", now=1.012)
+    timer.finish(outcome="won", now=1.020, cache_hit=False)
+
+    assert len(debug_calls) == 1
+    assert warning_calls == []

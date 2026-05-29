@@ -20,11 +20,16 @@ FEDERATE_INGRESS_CLAIM_PLUGIN = "federate_ingress"
 _WIN_CACHE_TTL_SEC = float(os.getenv("PALLAS_FEDERATE_WIN_CACHE_SEC", "8"))
 _WIN_CACHE_MAX = 20_000
 _win_cache: dict[tuple[str, tuple[int, int, str] | tuple[int, int, str, int], str], float] = {}
+_inflight_claims: dict[
+    tuple[str, tuple[int, int, str] | tuple[int, int, str, int], str],
+    asyncio.Future[bool],
+] = {}
 _win_lock = asyncio.Lock()
 
 
 def reset_federate_ingress_win_cache_for_tests() -> None:
     _win_cache.clear()
+    _inflight_claims.clear()
 
 
 def federate_ingress_cached_win(
@@ -65,6 +70,7 @@ async def claim_federate_group_message_ingress(
     timer = SlowPathTimer(
         "federate_ingress",
         threshold_ms=slow_path_threshold_ms("PALLAS_SLOW_FEDERATE_INGRESS_MS", 12.0),
+        log_level="debug",
     )
     if not federate_ingress_active():
         timer.finish(outcome="disabled")
@@ -85,12 +91,21 @@ async def claim_federate_group_message_ingress(
     )
     cache_key = (plugin, sig, deployment_id)
     now = time.monotonic()
+    wait_for: asyncio.Future[bool] | None = None
+    claim_owner = False
     async with _win_lock:
         exp = _win_cache.get(cache_key)
         if exp is not None and now < exp:
             timer.mark("cache_hit")
             timer.finish(outcome="cached_win", cache_hit=True, group_id=int(event.group_id), user_id=int(event.user_id))
             return True
+        inflight = _inflight_claims.get(cache_key)
+        if inflight is not None:
+            wait_for = inflight
+        else:
+            wait_for = asyncio.get_running_loop().create_future()
+            _inflight_claims[cache_key] = wait_for
+            claim_owner = True
         if len(_win_cache) > _WIN_CACHE_MAX:
             stale = [k for k, e in _win_cache.items() if now >= e]
             for k in stale:
@@ -98,21 +113,45 @@ async def claim_federate_group_message_ingress(
             if len(_win_cache) > _WIN_CACHE_MAX:
                 _win_cache.clear()
 
-    won = await try_claim_cross_federate_message(
-        plugin,
-        int(event.group_id),
-        int(event.user_id),
-        body,
-        event.time,
-        deployment_id,
-        use_plaintext=True,
-        include_message_time=include_message_time,
-    )
+    if not claim_owner:
+        won = await wait_for
+        timer.mark("inflight_wait")
+        timer.finish(
+            outcome="won" if won else "lost",
+            cache_hit=False,
+            shared_result=True,
+            group_id=int(event.group_id),
+            user_id=int(event.user_id),
+        )
+        return won
+
+    try:
+        won = await try_claim_cross_federate_message(
+            plugin,
+            int(event.group_id),
+            int(event.user_id),
+            body,
+            event.time,
+            deployment_id,
+            use_plaintext=True,
+            include_message_time=include_message_time,
+        )
+    except Exception as exc:
+        async with _win_lock:
+            future = _inflight_claims.pop(cache_key, None)
+        if future is not None and not future.done():
+            future.set_exception(exc)
+        raise
+
     timer.mark("redis_claim")
     if won:
         expire_at = time.monotonic() + _WIN_CACHE_TTL_SEC
         async with _win_lock:
             _win_cache[cache_key] = expire_at
+    async with _win_lock:
+        future = _inflight_claims.pop(cache_key, None)
+    if future is not None and not future.done():
+        future.set_result(won)
     timer.finish(
         outcome="won" if won else "lost",
         cache_hit=False,

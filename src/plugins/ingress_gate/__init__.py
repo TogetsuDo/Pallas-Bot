@@ -114,6 +114,7 @@ async def ingress_group_message_gate(bot, event) -> None:
     timer = SlowPathTimer(
         "ingress_gate",
         threshold_ms=slow_path_threshold_ms("PALLAS_SLOW_INGRESS_GATE_MS", 20.0),
+        log_level="debug",
     )
     outcome = "pass"
     fanout_bypass = False
