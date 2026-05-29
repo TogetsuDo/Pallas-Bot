@@ -15,17 +15,13 @@ from src.features.cmd_perm.metadata_defaults import (
 )
 from src.platform.bot_runtime.roles import is_hub_role
 from src.platform.federate.ingress import claim_federate_group_message_ingress
-from src.platform.ingress.cage_plaintext import is_cage_plaintext
-from src.platform.ingress.drink_plaintext import is_drink_plaintext
-from src.platform.ingress.roulette_plaintext import is_roulette_plaintext
+from src.platform.ingress.fanout_bypass import ingress_fanout_bypasses_claim
 from src.platform.multi_bot.dedup import (
     try_claim_cross_bot_message,
     try_claim_cross_shard_message,
     try_claim_group_message_once,
 )
 from src.platform.multi_bot.fleet import fleet_bot_ids_contains, get_fleet_bot_ids
-from src.platform.shard.coord.bot_count import should_skip_ingress_claim_for_shard_bot_count
-from src.platform.shard.ingress_fanout import is_ingress_fanout_plaintext
 from src.platform.shard.ingress_metrics import (
     record_ingress_claim,
     record_ingress_early_discard,
@@ -90,8 +86,9 @@ async def ingress_group_message_gate(bot, event) -> None:
 
     plain = (event.get_plaintext() or "").strip()
     body = plain or event.raw_message
+    fanout_bypass = ingress_fanout_bypasses_claim(plain)
 
-    if not is_sharding_active():
+    if not is_sharding_active() and not fanout_bypass:
         if not await try_claim_group_message_once(
             INGRESS_CLAIM_PLUGIN,
             event.group_id,
@@ -127,18 +124,6 @@ async def ingress_group_message_gate(bot, event) -> None:
             record_ingress_early_discard("federate")
         raise IgnoredException("federate ingress claim lost")
 
-    fanout_bypass = is_ingress_fanout_plaintext(plain)
-    if is_sharding_active():
-        fanout_bypass = fanout_bypass or (
-            should_skip_ingress_claim_for_shard_bot_count(plain)
-            or is_cage_plaintext(plain)
-            or is_drink_plaintext(plain)
-            or is_roulette_plaintext(plain)
-        )
-    else:
-        fanout_bypass = fanout_bypass or (
-            is_cage_plaintext(plain) or is_drink_plaintext(plain) or is_roulette_plaintext(plain)
-        )
     if fanout_bypass:
         if metrics:
             record_ingress_fanout_bypass()
