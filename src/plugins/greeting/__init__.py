@@ -418,23 +418,22 @@ async def greeting_plugin_disabled(group_id: int | None, bot_id: int | str) -> b
     return await is_plugin_disabled("greeting", group_id, bot_id)
 
 
-async def message_equal(event: GroupMessageEvent) -> bool:
-    raw_msg = event.raw_message
-    if raw_msg not in target_msgs:
-        return False
-    return not await greeting_plugin_disabled(event.group_id, event.self_id)
+def call_me_message_rule(event: GroupMessageEvent) -> bool:
+    return event.raw_message in target_msgs
 
 
 call_me_cmd = on_message(
-    rule=Rule(message_equal),
-    priority=13,
-    block=False,
+    rule=Rule(call_me_message_rule),
+    priority=1,
+    block=True,
     permission=permission.GROUP,
 )
 
 
 @call_me_cmd.handle()
 async def handle_call_me(bot: Bot, event: GroupMessageEvent):
+    if await greeting_plugin_disabled(event.group_id, event.self_id):
+        return
     config = BotConfig(event.self_id, event.group_id)
     if not await config.is_cooldown("call_me"):
         return
@@ -442,7 +441,8 @@ async def handle_call_me(bot: Bot, event: GroupMessageEvent):
 
     file_path = get_random_voice(operator, greeting_voices)
     if file_path:
-        await call_me_cmd.finish(MessageSegment.record(file=file_path.read_bytes()))
+        voice_bytes = await asyncio.to_thread(file_path.read_bytes)
+        await call_me_cmd.finish(MessageSegment.record(file=voice_bytes))
 
 
 to_me_cmd = on_message(

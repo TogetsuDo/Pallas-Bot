@@ -60,6 +60,11 @@ class CompositeContextRepository:
         for source_id in self._cfg.merge_order:
             if not remote_find and source_id != "local":
                 continue
+            if source_id != "local":
+                from src.features.corpus.remote_budget import should_skip_remote_corpus
+
+                if should_skip_remote_corpus(hot_path=True):
+                    continue
             repo = self._repo_for(source_id)
             if repo is None:
                 continue
@@ -83,6 +88,10 @@ class CompositeContextRepository:
         if await self._local.context_exists_by_keywords(keywords):
             return True
         if not remote_corpus_find_enabled(self._cfg):
+            return False
+        from src.features.corpus.remote_budget import should_skip_remote_corpus
+
+        if should_skip_remote_corpus(hot_path=True):
             return False
         for source_id in ("fed", "community"):
             repo = self._repo_for(source_id)

@@ -85,6 +85,13 @@ def schedule_mirror_upsert_answer(
 ) -> None:
     if not cfg.fed_contribute and not community_contribute_enabled(cfg):
         return
+    from src.foundation.db.pool_budget import pg_pool_under_pressure
+
+    if pg_pool_under_pressure(threshold=0.78):
+        from src.foundation.db.pool_diagnostics import note_mirror_skipped_pressure
+
+        note_mirror_skipped_pressure()
+        return
     task = asyncio.create_task(
         mirror_upsert_answer(
             fed=fed,
@@ -109,6 +116,13 @@ def schedule_mirror_insert(
     context: Context,
 ) -> None:
     if not cfg.fed_contribute and not community_contribute_enabled(cfg):
+        return
+    from src.foundation.db.pool_budget import pg_pool_under_pressure
+
+    if pg_pool_under_pressure(threshold=0.78):
+        from src.foundation.db.pool_diagnostics import note_mirror_skipped_pressure
+
+        note_mirror_skipped_pressure()
         return
     task = asyncio.create_task(
         mirror_insert(

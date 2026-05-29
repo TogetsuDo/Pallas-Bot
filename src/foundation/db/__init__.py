@@ -293,10 +293,13 @@ async def init_postgresql_db() -> None:
     except Exception:
         pass
 
-    # bot 退出时释放连接池
     try:
         import nonebot
 
+        from src.foundation.db.pool_diagnostics import bind_pg_pool_diagnostics, start_pg_pool_diagnostics_task
+
+        bind_pg_pool_diagnostics()
+        start_pg_pool_diagnostics_task()
         driver = nonebot.get_driver()
 
         @driver.on_shutdown

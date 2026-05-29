@@ -73,6 +73,33 @@ def group_at_qq_ids(event: GroupMessageEvent) -> frozenset[int]:
     return frozenset(out)
 
 
+def _ingress_fanout_early_exit(
+    *,
+    event: GroupMessageEvent,
+    self_id: int,
+    user_id: int,
+    metrics: bool,
+) -> bool:
+    """全员同响：仅 @ 定向 / 舰队过滤，跳过 once / federate / shard 抢占。"""
+    if fleet_bot_ids_contains(user_id) and user_id != self_id:
+        if metrics:
+            record_ingress_early_discard("fleet")
+        raise IgnoredException("fleet bot message")
+
+    ats = group_at_qq_ids(event)
+    if ats:
+        fleet = get_fleet_bot_ids()
+        pallas_ats = ats & fleet
+        if pallas_ats and self_id not in pallas_ats:
+            if metrics:
+                record_ingress_early_discard("not_at_target")
+            raise IgnoredException("not at-target bot")
+
+    if metrics:
+        record_ingress_fanout_bypass()
+    return True
+
+
 @event_preprocessor
 async def ingress_group_message_gate(bot, event) -> None:
     if not ingress_gate_active():
@@ -88,7 +115,16 @@ async def ingress_group_message_gate(bot, event) -> None:
     body = plain or event.raw_message
     fanout_bypass = ingress_fanout_bypasses_claim(plain)
 
-    if not is_sharding_active() and not fanout_bypass:
+    if fanout_bypass:
+        _ingress_fanout_early_exit(
+            event=event,
+            self_id=self_id,
+            user_id=user_id,
+            metrics=metrics,
+        )
+        return
+
+    if not is_sharding_active():
         if not await try_claim_group_message_once(
             INGRESS_CLAIM_PLUGIN,
             event.group_id,
@@ -123,11 +159,6 @@ async def ingress_group_message_gate(bot, event) -> None:
         if metrics:
             record_ingress_early_discard("federate")
         raise IgnoredException("federate ingress claim lost")
-
-    if fanout_bypass:
-        if metrics:
-            record_ingress_fanout_bypass()
-        return
 
     if is_sharding_active():
         shard_id = get_shard_registry_settings().shard_id

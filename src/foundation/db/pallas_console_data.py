@@ -82,7 +82,7 @@ async def list_all_bot_configs_public() -> list[dict[str, Any]]:
 
         from src.foundation.db.repository_pg import BotConfigRow, get_session
 
-        async with get_session() as session:
+        async with get_session(read_only=True) as session:
             result = await session.execute(select(BotConfigRow).limit(_BOT_LIST_CAP))
             rows = list(result.scalars().all())
         return [bot_config_to_public(r) for r in rows]

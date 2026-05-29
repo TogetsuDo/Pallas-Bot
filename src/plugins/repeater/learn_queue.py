@@ -23,10 +23,30 @@ _sem_limit: int | None = None
 _worker_tasks: list[asyncio.Task[None]] = []
 _dropped_full: int = 0
 _completed: int = 0
+_learn_pool_wait_spins: int = 0
+
+
+def drain_learn_pause_stats() -> int:
+    global _learn_pool_wait_spins
+    spins = _learn_pool_wait_spins
+    _learn_pool_wait_spins = 0
+    return spins
+
+
+async def wait_pg_pool_headroom_for_learn() -> None:
+    global _learn_pool_wait_spins
+    from src.foundation.db.pool_budget import pg_pool_under_pressure
+
+    while pg_pool_under_pressure(threshold=0.68):
+        _learn_pool_wait_spins += 1
+        await asyncio.sleep(0.2)
 
 
 def learn_concurrency() -> int:
-    return get_repeater_learn_runtime_config().learn_concurrency
+    from src.foundation.db.pool_budget import cap_by_pg_pool
+
+    requested = get_repeater_learn_runtime_config().learn_concurrency
+    return cap_by_pg_pool(requested, workload_fraction=0.22)
 
 
 def learn_queue_max_size() -> int:
@@ -61,6 +81,7 @@ async def run_learn_consumer() -> None:
     while True:
         chat = await learn_queue().get()
         try:
+            await wait_pg_pool_headroom_for_learn()
             await execute_repeater_learn(chat)
         finally:
             learn_queue().task_done()
@@ -110,6 +131,16 @@ async def start_repeater_learn_worker() -> None:
         return
     await stop_repeater_learn_worker()
     n = learn_concurrency()
+    configured = get_repeater_learn_runtime_config().learn_concurrency
+    if n < configured:
+        from src.foundation.db.pool_budget import pg_pool_capacity
+
+        logger.info(
+            "repeater learn concurrency capped by PG pool: effective={} configured={} pool={}",
+            n,
+            configured,
+            pg_pool_capacity(),
+        )
     _worker_tasks = [asyncio.create_task(run_learn_consumer(), name=f"repeater_learn_consumer_{i}") for i in range(n)]
     logger.info(
         "repeater learn workers started: consumers={} queue_max={}",

@@ -194,6 +194,11 @@ async def _(bot: Bot, event: GroupMessageEvent):
     if await _should_skip_duplicate_group_event(event.group_id, event.user_id, norm_raw, event.time):
         return
 
+    from src.platform.ingress.fanout_bypass import ingress_fanout_bypasses_claim
+
+    if ingress_fanout_bypasses_claim(plain_body):
+        return
+
     from src.platform.federate.ingress import (
         claim_federate_group_message_ingress,
         federate_ingress_cached_win,

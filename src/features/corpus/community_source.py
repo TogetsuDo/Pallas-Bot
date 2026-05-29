@@ -78,6 +78,14 @@ class RemoteCorpusRepository(ContextRepositoryExistenceMixin):
     async def find_by_keywords(self, keywords: str) -> Context | None:
         if not keywords or not self._api_bases:
             return None
+        from src.features.corpus.remote_budget import RemoteCorpusBudget
+
+        async with RemoteCorpusBudget(hot_path=True, wait=False) as budget:
+            if budget.skipped:
+                return None
+            return await self._find_by_keywords_http(keywords)
+
+    async def _find_by_keywords_http(self, keywords: str) -> Context | None:
         last_error: httpx.HTTPError | None = None
         try:
             async with scrub_http_log_noise():
@@ -156,6 +164,14 @@ class RemoteCorpusRepository(ContextRepositoryExistenceMixin):
     async def _post_contribute(self, body: dict[str, Any]) -> None:
         if not self._api_bases:
             return
+        from src.features.corpus.remote_budget import RemoteCorpusBudget
+
+        async with RemoteCorpusBudget(hot_path=False, wait=False) as budget:
+            if budget.skipped:
+                return
+            await self._post_contribute_http(body)
+
+    async def _post_contribute_http(self, body: dict[str, Any]) -> None:
         last_error: httpx.HTTPError | None = None
         try:
             async with scrub_http_log_noise():

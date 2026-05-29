@@ -254,20 +254,55 @@ def is_pg_initialized() -> bool:
     return _session_factory is not None
 
 
+def pg_engine() -> AsyncEngine | None:
+    return _engine
+
+
+def pg_pool_live_stats() -> dict[str, int] | None:
+    """运行时连接池占用（供背压与可观测性）。"""
+    if _engine is None:
+        return None
+    from src.foundation.db.pool_budget import pg_pool_capacity
+
+    pool = _engine.pool
+    return {
+        "pool_size": int(pool.size()),
+        "checked_out": int(pool.checkedout()),
+        "overflow": int(pool.overflow()),
+        "capacity": pg_pool_capacity(),
+    }
+
+
 @asynccontextmanager
-async def get_session():
+async def get_session(*, read_only: bool = False):
     if _session_factory is None:
         raise RuntimeError("PostgreSQL 尚未初始化，请先调用 init_pg()")
+    from src.foundation.db.pool_diagnostics import (
+        note_slow_pg_session,
+        pg_session_caller_hint_entry,
+        session_hold_warn_ms,
+    )
+
+    caller = pg_session_caller_hint_entry()
     session = _session_factory()
+    t0 = time.monotonic()
     try:
         yield session
+        if read_only:
+            with contextlib.suppress(BaseException):
+                await session.commit()
     except BaseException:
         # CancelledError 非 Exception 子类；清理须 shield，避免 close/rollback 再被取消导致连接未归还池
         with contextlib.suppress(BaseException):
             await asyncio.shield(session.rollback())
         raise
     finally:
+        held_ms = (time.monotonic() - t0) * 1000.0
+        if held_ms >= session_hold_warn_ms():
+            note_slow_pg_session(held_ms, caller)
         try:
+            with contextlib.suppress(BaseException):
+                await asyncio.shield(session.rollback())
             await asyncio.shield(session.close())
         except BaseException:
             with contextlib.suppress(BaseException):
@@ -431,13 +466,13 @@ def row_to_image_cache(row: ImageCacheRow) -> ImageCache:
 class PgContextRepository:
     async def context_exists_by_keywords(self, keywords: str) -> bool:
         khash = keywords_hash(keywords)
-        async with get_session() as session:
+        async with get_session(read_only=True) as session:
             result = await session.execute(select(ContextRow.id).where(ContextRow.keywords_hash == khash).limit(1))
             return result.scalar_one_or_none() is not None
 
     async def find_by_keywords(self, keywords: str) -> Context | None:
         khash = keywords_hash(keywords)
-        async with get_session() as session:
+        async with get_session(read_only=True) as session:
             result = await session.execute(
                 select(ContextRow).options(*_LOAD_RELATED).where(ContextRow.keywords_hash == khash)
             )
@@ -451,7 +486,7 @@ class PgContextRepository:
 
         msg_cap = reply_messages_cap()
         ans_cap = reply_answers_cap()
-        async with get_session() as session:
+        async with get_session(read_only=True) as session:
             result = await session.execute(
                 select(ContextRow).options(*_LOAD_REPLY_CTX).where(ContextRow.keywords_hash == khash)
             )
@@ -723,7 +758,7 @@ class PgMessageRepository:
         if user_id is not None:
             stmt = stmt.where(MessageRow.user_id == int(user_id))
         stmt = stmt.order_by(MessageRow.time.desc()).limit(cap)
-        async with get_session() as session:
+        async with get_session(read_only=True) as session:
             result = await session.execute(stmt)
             rows = list(result.scalars().all())
         rows.reverse()
@@ -884,7 +919,7 @@ class PgConfigRepository:
             hit, value = await self._cache.get(key_id)
             if hit:
                 return value
-        async with get_session() as session:
+        async with get_session(read_only=True) as session:
             result = await session.execute(
                 select(self._row_class).where(getattr(self._row_class, self._pk_field) == key_id)
             )
@@ -957,7 +992,7 @@ class PgConfigRepository:
 
 class PgImageCacheRepository:
     async def find_by_cq_code(self, cq_code: str) -> ImageCache | None:
-        async with get_session() as session:
+        async with get_session(read_only=True) as session:
             result = await session.execute(select(ImageCacheRow).where(ImageCacheRow.cq_code == cq_code))
             row = result.scalar_one_or_none()
             return row_to_image_cache(row) if row else None

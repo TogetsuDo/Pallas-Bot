@@ -1,0 +1,195 @@
+"""PG 连接池诊断：周期汇总 + 慢持连告警（INFO/WARNING，非全局 DEBUG）。"""
+
+from __future__ import annotations
+
+import asyncio
+import inspect
+from collections import Counter
+from typing import Any
+
+from nonebot import get_driver, logger
+
+from src.foundation.config.repo_settings import repo_env_raw_value
+
+_TICK_SEC = 60.0
+_diag_task: asyncio.Task[None] | None = None
+_bound = False
+
+_slow_by_caller: Counter[str] = Counter()
+_slow_session_total: int = 0
+_slow_hold_max_ms: float = 0.0
+_mirror_skipped_pressure: int = 0
+
+
+def session_hold_warn_ms() -> float:
+    raw = repo_env_raw_value("PG_SESSION_HOLD_WARN_MS")
+    if raw is not None:
+        try:
+            return max(50.0, float(str(raw).strip()))
+        except ValueError:
+            pass
+    return 500.0
+
+
+def pg_session_caller_hint_entry() -> str:
+    """在 get_session 入口捕获调用方（避开 contextlib / repository_pg 包装帧）。"""
+    for frame_info in inspect.stack()[2:18]:
+        path = frame_info.filename.replace("\\", "/")
+        if path.endswith("/foundation/db/repository_pg.py"):
+            continue
+        if path.endswith("/contextlib.py"):
+            continue
+        if "/site-packages/" in path:
+            continue
+        parts = path.rsplit("/", 2)
+        label = "/".join(parts[-2:]) if len(parts) >= 2 else path
+        return f"{frame_info.function}@{label}:{frame_info.lineno}"
+    return "unknown"
+
+
+def pg_session_caller_hint() -> str:
+    return pg_session_caller_hint_entry()
+
+
+def note_slow_pg_session(held_ms: float, caller: str) -> None:
+    global _slow_session_total, _slow_hold_max_ms
+    _slow_session_total += 1
+    _slow_hold_max_ms = max(_slow_hold_max_ms, held_ms)
+    _slow_by_caller[caller] += 1
+
+
+def note_mirror_skipped_pressure() -> None:
+    global _mirror_skipped_pressure
+    _mirror_skipped_pressure += 1
+
+
+async def pg_idle_in_transaction_count() -> int | None:
+    from sqlalchemy import text
+
+    from src.foundation.db.repository_pg import is_pg_initialized, pg_engine
+
+    if not is_pg_initialized():
+        return None
+    engine = pg_engine()
+    if engine is None:
+        return None
+    try:
+        async with engine.connect() as conn:
+            result = await conn.execute(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity "
+                    "WHERE datname = current_database() AND state = 'idle in transaction'"
+                )
+            )
+            val = result.scalar()
+            return int(val) if val is not None else 0
+    except Exception as e:
+        logger.debug("pg idle-in-tx probe failed: {}", e)
+        return None
+
+
+def learn_runtime_snapshot() -> dict[str, Any]:
+    try:
+        from src.plugins.repeater.learn_queue import drain_learn_pause_stats, learn_concurrency, learn_queue
+
+        q = learn_queue()
+        return {
+            "learn_effective": learn_concurrency(),
+            "learn_queue_size": q.qsize(),
+            "learn_pool_wait_spins": drain_learn_pause_stats(),
+        }
+    except Exception:
+        return {}
+
+
+async def emit_pool_diagnostics_tick() -> None:
+    global _slow_session_total, _mirror_skipped_pressure, _slow_hold_max_ms
+
+    from src.features.corpus.remote_budget import drain_remote_corpus_skip_counters
+    from src.foundation.db.pool_budget import pool_budget_status
+
+    budget = pool_budget_status()
+    live = budget.get("live") or {}
+    util = budget.get("utilization")
+    util_pct = f"{util * 100:.0f}%" if util is not None else "n/a"
+    idle_tx = await pg_idle_in_transaction_count()
+    remote = drain_remote_corpus_skip_counters()
+    learn = learn_runtime_snapshot()
+
+    slow_top = ", ".join(f"{k}={v}" for k, v in _slow_by_caller.most_common(3))
+    if not slow_top:
+        slow_top = "-"
+
+    logger.info(
+        "pg pool diag: checked_out={}/{} util={} idle_in_tx={} "
+        "remote_skip_pressure={} remote_skip_busy={} mirror_skip={} "
+        "slow_sessions={} slow_max_ms={:.0f} learn_q={} learn_pool_wait={} slow_top=[{}]",
+        live.get("checked_out", "?"),
+        live.get("capacity", budget.get("capacity", "?")),
+        util_pct,
+        idle_tx if idle_tx is not None else "?",
+        remote.get("skipped_pressure", 0),
+        remote.get("skipped_busy", 0),
+        _mirror_skipped_pressure,
+        _slow_session_total,
+        _slow_hold_max_ms,
+        learn.get("learn_queue_size", "?"),
+        learn.get("learn_pool_wait_spins", 0),
+        slow_top,
+    )
+
+    _slow_by_caller.clear()
+    _slow_session_total = 0
+    _slow_hold_max_ms = 0.0
+    _mirror_skipped_pressure = 0
+
+
+async def pool_diagnostics_loop() -> None:
+    await asyncio.sleep(_TICK_SEC)
+    while True:
+        try:
+            await emit_pool_diagnostics_tick()
+        except Exception as e:
+            logger.warning("pg pool diagnostics tick failed: {}", e)
+        await asyncio.sleep(_TICK_SEC)
+
+
+def bind_pg_pool_diagnostics() -> None:
+    global _bound
+    if _bound:
+        return
+    _bound = True
+    driver = get_driver()
+
+    @driver.on_shutdown
+    async def _stop_pg_pool_diagnostics() -> None:
+        global _diag_task
+        if _diag_task is None:
+            return
+        _diag_task.cancel()
+        await asyncio.gather(_diag_task, return_exceptions=True)
+        _diag_task = None
+
+
+def start_pg_pool_diagnostics_task() -> None:
+    global _diag_task
+    if _diag_task is not None and not _diag_task.done():
+        return
+    _diag_task = asyncio.create_task(pool_diagnostics_loop(), name="pg_pool_diagnostics")
+    logger.info(
+        "pg pool diagnostics started (tick={}s, session_hold_warn={}ms)",
+        int(_TICK_SEC),
+        int(session_hold_warn_ms()),
+    )
+
+
+async def reset_pg_pool_diagnostics_for_tests() -> None:
+    global _diag_task, _slow_by_caller, _slow_session_total, _slow_hold_max_ms, _mirror_skipped_pressure
+    if _diag_task is not None:
+        _diag_task.cancel()
+        await asyncio.gather(_diag_task, return_exceptions=True)
+        _diag_task = None
+    _slow_by_caller.clear()
+    _slow_session_total = 0
+    _slow_hold_max_ms = 0.0
+    _mirror_skipped_pressure = 0

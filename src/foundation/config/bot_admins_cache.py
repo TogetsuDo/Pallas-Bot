@@ -21,15 +21,21 @@ _fetch_tasks_lock = asyncio.Lock()
 
 _any_bot_admin_cache: tuple[float, frozenset[int]] | None = None
 _any_bot_admin_generation = 0
+_any_bot_admin_fetch_task: asyncio.Task[frozenset[int]] | None = None
+_any_bot_admin_fetch_lock = asyncio.Lock()
 
 _repo = make_bot_config_repository()
 
 
 async def invalidate_bot_admins_cache(bot_ids: int | Iterable[int] | None = None) -> None:
     """admins 字段变更后调用；不传参则清空全部 bot 与跨 bot 缓存。"""
-    global _any_bot_admin_cache, _any_bot_admin_generation
+    global _any_bot_admin_cache, _any_bot_admin_generation, _any_bot_admin_fetch_task
 
     if bot_ids is None:
+        async with _any_bot_admin_fetch_lock:
+            if _any_bot_admin_fetch_task is not None and not _any_bot_admin_fetch_task.done():
+                _any_bot_admin_fetch_task.cancel()
+            _any_bot_admin_fetch_task = None
         async with _fetch_tasks_lock:
             for t in list(_fetch_tasks.values()):
                 if not t.done():
@@ -59,7 +65,7 @@ async def reset_bot_admins_cache() -> None:
 
 
 async def _load_admins_db(bot_id: int) -> list[int]:
-    doc = await _repo.get(bot_id, ignore_cache=True)
+    doc = await _repo.get(bot_id)
     if doc is None:
         return []
     raw = doc.admins or []
@@ -115,6 +121,47 @@ async def get_bot_admins_cached(bot_id: int) -> list[int]:
         return list(admins)
 
 
+async def _load_any_bot_admin_user_ids() -> frozenset[int]:
+    from src.foundation.db.pallas_console_data import list_all_bot_configs_public
+
+    try:
+        configs = await list_all_bot_configs_public()
+    except Exception:
+        return frozenset()
+
+    uids: set[int] = set()
+    for cfg in configs:
+        for uid in cfg.get("admins") or []:
+            try:
+                uids.add(int(uid))
+            except (TypeError, ValueError):
+                continue
+    return frozenset(uids)
+
+
+async def _await_any_bot_admin_user_ids_deduped() -> frozenset[int]:
+    global _any_bot_admin_fetch_task
+    async with _any_bot_admin_fetch_lock:
+        t = _any_bot_admin_fetch_task
+        if t is not None and not t.done():
+            task = t
+        else:
+
+            async def _runner() -> frozenset[int]:
+                global _any_bot_admin_fetch_task
+                try:
+                    return await _load_any_bot_admin_user_ids()
+                finally:
+                    async with _any_bot_admin_fetch_lock:
+                        cur = asyncio.current_task()
+                        if _any_bot_admin_fetch_task is cur:
+                            _any_bot_admin_fetch_task = None
+
+            task = asyncio.create_task(_runner())
+            _any_bot_admin_fetch_task = task
+    return await task
+
+
 async def any_bot_admin_user_ids_cached() -> frozenset[int]:
     """跨 Bot 管理员判定用；列表变更后由 invalidate 整体失效。"""
     global _any_bot_admin_cache
@@ -129,21 +176,7 @@ async def any_bot_admin_user_ids_cached() -> frozenset[int]:
                 if now < exp:
                     return val
 
-        from src.foundation.db.pallas_console_data import list_all_bot_configs_public
-
-        try:
-            configs = await list_all_bot_configs_public()
-        except Exception:
-            return frozenset()
-
-        uids: set[int] = set()
-        for cfg in configs:
-            for uid in cfg.get("admins") or []:
-                try:
-                    uids.add(int(uid))
-                except (TypeError, ValueError):
-                    continue
-        fs = frozenset(uids)
+        fs = await _await_any_bot_admin_user_ids_deduped()
 
         expire_at = time.monotonic() + _BOT_ADMINS_CACHE_TTL_SEC
         async with _admins_lock:
