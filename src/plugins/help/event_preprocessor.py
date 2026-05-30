@@ -6,7 +6,8 @@ from nonebot.internal.matcher import Matcher
 from nonebot.message import event_preprocessor, run_preprocessor
 
 from src.platform.ingress.plugin_command_plaintext import is_plugin_command_plaintext
-from src.platform.multi_bot.dedup import try_claim_cross_bot_message_memory
+from src.platform.multi_bot.dedup import try_claim_cross_bot_message, try_claim_cross_bot_message_memory
+from src.platform.shard.registry.config import is_sharding_active
 
 from .plugin_manager import collect_disabled_plugin_names
 
@@ -41,6 +42,16 @@ async def command_cross_bot_claim_won(
     text = (plain_text or "").strip()
     if not text or not is_plugin_command_plaintext(text):
         return True
+    if is_sharding_active():
+        return await try_claim_cross_bot_message(
+            _COMMAND_INGRESS_PLUGIN,
+            group_id,
+            user_id,
+            text,
+            message_time,
+            bot_id,
+            use_plaintext=True,
+        )
     return await try_claim_cross_bot_message_memory(
         _COMMAND_INGRESS_PLUGIN,
         group_id,

@@ -25,6 +25,7 @@ def test_package_load_role_sharded(monkeypatch):
 
     get_shard_registry_settings.cache_clear()
     assert package_load_role("draw") == "worker"
+    assert package_load_role("ingress_gate") == "worker"
     assert package_load_role("pallas_webui") == "hub"
     assert package_load_role("callback") == "hub"
 
@@ -81,6 +82,9 @@ def test_catalog_shows_shard_only_on_sharded_hub(monkeypatch):
     assert "relogin_forward" in names
     assert "maa_hub" in names
     assert "ingress_gate" in names
+    ingress = next(r for r in rows if r["name"] == "ingress_gate")
+    assert ingress["load_role"] == "worker"
+    assert ingress["expected_in_catalog_process"] is False
 
 
 def test_catalog_lists_worker_plugin(monkeypatch):
@@ -88,7 +92,7 @@ def test_catalog_lists_worker_plugin(monkeypatch):
     monkeypatch.setenv("PALLAS_BOT_ROLE", "hub")
     monkeypatch.setattr(
         "src.foundation.config.repo_settings.read_bootstrap_extra_plugin_dirs",
-        lambda: [],
+        list,
     )
     from src.platform.shard.registry.config import get_shard_registry_settings
 
@@ -140,7 +144,7 @@ def test_catalog_lists_pyproject_status_on_hub(monkeypatch):
     monkeypatch.setenv("PALLAS_BOT_ROLE", "hub")
     monkeypatch.setattr(
         "src.foundation.config.repo_settings.read_bootstrap_extra_plugin_dirs",
-        lambda: [],
+        list,
     )
     from src.platform.shard.registry.config import get_shard_registry_settings
 

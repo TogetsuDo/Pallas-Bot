@@ -41,7 +41,12 @@ def test_help_commands_bypass_once_claim() -> None:
     assert ingress_fanout_bypasses_claim("牛牛关闭全部功能")
 
 
-def test_plugin_commands_bypass_once_claim(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_plugin_commands_bypass_once_claim_when_unified(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("PALLAS_SHARD_ENABLED", raising=False)
+    monkeypatch.delenv("PALLAS_BOT_ROLE", raising=False)
+    from src.platform.shard.registry.config import get_shard_registry_settings
+
+    get_shard_registry_settings.cache_clear()
     from types import SimpleNamespace
 
     fake_plugins = [
@@ -79,3 +84,33 @@ def test_plugin_commands_bypass_once_claim(monkeypatch: pytest.MonkeyPatch) -> N
     assert ingress_fanout_bypasses_claim("牛牛唱歌 海阔天空")
     assert ingress_fanout_bypasses_claim("牛牛MAA状态")
     assert ingress_fanout_bypasses_claim("牛牛在吗")
+
+
+def _stub_plugin_command_plaintext(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+
+    fake_plugins = [
+        SimpleNamespace(
+            name="draw",
+            metadata=SimpleNamespace(extra={"menu_data": [{"trigger_condition": "牛牛画画 …"}]}),
+        ),
+    ]
+    monkeypatch.setattr(
+        "src.platform.ingress.plugin_command_plaintext.get_loaded_plugins",
+        lambda: fake_plugins,
+    )
+    monkeypatch.setattr(
+        "src.platform.ingress.plugin_command_plaintext.TrieRule.prefix.longest_prefix",
+        lambda text: SimpleNamespace(key="牛牛画画") if text.startswith("牛牛画画") else None,
+    )
+    clear_plugin_command_plaintext_cache()
+
+
+def test_plugin_commands_do_not_bypass_when_sharded(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
+    monkeypatch.setenv("PALLAS_BOT_ROLE", "worker")
+    from src.platform.shard.registry.config import get_shard_registry_settings
+
+    get_shard_registry_settings.cache_clear()
+    _stub_plugin_command_plaintext(monkeypatch)
+    assert not ingress_fanout_bypasses_claim("牛牛画画")

@@ -172,7 +172,10 @@ def package_load_role(package: str) -> str:
     )
 
     if package == "ingress_gate":
-        return "both"
+        # 分片：仅 worker 加载；Hub 不跑群消息门控。单进程 unified 仍在本进程加载。
+        if is_unified_role() or not is_sharding_active():
+            return "both"
+        return "worker"
     if package == "relogin_forward":
         return "worker"
     if package == "maa_hub":
