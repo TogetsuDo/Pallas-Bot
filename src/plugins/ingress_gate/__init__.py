@@ -20,6 +20,7 @@ from src.platform.federate.config import federate_ingress_bypass_unified
 from src.platform.federate.ingress import claim_federate_group_message_ingress
 from src.platform.federate.peer_bots import (
     federate_peer_bot_ids_contains,
+    should_process_federate_group_on_current_deployment,
     start_federate_peer_bot_sync_loop,
     sync_federate_peer_bot_roster,
 )
@@ -150,6 +151,12 @@ async def ingress_group_message_gate(bot, event) -> None:
             if metrics:
                 record_ingress_early_discard("fleet")
             raise IgnoredException("fleet bot message")
+
+        if not should_process_federate_group_on_current_deployment(int(event.group_id)):
+            outcome = "federate_owner_skip"
+            if metrics:
+                record_ingress_early_discard("federate")
+            raise IgnoredException("federate group owner mismatch")
 
         if not sharding_active:
             if not await try_claim_group_message_once(

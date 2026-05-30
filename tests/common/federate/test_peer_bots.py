@@ -37,3 +37,15 @@ def test_refresh_federate_peer_bot_ids_sync_reads_other_deployments(monkeypatch)
     monkeypatch.setattr(mod, "load_or_create_deployment_id", lambda: "dep-local")
 
     assert mod.refresh_federate_peer_bot_ids_sync() == frozenset({222, 333, 444})
+    assert mod.get_federate_peer_deployment_ids() == frozenset({"dep-a", "dep-b"})
+
+
+def test_should_process_federate_group_on_current_deployment_uses_sorted_owner_ring(monkeypatch):
+    mod.clear_federate_peer_bot_cache_for_tests()
+    monkeypatch.setattr(mod, "load_or_create_deployment_id", lambda: "dep-b")
+    monkeypatch.setattr(mod, "federate_ingress_active", lambda: True)
+    mod._cache_deployment_ids = frozenset({"dep-a", "dep-c"})
+
+    assert mod.federate_group_owner_deployment(123) == "dep-a"
+    assert mod.should_process_federate_group_on_current_deployment(124) is True
+    assert mod.should_process_federate_group_on_current_deployment(125) is False
