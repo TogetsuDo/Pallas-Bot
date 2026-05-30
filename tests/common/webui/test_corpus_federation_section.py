@@ -55,6 +55,23 @@ def test_apply_corpus_federation_patch_writes_env(monkeypatch, tmp_path):
     assert "PALLAS_CORPUS_COMMUNITY_ENABLED" in raw
 
 
+def test_apply_corpus_federation_patch_accepts_prefetch(monkeypatch, tmp_path):
+    from src.foundation.config import repo_settings as rs
+
+    webui = tmp_path / "data" / "pallas_config" / "webui.json"
+    webui.parent.mkdir(parents=True, exist_ok=True)
+    webui.write_text('{"env": {}}', encoding="utf-8")
+    monkeypatch.setattr(rs, "repo_webui_settings_path", lambda: webui)
+    monkeypatch.setattr(rs, "_REPO_ROOT", tmp_path)
+
+    out = apply_corpus_federation_patch({"remote_find_enabled": "prefetch"})
+    remote_find = next(f for f in out["fields"] if f["name"] == "remote_find_enabled")
+
+    assert remote_find["current"] == "prefetch"
+    raw = webui.read_text(encoding="utf-8")
+    assert '"PALLAS_CORPUS_REMOTE_FIND_ENABLED": "prefetch"' in raw
+
+
 def test_apply_corpus_federation_patch_reply_perf(monkeypatch, tmp_path):
     from src.foundation.config import repo_settings as rs
 

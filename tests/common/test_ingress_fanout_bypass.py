@@ -33,12 +33,29 @@ def test_greeting_fanout_texts_bypass_once_claim(monkeypatch: pytest.MonkeyPatch
     assert ingress_fanout_bypasses_claim("赞我")
 
 
-def test_help_commands_bypass_once_claim() -> None:
+def test_help_commands_bypass_once_claim_when_unified(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("PALLAS_SHARD_ENABLED", raising=False)
+    monkeypatch.delenv("PALLAS_BOT_ROLE", raising=False)
+    from src.platform.shard.registry.config import get_shard_registry_settings
+
+    get_shard_registry_settings.cache_clear()
     assert ingress_fanout_bypasses_claim("牛牛帮助")
     assert ingress_fanout_bypasses_claim("牛牛帮助 1")
     assert ingress_fanout_bypasses_claim("/牛牛帮助 复读")
     assert ingress_fanout_bypasses_claim("牛牛开启 复读")
     assert ingress_fanout_bypasses_claim("牛牛关闭全部功能")
+
+
+def test_help_commands_do_not_bypass_when_sharded(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
+    monkeypatch.setenv("PALLAS_BOT_ROLE", "worker")
+    from src.platform.shard.registry.config import get_shard_registry_settings
+
+    get_shard_registry_settings.cache_clear()
+    assert not ingress_fanout_bypasses_claim("牛牛帮助")
+    assert not ingress_fanout_bypasses_claim("牛牛帮助 1")
+    assert not ingress_fanout_bypasses_claim("牛牛开启 复读")
+    assert not ingress_fanout_bypasses_claim("牛牛关闭全部功能")
 
 
 def test_plugin_commands_bypass_once_claim_when_unified(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -37,6 +37,19 @@ def test_community_auto_mode_does_not_enable_from_persisted_enrollment(monkeypat
     clear_corpus_config_cache()
 
 
+def test_remote_corpus_find_true_maps_to_prefetch(monkeypatch):
+    monkeypatch.setattr(
+        "src.features.corpus.webui_config.repo_env_raw_value",
+        lambda key: "true" if key == "PALLAS_CORPUS_REMOTE_FIND_ENABLED" else None,
+    )
+    from src.features.corpus.webui_config import get_corpus_federation_webui_config
+
+    try:
+        assert get_corpus_federation_webui_config().remote_find_enabled == "prefetch"
+    finally:
+        clear_corpus_config_cache()
+
+
 def test_corpus_federation_payload_community_default_false(monkeypatch):
     from src.console.webui.corpus_federation_section import corpus_federation_payload
 

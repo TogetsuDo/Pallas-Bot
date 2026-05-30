@@ -10,6 +10,7 @@ from src.console.webui.field_help import field_help
 from src.foundation.config.repo_settings import repo_env_raw_value
 
 _TRI = Literal["auto", "true", "false"]
+_REMOTE_FIND = Literal["auto", "false", "prefetch", "sync"]
 
 
 def _tristate_read(env_key: str, *, default: str = "auto") -> str:
@@ -23,6 +24,22 @@ def _tristate_read(env_key: str, *, default: str = "auto") -> str:
         return "true"
     if s in ("0", "false", "no", "off"):
         return "false"
+    return default
+
+
+def _remote_find_read(env_key: str, *, default: str = "auto") -> str:
+    raw = repo_env_raw_value(env_key)
+    if raw is None:
+        return default
+    s = str(raw).strip().lower()
+    if s in ("auto", ""):
+        return "auto"
+    if s in ("0", "false", "no", "off"):
+        return "false"
+    if s in ("1", "true", "yes", "on", "prefetch"):
+        return "prefetch"
+    if s == "sync":
+        return "sync"
     return default
 
 
@@ -75,7 +92,7 @@ class CorpusFederationWebuiConfig(BaseModel):
             "上传前请确认符合共享语料规范",
         ),
     )
-    remote_find_enabled: _TRI = Field(
+    remote_find_enabled: _REMOTE_FIND = Field(
         default="auto",
         description=field_help(
             "本机语料未命中时是否向共享池拉取",
@@ -172,7 +189,7 @@ def get_corpus_federation_webui_config() -> CorpusFederationWebuiConfig:
         community_enabled=_tristate_read("PALLAS_CORPUS_COMMUNITY_ENABLED", default="false"),
         auto_enroll=_tristate_read("PALLAS_CORPUS_AUTO_ENROLL", default="false"),
         community_contribute=_tristate_read("PALLAS_CORPUS_COMMUNITY_CONTRIBUTE"),
-        remote_find_enabled=_tristate_read("PALLAS_CORPUS_REMOTE_FIND_ENABLED"),
+        remote_find_enabled=_remote_find_read("PALLAS_CORPUS_REMOTE_FIND_ENABLED"),
         fed_enabled=_tristate_read("PALLAS_CORPUS_FED_ENABLED"),
         fed_contribute=_tristate_read("PALLAS_CORPUS_FED_CONTRIBUTE", default="false") == "true",
         on_remote_failure="local_only",

@@ -21,6 +21,7 @@ WORKER_SKIP_PLUGIN_NAMES: frozenset[str] = frozenset({
     "pallas_webui",
     "pallas_protocol",
     "relogin_bot",
+    "maa_hub",
 })
 
 # unified：跳过仅分片 hub/worker 使用的插件（单进程指标由 pallas_webui 挂载）

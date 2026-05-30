@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
-from src.platform.shard.coord import bot_action as ba_mod
 from src.platform.shard import presence as presence_mod
+from src.platform.shard.coord import bot_action as ba_mod
 from src.plugins.repeater import fanout_reply as fanout_mod
 
 
@@ -30,6 +31,8 @@ def test_invoke_bot_action_skips_offline_remote(monkeypatch):
 
 
 def test_list_fanout_bot_ids_filters_offline(monkeypatch):
+    fanout_mod._FANOUT_BOT_IDS_CACHE.clear()
+
     async def fake_list(group_id: int) -> list[int]:
         return [100, 200, 300]
 
@@ -39,6 +42,7 @@ def test_list_fanout_bot_ids_filters_offline(monkeypatch):
         "src.plugins.duel.duel_bots.list_group_online_bot_ids",
         fake_list,
     )
+
     async def always_true(bid: int, gid: int) -> bool:
         return True
 
@@ -49,3 +53,67 @@ def test_list_fanout_bot_ids_filters_offline(monkeypatch):
         assert ids == [100, 200]
 
     asyncio.run(run())
+
+
+def test_list_fanout_bot_ids_uses_short_ttl_cache(monkeypatch):
+    fanout_mod._FANOUT_BOT_IDS_CACHE.clear()
+    calls = 0
+    now = 100.0
+
+    async def fake_list(group_id: int) -> list[int]:
+        nonlocal calls
+        calls += 1
+        return [100, 200]
+
+    monkeypatch.setattr(fanout_mod, "is_sharding_active", lambda: False)
+    monkeypatch.setattr(fanout_mod.time, "monotonic", lambda: now)
+    monkeypatch.setattr(
+        "src.plugins.duel.duel_bots.list_group_online_bot_ids",
+        fake_list,
+    )
+
+    async def always_true(bid: int, gid: int) -> bool:
+        return True
+
+    monkeypatch.setattr(fanout_mod, "bot_may_repeater_reply", always_true)
+
+    async def run() -> None:
+        first = await fanout_mod.list_fanout_bot_ids(1)
+        second = await fanout_mod.list_fanout_bot_ids(1)
+        assert first == [100, 200]
+        assert second == [100, 200]
+
+    asyncio.run(run())
+    assert calls == 1
+
+
+def test_resolve_fanout_gate_uses_single_bot_list_lookup(monkeypatch):
+    fanout_mod._FANOUT_BOT_IDS_CACHE.clear()
+    calls: list[int] = []
+
+    monkeypatch.setattr(fanout_mod, "repeater_fanout_enabled", lambda: True)
+
+    async def fake_list(group_id: int) -> list[int]:
+        calls.append(group_id)
+        return [100, 200]
+
+    async def fake_claim(*_args, **_kwargs) -> bool:
+        return True
+
+    monkeypatch.setattr(fanout_mod, "list_fanout_bot_ids", fake_list)
+    monkeypatch.setattr(fanout_mod, "try_claim_group_message_once", fake_claim)
+
+    event = SimpleNamespace(
+        group_id=1,
+        user_id=2,
+        time=3,
+        get_plaintext=lambda: "hello",
+    )
+
+    async def run() -> None:
+        gate = await fanout_mod.resolve_fanout_gate(event)
+        assert gate.won is True
+        assert gate.bot_ids == (100, 200)
+
+    asyncio.run(run())
+    assert calls == [1]
