@@ -45,14 +45,16 @@ def federate_ingress_cached_win(
     *,
     plugin: str = FEDERATE_INGRESS_CLAIM_PLUGIN,
     include_message_time: bool = True,
+    plain: str | None = None,
+    body: str | None = None,
 ) -> bool:
     """本进程是否已缓存赢得联邦 ingress（供 repeater 跳过二次 Redis）。"""
     if bypass_federate_ingress_for_current_mode():
         return True
     if not federate_ingress_active():
         return True
-    plain = (event.get_plaintext() or "").strip()
-    body = plain or event.raw_message
+    plain = (plain if plain is not None else event.get_plaintext() or "").strip()
+    body = body if body is not None else (plain or event.raw_message)
     deployment_id = load_or_create_deployment_id().strip().lower()
     if not deployment_id:
         return False
@@ -75,6 +77,8 @@ async def claim_federate_group_message_ingress(
     *,
     plugin: str = FEDERATE_INGRESS_CLAIM_PLUGIN,
     include_message_time: bool = True,
+    plain: str | None = None,
+    body: str | None = None,
 ) -> bool:
     """未启用联邦 ingress 或本 deployment 抢占成功时返回 True。"""
     timer = SlowPathTimer(
@@ -88,8 +92,8 @@ async def claim_federate_group_message_ingress(
     if not federate_ingress_active():
         timer.finish(outcome="disabled")
         return True
-    plain = (event.get_plaintext() or "").strip()
-    body = plain or event.raw_message
+    plain = (plain if plain is not None else event.get_plaintext() or "").strip()
+    body = body if body is not None else (plain or event.raw_message)
     deployment_id = load_or_create_deployment_id().strip().lower()
     if not deployment_id:
         timer.finish(outcome="missing_deployment_id", group_id=int(event.group_id), user_id=int(event.user_id))

@@ -382,12 +382,18 @@ async def _dream_tick_try_learned_echo(
     return False
 
 
-async def log_dream_chat_to_db(event: GroupMessageEvent) -> None:
-    plain = event.get_plaintext().strip()
+async def log_dream_chat_to_db(
+    event: GroupMessageEvent,
+    *,
+    plain: str | None = None,
+    nick: str | None = None,
+) -> None:
+    plain = (plain if plain is not None else event.get_plaintext()).strip()
     if not plain:
         plain = " "
     is_plain = "[CQ:" not in event.raw_message
-    nick = (event.sender.card or event.sender.nickname or str(event.user_id)).strip() or str(event.user_id)
+    nick_source = nick if nick is not None else event.sender.card or event.sender.nickname or str(event.user_id)
+    nick = nick_source.strip() or str(event.user_id)
     m = MessageModel.model_construct(
         group_id=event.group_id,
         user_id=event.user_id,

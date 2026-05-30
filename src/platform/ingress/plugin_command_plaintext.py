@@ -13,8 +13,7 @@ from src.foundation.command_prefix import matches_command_prefix, strip_leading_
 
 _TRIGGER_SPLIT_RE = re.compile(r"\s*/\s*|[、，,]")
 _TOKEN_SPLIT_RE = re.compile(r"[\s<＜〈\[(（(:：]")
-_PLUGIN_PREFIX_CACHE_KEY: tuple[str, ...] | None = None
-_PLUGIN_PREFIX_CACHE_VALUE: tuple[str, ...] = ()
+_PLUGIN_PREFIX_CACHE_VALUE: tuple[str, ...] | None = None
 
 
 def _iter_trigger_parts(trigger_condition: str) -> list[str]:
@@ -48,13 +47,11 @@ def extract_command_prefixes_from_menu_data(menu_data: list[dict[str, Any]] | No
 
 
 def _loaded_plugin_command_prefixes() -> tuple[str, ...]:
-    global _PLUGIN_PREFIX_CACHE_KEY, _PLUGIN_PREFIX_CACHE_VALUE
-
-    plugins = tuple(get_loaded_plugins())
-    cache_key = tuple(str(getattr(plugin, "name", "") or "") for plugin in plugins)
-    if _PLUGIN_PREFIX_CACHE_KEY == cache_key:
+    global _PLUGIN_PREFIX_CACHE_VALUE
+    if _PLUGIN_PREFIX_CACHE_VALUE is not None:
         return _PLUGIN_PREFIX_CACHE_VALUE
 
+    plugins = tuple(get_loaded_plugins())
     prefixes: list[str] = []
     for plugin in plugins:
         meta = getattr(plugin, "metadata", None)
@@ -63,16 +60,14 @@ def _loaded_plugin_command_prefixes() -> tuple[str, ...]:
         for prefix in extract_command_prefixes_from_menu_data(menu_data):
             if prefix not in prefixes:
                 prefixes.append(prefix)
-    _PLUGIN_PREFIX_CACHE_KEY = cache_key
     _PLUGIN_PREFIX_CACHE_VALUE = tuple(prefixes)
     return _PLUGIN_PREFIX_CACHE_VALUE
 
 
 def clear_plugin_command_plaintext_cache() -> None:
-    global _PLUGIN_PREFIX_CACHE_KEY, _PLUGIN_PREFIX_CACHE_VALUE
+    global _PLUGIN_PREFIX_CACHE_VALUE
 
-    _PLUGIN_PREFIX_CACHE_KEY = None
-    _PLUGIN_PREFIX_CACHE_VALUE = ()
+    _PLUGIN_PREFIX_CACHE_VALUE = None
     is_plugin_command_plaintext.cache_clear()
 
 

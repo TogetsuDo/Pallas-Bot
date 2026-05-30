@@ -83,27 +83,30 @@ def group_at_qq_ids(event: GroupMessageEvent) -> frozenset[int]:
     return frozenset(out)
 
 
+def pallas_at_targets(event: GroupMessageEvent) -> frozenset[int]:
+    ats = group_at_qq_ids(event)
+    if not ats:
+        return frozenset()
+    return ats & get_fleet_bot_ids()
+
+
 def _ingress_fanout_early_exit(
     *,
-    event: GroupMessageEvent,
     self_id: int,
-    user_id: int,
     metrics: bool,
+    known_bot_sender: bool,
+    pallas_ats: frozenset[int],
 ) -> None:
     """全员同响：仅 @ 定向 / 舰队过滤，跳过 once / federate / shard 抢占。"""
-    if _known_bot_sender(user_id=user_id, self_id=self_id):
+    if known_bot_sender:
         if metrics:
             record_ingress_early_discard("fleet")
         raise IgnoredException("fleet bot message")
 
-    ats = group_at_qq_ids(event)
-    if ats:
-        fleet = get_fleet_bot_ids()
-        pallas_ats = ats & fleet
-        if pallas_ats and self_id not in pallas_ats:
-            if metrics:
-                record_ingress_early_discard("not_at_target")
-            raise IgnoredException("not at-target bot")
+    if pallas_ats and self_id not in pallas_ats:
+        if metrics:
+            record_ingress_early_discard("not_at_target")
+        raise IgnoredException("not at-target bot")
 
     if metrics:
         record_ingress_fanout_bypass()
@@ -135,18 +138,20 @@ async def ingress_group_message_gate(bot, event) -> None:
     try:
         plain = (event.get_plaintext() or "").strip()
         body = plain or event.raw_message
+        known_bot_sender = _known_bot_sender(user_id=user_id, self_id=self_id)
+        pallas_ats = pallas_at_targets(event)
         fanout_bypass = ingress_fanout_bypasses_claim(plain)
         if fanout_bypass:
             _ingress_fanout_early_exit(
-                event=event,
                 self_id=self_id,
-                user_id=user_id,
                 metrics=metrics,
+                known_bot_sender=known_bot_sender,
+                pallas_ats=pallas_ats,
             )
             outcome = "fanout_bypass"
             return
 
-        if _known_bot_sender(user_id=user_id, self_id=self_id):
+        if known_bot_sender:
             outcome = "fleet_discard"
             if metrics:
                 record_ingress_early_discard("fleet")
@@ -177,17 +182,13 @@ async def ingress_group_message_gate(bot, event) -> None:
         if metrics:
             record_ingress_event()
 
-        ats = group_at_qq_ids(event)
-        if ats:
-            fleet = get_fleet_bot_ids()
-            pallas_ats = ats & fleet
-            if pallas_ats and self_id not in pallas_ats:
-                outcome = "not_at_target"
-                if metrics:
-                    record_ingress_early_discard("not_at_target")
-                raise IgnoredException("not at-target bot")
+        if pallas_ats and self_id not in pallas_ats:
+            outcome = "not_at_target"
+            if metrics:
+                record_ingress_early_discard("not_at_target")
+            raise IgnoredException("not at-target bot")
 
-        if not await claim_federate_group_message_ingress(event):
+        if not await claim_federate_group_message_ingress(event, plain=plain, body=body):
             outcome = "federate_lost"
             if metrics:
                 record_ingress_early_discard("federate")

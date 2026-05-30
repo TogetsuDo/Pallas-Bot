@@ -20,8 +20,10 @@ async def test_command_cross_bot_claim_uses_shard_claim_for_maa_status(
         bot_id: int,
         *,
         use_plaintext: bool = True,
+        include_message_time: bool = False,
     ) -> bool:
         assert use_plaintext is True
+        assert include_message_time is True
         called.append((plugin, group_id, user_id, message_body, message_time, bot_id))
         return True
 
@@ -43,7 +45,7 @@ async def test_command_cross_bot_claim_uses_shard_claim_for_maa_status(
     )
 
     assert won is True
-    assert called == [("command_ingress", 12345, 999, "牛牛MAA状态", 100, 111)]
+    assert called == [("ingress_gate", 12345, 999, "牛牛MAA状态", 100, 111)]
 
 
 @pytest.mark.asyncio
@@ -63,8 +65,10 @@ async def test_command_cross_bot_claim_uses_memory_claim_for_maa_status_when_uni
         bot_id: int,
         *,
         use_plaintext: bool = True,
+        include_message_time: bool = False,
     ) -> bool:
         assert use_plaintext is True
+        assert include_message_time is True
         called.append((plugin, group_id, user_id, message_body, message_time, bot_id))
         return True
 

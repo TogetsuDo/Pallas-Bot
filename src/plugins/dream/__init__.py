@@ -169,7 +169,11 @@ async def _(event: GroupMessageEvent):
         return
     if dream_capture_blocked_by_substrings(plain, event.raw_message):
         return
-    norm_raw = re.sub(r"\[CQ:image,[^\]]*\]", "[CQ:image]", event.raw_message)
+    norm_raw = (
+        re.sub(r"\[CQ:image,[^\]]*\]", "[CQ:image]", event.raw_message)
+        if "[CQ:image," in event.raw_message
+        else event.raw_message
+    )
     if await is_message_scrub_blocked_async(plain_text=plain, raw_message=norm_raw):
         pv = scrub_intercept_log_preview(plain, norm_raw)
         logger.info(
@@ -177,15 +181,15 @@ async def _(event: GroupMessageEvent):
             f"user [{event.user_id}] msg_id [{event.message_id}] preview [{pv}]"
         )
         return
+    nick = (event.sender.card or event.sender.nickname or str(event.user_id)).strip() or str(event.user_id)
 
     try:
-        await log_dream_chat_to_db(event)
+        await log_dream_chat_to_db(event, plain=plain, nick=nick)
     except Exception as e:
         logger.debug(f"bot [{event.self_id}] dream capture db insert failed in group [{event.group_id}]: {e}")
 
     async def drift_job():
         try:
-            nick = (event.sender.card or event.sender.nickname or str(event.user_id)).strip() or str(event.user_id)
             img_n = 0
             for seg in event.message:
                 if seg.type != "image":

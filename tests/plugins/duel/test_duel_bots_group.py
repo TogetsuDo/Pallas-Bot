@@ -34,3 +34,25 @@ async def test_list_local_fleet_bots_does_not_return_full_scope_on_probe_miss(mo
 
     ids = await mod.list_local_fleet_bots_in_group(626266902)
     assert ids == [923722427]
+
+
+def test_parse_duel_at_qqs_skips_raw_regex_when_no_at(monkeypatch) -> None:
+    class _Pattern:
+        def finditer(self, _raw):
+            raise AssertionError("raw regex should be skipped without at marker")
+
+    monkeypatch.setattr(mod, "_AT_CQ_RE", _Pattern())
+
+    event = type("E", (), {"message": (), "raw_message": "普通文本"})()
+    assert mod.parse_duel_at_qqs(event) == []
+
+
+def test_raw_message_has_at_fast_returns_false_without_at(monkeypatch) -> None:
+    class _Pattern:
+        def search(self, _raw):
+            raise AssertionError("raw regex should be skipped without at marker")
+
+    monkeypatch.setattr(mod, "_AT_CQ_RE", _Pattern())
+
+    event = type("E", (), {"raw_message": "普通文本"})()
+    assert mod.raw_message_has_at(event) is False

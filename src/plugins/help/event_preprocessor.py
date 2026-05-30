@@ -16,6 +16,7 @@ from .plugin_manager import collect_disabled_plugin_names
 
 _blocked_events: dict[str, frozenset[str]] = {}
 _COMMAND_INGRESS_PLUGIN = "command_ingress"
+_SHARDED_COMMAND_INGRESS_PLUGIN = "ingress_gate"
 
 
 IGNORED_PLUGINS = ["help"]
@@ -54,13 +55,14 @@ async def command_cross_bot_claim_won(
         return True
     if is_sharding_active():
         return await try_claim_cross_bot_message(
-            _COMMAND_INGRESS_PLUGIN,
+            _SHARDED_COMMAND_INGRESS_PLUGIN,
             group_id,
             user_id,
             text,
             message_time,
             bot_id,
             use_plaintext=True,
+            include_message_time=True,
         )
     return await try_claim_cross_bot_message_memory(
         _COMMAND_INGRESS_PLUGIN,
@@ -70,6 +72,7 @@ async def command_cross_bot_claim_won(
         message_time,
         bot_id,
         use_plaintext=True,
+        include_message_time=True,
     )
 
 

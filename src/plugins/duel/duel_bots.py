@@ -417,7 +417,7 @@ def parse_duel_at_qqs(event: GroupMessageEvent) -> list[str]:
         seen.add(s)
         qqs.append(s)
     raw = getattr(event, "raw_message", None) or ""
-    if raw:
+    if raw and ("[CQ:at," in raw or "at,qq=" in raw):
         for m in _AT_CQ_RE.finditer(raw):
             s = m.group(1)
             if s != "all" and s not in seen:
@@ -429,6 +429,8 @@ def parse_duel_at_qqs(event: GroupMessageEvent) -> list[str]:
 def raw_message_has_at(event: GroupMessageEvent) -> bool:
     """raw 中是否含 @（本牛看不到 message.at 时用于避免误报缺对手）。"""
     raw = getattr(event, "raw_message", None) or ""
+    if "[CQ:at," not in raw and "at,qq=" not in raw:
+        return False
     return bool(_AT_CQ_RE.search(raw))
 
 

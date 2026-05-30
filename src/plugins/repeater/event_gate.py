@@ -61,8 +61,14 @@ async def build_repeater_event_context(bot_id: int, event: GroupMessageEvent):
     ):
         return None
 
-    if not federate_ingress_cached_win(event, include_message_time=True):
-        if not await claim_federate_group_message_ingress(event, include_message_time=True):
+    body = plain_body or event.raw_message
+    if not federate_ingress_cached_win(event, include_message_time=True, plain=plain_body, body=body):
+        if not await claim_federate_group_message_ingress(
+            event,
+            include_message_time=True,
+            plain=plain_body,
+            body=body,
+        ):
             return None
 
     sharding_active = is_sharding_active()
