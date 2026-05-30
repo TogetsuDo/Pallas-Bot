@@ -32,8 +32,10 @@ _FIELD_LABELS: dict[str, str] = {
     "bootstrap_url": "中心配置地址",
     "federate_id": "联邦池编号",
     "federate_ingress_enabled": "重复消息去重",
+    "ingress_bypass_unified": "单进程命令直通",
     "coord_redis_url": "去重服务器地址",
     "federate_redis_prefix": "去重键前缀",
+    "claim_ttl_sec": "去重保留秒数",
 }
 
 _FIELD_TO_ENV: dict[str, str] = {
@@ -42,8 +44,10 @@ _FIELD_TO_ENV: dict[str, str] = {
     "instance_secret": "PALLAS_INSTANCE_SECRET",
     "federate_id": "PALLAS_FEDERATE_ID",
     "federate_ingress_enabled": "PALLAS_FEDERATE_INGRESS_ENABLED",
+    "ingress_bypass_unified": "PALLAS_FEDERATE_INGRESS_BYPASS_UNIFIED",
     "federate_redis_prefix": "PALLAS_FEDERATE_REDIS_PREFIX",
     "coord_redis_url": "PALLAS_FEDERATE_COORD_REDIS_URL",
+    "claim_ttl_sec": "PALLAS_FEDERATE_CLAIM_TTL_SEC",
 }
 
 _FIELD_ORDER: tuple[str, ...] = (
@@ -52,8 +56,10 @@ _FIELD_ORDER: tuple[str, ...] = (
     "bootstrap_url",
     "federate_id",
     "federate_ingress_enabled",
+    "ingress_bypass_unified",
     "coord_redis_url",
     "federate_redis_prefix",
+    "claim_ttl_sec",
 )
 
 
@@ -122,6 +128,14 @@ def _field_row(key: str, cur: Any) -> dict[str, Any]:
             "选「自动」：有池编号且去重服务器可用时开启",
             "分片与单进程均会经过此去重",
         )
+    elif key == "ingress_bypass_unified":
+        row["kind"] = "bool"
+        row["current"] = bool(cur)
+        row["description"] = field_help(
+            "单进程模式下插件命令是否直接绕过联邦 claim",
+            "开启后命令优先保响应速度；仅影响 unified/非分片场景",
+            "默认关闭；适合本地排障或你明确希望命令完全不走联邦门控时开启",
+        )
     elif key == "coord_redis_url":
         row["description"] = field_help(
             "各套牛牛共用的去重服务器（TCP，不是网页）",
@@ -133,6 +147,14 @@ def _field_row(key: str, cur: Any) -> dict[str, Any]:
             "去重记录在服务器里的分类前缀",
             "一般留空，由中心或池编号自动生成",
             "与分片协调用的键前缀不是一回事",
+        )
+    elif key == "claim_ttl_sec":
+        row["kind"] = "number"
+        row["current"] = int(cur or 86400)
+        row["description"] = field_help(
+            "联邦去重 claim 在 Redis 中保留多少秒",
+            "越长越能避免重复抢答；越短则旧记录释放更快",
+            "未手填时可跟随中心下发；常见值为 7200 或 86400",
         )
     return row
 
@@ -158,15 +180,36 @@ def control_plane_payload(*, current_values: dict[str, Any] | None = None) -> di
             {
                 "id": "pool",
                 "title": "联邦池与去重",
-                "field_names": ["federate_id", "federate_ingress_enabled"],
+                "field_names": ["federate_id", "federate_ingress_enabled", "ingress_bypass_unified"],
             },
             {
                 "id": "redis",
                 "title": "去重服务器（高级）",
-                "field_names": ["coord_redis_url", "federate_redis_prefix"],
+                "field_names": ["coord_redis_url", "federate_redis_prefix", "claim_ttl_sec"],
             },
         ],
     }
+
+
+def _coerce_bool(value: Any, *, field_name: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    s = str(value).strip().lower()
+    if s in ("1", "true", "yes", "on"):
+        return True
+    if s in ("0", "false", "no", "off", ""):
+        return False
+    raise ValueError(f"{field_name} 须为 true 或 false")
+
+
+def _coerce_int(value: Any, *, field_name: str, min_v: int) -> int:
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError) as e:
+        raise ValueError(f"{field_name} 须为整数") from e
+    if parsed < min_v:
+        raise ValueError(f"{field_name} 须大于等于 {min_v}")
+    return parsed
 
 
 def apply_control_plane_patch(patch: dict[str, Any]) -> dict[str, Any]:
@@ -188,6 +231,13 @@ def apply_control_plane_patch(patch: dict[str, Any]) -> dict[str, Any]:
         if ing not in _TRI_CHOICES:
             raise ValueError("federate_ingress_enabled 须为 auto、true 或 false")
         merged["federate_ingress_enabled"] = ing
+    if "ingress_bypass_unified" in patch:
+        merged["ingress_bypass_unified"] = _coerce_bool(
+            patch["ingress_bypass_unified"],
+            field_name="ingress_bypass_unified",
+        )
+    if "claim_ttl_sec" in patch:
+        merged["claim_ttl_sec"] = _coerce_int(patch["claim_ttl_sec"], field_name="claim_ttl_sec", min_v=60)
 
     enabled_bool = parse_tristate(str(merged["enabled"]), default=True) is not False
     validated = ControlPlaneWebuiConfig(
@@ -196,8 +246,10 @@ def apply_control_plane_patch(patch: dict[str, Any]) -> dict[str, Any]:
         instance_secret=str(merged.get("instance_secret") or ""),
         federate_id=str(merged.get("federate_id") or ""),
         federate_ingress_enabled=str(merged.get("federate_ingress_enabled") or "auto"),
+        ingress_bypass_unified=bool(merged.get("ingress_bypass_unified")),
         federate_redis_prefix=str(merged.get("federate_redis_prefix") or ""),
         coord_redis_url=str(merged.get("coord_redis_url") or ""),
+        claim_ttl_sec=int(merged.get("claim_ttl_sec") or 86400),
     ).model_dump(mode="python")
 
     items: dict[str, str] = {}

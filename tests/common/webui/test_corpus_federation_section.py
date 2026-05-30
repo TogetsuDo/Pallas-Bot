@@ -19,6 +19,8 @@ def test_corpus_federation_payload_phase1(monkeypatch):
     assert "reply_messages_cap" in names
     assert "reply_answers_cap" in names
     assert "find_cache_ttl_sec" in names
+    assert "reply_snapshot_ttl_sec" in names
+    assert "reply_snapshot_max" in names
     assert len(data["field_groups"]) == 4
     reply_perf_group = next(g for g in data["field_groups"] if g["id"] == "reply_perf")
     assert reply_perf_group["title"] == "接话与查询性能"
@@ -62,12 +64,19 @@ def test_apply_corpus_federation_patch_reply_perf(monkeypatch, tmp_path):
     monkeypatch.setattr(rs, "repo_webui_settings_path", lambda: webui)
     monkeypatch.setattr(rs, "_REPO_ROOT", tmp_path)
 
-    out = apply_corpus_federation_patch({"reply_messages_cap": 32, "find_cache_ttl_sec": 60})
+    out = apply_corpus_federation_patch({
+        "reply_messages_cap": 32,
+        "find_cache_ttl_sec": 60,
+        "reply_snapshot_ttl_sec": 10,
+        "reply_snapshot_max": 30000,
+    })
     cap_field = next(f for f in out["fields"] if f["name"] == "reply_messages_cap")
     assert cap_field["current"] == 32
     raw = webui.read_text(encoding="utf-8")
     assert "PALLAS_CORPUS_REPLY_MESSAGES_CAP" in raw
     assert "PALLAS_CORPUS_FIND_CACHE_SEC" in raw
+    assert "PALLAS_CORPUS_REPLY_SNAPSHOT_SEC" in raw
+    assert "PALLAS_CORPUS_REPLY_SNAPSHOT_MAX" in raw
 
 
 def test_apply_corpus_federation_patch_rejects_unknown():

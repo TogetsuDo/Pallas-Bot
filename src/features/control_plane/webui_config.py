@@ -28,8 +28,10 @@ class ControlPlaneWebuiConfig(BaseModel):
     instance_secret: str = Field(default="", description="入池密钥，与中心一致")
     federate_id: str = Field(default="", description="联邦池编号，可留空由中心写入")
     federate_ingress_enabled: str = Field(default="auto", description="重复消息去重：自动、开启或关闭")
+    ingress_bypass_unified: bool = Field(default=False, description="单进程插件命令是否跳过联邦 claim")
     federate_redis_prefix: str = Field(default="", description="去重键前缀，一般留空")
     coord_redis_url: str = Field(default="", description="去重服务器地址，一般留空由中心下发")
+    claim_ttl_sec: int = Field(default=86400, description="去重 claim 保留秒数")
 
 
 def repair_misplaced_federate_redis_env() -> bool:
@@ -80,6 +82,24 @@ def resolved_coord_redis_url_for_webui() -> str:
         return ""
 
 
+def resolved_claim_ttl_sec_for_webui() -> int:
+    raw = setting_str("PALLAS_FEDERATE_CLAIM_TTL_SEC")
+    if raw:
+        try:
+            return max(60, int(raw))
+        except ValueError:
+            pass
+    try:
+        from src.features.control_plane.store import load_bootstrap_claim_ttl_sec
+
+        boot = load_bootstrap_claim_ttl_sec()
+        if boot is not None:
+            return boot
+    except Exception:
+        pass
+    return 86400
+
+
 @lru_cache(maxsize=1)
 def get_control_plane_webui_config() -> ControlPlaneWebuiConfig:
     repair_misplaced_federate_redis_env()
@@ -99,8 +119,14 @@ def get_control_plane_webui_config() -> ControlPlaneWebuiConfig:
         instance_secret=setting_str("PALLAS_INSTANCE_SECRET"),
         federate_id=fid,
         federate_ingress_enabled=setting_str("PALLAS_FEDERATE_INGRESS_ENABLED", "auto") or "auto",
+        ingress_bypass_unified=parse_tristate(
+            setting_str("PALLAS_FEDERATE_INGRESS_BYPASS_UNIFIED", "false"),
+            default=False,
+        )
+        is True,
         federate_redis_prefix=setting_str("PALLAS_FEDERATE_REDIS_PREFIX"),
         coord_redis_url=resolved_coord_redis_url_for_webui(),
+        claim_ttl_sec=resolved_claim_ttl_sec_for_webui(),
     )
 
 

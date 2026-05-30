@@ -64,3 +64,15 @@ def test_federate_ingress_active_requires_redis(monkeypatch):
 
     monkeypatch.setattr(fc, "federate_redis_available", lambda: False)
     assert fc.federate_ingress_active() is False
+
+
+def test_federate_ingress_disabled_by_default_in_unified_mode(monkeypatch):
+    cfg = fc.FederateConfig(control_plane_enabled=True, federate_id="pool-1", ingress_enabled=None, redis_prefix="")
+    monkeypatch.setattr("src.platform.federate.config.is_sharding_active", lambda: False)
+    assert fc.federate_ingress_enabled(cfg) is False
+
+
+def test_federate_ingress_can_be_forced_in_unified_mode(monkeypatch):
+    cfg = fc.FederateConfig(control_plane_enabled=True, federate_id="pool-1", ingress_enabled=True, redis_prefix="")
+    monkeypatch.setattr("src.platform.federate.config.is_sharding_active", lambda: False)
+    assert fc.federate_ingress_enabled(cfg) is True

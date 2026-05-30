@@ -36,6 +36,8 @@ _REPLY_PERF_FIELD_NAMES: tuple[str, ...] = (
     "reply_answers_cap",
     "find_cache_ttl_sec",
     "find_cache_max",
+    "reply_snapshot_ttl_sec",
+    "reply_snapshot_max",
 )
 
 _WEBUI_FIELD_NAMES: tuple[str, ...] = _PHASE1_FIELD_NAMES + _REPLY_PERF_FIELD_NAMES
@@ -60,6 +62,8 @@ _PERF_FIELD_TO_ENV: dict[str, str] = {
     "reply_answers_cap": "PALLAS_CORPUS_REPLY_ANSWERS_CAP",
     "find_cache_ttl_sec": "PALLAS_CORPUS_FIND_CACHE_SEC",
     "find_cache_max": "PALLAS_CORPUS_FIND_CACHE_MAX",
+    "reply_snapshot_ttl_sec": "PALLAS_CORPUS_REPLY_SNAPSHOT_SEC",
+    "reply_snapshot_max": "PALLAS_CORPUS_REPLY_SNAPSHOT_MAX",
 }
 
 _FIELD_TO_ENV_ALL: dict[str, str] = {**_FIELD_TO_ENV, **_PERF_FIELD_TO_ENV}
@@ -266,6 +270,18 @@ def apply_corpus_federation_patch(patch: dict[str, Any]) -> dict[str, Any]:
             from src.features.corpus.reply_perf_config import clear_corpus_reply_perf_config_cache
 
             clear_corpus_reply_perf_config_cache()
+        except Exception:
+            pass
+        try:
+            import asyncio
+
+            from src.foundation.db.repository_pg import clear_reply_query_snapshot_cache
+
+            coro = clear_reply_query_snapshot_cache(None)
+            try:
+                asyncio.get_running_loop().create_task(coro)
+            except RuntimeError:
+                asyncio.run(coro)
         except Exception:
             pass
     try:
