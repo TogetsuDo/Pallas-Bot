@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -26,6 +27,8 @@ from .model import Chat, ChatData
 from .responder import ReplyBundle, Responder
 
 _FANOUT_PLUGIN = "repeater_fanout"
+_FANOUT_BOT_IDS_CACHE_TTL = 2.0
+_FANOUT_BOT_IDS_CACHE: dict[int, tuple[float, list[int]]] = {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +135,10 @@ async def bot_may_repeater_reply(bot_id: int, group_id: int) -> bool:
 
 
 async def list_fanout_bot_ids(group_id: int) -> list[int]:
+    cached = _FANOUT_BOT_IDS_CACHE.get(group_id)
+    now = time.monotonic()
+    if cached is not None and cached[0] > now:
+        return list(cached[1])
 
     from src.platform.shard.presence import get_cluster_online_bot_ids
     from src.plugins.duel.duel_bots import list_group_online_bot_ids
@@ -150,14 +157,16 @@ async def list_fanout_bot_ids(group_id: int) -> list[int]:
 
     allowed = await asyncio.gather(*(bot_may_repeater_reply(bid, group_id) for bid in ids))
 
-    return cap_fanout_bot_ids([bid for bid, ok in zip(ids, allowed, strict=True) if ok])
+    result = cap_fanout_bot_ids([bid for bid, ok in zip(ids, allowed, strict=True) if ok])
+    _FANOUT_BOT_IDS_CACHE[group_id] = (now + _FANOUT_BOT_IDS_CACHE_TTL, list(result))
+    return result
 
 
 async def resolve_fanout_gate(event: GroupMessageEvent) -> FanoutGate:
     """一次 list + claim；失败者 lost=True，成功者 won=True 并带上 bot_ids。"""
 
     group_id = int(event.group_id)
-    if not await repeater_fanout_enabled_for_group(group_id):
+    if not repeater_fanout_enabled():
         return FanoutGate()
 
     bot_ids = await list_fanout_bot_ids(group_id)

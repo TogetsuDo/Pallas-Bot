@@ -65,6 +65,7 @@ async def handle_help_command(
             plugin_config,
             show_ignored=show_ignored,
             ignored_plugins=plugin_config.ignored_plugins if plugin_config else [],
+            filtered_plugins=menu_plugins,
         )
         markdown_content = await fill_plugin_status(markdown_content, bot_id, group_id, show_ignored)
         await send_markdown_as_image(markdown_content, style_name, available_styles, matcher, group_id)

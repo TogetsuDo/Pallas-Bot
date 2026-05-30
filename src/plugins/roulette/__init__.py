@@ -93,6 +93,12 @@ role_cache = defaultdict(lambda: defaultdict(str))
 
 shot_lock = asyncio.Lock()
 _roulette_start_plugin = "roulette_start"
+_ROULETTE_START_EXPLICIT_MODES = {
+    "牛牛轮盘踢人": 0,
+    "牛牛踢人轮盘": 0,
+    "牛牛轮盘禁言": 1,
+    "牛牛禁言轮盘": 1,
+}
 
 
 async def bot_group_role(bot: Bot, event: GroupMessageEvent) -> str:
@@ -102,9 +108,13 @@ async def bot_group_role(bot: Bot, event: GroupMessageEvent) -> str:
     return role
 
 
-async def bot_is_group_admin(bot: Bot, event: GroupMessageEvent) -> bool:
+async def bot_is_group_admin(bot: Bot, event: GroupMessageEvent, *, fresh: bool = False) -> bool:
     try:
-        return await bot_group_role(bot, event) in {"admin", "owner"}
+        if fresh:
+            role = await sync_role_cache(bot, event)
+        else:
+            role = await bot_group_role(bot, event)
+        return role in {"admin", "owner"}
     except Exception as e:
         logger.debug(
             "roulette: group role check failed bot={} group={}: {}",
@@ -160,13 +170,17 @@ def can_roulette_start(group_id: int) -> bool:
 
 
 async def participate_in_roulette(event: GroupMessageEvent) -> bool:
+    return await participate_in_roulette_mode(event, await GroupConfig(event.group_id).roulette_mode())
+
+
+async def participate_in_roulette_mode(event: GroupMessageEvent, mode: int) -> bool:
     """
     牛牛自己是否参与轮盘
     """
     if await BotConfig(event.self_id, event.group_id).drunkenness() <= 0:
         return False
 
-    if await GroupConfig(event.group_id).roulette_mode() == 1:
+    if mode == 1:
         # 没法禁言自己
         return False
 
@@ -177,7 +191,16 @@ async def participate_in_roulette(event: GroupMessageEvent) -> bool:
     return random.random() < 0.1667
 
 
-async def roulette(messagae_handle, event: GroupMessageEvent):
+def parse_roulette_start_command(plain_text: str) -> tuple[bool, int | None]:
+    text = (plain_text or "").strip()
+    if text == "牛牛轮盘":
+        return True, None
+    if text in _ROULETTE_START_EXPLICIT_MODES:
+        return True, _ROULETTE_START_EXPLICIT_MODES[text]
+    return False, None
+
+
+async def roulette(messagae_handle, event: GroupMessageEvent, *, mode_override: int | None = None):
     if not await try_claim_group_message_once(
         _roulette_start_plugin,
         event.group_id,
@@ -192,13 +215,13 @@ async def roulette(messagae_handle, event: GroupMessageEvent):
     roulette_count[event.group_id] = 0
     roulette_time[event.group_id] = int(time.time())
     ban_players.clear(event.group_id)
-    partin = await participate_in_roulette(event)
+    mode = mode_override if mode_override is not None else await GroupConfig(event.group_id).roulette_mode()
+    partin = await participate_in_roulette_mode(event, mode)
     if partin:
         roulette_player.append(event.self_id, event.group_id)
         roulette_player.append(event.user_id, event.group_id)
     else:
         roulette_player.append(event.user_id, event.group_id)
-    mode = await GroupConfig(event.group_id).roulette_mode()
     if mode == 0:
         type_msg = "踢出群聊"
     else:
@@ -209,9 +232,10 @@ async def roulette(messagae_handle, event: GroupMessageEvent):
 
 
 async def is_roulette_type_msg(bot: Bot, event: GroupMessageEvent) -> bool:
-    if event.get_plaintext().strip() in {"牛牛轮盘踢人", "牛牛轮盘禁言", "牛牛踢人轮盘", "牛牛禁言轮盘"}:
+    matched, mode = parse_roulette_start_command(event.get_plaintext())
+    if matched and mode is not None:
         if can_roulette_start(event.group_id):
-            return await bot_is_group_admin(bot, event)
+            return await bot_is_group_admin(bot, event, fresh=True)
     return False
 
 
@@ -225,22 +249,18 @@ roulette_type_msg = on_message(
 
 @roulette_type_msg.handle()
 async def _(event: GroupMessageEvent):
-    plaintext = event.get_plaintext().strip()
-    mode = None
-    if "踢人" in plaintext:
-        mode = 0
-    elif "禁言" in plaintext:
-        mode = 1
+    _, mode = parse_roulette_start_command(event.get_plaintext())
     if mode is not None:
         await GroupConfig(event.group_id).set_roulette_mode(mode)
 
-    await roulette(roulette_type_msg, event)
+    await roulette(roulette_type_msg, event, mode_override=mode)
 
 
 async def is_roulette_msg(bot: Bot, event: GroupMessageEvent) -> bool:
-    if event.get_plaintext().strip() == "牛牛轮盘":
+    matched, mode = parse_roulette_start_command(event.get_plaintext())
+    if matched and mode is None:
         if can_roulette_start(event.group_id):
-            return await bot_is_group_admin(bot, event)
+            return await bot_is_group_admin(bot, event, fresh=True)
 
     return False
 

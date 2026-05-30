@@ -142,15 +142,20 @@ class HelpMarkdownIssue(StrEnum):
 
 
 def generate_plugins_markdown(
-    plugin_config: Config, show_ignored: bool = False, ignored_plugins: list | None = None
+    plugin_config: Config,
+    show_ignored: bool = False,
+    ignored_plugins: list | None = None,
+    *,
+    filtered_plugins: list | None = None,
 ) -> str:
     """生成一级菜单。"""
-    filtered_plugins = get_help_menu_plugins(
-        show_ignored=show_ignored,
-        ignored_plugins=(
-            None if show_ignored else (ignored_plugins or (plugin_config.ignored_plugins if plugin_config else []))
-        ),
-    )
+    if filtered_plugins is None:
+        filtered_plugins = get_help_menu_plugins(
+            show_ignored=show_ignored,
+            ignored_plugins=(
+                None if show_ignored else (ignored_plugins or (plugin_config.ignored_plugins if plugin_config else []))
+            ),
+        )
 
     n = len(filtered_plugins)
     title = "# 牛牛帮助" if not show_ignored else "# 牛牛帮助（超级用户）"
@@ -175,9 +180,7 @@ def generate_plugins_markdown(
     markdown_content += "| 序号 | 插件名称 | 状态 | 简介 |\n"
     markdown_content += "|------|----------|------|------|\n"
 
-    sorted_plugins = sorted(filtered_plugins, key=lambda p: plugin_display_name(p))
-
-    for index, plugin in enumerate(sorted_plugins, 1):
+    for index, plugin in enumerate(filtered_plugins, 1):
         plugin_name = plugin_display_name(plugin)
 
         if plugin.metadata:

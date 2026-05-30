@@ -49,3 +49,16 @@ def test_unified_role_skips_shard_only_plugins(monkeypatch: pytest.MonkeyPatch):
     assert "relogin_bot" in loaded
     assert "maa" in loaded
     assert "ingress_gate" in loaded
+
+
+def test_worker_role_skips_maa_hub(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
+    monkeypatch.setenv("PALLAS_BOT_ROLE", "worker")
+    get_shard_registry_settings.cache_clear()
+
+    nonebot.init()
+    load_plugins_for_role()
+
+    loaded = {p.name for p in nonebot.get_loaded_plugins()}
+    assert "maa_hub" not in loaded
+    assert "maa" in loaded

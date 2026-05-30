@@ -2,7 +2,6 @@ import asyncio
 import random
 import re
 import time
-from collections import defaultdict, deque
 
 from nonebot import get_bot, get_driver, logger, on_message, on_notice
 from nonebot.adapters import Bot
@@ -25,12 +24,6 @@ from src.features.message_scrub import is_message_scrub_blocked_async
 from src.features.message_scrub.log_preview import scrub_intercept_log_preview
 from src.foundation.config import BotConfig
 from src.platform.bot_runtime.send_unavailable import BOT_SEND_UNAVAILABLE_ERRORS, log_bot_send_unavailable
-from src.platform.multi_bot.dedup import (
-    normalize_group_raw_message as _normalize_group_raw_message,
-)
-from src.platform.multi_bot.dedup import (
-    should_skip_duplicate_group_event as _should_skip_duplicate_group_event,
-)
 from src.platform.observability import SlowPathTimer, slow_path_threshold_ms
 from src.plugins.dream.ban_ack_state import DREAM_BAN_ACK_SENT_STATE_KEY
 from src.shared.utils.array2cqcode import try_convert_to_cqcode
@@ -38,8 +31,10 @@ from src.shared.utils.media_cache import get_image, insert_image
 
 from .ban_state import REPEATER_BAN_ACK_SENT_STATE_KEY
 from .emoji_reaction import reaction_msg
+from .event_gate import build_repeater_event_context, message_id_dict, message_id_lock
 from .learn_queue import bind_repeater_learn_lifecycle, enqueue_repeater_learn
 from .model import Chat
+from .reply_gate import should_prepare_repeater_reply
 
 bind_repeater_learn_lifecycle()
 bind_corpus_prefetch_lifecycle()
@@ -100,8 +95,6 @@ __plugin_meta__ = PluginMetadata(
         ],
     },
 )
-message_id_lock = asyncio.Lock()
-message_id_dict = defaultdict(lambda: deque(maxlen=100))
 
 driver = get_driver()
 
@@ -177,74 +170,12 @@ any_msg = on_message(
 
 @any_msg.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
-    from .shard_opt import repeater_worker_handles_message
-
-    if not repeater_worker_handles_message(int(bot.self_id)):
+    ctx = await build_repeater_event_context(int(bot.self_id), event)
+    if ctx is None:
         return
 
-    # 多账号登陆，且在同一群中时；避免一条消息被处理多次
-    async with message_id_lock:
-        message_id = event.message_id
-        group_id = event.group_id
-        if group_id not in message_id_dict:
-            message_id_dict[group_id] = deque(maxlen=100)
-        if message_id in message_id_dict[group_id]:
-            return
-        message_id_dict[group_id].append(message_id)
-
-    norm_raw = _normalize_group_raw_message(event.raw_message)
-    plain_body = event.get_plaintext()
-    if await _should_skip_duplicate_group_event(event.group_id, event.user_id, norm_raw, event.time):
-        return
-
-    from src.platform.ingress.fanout_bypass import ingress_fanout_bypasses_claim
-
-    if ingress_fanout_bypasses_claim(plain_body):
-        return
-
-    from src.platform.federate.ingress import (
-        claim_federate_group_message_ingress,
-        federate_ingress_cached_win,
-    )
-
-    if not federate_ingress_cached_win(event, include_message_time=True):
-        if not await claim_federate_group_message_ingress(event, include_message_time=True):
-            return
-
-    from src.platform.shard.registry.config import is_sharding_active
-
-    # 单进程多连接：协议可能对同条消息重复进 matcher；分片由 ingress_gate 已去重。
-    if not is_sharding_active():
-        from src.platform.multi_bot.dedup import try_claim_group_message_once
-
-        if not await try_claim_group_message_once(
-            "repeater_ingress",
-            event.group_id,
-            event.user_id,
-            plain_body,
-            event.time,
-        ):
-            return
-
-    if is_sharding_active():
-        from .fanout_reply import repeater_fanout_enabled
-
-        if not repeater_fanout_enabled():  # 配置关闭 fanout 时片内单牛 claim
-            from src.platform.multi_bot.dedup import try_claim_cross_bot_message
-
-            if not await try_claim_cross_bot_message(
-                "repeater_reply",
-                event.group_id,
-                event.user_id,
-                plain_body,
-                event.time,
-                int(bot.self_id),
-                use_plaintext=True,
-            ):
-                return
-
-    if await is_message_scrub_blocked_async(plain_text=plain_body, raw_message=norm_raw):
-        pv = scrub_intercept_log_preview(plain_body, norm_raw)
+    if await is_message_scrub_blocked_async(plain_text=ctx.plain_body, raw_message=ctx.norm_raw):
+        pv = scrub_intercept_log_preview(ctx.plain_body, ctx.norm_raw)
         logger.info(
             f"bot [{event.self_id}] repeater capture skipped (message_scrub) in group [{event.group_id}] "
             f"user [{event.user_id}] msg_id [{event.message_id}] preview [{pv}]"
@@ -253,11 +184,12 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
     config = BotConfig(event.self_id, event.group_id)
     can_reply = await config.is_cooldown("repeat")
-    chat: Chat = Chat(event)
 
+    chat: Chat | None = None
     bundle = None
     fanout_gate = None
-    if can_reply:
+    if can_reply and should_prepare_repeater_reply(ctx.plain_body):
+        chat = Chat(event)
         from .fanout_reply import resolve_fanout_gate
 
         fanout_gate = await resolve_fanout_gate(event)
@@ -283,6 +215,9 @@ async def _(bot: Bot, event: GroupMessageEvent):
     for seg in event.message:
         if seg.type == "image":
             await insert_image(seg)
+
+    if chat is None:
+        chat = Chat(event)
 
     await enqueue_repeater_learn(chat, event)
 

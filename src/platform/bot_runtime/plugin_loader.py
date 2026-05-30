@@ -93,10 +93,26 @@ def _load_toml_module_plugins(
     skip_short: frozenset[str],
     loaded_short: set[str],
 ) -> int:
+    return _load_discovered_plugin_modules(
+        role_label=role_label,
+        module_paths=module_paths,
+        skip_short=skip_short,
+        loaded_short=loaded_short,
+    )
+
+
+def _load_discovered_plugin_modules(
+    *,
+    role_label: str,
+    module_paths: list[str],
+    skip_short: frozenset[str],
+    loaded_short: set[str],
+    skip_module_paths: frozenset[str] = frozenset(),
+) -> int:
     count = 0
     for mod in module_paths:
         short = _short_name(mod)
-        if short in skip_short or short in loaded_short:
+        if mod in skip_module_paths or short in skip_short or short in loaded_short:
             continue
         if _load_plugin_module(mod, role_label=role_label, loaded_short=loaded_short):
             count += 1
@@ -215,15 +231,13 @@ def load_plugins_for_role() -> None:
                 loaded_short=loaded_short,
             )
 
-        loaded = 0
-        for mod in _discover_plugin_modules():
-            short = _short_name(mod)
-            if short in UNIFIED_SKIP_PLUGIN_NAMES:
-                continue
-            if mod == _INGRESS_GATE_MODULE or short in loaded_short:
-                continue
-            if _load_plugin_module(mod, role_label="unified", loaded_short=loaded_short):
-                loaded += 1
+        loaded = _load_discovered_plugin_modules(
+            role_label="unified",
+            module_paths=_discover_plugin_modules(),
+            skip_short=UNIFIED_SKIP_PLUGIN_NAMES,
+            skip_module_paths=frozenset({_INGRESS_GATE_MODULE}),
+            loaded_short=loaded_short,
+        )
 
         extra = load_pyproject_extra_plugins(
             role_label="unified",
@@ -259,10 +273,12 @@ def load_plugins_for_role() -> None:
                 role_label="hub",
                 loaded_short=loaded_short,
             )
-        loaded = 0
-        for mod in HUB_PLUGIN_MODULES:
-            if _load_plugin_module(mod, role_label="hub", loaded_short=loaded_short):
-                loaded += 1
+        loaded = _load_discovered_plugin_modules(
+            role_label="hub",
+            module_paths=HUB_PLUGIN_MODULES,
+            skip_short=frozenset(),
+            loaded_short=loaded_short,
+        )
         extra = load_pyproject_extra_plugins(
             role_label="hub",
             skip_short=WORKER_SKIP_PLUGIN_NAMES,
@@ -291,17 +307,13 @@ def load_plugins_for_role() -> None:
             loaded_short=loaded_short,
         )
 
-    loaded = 0
-    for mod in _discover_plugin_modules():
-        short = _short_name(mod)
-        if short in WORKER_SKIP_PLUGIN_NAMES:
-            continue
-        if mod == _INGRESS_GATE_MODULE:
-            continue
-        if short in loaded_short:
-            continue
-        if _load_plugin_module(mod, role_label="worker", loaded_short=loaded_short):
-            loaded += 1
+    loaded = _load_discovered_plugin_modules(
+        role_label="worker",
+        module_paths=_discover_plugin_modules(),
+        skip_short=WORKER_SKIP_PLUGIN_NAMES,
+        skip_module_paths=frozenset({_INGRESS_GATE_MODULE}),
+        loaded_short=loaded_short,
+    )
 
     extra = load_pyproject_extra_plugins(
         role_label="worker",

@@ -63,3 +63,31 @@ def test_plugin_page_status_banner() -> None:
     disabled = _plugin_page_status_banner("MAA远控", False)
     assert "**状态** 已停用" in disabled
     assert "**牛牛开启 MAA远控**" in disabled
+
+
+def test_generate_plugins_markdown_reuses_filtered_plugins(monkeypatch) -> None:
+    called = False
+
+    def fail_get_help_menu_plugins(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("should reuse filtered_plugins")
+
+    plugin = type(
+        "P",
+        (),
+        {
+            "name": "demo",
+            "metadata": type("Meta", (), {"name": "示例插件", "description": "desc"})(),
+        },
+    )()
+
+    monkeypatch.setattr(
+        "src.plugins.help.markdown_generator.get_help_menu_plugins",
+        fail_get_help_menu_plugins,
+    )
+
+    text = generate_plugins_markdown(None, filtered_plugins=[plugin])
+
+    assert "示例插件" in text
+    assert called is False

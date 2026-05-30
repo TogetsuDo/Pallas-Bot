@@ -249,7 +249,6 @@ class Responder:
     ) -> tuple[tuple[list[str], str], list[str]] | None:
         group_id = chat_data.group_id
         raw_message = chat_data.raw_message
-        keywords = chat_data.keywords
         bot_id = chat_data.bot_id
 
         # 复读！（只统计非本进程 Bot / 配置忽略账号，避免多 Bot 同句堆叠误判）
@@ -262,12 +261,18 @@ class Responder:
                 # 到这里说明当前群里是在复读
                 group_bot_replies = reply_dict[group_id][bot_id]
                 if len(group_bot_replies) and group_bot_replies[-1]["reply"] != raw_message:
+                    keywords = chat_data.keywords
                     repeat_plan = ([raw_message], keywords)
                     return repeat_plan, list(repeat_plan[0])
                 else:
                     # 复读过一次就不再回复这句话了
                     return None
 
+        plain_text = str(getattr(chat_data, "plain_text", "") or "").strip()
+        if not getattr(chat_data, "is_plain_text", False) and not plain_text:
+            return None
+
+        keywords = chat_data.keywords
         if not keywords:
             return None
         if Responder.should_skip_context_lookup(chat_data, keywords):

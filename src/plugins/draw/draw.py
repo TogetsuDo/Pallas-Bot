@@ -57,6 +57,20 @@ def extract_image_urls_from_message(msg: Message) -> list[str]:
     return urls
 
 
+def extract_image_urls_from_messages(*msgs: Message | None) -> list[str]:
+    urls: list[str] = []
+    seen: set[str] = set()
+    for msg in msgs:
+        if not msg:
+            continue
+        for url in extract_image_urls_from_message(msg):
+            if url in seen:
+                continue
+            seen.add(url)
+            urls.append(url)
+    return urls
+
+
 def dedupe_urls(urls: list[str]) -> list[str]:
     seen: set[str] = set()
     out: list[str] = []
@@ -78,6 +92,15 @@ def extract_at_user_ids(msg: Message) -> list[int]:
                     ids.append(int(uid))
                 except (TypeError, ValueError):
                     pass
+    return ids
+
+
+def extract_at_user_ids_from_messages(*msgs: Message | None) -> list[int]:
+    ids: list[int] = []
+    for msg in msgs:
+        if not msg:
+            continue
+        ids.extend(extract_at_user_ids(msg))
     return ids
 
 
@@ -187,9 +210,6 @@ async def pallas_draw_handle(bot: Bot, event: GroupMessageEvent, args: Message =
         return
 
     bot_id = int(event.self_id)
-    if not await claim_group_handler("draw", event, bot_id):
-        return
-
     if not await draw_group_cooldown_ready(group_id):
         return
 
@@ -211,16 +231,16 @@ async def pallas_draw_handle(bot: Bot, event: GroupMessageEvent, args: Message =
         await pallas_draw.finish(message_at_user(user_id, f"你在本群今日的画画次数已达上限（{limit_n}）。"))
 
     text = args.extract_plain_text().strip()
-    ref_urls = dedupe_urls(
-        extract_image_urls_from_message(args)
-        + (extract_image_urls_from_message(event.reply.message) if event.reply else [])
-    )
+    ref_urls = extract_image_urls_from_messages(args, event.reply.message if event.reply else None)
 
     # 如果没有图片参考，尝试用 @ 或回复对象的头像作为参考图
     if not ref_urls:
         # 合并 at 段和纯文本 @QQ 号
-        at_ids = extract_at_user_ids(args)
-        text_qq_ids, cleaned_text = extract_at_qq_from_text(text)
+        at_ids = extract_at_user_ids_from_messages(args)
+        text_qq_ids: list[int] = []
+        cleaned_text = text
+        if "@" in text:
+            text_qq_ids, cleaned_text = extract_at_qq_from_text(text)
         all_at_ids = at_ids + text_qq_ids
         if text_qq_ids:
             text = cleaned_text  # 从提示词中去掉 @QQ 号
@@ -249,6 +269,9 @@ async def pallas_draw_handle(bot: Bot, event: GroupMessageEvent, args: Message =
                 "或回复一条带图的消息后再发「牛牛画画」 做图生图。",
             )
         )
+
+    if not await claim_group_handler("draw", event, bot_id):
+        return
 
     if not await acquire_draw_pending_slot():
         await pallas_draw.finish(
