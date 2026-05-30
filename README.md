@@ -70,7 +70,7 @@ uv run nb run
 
 浏览器打开 `http://<主机>:8088/pallas/`，使用启动日志中的口令登录。
 
-**社区语料（可选）**：hub/单进程默认向 [stats 中心](https://stats.pallasbot.top) 上报心跳并 **auto enroll** 社区语料池（本地 PG 为主读，远端 complement）。配置与关闭方式见 [docs/common/corpus/README.md](docs/common/corpus/README.md)。**fed**（第二 PG 联邦池）尚未接入。
+**社区语料**：牛牛默认只用你部署里的本地句子库。若在 Web 控制台 **语料联邦** 打开「社区语料」，还会从中心服务补充更多句子；也可选择把本机学到的好句匿名分享回社区（不含 QQ 号、群号或聊天原文）。默认关闭，随时可在控制台开关。详见 [语料联邦说明](docs/common/corpus/README.md)。
 
 <a id="文档"></a>
 ## 📖 文档
