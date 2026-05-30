@@ -134,6 +134,41 @@ def test_reply_message_query_limits_to_selected_answer_ids():
     assert "context_answer.context_id" not in sql
 
 
+def test_message_row_has_group_user_time_index():
+    from src.foundation.db.repository_pg import MessageRow
+
+    index_names = {idx.name for idx in MessageRow.__table__.indexes}
+    assert "ix_message_group_user_time" in index_names
+
+
+def test_ensure_pg_message_group_user_time_index_creates_missing_index(monkeypatch):
+    from src.foundation.db import repository_pg as mod
+
+    created: list[str] = []
+
+    class FakeInspector:
+        def has_table(self, name: str) -> bool:
+            return name == "message"
+
+        def get_indexes(self, name: str) -> list[dict[str, str]]:
+            assert name == "message"
+            return [{"name": "ix_message_group_time"}]
+
+    class FakeIndex:
+        def __init__(self, name: str, *_cols) -> None:
+            self.name = name
+
+        def create(self, _connection) -> None:
+            created.append(self.name)
+
+    monkeypatch.setattr(mod, "inspect", lambda _connection: FakeInspector())
+    monkeypatch.setattr(mod, "Index", FakeIndex)
+
+    mod._ensure_pg_message_group_user_time_index(object())
+
+    assert created == ["ix_message_group_user_time"]
+
+
 @pytest.mark.asyncio
 async def test_find_by_keywords_for_reply_many_answers_no_in_overflow(pg_engine, monkeypatch):
     """热词大量 Answer 时不得用超大 IN (...)，接话 find 应成功且受 reply_answers_cap 限制。"""

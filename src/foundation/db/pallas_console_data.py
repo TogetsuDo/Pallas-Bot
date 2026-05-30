@@ -70,6 +70,39 @@ def _is_pg_backend(name: str) -> bool:
     return n in ("postgresql", "postgres", "pg")
 
 
+async def _pg_exact_row_count(model: type) -> int:
+    from sqlalchemy import func, select
+
+    from src.foundation.db.repository_pg import get_session
+
+    async with get_session(read_only=True) as session:
+        count = (await session.execute(select(func.count()).select_from(model))).scalar_one()
+        return int(count)
+
+
+async def _pg_estimate_row_count(model: type) -> int:
+    from sqlalchemy import text
+
+    from src.foundation.db.repository_pg import get_session
+
+    table = getattr(model, "__table__", None)
+    table_name = getattr(table, "name", None)
+    if not table_name:
+        return await _pg_exact_row_count(model)
+
+    async with get_session(read_only=True) as session:
+        estimate = (
+            await session.execute(
+                text("SELECT reltuples FROM pg_class WHERE oid = to_regclass(:table_name)"),
+                {"table_name": table_name},
+            )
+        ).scalar_one_or_none()
+
+    if estimate is None:
+        return await _pg_exact_row_count(model)
+    return max(0, int(float(estimate)))
+
+
 async def list_all_bot_configs_public() -> list[dict[str, Any]]:
     backend = get_db_backend()
     if backend == "mongodb":
@@ -195,8 +228,6 @@ async def database_overview() -> dict[str, Any]:
             ],
         }
     if _is_pg_backend(backend):
-        from sqlalchemy import func, select
-
         from src.foundation.db.repository_pg import (
             BlackListRow,
             BotConfigRow,
@@ -205,26 +236,28 @@ async def database_overview() -> dict[str, Any]:
             ImageCacheRow,
             MessageRow,
             UserConfigRow,
-            get_session,
         )
 
-        tables: list[tuple[str, type]] = [
-            ("bot_config", BotConfigRow),
-            ("group_config", GroupConfigRow),
-            ("user_config", UserConfigRow),
-            ("message", MessageRow),
-            ("context", ContextRow),
-            ("blacklist", BlackListRow),
-            ("image_cache", ImageCacheRow),
+        tables: list[tuple[str, type, bool]] = [
+            ("bot_config", BotConfigRow, False),
+            ("group_config", GroupConfigRow, False),
+            ("user_config", UserConfigRow, False),
+            ("message", MessageRow, True),
+            ("context", ContextRow, True),
+            ("blacklist", BlackListRow, False),
+            ("image_cache", ImageCacheRow, True),
         ]
 
-        async def _pg_count(model: type) -> int:
-            async with get_session() as session:
-                c = (await session.execute(select(func.count()).select_from(model))).scalar_one()
-                return int(c)
-
-        counts = await asyncio.gather(*(_pg_count(model) for _, model in tables))
-        out = [{"table": name, "count": c} for (name, _), c in zip(tables, counts, strict=True)]
+        counts = await asyncio.gather(
+            *(
+                _pg_estimate_row_count(model) if estimated else _pg_exact_row_count(model)
+                for _, model, estimated in tables
+            )
+        )
+        out = [
+            {"table": name, "count": count, "count_estimated": estimated}
+            for (name, _, estimated), count in zip(tables, counts, strict=True)
+        ]
         return {"backend": "postgres", "tables": out}
     return {"backend": backend, "note": "未实现该后端的概览"}
 

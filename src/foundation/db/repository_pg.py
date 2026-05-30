@@ -139,6 +139,7 @@ class MessageRow(Base):
     __table_args__ = (
         Index("ix_message_time", "time"),
         Index("ix_message_group_time", "group_id", "time"),
+        Index("ix_message_group_user_time", "group_id", "user_id", "time"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -250,6 +251,17 @@ def _ensure_pg_message_group_time_index(connection) -> None:
     Index("ix_message_group_time", MessageRow.group_id, MessageRow.time).create(connection)
 
 
+def _ensure_pg_message_group_user_time_index(connection) -> None:
+    """旧库 message 补 (group_id, user_id, time) 复合索引，加速按用户回查最近消息。"""
+    insp = inspect(connection)
+    if not insp.has_table("message"):
+        return
+    names = {idx["name"] for idx in insp.get_indexes("message")}
+    if "ix_message_group_user_time" in names:
+        return
+    Index("ix_message_group_user_time", MessageRow.group_id, MessageRow.user_id, MessageRow.time).create(connection)
+
+
 def is_pg_initialized() -> bool:
     return _session_factory is not None
 
@@ -319,6 +331,7 @@ async def init_pg(engine: AsyncEngine) -> None:
         await conn.run_sync(_ensure_pg_group_config_blocked_user_ids)
         await conn.run_sync(_ensure_pg_user_config_maa_devices)
         await conn.run_sync(_ensure_pg_message_group_time_index)
+        await conn.run_sync(_ensure_pg_message_group_user_time_index)
 
 
 async def dispose_pg() -> None:
@@ -444,7 +457,8 @@ def row_to_context(row: ContextRow, *, reply_messages: dict[int, list[str]] | No
 
 def build_reply_message_query(answer_ids: list[int], msg_cap: int):
     rn = (
-        func.row_number()
+        func
+        .row_number()
         .over(
             partition_by=ContextAnswerMessageRow.answer_id,
             order_by=ContextAnswerMessageRow.id.desc(),
