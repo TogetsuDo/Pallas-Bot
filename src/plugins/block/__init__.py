@@ -1,3 +1,5 @@
+import asyncio
+
 from nonebot import get_driver, logger, on_message, on_notice
 from nonebot.adapters import Bot
 from nonebot.adapters.onebot.v11 import GroupIncreaseNoticeEvent, GroupMessageEvent, PokeNotifyEvent, permission
@@ -55,6 +57,12 @@ async def bot_connect(bot: Bot) -> None:
         note_bot_session_seen(qq)
         if is_sharding_active():
             await note_worker_bot_connected(bot)
+        try:
+            from src.platform.federate.peer_bots import sync_federate_peer_bot_roster
+
+            asyncio.create_task(sync_federate_peer_bot_roster(), name=f"federate_peer_sync_connect:{qq}")
+        except Exception:
+            pass
 
 
 @driver.on_bot_disconnect
@@ -68,12 +76,23 @@ async def bot_disconnect(bot: Bot) -> None:
             logger.info(f"Bot {bot.self_id} disconnected.")
         if is_sharding_active():
             await note_worker_bot_disconnected(int(bot.self_id))
+        try:
+            from src.platform.federate.peer_bots import sync_federate_peer_bot_roster
+
+            asyncio.create_task(
+                sync_federate_peer_bot_roster(),
+                name=f"federate_peer_sync_disconnect:{int(bot.self_id)}",
+            )
+        except Exception:
+            pass
 
 
 def is_fleet_bot_qq(qq: int) -> bool:
+    from src.platform.federate.peer_bots import federate_peer_bot_ids_contains
+
     if is_sharding_active():
-        return fleet_bot_ids_contains(qq)
-    return qq in plugin_config.bots
+        return fleet_bot_ids_contains(qq) or federate_peer_bot_ids_contains(qq)
+    return qq in plugin_config.bots or federate_peer_bot_ids_contains(qq)
 
 
 async def is_other_bot(event: GroupMessageEvent) -> bool:

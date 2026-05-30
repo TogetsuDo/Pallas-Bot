@@ -135,7 +135,7 @@ async def list_group_configs_public(limit: int) -> list[dict[str, Any]]:
 
         from src.foundation.db.repository_pg import GroupConfigRow, get_session
 
-        async with get_session() as session:
+        async with get_session(read_only=True) as session:
             result = await session.execute(select(GroupConfigRow).limit(cap))
             rows = list(result.scalars().all())
         return [group_config_to_public(r) for r in rows]
@@ -155,7 +155,7 @@ async def list_user_configs_public(limit: int) -> list[dict[str, Any]]:
 
         from src.foundation.db.repository_pg import UserConfigRow, get_session
 
-        async with get_session() as session:
+        async with get_session(read_only=True) as session:
             result = await session.execute(select(UserConfigRow).limit(cap))
             rows = list(result.scalars().all())
         return [user_config_to_public(r) for r in rows]
@@ -178,7 +178,7 @@ async def list_group_configs_by_ids_public(group_ids: list[int]) -> dict[int, di
 
         from src.foundation.db.repository_pg import GroupConfigRow, get_session
 
-        async with get_session() as session:
+        async with get_session(read_only=True) as session:
             result = await session.execute(select(GroupConfigRow).where(GroupConfigRow.group_id.in_(ids)))
             rows = list(result.scalars().all())
         return {int(r.group_id): group_config_to_public(r) for r in rows}

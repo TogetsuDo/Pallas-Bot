@@ -32,3 +32,17 @@ async def test_remote_corpus_budget_acquires_when_healthy(monkeypatch):
     )
     async with RemoteCorpusBudget(hot_path=False, wait=True) as budget:
         assert budget.skipped is False
+
+
+def test_remote_corpus_background_threshold_more_conservative(monkeypatch):
+    clear_remote_corpus_budget_state()
+    seen: list[float] = []
+
+    def fake_under_pressure(*, threshold: float = 0.75) -> bool:
+        seen.append(threshold)
+        return False
+
+    monkeypatch.setattr("src.features.corpus.remote_budget.pg_pool_under_pressure", fake_under_pressure)
+
+    assert should_skip_remote_corpus(hot_path=False) is False
+    assert seen == [0.55]

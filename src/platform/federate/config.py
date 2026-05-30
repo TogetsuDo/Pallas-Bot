@@ -36,6 +36,7 @@ class FederateConfig(BaseModel):
     control_plane_enabled: bool | None = Field(default=None)
     federate_id: str = Field(default="")
     ingress_enabled: bool | None = Field(default=None)
+    ingress_bypass_unified: bool | None = Field(default=None)
     redis_prefix: str = Field(default="")
 
 
@@ -47,6 +48,10 @@ def get_federate_config() -> FederateConfig:
         control_plane_enabled=cp_flag,
         federate_id=setting_str(f"{_PREFIX}ID"),
         ingress_enabled=ingress_flag,
+        ingress_bypass_unified=parse_tristate(
+            setting_str(f"{_PREFIX}INGRESS_BYPASS_UNIFIED", "false"),
+            default=False,
+        ),
         redis_prefix=setting_str(f"{_PREFIX}REDIS_PREFIX"),
     )
 
@@ -103,6 +108,11 @@ def federate_ingress_enabled(cfg: FederateConfig | None = None) -> bool:
     if flag is False:
         return False
     return bool(resolved_federate_id(cfg))
+
+
+def federate_ingress_bypass_unified(cfg: FederateConfig | None = None) -> bool:
+    cfg = cfg or get_federate_config()
+    return bool(cfg.ingress_bypass_unified)
 
 
 def federate_ingress_active() -> bool:

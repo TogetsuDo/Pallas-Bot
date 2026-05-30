@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from nonebot import get_driver, logger
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.exception import IgnoredException
@@ -14,7 +16,13 @@ from src.features.cmd_perm.metadata_defaults import (
     PLUGIN_MENU_TEMPLATE,
 )
 from src.platform.bot_runtime.roles import is_hub_role
+from src.platform.federate.config import federate_ingress_bypass_unified
 from src.platform.federate.ingress import claim_federate_group_message_ingress
+from src.platform.federate.peer_bots import (
+    federate_peer_bot_ids_contains,
+    start_federate_peer_bot_sync_loop,
+    sync_federate_peer_bot_roster,
+)
 from src.platform.ingress.fanout_bypass import ingress_fanout_bypasses_claim
 from src.platform.multi_bot.dedup import (
     try_claim_cross_bot_message,
@@ -82,7 +90,7 @@ def _ingress_fanout_early_exit(
     metrics: bool,
 ) -> None:
     """全员同响：仅 @ 定向 / 舰队过滤，跳过 once / federate / shard 抢占。"""
-    if fleet_bot_ids_contains(user_id) and user_id != self_id:
+    if _known_bot_sender(user_id=user_id, self_id=self_id):
         if metrics:
             record_ingress_early_discard("fleet")
         raise IgnoredException("fleet bot message")
@@ -98,6 +106,10 @@ def _ingress_fanout_early_exit(
 
     if metrics:
         record_ingress_fanout_bypass()
+
+
+def _known_bot_sender(*, user_id: int, self_id: int) -> bool:
+    return (fleet_bot_ids_contains(user_id) and user_id != self_id) or federate_peer_bot_ids_contains(user_id)
 
 
 @event_preprocessor
@@ -133,6 +145,12 @@ async def ingress_group_message_gate(bot, event) -> None:
             outcome = "fanout_bypass"
             return
 
+        if _known_bot_sender(user_id=user_id, self_id=self_id):
+            outcome = "fleet_discard"
+            if metrics:
+                record_ingress_early_discard("fleet")
+            raise IgnoredException("fleet bot message")
+
         if not sharding_active:
             if not await try_claim_group_message_once(
                 INGRESS_CLAIM_PLUGIN,
@@ -151,12 +169,6 @@ async def ingress_group_message_gate(bot, event) -> None:
 
         if metrics:
             record_ingress_event()
-
-        if fleet_bot_ids_contains(user_id) and user_id != self_id:
-            outcome = "fleet_discard"
-            if metrics:
-                record_ingress_early_discard("fleet")
-            raise IgnoredException("fleet bot message")
 
         ats = group_at_qq_ids(event)
         if ats:
@@ -234,10 +246,17 @@ async def _log_ingress_gate() -> None:
     n = len(get_fleet_bot_ids())
     mode = "shard" if is_sharding_active() else "unified"
     fed = "on" if federate_ingress_active() else "off"
+    unified_bypass = "on" if federate_ingress_bypass_unified() else "off"
     logger.info(
-        "ingress_gate: active mode={} fleet_bots={} federate_ingress={} federate_id={}",
+        "ingress_gate: active mode={} fleet_bots={} federate_ingress={} unified_bypass={} federate_id={}",
         mode,
         n,
         fed,
+        unified_bypass,
         resolved_federate_id() or "-",
     )
+    try:
+        start_federate_peer_bot_sync_loop()
+        asyncio.create_task(sync_federate_peer_bot_roster(), name="federate_peer_bot_initial_sync")
+    except Exception as e:
+        logger.debug("federate peer bots: startup sync skipped: {}", e)

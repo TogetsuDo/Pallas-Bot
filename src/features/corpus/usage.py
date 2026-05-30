@@ -26,6 +26,7 @@ _usage_inflight: asyncio.Task[dict[str, Any] | None] | None = None
 
 
 async def fetch_corpus_community_usage() -> dict[str, Any] | None:
+    global _usage_inflight
     now = time.monotonic()
     cached = _usage_cache
     if cached is not None and now < cached[0]:

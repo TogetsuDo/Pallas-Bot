@@ -50,7 +50,7 @@ def drain_remote_corpus_skip_counters() -> dict[str, int]:
 def should_skip_remote_corpus(*, hot_path: bool = False) -> bool:
     """池压力大时跳过远程语料（接话热路径优先本地）。"""
     global _skipped_pressure
-    threshold = 0.70 if hot_path else 0.80
+    threshold = 0.70 if hot_path else 0.55
     if pg_pool_under_pressure(threshold=threshold):
         _skipped_pressure += 1
         return True

@@ -37,7 +37,7 @@ class CorpusFederationWebuiConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     merge_order: str = Field(
-        default="local,community",
+        default="local",
         description=field_help(
             "查找回复语料时先查哪几个来源",
             "选 local,community 表示先本机再共享池；选 local 表示只用本机语料",
@@ -60,10 +60,10 @@ class CorpusFederationWebuiConfig(BaseModel):
         ),
     )
     auto_enroll: _TRI = Field(
-        default="auto",
+        default="false",
         description=field_help(
             "是否自动向统计中心登记本机的语料访问凭证",
-            "选 auto 一般即可；true 强制登记，false 不登记",
+            "选 false 默认不登记；true 强制登记；auto 仅用于兼容旧配置",
             "登记成功后会把凭证保存在本机，无需每次手填",
         ),
     )
@@ -167,10 +167,10 @@ def get_corpus_federation_webui_config() -> CorpusFederationWebuiConfig:
     if strategy not in ("local_first", "merge_counts"):
         strategy = "local_first"
     return CorpusFederationWebuiConfig(
-        merge_order=_str_read("PALLAS_CORPUS_MERGE_ORDER", "local,community"),
+        merge_order=_str_read("PALLAS_CORPUS_MERGE_ORDER", "local"),
         merge_strategy=strategy,  # type: ignore[arg-type]
         community_enabled=_tristate_read("PALLAS_CORPUS_COMMUNITY_ENABLED", default="false"),
-        auto_enroll=_tristate_read("PALLAS_CORPUS_AUTO_ENROLL"),
+        auto_enroll=_tristate_read("PALLAS_CORPUS_AUTO_ENROLL", default="false"),
         community_contribute=_tristate_read("PALLAS_CORPUS_COMMUNITY_CONTRIBUTE"),
         remote_find_enabled=_tristate_read("PALLAS_CORPUS_REMOTE_FIND_ENABLED"),
         fed_enabled=_tristate_read("PALLAS_CORPUS_FED_ENABLED"),

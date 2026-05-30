@@ -666,7 +666,7 @@ async def fill_plugin_status(
         )
     logger.debug(f"help fill_plugin_status sorted_plugins count={len(sorted_plugins)}")
 
-    disabled_names = await collect_disabled_plugin_names(bot_id, group_id, ignore_cache=True)
+    disabled_names = await collect_disabled_plugin_names(bot_id, group_id, ignore_cache=False)
 
     marks: list[str] = []
     for plugin in sorted_plugins:

@@ -12,6 +12,8 @@ from src.platform.federate import ingress as fed_ingress
 @pytest.mark.asyncio
 async def test_federate_ingress_win_cache_skips_second_redis(monkeypatch: pytest.MonkeyPatch) -> None:
     fed_ingress.reset_federate_ingress_win_cache_for_tests()
+    monkeypatch.setattr("src.platform.federate.ingress.federate_ingress_bypass_unified", lambda: False)
+    monkeypatch.setattr("src.platform.federate.ingress.is_sharding_active", lambda: False)
     monkeypatch.setattr("src.platform.federate.ingress.federate_ingress_active", lambda: True)
     monkeypatch.setattr(
         "src.platform.federate.ingress.load_or_create_deployment_id",
@@ -41,6 +43,8 @@ async def test_federate_ingress_win_cache_skips_second_redis(monkeypatch: pytest
 @pytest.mark.asyncio
 async def test_federate_ingress_coalesces_concurrent_same_message(monkeypatch: pytest.MonkeyPatch) -> None:
     fed_ingress.reset_federate_ingress_win_cache_for_tests()
+    monkeypatch.setattr("src.platform.federate.ingress.federate_ingress_bypass_unified", lambda: False)
+    monkeypatch.setattr("src.platform.federate.ingress.is_sharding_active", lambda: False)
     monkeypatch.setattr("src.platform.federate.ingress.federate_ingress_active", lambda: True)
     monkeypatch.setattr(
         "src.platform.federate.ingress.load_or_create_deployment_id",
@@ -75,3 +79,29 @@ async def test_federate_ingress_coalesces_concurrent_same_message(monkeypatch: p
     assert won_a is True
     assert won_b is True
     assert claim.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_federate_ingress_bypass_unified_skips_claim(monkeypatch: pytest.MonkeyPatch) -> None:
+    fed_ingress.reset_federate_ingress_win_cache_for_tests()
+    monkeypatch.setattr("src.platform.federate.ingress.federate_ingress_bypass_unified", lambda: True)
+    monkeypatch.setattr("src.platform.federate.ingress.is_sharding_active", lambda: False)
+    claim = AsyncMock(return_value=True)
+    monkeypatch.setattr(fed_ingress, "try_claim_cross_federate_message", claim)
+
+    event = GroupMessageEvent.model_construct(
+        time=100,
+        self_id=111,
+        post_type="message",
+        message_type="group",
+        sub_type="normal",
+        user_id=999,
+        group_id=12345,
+        message_id=1,
+        message=Message("hi"),
+        raw_message="hi",
+    )
+
+    assert fed_ingress.federate_ingress_cached_win(event) is True
+    assert await fed_ingress.claim_federate_group_message_ingress(event) is True
+    claim.assert_not_awaited()

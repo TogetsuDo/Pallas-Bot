@@ -53,6 +53,12 @@ class CompositeContextRepository:
 
     async def find_by_keywords_for_reply(self, keywords: str) -> Context | None:
         """接话热路径：prefetch 仅本地查库并异步回填；sync 保持合并远程。"""
+        from src.features.corpus.find_cache import cached_find_by_keywords_for_reply
+
+        return await cached_find_by_keywords_for_reply(keywords, self._find_by_keywords_for_reply_uncached)
+
+    async def _find_by_keywords_for_reply_uncached(self, keywords: str) -> Context | None:
+        """接话热路径未缓存版本，供进程内 TTL 缓存包装。"""
         mode = remote_corpus_find_mode(self._cfg)
         if mode == "sync":
             return await self.find_by_keywords(keywords)

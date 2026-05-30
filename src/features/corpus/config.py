@@ -84,8 +84,8 @@ def community_configured() -> bool:
 
 
 def auto_enroll_enabled() -> bool:
-    flag = parse_tristate(setting_str(f"{_PREFIX}AUTO_ENROLL", "auto"), default=True)
-    return flag is not False
+    flag = parse_tristate(setting_str(f"{_PREFIX}AUTO_ENROLL", "false"), default=False)
+    return flag is True
 
 
 def is_community_corpus_wanted(cfg: CorpusConfig | None = None) -> bool:
@@ -94,7 +94,7 @@ def is_community_corpus_wanted(cfg: CorpusConfig | None = None) -> bool:
         return False
     if cfg.community_enabled is True:
         return True
-    return community_configured()
+    return community_manual_configured()
 
 
 def resolve_enabled(flag: bool | None, *, configured: bool) -> bool:
@@ -159,7 +159,7 @@ def community_contribute_enabled(cfg: CorpusConfig | None = None) -> bool:
 def get_corpus_config() -> CorpusConfig:
     fed_flag = parse_tristate(setting_str(f"{_PREFIX}FED_ENABLED", "auto"))
     community_flag = parse_tristate(setting_str(f"{_PREFIX}COMMUNITY_ENABLED", "false"))
-    auto_flag = parse_tristate(setting_str(f"{_PREFIX}AUTO_ENROLL", "auto"), default=True)
+    auto_flag = parse_tristate(setting_str(f"{_PREFIX}AUTO_ENROLL", "false"), default=False)
     contrib_flag = parse_tristate(setting_str(f"{_PREFIX}COMMUNITY_CONTRIBUTE", "auto"), default=True)
     return CorpusConfig(
         merge_order=resolve_merge_order(setting_str(f"{_PREFIX}MERGE_ORDER", "local,fed,community")),

@@ -11,6 +11,7 @@ from collections import OrderedDict
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
+from nonebot import logger
 from sqlalchemy import (
     JSON,
     BigInteger,
@@ -35,6 +36,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, selectinload
+
+from src.platform.observability import slow_path_threshold_ms
 
 if TYPE_CHECKING:
     from src.foundation.db.modules import Answer, Ban, Context, ImageCache, Message
@@ -81,6 +84,7 @@ class ContextAnswerRow(Base):
     # 名便于 upsert 代码复用。
     __table_args__ = (
         UniqueConstraint("context_id", "group_id", "keywords_hash", name="uq_context_answer_ctx_group_kw"),
+        Index("ix_context_answer_ctx_count_time", "context_id", "count", "time"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -98,6 +102,7 @@ class ContextAnswerRow(Base):
 
 class ContextAnswerMessageRow(Base):
     __tablename__ = "context_answer_message"
+    __table_args__ = (Index("ix_context_answer_message_answer_id_id", "answer_id", "id"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     answer_id: Mapped[int] = mapped_column(
@@ -213,6 +218,9 @@ class ImageCacheRow(Base):
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
+_reply_query_snapshot_cache: OrderedDict[str, tuple[float, Context | None]] = OrderedDict()
+_reply_query_snapshot_inflight: dict[str, asyncio.Task[Context | None]] = {}
+_reply_query_snapshot_lock = asyncio.Lock()
 
 
 def _ensure_pg_group_config_blocked_user_ids(connection) -> None:
@@ -260,6 +268,37 @@ def _ensure_pg_message_group_user_time_index(connection) -> None:
     if "ix_message_group_user_time" in names:
         return
     Index("ix_message_group_user_time", MessageRow.group_id, MessageRow.user_id, MessageRow.time).create(connection)
+
+
+def _ensure_pg_context_answer_reply_index(connection) -> None:
+    """旧库 context_answer 补 (context_id, count, time) 复合索引，加速接话热词 top-N answer。"""
+    insp = inspect(connection)
+    if not insp.has_table("context_answer"):
+        return
+    names = {idx["name"] for idx in insp.get_indexes("context_answer")}
+    if "ix_context_answer_ctx_count_time" in names:
+        return
+    Index(
+        "ix_context_answer_ctx_count_time",
+        ContextAnswerRow.context_id,
+        ContextAnswerRow.count,
+        ContextAnswerRow.time,
+    ).create(connection)
+
+
+def _ensure_pg_context_answer_message_reply_index(connection) -> None:
+    """旧库 context_answer_message 补 (answer_id, id) 复合索引，加速按 answer 取最近消息。"""
+    insp = inspect(connection)
+    if not insp.has_table("context_answer_message"):
+        return
+    names = {idx["name"] for idx in insp.get_indexes("context_answer_message")}
+    if "ix_context_answer_message_answer_id_id" in names:
+        return
+    Index(
+        "ix_context_answer_message_answer_id_id",
+        ContextAnswerMessageRow.answer_id,
+        ContextAnswerMessageRow.id,
+    ).create(connection)
 
 
 def is_pg_initialized() -> bool:
@@ -332,6 +371,8 @@ async def init_pg(engine: AsyncEngine) -> None:
         await conn.run_sync(_ensure_pg_user_config_maa_devices)
         await conn.run_sync(_ensure_pg_message_group_time_index)
         await conn.run_sync(_ensure_pg_message_group_user_time_index)
+        await conn.run_sync(_ensure_pg_context_answer_reply_index)
+        await conn.run_sync(_ensure_pg_context_answer_message_reply_index)
 
 
 async def dispose_pg() -> None:
@@ -343,6 +384,7 @@ async def dispose_pg() -> None:
     # 同步清掉 session factory，避免后续 get_session() 拿到绑定在已释放 engine
     # 上的 AsyncSession；正确行为是抛 "PostgreSQL 尚未初始化"。
     _session_factory = None
+    await clear_reply_query_snapshot_cache(None)
     # schema 重建后若保留旧 ORM 行，下一轮 get() 会命中已失效数据
     for cache in _CONFIG_CACHES.values():
         await cache.clear()
@@ -455,6 +497,45 @@ def row_to_context(row: ContextRow, *, reply_messages: dict[int, list[str]] | No
     )
 
 
+def build_reply_context(
+    *,
+    keywords: str,
+    time_value: int,
+    trigger_count: int,
+    clear_time: int,
+    answer_rows: list[ContextAnswerRow],
+    ban_rows: list[ContextBanRow],
+    reply_messages: dict[int, list[str]],
+):
+    from src.foundation.db.modules import Answer, Ban, Context
+
+    return Context.model_construct(
+        keywords=keywords,
+        time=time_value,
+        trigger_count=trigger_count,
+        answers=[
+            Answer.model_construct(
+                keywords=answer.keywords,
+                group_id=answer.group_id,
+                count=answer.count,
+                time=answer.time,
+                messages=list(reply_messages.get(int(answer.id), [])),
+            )
+            for answer in answer_rows
+        ],
+        ban=[
+            Ban.model_construct(
+                keywords=ban.keywords,
+                group_id=ban.group_id,
+                reason=ban.reason,
+                time=ban.time,
+            )
+            for ban in ban_rows
+        ],
+        clear_time=clear_time,
+    )
+
+
 def build_reply_message_query(answer_ids: list[int], msg_cap: int):
     rn = (
         func
@@ -480,6 +561,59 @@ def build_reply_message_query(answer_ids: list[int], msg_cap: int):
         .where(ranked.c.rn <= msg_cap)
         .order_by(ranked.c.answer_id, ranked.c.id)
     )
+
+
+async def clear_reply_query_snapshot_cache(keywords: str | None = None) -> None:
+    async with _reply_query_snapshot_lock:
+        if keywords is None:
+            _reply_query_snapshot_cache.clear()
+            _reply_query_snapshot_inflight.clear()
+            return
+        key = keywords.strip()
+        if key:
+            _reply_query_snapshot_cache.pop(key, None)
+
+
+async def cached_reply_query_snapshot(
+    keywords: str,
+    loader,
+) -> Context | None:
+    from src.features.corpus.reply_perf_config import reply_snapshot_max_entries, reply_snapshot_ttl_sec
+
+    key = (keywords or "").strip()
+    if not key:
+        return None
+    now = time.monotonic()
+    task: asyncio.Task[Context | None] | None = None
+    async with _reply_query_snapshot_lock:
+        hit = _reply_query_snapshot_cache.get(key)
+        if hit is not None:
+            expire_at, value = hit
+            if now < expire_at:
+                _reply_query_snapshot_cache.move_to_end(key)
+                return value
+            _reply_query_snapshot_cache.pop(key, None)
+        task = _reply_query_snapshot_inflight.get(key)
+        if task is None:
+            task = asyncio.create_task(loader(key))
+            _reply_query_snapshot_inflight[key] = task
+
+    try:
+        ctx = await asyncio.shield(task)
+    except Exception:
+        async with _reply_query_snapshot_lock:
+            if _reply_query_snapshot_inflight.get(key) is task:
+                _reply_query_snapshot_inflight.pop(key, None)
+        raise
+
+    async with _reply_query_snapshot_lock:
+        if _reply_query_snapshot_inflight.get(key) is task:
+            _reply_query_snapshot_inflight.pop(key, None)
+        _reply_query_snapshot_cache[key] = (time.monotonic() + reply_snapshot_ttl_sec(), ctx)
+        _reply_query_snapshot_cache.move_to_end(key)
+        while len(_reply_query_snapshot_cache) > reply_snapshot_max_entries():
+            _reply_query_snapshot_cache.popitem(last=False)
+    return ctx
 
 
 def row_to_blacklist(row: BlackListRow):
@@ -520,20 +654,64 @@ class PgContextRepository:
             return row_to_context(row) if row else None
 
     async def find_by_keywords_for_reply(self, keywords: str) -> Context | None:
-        """接话路径：限量 Answer + 仅按入选 answer 拉 message，避免热词全量扫描。"""
-        khash = keywords_hash(keywords)
-        from src.features.corpus.reply_perf_config import reply_answers_cap, reply_messages_cap
+        return await cached_reply_query_snapshot(keywords, self._find_by_keywords_for_reply_uncached)
 
-        msg_cap = reply_messages_cap()
-        ans_cap = reply_answers_cap()
+    async def _find_by_keywords_for_reply_uncached(self, keywords: str) -> Context | None:
+        """接话路径：轻量列查询 + 限量 Answer/Message，避免 ORM 关联热路径放大。"""
+        khash = keywords_hash(keywords)
+        from src.features.corpus.reply_perf_config import reply_query_caps
+
+        msg_cap, ans_cap = reply_query_caps(keywords)
+        t_start = time.monotonic()
+        t_context_ms = 0.0
+        t_ban_ms = 0.0
+        t_answer_ms = 0.0
+        t_message_ms = 0.0
+        ban_count = 0
+        answer_count = 0
+        message_count = 0
         async with get_session(read_only=True) as session:
+            t0 = time.monotonic()
             result = await session.execute(
-                select(ContextRow).options(*_LOAD_REPLY_CTX).where(ContextRow.keywords_hash == khash)
+                select(
+                    ContextRow.id,
+                    ContextRow.keywords,
+                    ContextRow.time,
+                    ContextRow.trigger_count,
+                    ContextRow.clear_time,
+                ).where(ContextRow.keywords_hash == khash)
             )
-            row = result.scalar_one_or_none()
-            if row is None:
+            t_context_ms = (time.monotonic() - t0) * 1000.0
+            ctx_row = result.one_or_none()
+            if ctx_row is None:
+                self._log_reply_query_slow(
+                    keywords=keywords,
+                    elapsed_ms=(time.monotonic() - t_start) * 1000.0,
+                    context_ms=t_context_ms,
+                    ban_ms=t_ban_ms,
+                    answer_ms=t_answer_ms,
+                    message_ms=t_message_ms,
+                    ban_count=ban_count,
+                    answer_count=answer_count,
+                    message_count=message_count,
+                    hit=False,
+                )
                 return None
-            ctx_id = int(row.id)
+            ctx_id, ctx_keywords, ctx_time, ctx_trigger_count, ctx_clear_time = ctx_row
+            ctx_id = int(ctx_id)
+            t0 = time.monotonic()
+            ban_rows = list(
+                (
+                    await session.execute(
+                        select(ContextBanRow).where(ContextBanRow.context_id == ctx_id).order_by(ContextBanRow.id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            t_ban_ms = (time.monotonic() - t0) * 1000.0
+            ban_count = len(ban_rows)
+            t0 = time.monotonic()
             ans_result = await session.execute(
                 select(ContextAnswerRow)
                 .where(ContextAnswerRow.context_id == ctx_id)
@@ -541,15 +719,92 @@ class PgContextRepository:
                 .limit(ans_cap)
             )
             answer_rows = list(ans_result.scalars().all())
-            row.answers = answer_rows
+            t_answer_ms = (time.monotonic() - t0) * 1000.0
+            answer_count = len(answer_rows)
             if not answer_rows:
-                return row_to_context(row, reply_messages={})
+                self._log_reply_query_slow(
+                    keywords=keywords,
+                    elapsed_ms=(time.monotonic() - t_start) * 1000.0,
+                    context_ms=t_context_ms,
+                    ban_ms=t_ban_ms,
+                    answer_ms=t_answer_ms,
+                    message_ms=t_message_ms,
+                    ban_count=ban_count,
+                    answer_count=answer_count,
+                    message_count=message_count,
+                    hit=True,
+                )
+                return build_reply_context(
+                    keywords=ctx_keywords,
+                    time_value=ctx_time,
+                    trigger_count=ctx_trigger_count,
+                    clear_time=ctx_clear_time,
+                    answer_rows=[],
+                    ban_rows=ban_rows,
+                    reply_messages={},
+                )
             answer_ids = [int(answer.id) for answer in answer_rows]
+            t0 = time.monotonic()
             msg_rows = (await session.execute(build_reply_message_query(answer_ids, msg_cap))).all()
+            t_message_ms = (time.monotonic() - t0) * 1000.0
+            message_count = len(msg_rows)
             reply_messages: dict[int, list[str]] = {}
             for aid, message, _mid in msg_rows:
                 reply_messages.setdefault(int(aid), []).append(message)
-            return row_to_context(row, reply_messages=reply_messages)
+            self._log_reply_query_slow(
+                keywords=keywords,
+                elapsed_ms=(time.monotonic() - t_start) * 1000.0,
+                context_ms=t_context_ms,
+                ban_ms=t_ban_ms,
+                answer_ms=t_answer_ms,
+                message_ms=t_message_ms,
+                ban_count=ban_count,
+                answer_count=answer_count,
+                message_count=message_count,
+                hit=True,
+            )
+            return build_reply_context(
+                keywords=ctx_keywords,
+                time_value=ctx_time,
+                trigger_count=ctx_trigger_count,
+                clear_time=ctx_clear_time,
+                answer_rows=answer_rows,
+                ban_rows=ban_rows,
+                reply_messages=reply_messages,
+            )
+
+    @staticmethod
+    def _log_reply_query_slow(
+        *,
+        keywords: str,
+        elapsed_ms: float,
+        context_ms: float,
+        ban_ms: float,
+        answer_ms: float,
+        message_ms: float,
+        ban_count: int,
+        answer_count: int,
+        message_count: int,
+        hit: bool,
+    ) -> None:
+        threshold_ms = slow_path_threshold_ms("PALLAS_SLOW_REPLY_QUERY_MS", 250.0)
+        if elapsed_ms < threshold_ms:
+            return
+        logger.warning(
+            "corpus.reply_query slow_path elapsed_ms={:.1f} "
+            "stages=context={:.1f}ms ban={:.1f}ms answers={:.1f}ms messages={:.1f}ms "
+            "counts=ban:{} answers:{} messages:{} hit={} kw_len={}",
+            elapsed_ms,
+            context_ms,
+            ban_ms,
+            answer_ms,
+            message_ms,
+            ban_count,
+            answer_count,
+            message_count,
+            hit,
+            len(keywords),
+        )
 
     async def save(self, context: Context) -> None:
         khash = keywords_hash(context.keywords)
@@ -577,6 +832,7 @@ class PgContextRepository:
             await _insert_answers_batched(session, row.id, context.answers)
             await _insert_bans_batched(session, row.id, context.ban)
             await session.commit()
+        await clear_reply_query_snapshot_cache(context.keywords)
 
     async def insert(self, context: Context) -> None:
         """插入新 Context。并发下同 keywords 第二个写入会被 unique 约束拒绝，等价为 no-op。"""
@@ -595,6 +851,7 @@ class PgContextRepository:
                 await _insert_answers_batched(session, row.id, context.answers)
                 await _insert_bans_batched(session, row.id, context.ban)
                 await session.commit()
+            await clear_reply_query_snapshot_cache(context.keywords)
         except IntegrityError:
             pass
 
@@ -602,6 +859,7 @@ class PgContextRepository:
 
     async def delete_expired(self, expiration: int, threshold: int) -> None:
         """分批删除过期 Context，避免千万级时长锁表。级联删除由 FK ondelete=CASCADE 处理。"""
+        deleted_any = False
         while True:
             async with get_session() as session:
                 subq = (
@@ -615,8 +873,11 @@ class PgContextRepository:
                 )
                 deleted = len(result.scalars().all())
                 await session.commit()
+            deleted_any = deleted_any or deleted > 0
             if deleted < self._DELETE_EXPIRED_CHUNK:
                 break
+        if deleted_any:
+            await clear_reply_query_snapshot_cache(None)
 
     _CLEANUP_CHUNK = 500
 
@@ -628,7 +889,7 @@ class PgContextRepository:
         results: list[Context] = []
         last_id = 0
         while True:
-            async with get_session() as session:
+            async with get_session(read_only=True) as session:
                 result = await session.execute(
                     select(ContextRow)
                     .options(*_LOAD_RELATED)
@@ -771,6 +1032,8 @@ class PgContextRepository:
                 await session.execute(insert(ContextAnswerMessageRow).values(answer_id=ans_id, message=msg_s))
 
             await session.commit()
+            if ctx_created:
+                await clear_reply_query_snapshot_cache(keywords)
             return ctx_created
 
     async def replace_answers(self, keywords: str, answers: list[Answer], clear_time: int) -> None:
@@ -785,6 +1048,7 @@ class PgContextRepository:
             await _insert_answers_batched(session, ctx_row.id, answers)
             ctx_row.clear_time = clear_time
             await session.commit()
+        await clear_reply_query_snapshot_cache(keywords)
 
     async def append_ban(self, keywords: str, ban: Ban) -> None:
         khash = keywords_hash(keywords)
@@ -804,6 +1068,7 @@ class PgContextRepository:
                 )
             )
             await session.commit()
+        await clear_reply_query_snapshot_cache(keywords)
 
 
 def row_to_message(row: MessageRow) -> Message:

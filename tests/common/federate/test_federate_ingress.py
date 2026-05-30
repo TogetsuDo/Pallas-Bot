@@ -41,8 +41,7 @@ async def test_federate_memory_claim_same_deployment(monkeypatch):
 
 
 def test_federate_claim_redis_key_uses_prefix(monkeypatch):
-    monkeypatch.setenv("PALLAS_FEDERATE_ID", "pool-1")
-    fc.clear_federate_config_cache()
+    monkeypatch.setattr(frc, "federate_redis_prefix", lambda: "pallas:fed:pool-1")
     key = frc.federate_claim_redis_key("federate_ingress", 99, 12345)
     assert key.startswith("pallas:fed:pool-1:ingress:")
 
@@ -62,7 +61,6 @@ def test_federate_ingress_active_requires_redis(monkeypatch):
     monkeypatch.setenv("PALLAS_FEDERATE_ID", "pool-1")
     monkeypatch.setenv("PALLAS_FEDERATE_INGRESS_ENABLED", "true")
     fc.clear_federate_config_cache()
-    from src.platform.federate import redis_settings as frs
 
-    monkeypatch.setattr(frs, "federate_redis_available", lambda: False)
+    monkeypatch.setattr(fc, "federate_redis_available", lambda: False)
     assert fc.federate_ingress_active() is False

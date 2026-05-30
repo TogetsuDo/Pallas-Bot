@@ -7,7 +7,7 @@ from src.foundation.db import Message as MessageModel
 from src.foundation.db.context_repo_access import context_repo
 
 from .context_exists_cache import context_exists_for_learn, note_context_exists
-from .learner_context import group_messages_before, user_message_before_in_group
+from .learner_context import group_messages_before
 from .message_store import MessageStore
 
 if TYPE_CHECKING:
@@ -46,12 +46,6 @@ class Learner:
         if group_msgs:
             group_pre_msg = group_msgs[-1]
             await Learner._context_insert(chat_data, group_pre_msg)
-
-            user_id = chat_data.user_id
-            if group_pre_msg and group_pre_msg.user_id != user_id:
-                user_pre = await user_message_before_in_group(chat_data, group_msgs)
-                if user_pre is not None:
-                    await Learner._context_insert(chat_data, user_pre)
 
         async def _topics_callback(group_id: int, keywords_list: list[str]):
             async with topics_lock:

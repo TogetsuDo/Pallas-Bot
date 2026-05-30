@@ -5,9 +5,13 @@ from nonebot.exception import IgnoredException
 from nonebot.internal.matcher import Matcher
 from nonebot.message import event_preprocessor, run_preprocessor
 
+from src.platform.ingress.plugin_command_plaintext import is_plugin_command_plaintext
+from src.platform.multi_bot.dedup import try_claim_cross_bot_message_memory
+
 from .plugin_manager import collect_disabled_plugin_names
 
 _blocked_events: dict[str, frozenset[str]] = {}
+_COMMAND_INGRESS_PLUGIN = "command_ingress"
 
 
 IGNORED_PLUGINS = ["help"]
@@ -24,6 +28,28 @@ def get_plugin_name_from_matcher(matcher: Matcher) -> str:
                 return part
 
     return module_name or "unknown"
+
+
+async def command_cross_bot_claim_won(
+    *,
+    bot_id: int,
+    group_id: int,
+    user_id: int,
+    plain_text: str,
+    message_time: int,
+) -> bool:
+    text = (plain_text or "").strip()
+    if not text or not is_plugin_command_plaintext(text):
+        return True
+    return await try_claim_cross_bot_message_memory(
+        _COMMAND_INGRESS_PLUGIN,
+        group_id,
+        user_id,
+        text,
+        message_time,
+        bot_id,
+        use_plaintext=True,
+    )
 
 
 @event_preprocessor
@@ -50,11 +76,21 @@ async def check_plugin_enabled(matcher: Matcher, bot: Bot, event: GroupMessageEv
     if not plugin_name:
         return
 
+    bot_id = int(bot.self_id)
+    if not await command_cross_bot_claim_won(
+        bot_id=bot_id,
+        group_id=event.group_id,
+        user_id=event.user_id,
+        plain_text=event.get_plaintext(),
+        message_time=event.time,
+    ):
+        logger.debug("bot [{}] command matcher [{}] skipped by cross-bot claim", bot_id, plugin_name)
+        raise IgnoredException(f"Command matcher skipped for bot {bot_id}")
+
     if plugin_name.lower() in IGNORED_PLUGINS:
         return
 
     event_id = f"{bot.self_id}_{event.message_id}_{event.group_id}"
-    bot_id = int(bot.self_id)
     group_id = event.group_id
 
     disabled_names = _blocked_events.get(event_id)

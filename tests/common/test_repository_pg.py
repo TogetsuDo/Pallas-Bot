@@ -117,9 +117,37 @@ async def test_find_by_keywords_for_reply_caps_messages(pg_engine, monkeypatch):
     full = await repo.find_by_keywords("kw")
     assert lite is not None
     assert full is not None
-    assert len(lite.answers[0].messages) == 8
+    assert len(lite.answers[0].messages) == 6
     assert len(full.answers[0].messages) == 20
-    assert lite.answers[0].messages[-1] == "m19"
+    assert set(lite.answers[0].messages).issubset(set(full.answers[0].messages))
+
+
+@pytest.mark.asyncio
+async def test_find_by_keywords_for_reply_keeps_bans(pg_engine):
+    """接话轻量查询仍需保留 ban 信息，避免提速后放松禁言过滤。"""
+    from src.foundation.db.modules import Ban, Context
+    from src.foundation.db.repository_pg import PgContextRepository
+
+    repo = PgContextRepository()
+    await repo.insert(
+        Context.model_construct(
+            keywords="kw-ban",
+            time=100,
+            trigger_count=3,
+            answers=[],
+            ban=[Ban.model_construct(keywords="forbidden", group_id=1, reason="r", time=50)],
+            clear_time=9,
+        )
+    )
+
+    found = await repo.find_by_keywords_for_reply("kw-ban")
+
+    assert found is not None
+    assert found.trigger_count == 3
+    assert found.clear_time == 9
+    assert len(found.ban) == 1
+    assert found.ban[0].keywords == "forbidden"
+    assert found.ban[0].group_id == 1
 
 
 def test_reply_message_query_limits_to_selected_answer_ids():
@@ -139,6 +167,16 @@ def test_message_row_has_group_user_time_index():
 
     index_names = {idx.name for idx in MessageRow.__table__.indexes}
     assert "ix_message_group_user_time" in index_names
+
+
+def test_context_answer_rows_have_reply_indexes():
+    from src.foundation.db.repository_pg import ContextAnswerMessageRow, ContextAnswerRow
+
+    answer_index_names = {idx.name for idx in ContextAnswerRow.__table__.indexes}
+    message_index_names = {idx.name for idx in ContextAnswerMessageRow.__table__.indexes}
+
+    assert "ix_context_answer_ctx_count_time" in answer_index_names
+    assert "ix_context_answer_message_answer_id_id" in message_index_names
 
 
 def test_ensure_pg_message_group_user_time_index_creates_missing_index(monkeypatch):
@@ -169,6 +207,37 @@ def test_ensure_pg_message_group_user_time_index_creates_missing_index(monkeypat
     assert created == ["ix_message_group_user_time"]
 
 
+def test_ensure_pg_context_answer_reply_indexes_create_missing_indexes(monkeypatch):
+    from src.foundation.db import repository_pg as mod
+
+    created: list[str] = []
+
+    class FakeInspector:
+        def has_table(self, name: str) -> bool:
+            return name in {"context_answer", "context_answer_message"}
+
+        def get_indexes(self, name: str) -> list[dict[str, str]]:
+            return []
+
+    class FakeIndex:
+        def __init__(self, name: str, *_cols) -> None:
+            self.name = name
+
+        def create(self, _connection) -> None:
+            created.append(self.name)
+
+    monkeypatch.setattr(mod, "inspect", lambda _connection: FakeInspector())
+    monkeypatch.setattr(mod, "Index", FakeIndex)
+
+    mod._ensure_pg_context_answer_reply_index(object())
+    mod._ensure_pg_context_answer_message_reply_index(object())
+
+    assert created == [
+        "ix_context_answer_ctx_count_time",
+        "ix_context_answer_message_answer_id_id",
+    ]
+
+
 @pytest.mark.asyncio
 async def test_find_by_keywords_for_reply_many_answers_no_in_overflow(pg_engine, monkeypatch):
     """热词大量 Answer 时不得用超大 IN (...)，接话 find 应成功且受 reply_answers_cap 限制。"""
@@ -196,6 +265,107 @@ async def test_find_by_keywords_for_reply_many_answers_no_in_overflow(pg_engine,
     lite = await repo.find_by_keywords_for_reply("hot")
     assert lite is not None
     assert len(lite.answers) <= 64
+
+
+@pytest.mark.asyncio
+async def test_find_by_keywords_for_reply_tightens_caps_for_short_keywords(pg_engine, monkeypatch):
+    """超短关键词应进一步收紧候选窗口，避免热点短词把热路径拖长。"""
+    from src.features.corpus.reply_perf_config import clear_corpus_reply_perf_config_cache
+    from src.foundation.db import repository_pg as pg_mod
+    from src.foundation.db.modules import Context
+
+    monkeypatch.setenv("PALLAS_CORPUS_REPLY_ANSWERS_CAP", "128")
+    clear_corpus_reply_perf_config_cache()
+    repo = pg_mod.PgContextRepository()
+    await repo.insert(Context.model_construct(keywords="hi", time=0, trigger_count=1, answers=[], ban=[], clear_time=0))
+
+    for gid in range(80):
+        await repo.upsert_answer(
+            keywords="hi",
+            group_id=gid,
+            answer_keywords=f"a{gid}",
+            answer_time=100 + gid,
+            message=f"m{gid}",
+            append_on_existing=True,
+        )
+
+    lite = await repo.find_by_keywords_for_reply("hi")
+    assert lite is not None
+    assert len(lite.answers) <= 48
+
+
+@pytest.mark.asyncio
+async def test_find_by_keywords_for_reply_reuses_recent_snapshot_during_hot_upsert(pg_engine, monkeypatch):
+    """高频 learn 写同一关键词时，接话查询应短暂复用最近快照，避免每条消息都重查。"""
+    from src.features.corpus.reply_perf_config import clear_corpus_reply_perf_config_cache
+    from src.foundation.db.modules import Context
+    from src.foundation.db.repository_pg import PgContextRepository
+
+    monkeypatch.setenv("PALLAS_CORPUS_REPLY_SNAPSHOT_SEC", "30")
+    clear_corpus_reply_perf_config_cache()
+    repo = PgContextRepository()
+    await repo.insert(
+        Context.model_construct(keywords="snap-hot", time=0, trigger_count=1, answers=[], ban=[], clear_time=0)
+    )
+
+    await repo.upsert_answer("snap-hot", 1, "a", 100, "first", append_on_existing=True)
+    warm = await repo.find_by_keywords_for_reply("snap-hot")
+    assert warm is not None
+    assert warm.answers[0].messages == ["first"]
+
+    await repo.upsert_answer("snap-hot", 1, "a", 101, "second", append_on_existing=True)
+    cached = await repo.find_by_keywords_for_reply("snap-hot")
+
+    assert cached is not None
+    assert cached.answers[0].messages == ["first"]
+
+
+@pytest.mark.asyncio
+async def test_find_by_keywords_for_reply_insert_invalidates_recent_miss_snapshot(pg_engine, monkeypatch):
+    """新建 Context 后必须能立即打破最近 miss 快照，避免社区回填后仍短暂看不到。"""
+    from src.features.corpus.reply_perf_config import clear_corpus_reply_perf_config_cache
+    from src.foundation.db.modules import Context
+    from src.foundation.db.repository_pg import PgContextRepository
+
+    monkeypatch.setenv("PALLAS_CORPUS_REPLY_SNAPSHOT_SEC", "30")
+    clear_corpus_reply_perf_config_cache()
+    repo = PgContextRepository()
+
+    assert await repo.find_by_keywords_for_reply("snap-miss") is None
+
+    await repo.insert(
+        Context.model_construct(keywords="snap-miss", time=0, trigger_count=1, answers=[], ban=[], clear_time=0)
+    )
+    await repo.upsert_answer("snap-miss", 1, "a", 100, "hello", append_on_existing=True)
+    found = await repo.find_by_keywords_for_reply("snap-miss")
+
+    assert found is not None
+    assert found.answers[0].messages == ["hello"]
+
+
+@pytest.mark.asyncio
+async def test_append_ban_invalidates_recent_reply_snapshot(pg_engine, monkeypatch):
+    """ban 追加后应立即刷新快照，不能让旧快照继续放行刚禁掉的答案。"""
+    from src.features.corpus.reply_perf_config import clear_corpus_reply_perf_config_cache
+    from src.foundation.db.modules import Ban, Context
+    from src.foundation.db.repository_pg import PgContextRepository
+
+    monkeypatch.setenv("PALLAS_CORPUS_REPLY_SNAPSHOT_SEC", "30")
+    clear_corpus_reply_perf_config_cache()
+    repo = PgContextRepository()
+    await repo.insert(
+        Context.model_construct(keywords="snap-ban", time=0, trigger_count=1, answers=[], ban=[], clear_time=0)
+    )
+    await repo.upsert_answer("snap-ban", 1, "a", 100, "hello", append_on_existing=True)
+    warm = await repo.find_by_keywords_for_reply("snap-ban")
+    assert warm is not None
+    assert warm.ban == []
+
+    await repo.append_ban("snap-ban", Ban.model_construct(keywords="a", group_id=1, reason="r", time=101))
+    refreshed = await repo.find_by_keywords_for_reply("snap-ban")
+
+    assert refreshed is not None
+    assert [ban.keywords for ban in refreshed.ban] == ["a"]
 
 
 @pytest.mark.asyncio

@@ -12,10 +12,15 @@ if TYPE_CHECKING:
     from src.foundation.db.modules import Context
 
 _find_cache: dict[str, tuple[float, Context | None]] = {}
+_reply_find_cache: dict[str, tuple[float, Context | None]] = {}
+_find_inflight: dict[str, asyncio.Task[Context | None]] = {}
+_reply_find_inflight: dict[str, asyncio.Task[Context | None]] = {}
 _find_lock = asyncio.Lock()
 
 
-async def cached_find_by_keywords(
+async def _cached_find(
+    cache: dict[str, tuple[float, Context | None]],
+    inflight: dict[str, asyncio.Task[Context | None]],
     keywords: str,
     loader,
 ) -> Context | None:
@@ -23,37 +28,68 @@ async def cached_find_by_keywords(
     if not key:
         return None
     now = time.monotonic()
+    task: asyncio.Task[Context | None] | None = None
     async with _find_lock:
-        hit = _find_cache.get(key)
+        hit = cache.get(key)
         if hit is not None:
             exp, val = hit
             if now < exp:
                 return val
-            _find_cache.pop(key, None)
+            cache.pop(key, None)
+        task = inflight.get(key)
+        if task is None:
+            task = asyncio.create_task(loader(key))
+            inflight[key] = task
         cache_max = find_cache_max_entries()
-        if len(_find_cache) > cache_max:
-            stale = [k for k, (e, _) in _find_cache.items() if now >= e]
+        if len(cache) > cache_max:
+            stale = [k for k, (e, _) in cache.items() if now >= e]
             for k in stale:
-                _find_cache.pop(k, None)
-            if len(_find_cache) > cache_max:
-                _find_cache.clear()
+                cache.pop(k, None)
+            if len(cache) > cache_max:
+                cache.clear()
 
-    ctx = await loader(key)
+    try:
+        ctx = await asyncio.shield(task)
+    except Exception:
+        async with _find_lock:
+            if inflight.get(key) is task:
+                inflight.pop(key, None)
+        raise
 
     expire_at = time.monotonic() + find_cache_ttl_sec()
     async with _find_lock:
-        _find_cache[key] = (expire_at, ctx)
+        if inflight.get(key) is task:
+            inflight.pop(key, None)
+        cache[key] = (expire_at, ctx)
     return ctx
+
+
+async def cached_find_by_keywords(
+    keywords: str,
+    loader,
+) -> Context | None:
+    return await _cached_find(_find_cache, _find_inflight, keywords, loader)
+
+
+async def cached_find_by_keywords_for_reply(
+    keywords: str,
+    loader,
+) -> Context | None:
+    return await _cached_find(_reply_find_cache, _reply_find_inflight, keywords, loader)
 
 
 async def invalidate_find_cache(keywords: str | None = None) -> None:
     async with _find_lock:
         if keywords is None:
             _find_cache.clear()
+            _reply_find_cache.clear()
+            _find_inflight.clear()
+            _reply_find_inflight.clear()
             return
         key = keywords.strip()
         if key:
             _find_cache.pop(key, None)
+            _reply_find_cache.pop(key, None)
 
 
 async def reset_find_cache_for_tests() -> None:

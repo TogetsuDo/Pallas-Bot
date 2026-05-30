@@ -5,7 +5,8 @@ from src.console.webui.corpus_federation_section import (
 )
 
 
-def test_corpus_federation_payload_phase1():
+def test_corpus_federation_payload_phase1(monkeypatch):
+    monkeypatch.setattr("src.features.corpus.webui_config.repo_env_raw_value", lambda _key: None)
     data = corpus_federation_payload()
     assert data["plugin"] == CORPUS_FEDERATION_SECTION_ID
     assert data.get("hot_reload") is True
@@ -27,6 +28,10 @@ def test_corpus_federation_payload_phase1():
     merge_order = next(f for f in data["fields"] if f["name"] == "merge_order")
     assert merge_order["kind"] == "enum"
     assert merge_order["choices"] == ["local,community", "local"]
+    assert merge_order["current"] == "local"
+    auto_enroll = next(f for f in data["fields"] if f["name"] == "auto_enroll")
+    assert auto_enroll["kind"] == "enum"
+    assert auto_enroll["current"] == "false"
     remote_find = next(f for f in data["fields"] if f["name"] == "remote_find_enabled")
     assert remote_find["kind"] == "enum"
     assert remote_find["choices"] == ["auto", "false", "prefetch", "sync"]
@@ -70,3 +75,22 @@ def test_apply_corpus_federation_patch_rejects_unknown():
 
     with pytest.raises(ValueError, match="未知配置项"):
         apply_corpus_federation_patch({"fed_enabled": "true"})
+
+
+def test_corpus_reply_perf_default_answers_cap_is_128(monkeypatch):
+    from src.features.corpus.reply_perf_config import (
+        clear_corpus_reply_perf_config_cache,
+        get_corpus_reply_perf_config,
+    )
+
+    monkeypatch.setattr(
+        "src.features.corpus.reply_perf_config.repo_env_raw_value",
+        lambda _key: None,
+    )
+    clear_corpus_reply_perf_config_cache()
+    try:
+        cfg = get_corpus_reply_perf_config()
+        assert cfg.reply_answers_cap == 128
+        assert cfg.reply_messages_cap == 16
+    finally:
+        clear_corpus_reply_perf_config_cache()

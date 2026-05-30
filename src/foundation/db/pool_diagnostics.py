@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import sys
 from collections import Counter
 from typing import Any
 
@@ -19,6 +20,8 @@ _slow_by_caller: Counter[str] = Counter()
 _slow_session_total: int = 0
 _slow_hold_max_ms: float = 0.0
 _mirror_skipped_pressure: int = 0
+_CALLER_SCAN_SKIP_SUFFIXES = ("/foundation/db/repository_pg.py", "/contextlib.py")
+_CALLER_SCAN_MAX_DEPTH = 16
 
 
 def session_hold_warn_ms() -> float:
@@ -31,20 +34,51 @@ def session_hold_warn_ms() -> float:
     return 500.0
 
 
+def _is_ignored_caller_path(path: str) -> bool:
+    return path.endswith(_CALLER_SCAN_SKIP_SUFFIXES) or "/site-packages/" in path
+
+
+def _format_caller_hint(function: str, filename: str, lineno: int) -> str:
+    path = filename.replace("\\", "/")
+    parts = path.rsplit("/", 2)
+    label = "/".join(parts[-2:]) if len(parts) >= 2 else path
+    return f"{function}@{label}:{lineno}"
+
+
+def _pg_session_caller_hint_from_frame() -> str | None:
+    getframe = getattr(sys, "_getframe", None)
+    if getframe is None:
+        return None
+    try:
+        frame = getframe(2)
+    except ValueError:
+        return None
+    for _ in range(_CALLER_SCAN_MAX_DEPTH):
+        if frame is None:
+            break
+        code = frame.f_code
+        path = code.co_filename.replace("\\", "/")
+        if not _is_ignored_caller_path(path):
+            return _format_caller_hint(code.co_name, code.co_filename, frame.f_lineno)
+        frame = frame.f_back
+    return None
+
+
+def _pg_session_caller_hint_from_stack() -> str:
+    for frame_info in inspect.stack()[2 : 2 + _CALLER_SCAN_MAX_DEPTH]:
+        path = frame_info.filename.replace("\\", "/")
+        if _is_ignored_caller_path(path):
+            continue
+        return _format_caller_hint(frame_info.function, frame_info.filename, frame_info.lineno)
+    return "unknown"
+
+
 def pg_session_caller_hint_entry() -> str:
     """在 get_session 入口捕获调用方（避开 contextlib / repository_pg 包装帧）。"""
-    for frame_info in inspect.stack()[2:18]:
-        path = frame_info.filename.replace("\\", "/")
-        if path.endswith("/foundation/db/repository_pg.py"):
-            continue
-        if path.endswith("/contextlib.py"):
-            continue
-        if "/site-packages/" in path:
-            continue
-        parts = path.rsplit("/", 2)
-        label = "/".join(parts[-2:]) if len(parts) >= 2 else path
-        return f"{frame_info.function}@{label}:{frame_info.lineno}"
-    return "unknown"
+    hint = _pg_session_caller_hint_from_frame()
+    if hint is not None:
+        return hint
+    return _pg_session_caller_hint_from_stack()
 
 
 def pg_session_caller_hint() -> str:

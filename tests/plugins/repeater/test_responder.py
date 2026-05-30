@@ -79,11 +79,13 @@ async def test_context_find_repeat_not_triggered_when_tail_is_only_bots():
     chat_data = SimpleNamespace(
         group_id=group_id,
         raw_message=raw_message,
+        plain_text=raw_message,
         keywords=keywords,
         bot_id=bot_id,
         keywords_len=1,
         to_me=False,
         is_image=False,
+        is_plain_text=True,
     )
     config = _Config(0)
     reply_dict = defaultdict(lambda: defaultdict(list))
@@ -102,9 +104,10 @@ async def test_context_find_repeat_not_triggered_when_tail_is_only_bots():
         with (
             patch("src.plugins.repeater.responder.get_bots", return_value={"b1": fake_bot}),
             patch(
-                "src.plugins.repeater.responder.context_repo.find_by_keywords",
+                "src.plugins.repeater.responder.context_repo.find_by_keywords_for_reply",
                 new_callable=AsyncMock,
                 return_value=None,
+                create=True,
             ) as mock_find,
         ):
             result = await Responder._context_find(
@@ -136,11 +139,13 @@ async def test_context_find_repeat_skips_repeat_ignore_user_ids_config():
     chat_data = SimpleNamespace(
         group_id=group_id,
         raw_message=raw_message,
+        plain_text=raw_message,
         keywords=keywords,
         bot_id=bot_id,
         keywords_len=1,
         to_me=False,
         is_image=False,
+        is_plain_text=True,
     )
     config = _Config(0)
     reply_dict = defaultdict(lambda: defaultdict(list))
@@ -159,9 +164,10 @@ async def test_context_find_repeat_skips_repeat_ignore_user_ids_config():
             patch.object(responder_mod.plugin_config, "repeat_ignore_user_ids", [external_bot]),
             patch("src.plugins.repeater.responder.get_bots", return_value={}),
             patch(
-                "src.plugins.repeater.responder.context_repo.find_by_keywords",
+                "src.plugins.repeater.responder.context_repo.find_by_keywords_for_reply",
                 new_callable=AsyncMock,
                 return_value=None,
+                create=True,
             ) as mock_find,
         ):
             result = await Responder._context_find(
@@ -201,7 +207,10 @@ async def test_context_find_returns_none_no_context():
 
     try:
         with patch(
-            "src.plugins.repeater.responder.context_repo.find_by_keywords", new_callable=AsyncMock, return_value=None
+            "src.plugins.repeater.responder.context_repo.find_by_keywords_for_reply",
+            new_callable=AsyncMock,
+            return_value=None,
+            create=True,
         ):
             result = await Responder._context_find(
                 cast("Any", chat_data),
@@ -259,6 +268,136 @@ async def test_context_find_skips_repo_lookup_when_keywords_empty():
 
 
 @pytest.mark.asyncio
+async def test_context_find_skips_repo_lookup_for_long_non_plain_raw_keywords():
+    from src.plugins.repeater.responder import Responder
+
+    group_id = 125
+    bot_id = 458
+    raw_message = "[CQ:json,data=" + ("x" * 320) + "]"
+    chat_data = SimpleNamespace(
+        group_id=group_id,
+        raw_message=raw_message,
+        keywords=raw_message,
+        bot_id=bot_id,
+        keywords_len=0,
+        to_me=False,
+        is_image=False,
+        is_plain_text=False,
+    )
+    config = _Config(0)
+    reply_dict = defaultdict(lambda: defaultdict(list))
+    message_dict = defaultdict(list)
+    recent_topics = defaultdict(lambda: deque(maxlen=16))
+
+    try:
+        with patch(
+            "src.plugins.repeater.responder.context_repo.find_by_keywords_for_reply",
+            new_callable=AsyncMock,
+            create=True,
+        ) as mock_find_reply:
+            result = await Responder._context_find(
+                cast("Any", chat_data),
+                cast("Any", config),
+                reply_dict,
+                message_dict,
+                recent_topics,
+            )
+            assert result is None
+            mock_find_reply.assert_not_called()
+    finally:
+        reply_dict.clear()
+        message_dict.clear()
+        recent_topics.clear()
+
+
+@pytest.mark.asyncio
+async def test_context_find_skips_repo_lookup_for_short_plain_text_noise():
+    from src.plugins.repeater.responder import Responder
+
+    group_id = 126
+    bot_id = 459
+    chat_data = SimpleNamespace(
+        group_id=group_id,
+        raw_message="草",
+        plain_text="草",
+        keywords="草",
+        bot_id=bot_id,
+        keywords_len=1,
+        to_me=False,
+        is_image=False,
+        is_plain_text=True,
+    )
+    config = _Config(0)
+    reply_dict = defaultdict(lambda: defaultdict(list))
+    message_dict = defaultdict(list)
+    recent_topics = defaultdict(lambda: deque(maxlen=16))
+
+    try:
+        with patch(
+            "src.plugins.repeater.responder.context_repo.find_by_keywords_for_reply",
+            new_callable=AsyncMock,
+            create=True,
+        ) as mock_find_reply:
+            result = await Responder._context_find(
+                cast("Any", chat_data),
+                cast("Any", config),
+                reply_dict,
+                message_dict,
+                recent_topics,
+            )
+            assert result is None
+            mock_find_reply.assert_not_called()
+    finally:
+        reply_dict.clear()
+        message_dict.clear()
+        recent_topics.clear()
+
+
+@pytest.mark.asyncio
+async def test_context_find_keeps_to_me_short_plain_text_lookup():
+    from src.plugins.repeater.responder import Responder
+
+    group_id = 127
+    bot_id = 460
+    chat_data = SimpleNamespace(
+        group_id=group_id,
+        raw_message="牛牛",
+        plain_text="牛牛",
+        keywords="牛牛",
+        bot_id=bot_id,
+        keywords_len=1,
+        to_me=True,
+        is_image=False,
+        is_plain_text=True,
+    )
+    config = _Config(0)
+    reply_dict = defaultdict(lambda: defaultdict(list))
+    message_dict = defaultdict(list)
+    recent_topics = defaultdict(lambda: deque(maxlen=16))
+
+    try:
+        with patch(
+            "src.plugins.repeater.responder.context_repo.find_by_keywords_for_reply",
+            new_callable=AsyncMock,
+            return_value=None,
+            create=True,
+        ) as mock_find_reply:
+            result = await Responder._context_find(
+                cast("Any", chat_data),
+                cast("Any", config),
+                reply_dict,
+                message_dict,
+                recent_topics,
+            )
+            assert result is None
+            mock_find_reply.assert_called_once_with("牛牛")
+    finally:
+        reply_dict.clear()
+        message_dict.clear()
+        recent_topics.clear()
+
+
+@pytest.mark.asyncio
 async def test_context_find_threshold_filtering():
     from src.foundation.db import Answer, Context
     from src.plugins.repeater.responder import Responder
@@ -268,11 +407,13 @@ async def test_context_find_threshold_filtering():
     chat_data = SimpleNamespace(
         group_id=group_id,
         raw_message="ctx_input",
+        plain_text="ctx_input",
         keywords="ctx_kw",
         bot_id=bot_id,
         keywords_len=1,
         to_me=False,
         is_image=False,
+        is_plain_text=True,
     )
     config = _Config(0)
     low_answer = Answer(keywords="ans_low", group_id=group_id, count=1, time=1, messages=["low_msg"])
@@ -289,9 +430,10 @@ async def test_context_find_threshold_filtering():
     try:
         with (
             patch(
-                "src.plugins.repeater.responder.context_repo.find_by_keywords",
+                "src.plugins.repeater.responder.context_repo.find_by_keywords_for_reply",
                 new_callable=AsyncMock,
                 return_value=context,
+                create=True,
             ),
             patch(
                 "src.plugins.repeater.responder.BanManager.find_ban_keywords",

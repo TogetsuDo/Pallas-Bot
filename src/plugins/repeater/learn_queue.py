@@ -22,8 +22,10 @@ _sem: asyncio.Semaphore | None = None
 _sem_limit: int | None = None
 _worker_tasks: list[asyncio.Task[None]] = []
 _dropped_full: int = 0
+_dropped_pressure: int = 0
 _completed: int = 0
 _learn_pool_wait_spins: int = 0
+_LIFECYCLE_BOUND = False
 
 
 def drain_learn_pause_stats() -> int:
@@ -37,16 +39,25 @@ async def wait_pg_pool_headroom_for_learn() -> None:
     global _learn_pool_wait_spins
     from src.foundation.db.pool_budget import pg_pool_under_pressure
 
-    while pg_pool_under_pressure(threshold=0.68):
+    while pg_pool_under_pressure(threshold=0.25):
         _learn_pool_wait_spins += 1
         await asyncio.sleep(0.2)
 
 
+def learn_queue_pressure_threshold() -> int:
+    """队列到达该水位时优先保护接话，跳过新增 learn。"""
+    # learn 队列一旦堆高，后续还会连带压住 image cache / corpus prefetch；
+    # 这里提前刹车，让主循环更快恢复，而不是把回填吞吐吃满。
+    return max(64, learn_queue_max_size() // 16)
+
+
 def learn_concurrency() -> int:
-    from src.foundation.db.pool_budget import cap_by_pg_pool
+    from src.foundation.db.pool_budget import pg_pool_capacity
 
     requested = get_repeater_learn_runtime_config().learn_concurrency
-    return cap_by_pg_pool(requested, workload_fraction=0.22)
+    # learn 会持续制造本地写入、cache invalidate 与镜像回填，实际比普通后台 IO 更容易拖慢主循环。
+    ceiling = max(1, int(pg_pool_capacity() * 0.03))
+    return max(1, min(int(requested), ceiling))
 
 
 def learn_queue_max_size() -> int:
@@ -77,6 +88,18 @@ def learn_queue() -> asyncio.Queue[Chat]:
     return _queue
 
 
+def learn_queue_under_pressure() -> bool:
+    return learn_queue().qsize() >= learn_queue_pressure_threshold()
+
+
+def should_skip_repeater_learn_enqueue() -> bool:
+    from src.foundation.db.pool_budget import pg_pool_under_pressure
+
+    if pg_pool_under_pressure(threshold=0.25):
+        return True
+    return learn_queue_under_pressure()
+
+
 async def run_learn_consumer() -> None:
     while True:
         chat = await learn_queue().get()
@@ -104,7 +127,16 @@ async def execute_repeater_learn(chat: Chat) -> None:
 
 async def enqueue_repeater_learn(chat: Chat, event: GroupMessageEvent) -> bool:
     """仅抢占成功的牛入队；队列满则丢弃本条 learn（接话不受影响）。"""
-    global _dropped_full
+    global _dropped_full, _dropped_pressure
+    if should_skip_repeater_learn_enqueue():
+        _dropped_pressure += 1
+        if _dropped_pressure == 1 or _dropped_pressure % 100 == 0:
+            logger.info(
+                "repeater learn enqueue skipped under pressure (watermark={}, dropped={})",
+                learn_queue_pressure_threshold(),
+                _dropped_pressure,
+            )
+        return False
     if not await claim_group_message_event(_LEARN_PLUGIN, event, int(event.self_id)):
         return False
     try:
@@ -176,6 +208,10 @@ async def reload_repeater_learn_worker_runtime() -> None:
 
 
 def bind_repeater_learn_lifecycle() -> None:
+    global _LIFECYCLE_BOUND
+    if _LIFECYCLE_BOUND:
+        return
+    _LIFECYCLE_BOUND = True
     driver = get_driver()
 
     @driver.on_startup

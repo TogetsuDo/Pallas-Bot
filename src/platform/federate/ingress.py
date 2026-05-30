@@ -8,11 +8,15 @@ import time
 from typing import TYPE_CHECKING
 
 from src.features.community_stats.store import load_or_create_deployment_id
+from src.platform.federate.config import (
+    federate_ingress_active,
+    federate_ingress_bypass_unified,
+)
 from src.platform.observability import SlowPathTimer, slow_path_threshold_ms
+from src.platform.shard.registry.config import is_sharding_active
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import GroupMessageEvent
-from src.platform.federate.config import federate_ingress_active
 from src.platform.federate.dedup import try_claim_cross_federate_message
 from src.platform.multi_bot.dedup import cross_bot_message_signature
 
@@ -32,6 +36,10 @@ def reset_federate_ingress_win_cache_for_tests() -> None:
     _inflight_claims.clear()
 
 
+def bypass_federate_ingress_for_current_mode() -> bool:
+    return federate_ingress_bypass_unified() and not is_sharding_active()
+
+
 def federate_ingress_cached_win(
     event: GroupMessageEvent,
     *,
@@ -39,6 +47,8 @@ def federate_ingress_cached_win(
     include_message_time: bool = True,
 ) -> bool:
     """本进程是否已缓存赢得联邦 ingress（供 repeater 跳过二次 Redis）。"""
+    if bypass_federate_ingress_for_current_mode():
+        return True
     if not federate_ingress_active():
         return True
     plain = (event.get_plaintext() or "").strip()
@@ -72,6 +82,9 @@ async def claim_federate_group_message_ingress(
         threshold_ms=slow_path_threshold_ms("PALLAS_SLOW_FEDERATE_INGRESS_MS", 12.0),
         log_level="debug",
     )
+    if bypass_federate_ingress_for_current_mode():
+        timer.finish(outcome="unified_bypass")
+        return True
     if not federate_ingress_active():
         timer.finish(outcome="disabled")
         return True

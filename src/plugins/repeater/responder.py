@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from nonebot import get_bots
+from nonebot import get_bots, logger
 from nonebot.adapters.onebot.v11 import Message
 
 from src.foundation.config import BotConfig
@@ -34,6 +34,9 @@ class ReplyBundle:
 class Responder:
     """回复决策模块，负责根据上下文检索候选回答并选择最终回复"""
 
+    NON_PLAIN_CORPUS_SKIP_LEN = 256
+    SHORT_PLAIN_SKIP_LEN = 2
+    EMPTY_KEYWORDS_PLAIN_SKIP_LEN = 4
     ANSWER_THRESHOLD = plugin_config.answer_threshold
     ANSWER_THRESHOLD_WEIGHTS = plugin_config.answer_threshold_weights
     TOPICS_SIZE = plugin_config.topics_size
@@ -68,6 +71,26 @@ class Responder:
     def _human_messages_for_repeat(group_msgs: list) -> list:
         ignore = Responder._repeat_ignore_user_ids()
         return [m for m in group_msgs if (uid := getattr(m, "user_id", None)) is None or uid not in ignore]
+
+    @staticmethod
+    def should_skip_context_lookup(chat_data: "ChatData", keywords: str) -> bool:
+        if getattr(chat_data, "is_plain_text", False):
+            if getattr(chat_data, "to_me", False):
+                return False
+            plain = str(getattr(chat_data, "plain_text", "") or "").strip()
+            keywords_len = int(getattr(chat_data, "keywords_len", 0) or 0)
+            if keywords_len == 0:
+                return 0 < len(plain) <= Responder.EMPTY_KEYWORDS_PLAIN_SKIP_LEN
+            if keywords_len == 1:
+                return 0 < len(plain) <= Responder.SHORT_PLAIN_SKIP_LEN
+            return False
+        plain = str(getattr(chat_data, "plain_text", "") or "").strip()
+        # 纯 CQ / 媒体消息没有可复用的语义，直接跳过语料 miss。
+        if not plain:
+            return True
+        if getattr(chat_data, "keywords_len", 0) != 0:
+            return False
+        return len(keywords) >= Responder.NON_PLAIN_CORPUS_SKIP_LEN
 
     @staticmethod
     async def answer(
@@ -246,6 +269,15 @@ class Responder:
                     return None
 
         if not keywords:
+            return None
+        if Responder.should_skip_context_lookup(chat_data, keywords):
+            logger.debug(
+                "repeater.skip_context_lookup group_id={} bot_id={} raw_len={} kw_len={}",
+                group_id,
+                bot_id,
+                len(raw_message),
+                len(keywords),
+            )
             return None
 
         find_reply = getattr(context_repo, "find_by_keywords_for_reply", None)

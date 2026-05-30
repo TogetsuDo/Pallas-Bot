@@ -6,7 +6,31 @@ Tests for src/plugins/help/plugin_manager.py after refactor to Repository.
 
 from __future__ import annotations
 
+import os
+
 import pytest
+
+
+@pytest.fixture
+async def beanie_fixture():
+    dsn = os.getenv("PG_TEST_DSN")
+    if not dsn:
+        pytest.skip("需要设置 PG_TEST_DSN 指向测试 PG 实例")
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from src.foundation.db.repository_pg import Base, dispose_pg, init_pg
+
+    engine = create_async_engine(dsn)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await init_pg(engine)
+    try:
+        yield
+    finally:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+        await dispose_pg()
 
 
 @pytest.mark.asyncio
@@ -213,3 +237,74 @@ async def test_collect_disabled_plugin_names_short_circuits_when_pg_not_ready(mo
 
     merged = await plugin_manager.collect_disabled_plugin_names(77, 5001)
     assert merged == frozenset()
+
+
+@pytest.mark.asyncio
+async def test_fill_plugin_status_reuses_disabled_plugin_gate_cache(beanie_fixture, monkeypatch):
+    from src.plugins.help import plugin_manager
+
+    await plugin_manager.reset_disabled_plugin_gate_cache()
+
+    calls: list[bool] = []
+
+    async def counting_collect(bot_id, group_id, *, ignore_cache=False):
+        calls.append(bool(ignore_cache))
+        assert bot_id == 1234
+        assert group_id == 5678
+        return frozenset({"chat"})
+
+    monkeypatch.setattr(plugin_manager, "collect_disabled_plugin_names", counting_collect)
+    monkeypatch.setattr(
+        plugin_manager,
+        "get_help_menu_plugins",
+        lambda **_kwargs: [
+            type("Plugin", (), {"name": "chat"})(),
+            type("Plugin", (), {"name": "other"})(),
+        ],
+    )
+    monkeypatch.setattr(plugin_manager, "apply_status_marks_to_plugin_table", lambda content, _marks: content)
+    monkeypatch.setattr(
+        "src.plugins.help.markdown_generator.help_list_status_mark",
+        lambda enabled: "Y" if enabled else "N",
+    )
+
+    await plugin_manager.fill_plugin_status("|1|?|chat|\n|2|?|other|", bot_id=1234, group_id=5678)
+
+    assert calls == [False]
+
+
+@pytest.mark.asyncio
+async def test_load_disabled_group_names_reads_repo_directly(beanie_fixture, monkeypatch):
+    from src.plugins.help import plugin_manager
+
+    await plugin_manager.reset_disabled_plugin_gate_cache()
+
+    calls: list[tuple[int, bool]] = []
+
+    async def fake_get(group_id: int, *, ignore_cache: bool = False):
+        calls.append((group_id, ignore_cache))
+        return type("GroupCfg", (), {"disabled_plugins": ["chat"]})()
+
+    monkeypatch.setattr(plugin_manager.group_config_repo, "get", fake_get)
+
+    got = await plugin_manager.load_disabled_group_names_from_db(7654)
+
+    assert got == frozenset({"chat"})
+    assert calls == [(7654, False)]
+
+
+@pytest.mark.asyncio
+async def test_load_disabled_group_names_returns_empty_when_repo_missing(beanie_fixture, monkeypatch):
+    from src.plugins.help import plugin_manager
+
+    await plugin_manager.reset_disabled_plugin_gate_cache()
+
+    async def fake_get(group_id: int, *, ignore_cache: bool = False):
+        assert group_id == 4567
+        assert ignore_cache is False
+        return None
+
+    monkeypatch.setattr(plugin_manager.group_config_repo, "get", fake_get)
+
+    got = await plugin_manager.load_disabled_group_names_from_db(4567)
+    assert got == frozenset()
