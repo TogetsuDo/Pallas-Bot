@@ -32,10 +32,10 @@ def _format_field(value: Any) -> str:
 
 
 class SlowPathTimer:
-    def __init__(self, scope: str, *, threshold_ms: float, log_level: str = "warning") -> None:
+    def __init__(self, scope: str, *, threshold_ms: float, log_level: str = "debug") -> None:
         self.scope = scope
         self.threshold_ms = max(0.0, float(threshold_ms))
-        self.log_level = str(log_level or "warning").strip().lower() or "warning"
+        self.log_level = str(log_level or "debug").strip().lower() or "debug"
         self._started = time.perf_counter()
         self._last_mark = self._started
         self._stages: list[tuple[str, float]] = []

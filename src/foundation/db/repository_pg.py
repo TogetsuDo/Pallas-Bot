@@ -253,10 +253,7 @@ def _ensure_pg_message_group_time_index(connection) -> None:
     insp = inspect(connection)
     if not insp.has_table("message"):
         return
-    names = {idx["name"] for idx in insp.get_indexes("message")}
-    if "ix_message_group_time" in names:
-        return
-    Index("ix_message_group_time", MessageRow.group_id, MessageRow.time).create(connection)
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_message_group_time ON message (group_id, time)"))
 
 
 def _ensure_pg_message_group_user_time_index(connection) -> None:
@@ -264,10 +261,9 @@ def _ensure_pg_message_group_user_time_index(connection) -> None:
     insp = inspect(connection)
     if not insp.has_table("message"):
         return
-    names = {idx["name"] for idx in insp.get_indexes("message")}
-    if "ix_message_group_user_time" in names:
-        return
-    Index("ix_message_group_user_time", MessageRow.group_id, MessageRow.user_id, MessageRow.time).create(connection)
+    connection.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_message_group_user_time ON message (group_id, user_id, time)")
+    )
 
 
 def _ensure_pg_context_answer_reply_index(connection) -> None:
@@ -275,15 +271,9 @@ def _ensure_pg_context_answer_reply_index(connection) -> None:
     insp = inspect(connection)
     if not insp.has_table("context_answer"):
         return
-    names = {idx["name"] for idx in insp.get_indexes("context_answer")}
-    if "ix_context_answer_ctx_count_time" in names:
-        return
-    Index(
-        "ix_context_answer_ctx_count_time",
-        ContextAnswerRow.context_id,
-        ContextAnswerRow.count,
-        ContextAnswerRow.time,
-    ).create(connection)
+    connection.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_context_answer_ctx_count_time ON context_answer (context_id, count, time)")
+    )
 
 
 def _ensure_pg_context_answer_message_reply_index(connection) -> None:
@@ -291,14 +281,12 @@ def _ensure_pg_context_answer_message_reply_index(connection) -> None:
     insp = inspect(connection)
     if not insp.has_table("context_answer_message"):
         return
-    names = {idx["name"] for idx in insp.get_indexes("context_answer_message")}
-    if "ix_context_answer_message_answer_id_id" in names:
-        return
-    Index(
-        "ix_context_answer_message_answer_id_id",
-        ContextAnswerMessageRow.answer_id,
-        ContextAnswerMessageRow.id,
-    ).create(connection)
+    connection.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_context_answer_message_answer_id_id "
+            "ON context_answer_message (answer_id, id)"
+        )
+    )
 
 
 def is_pg_initialized() -> bool:
@@ -790,7 +778,7 @@ class PgContextRepository:
         threshold_ms = slow_path_threshold_ms("PALLAS_SLOW_REPLY_QUERY_MS", 250.0)
         if elapsed_ms < threshold_ms:
             return
-        logger.warning(
+        logger.debug(
             "corpus.reply_query slow_path elapsed_ms={:.1f} "
             "stages=context={:.1f}ms ban={:.1f}ms answers={:.1f}ms messages={:.1f}ms "
             "counts=ban:{} answers:{} messages:{} hit={} kw_len={}",

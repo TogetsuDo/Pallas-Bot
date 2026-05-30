@@ -131,7 +131,7 @@ async def enqueue_repeater_learn(chat: Chat, event: GroupMessageEvent) -> bool:
     if should_skip_repeater_learn_enqueue():
         _dropped_pressure += 1
         if _dropped_pressure == 1 or _dropped_pressure % 100 == 0:
-            logger.info(
+            logger.debug(
                 "repeater learn enqueue skipped under pressure (watermark={}, dropped={})",
                 learn_queue_pressure_threshold(),
                 _dropped_pressure,
@@ -145,7 +145,7 @@ async def enqueue_repeater_learn(chat: Chat, event: GroupMessageEvent) -> bool:
     except asyncio.QueueFull:
         _dropped_full += 1
         if _dropped_full == 1 or _dropped_full % 100 == 0:
-            logger.info(
+            logger.debug(
                 "repeater learn queue full (max={}), dropped={} (learn only)",
                 learn_queue_max_size(),
                 _dropped_full,
@@ -167,14 +167,14 @@ async def start_repeater_learn_worker() -> None:
     if n < configured:
         from src.foundation.db.pool_budget import pg_pool_capacity
 
-        logger.info(
+        logger.debug(
             "repeater learn concurrency capped by PG pool: effective={} configured={} pool={}",
             n,
             configured,
             pg_pool_capacity(),
         )
     _worker_tasks = [asyncio.create_task(run_learn_consumer(), name=f"repeater_learn_consumer_{i}") for i in range(n)]
-    logger.info(
+    logger.debug(
         "repeater learn workers started: consumers={} queue_max={}",
         n,
         learn_queue_max_size(),

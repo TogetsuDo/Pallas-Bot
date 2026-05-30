@@ -343,4 +343,4 @@ async def maybe_emit_pg_activity_diagnostics(
     ):
         return
     detail = format_pg_activity_detail(snapshot)
-    logger.warning("pg activity detail:\n  {}", detail)
+    logger.debug("pg activity detail:\n  {}", detail)

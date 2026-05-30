@@ -5,7 +5,7 @@ from src.platform.observability import slow_path
 
 def test_slow_path_logs_stages_when_threshold_exceeded(monkeypatch) -> None:
     calls: list[tuple[str, tuple[object, ...]]] = []
-    monkeypatch.setattr(slow_path.logger, "warning", lambda msg, *args: calls.append((msg, args)))
+    monkeypatch.setattr(slow_path.logger, "debug", lambda msg, *args: calls.append((msg, args)))
 
     timer = slow_path.SlowPathTimer("ingress_gate", threshold_ms=10.0)
     timer._started = 1.0
@@ -24,7 +24,7 @@ def test_slow_path_logs_stages_when_threshold_exceeded(monkeypatch) -> None:
 
 def test_slow_path_skips_log_below_threshold(monkeypatch) -> None:
     calls: list[tuple[str, tuple[object, ...]]] = []
-    monkeypatch.setattr(slow_path.logger, "warning", lambda msg, *args: calls.append((msg, args)))
+    monkeypatch.setattr(slow_path.logger, "debug", lambda msg, *args: calls.append((msg, args)))
 
     timer = slow_path.SlowPathTimer("federate_ingress", threshold_ms=50.0)
     timer._started = 1.0

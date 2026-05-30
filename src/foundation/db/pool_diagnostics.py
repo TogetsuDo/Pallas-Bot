@@ -1,4 +1,4 @@
-"""PG 连接池诊断：周期汇总 + 慢持连告警（INFO/WARNING，非全局 DEBUG）。"""
+"""PG 连接池诊断：周期汇总 + 慢持连统计（默认 DEBUG，避免刷屏）。"""
 
 from __future__ import annotations
 
@@ -161,7 +161,7 @@ async def emit_pool_diagnostics_tick() -> None:
     if not slow_top:
         slow_top = "-"
 
-    logger.info(
+    logger.debug(
         "pg pool diag: checked_out={}/{} util={} idle_in_tx={} pg_wait=[{}] "
         "remote_skip_pressure={} remote_skip_busy={} mirror_skip={} "
         "slow_sessions={} slow_max_ms={:.0f} learn_q={} learn_pool_wait={} slow_top=[{}]",
@@ -226,7 +226,7 @@ def start_pg_pool_diagnostics_task() -> None:
     if _diag_task is not None and not _diag_task.done():
         return
     _diag_task = asyncio.create_task(pool_diagnostics_loop(), name="pg_pool_diagnostics")
-    logger.info(
+    logger.debug(
         "pg pool diagnostics started (tick={}s, session_hold_warn={}ms)",
         int(_TICK_SEC),
         int(session_hold_warn_ms()),

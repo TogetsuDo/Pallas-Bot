@@ -116,7 +116,7 @@ def schedule_corpus_prefetch(keywords: str) -> None:
         global _prefetch_dropped_full
         _prefetch_dropped_full += 1
         if _prefetch_dropped_full == 1 or _prefetch_dropped_full % 200 == 0:
-            logger.info(
+            logger.debug(
                 "corpus prefetch queue full (max={}), dropped={}",
                 _QUEUE_MAX,
                 _prefetch_dropped_full,
@@ -180,7 +180,7 @@ async def execute_corpus_prefetch(keywords: str) -> None:
     try:
         remote_ctx = await community.find_by_keywords(key)
     except Exception as e:
-        logger.warning("corpus prefetch remote find failed keywords_len={}: {}", len(key), e)
+        logger.debug("corpus prefetch remote find failed keywords_len={}: {}", len(key), e)
         return
     if remote_ctx is None or not remote_ctx.answers:
         return
@@ -189,7 +189,7 @@ async def execute_corpus_prefetch(keywords: str) -> None:
         global _prefetch_completed
         _prefetch_completed += 1
     except Exception as e:
-        logger.warning("corpus prefetch local import failed keywords_len={}: {}", len(key), e)
+        logger.debug("corpus prefetch local import failed keywords_len={}: {}", len(key), e)
 
 
 async def run_prefetch_consumer() -> None:
@@ -218,7 +218,7 @@ async def start_corpus_prefetch_workers() -> None:
     _prefetch_tasks = [
         asyncio.create_task(run_prefetch_consumer(), name=f"corpus_prefetch_consumer_{i}") for i in range(n)
     ]
-    logger.info("corpus prefetch workers started: consumers={} queue_max={}", n, _QUEUE_MAX)
+    logger.debug("corpus prefetch workers started: consumers={} queue_max={}", n, _QUEUE_MAX)
 
 
 async def stop_corpus_prefetch_workers() -> None:

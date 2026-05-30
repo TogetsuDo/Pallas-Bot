@@ -59,7 +59,7 @@ def log_pg_pool_warning_if_needed() -> None:
     info = pg_pool_estimate()
     msg = info.get("warning")
     if msg:
-        logger.warning(msg)
+        logger.debug(msg)
 
 
 def aggregate_shard_observability() -> dict[str, Any]:
