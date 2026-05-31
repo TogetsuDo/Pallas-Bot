@@ -314,6 +314,27 @@ class Config(BaseModel):
             "留空由程序自动选择",
         ),
     )
+    pallas_protocol_docker_memory_limit: str = Field(
+        default="",
+        description=field_help(
+            "NapCat Docker 容器内存上限",
+            "例如 768m；留空表示不限制",
+        ),
+    )
+    pallas_protocol_docker_memory_swap: str = Field(
+        default="",
+        description=field_help(
+            "NapCat Docker 容器 memory+swap 总量",
+            "例如 1g；需不小于内存上限；留空表示不单独设置",
+        ),
+    )
+    pallas_protocol_docker_shm_size: str = Field(
+        default="",
+        description=field_help(
+            "NapCat Docker 容器 /dev/shm 大小",
+            "Electron 建议 256m 及以上；留空使用 Docker 默认 64m",
+        ),
+    )
     pallas_protocol_snowluma_docker_image: str = Field(
         default="motricseven7/snowluma:latest",
         description=field_help(

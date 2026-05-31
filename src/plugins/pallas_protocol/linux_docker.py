@@ -22,6 +22,7 @@ docker_stop = docker_cli.docker_stop_async
 docker_stop_sync = docker_cli.docker_stop_sync
 
 __all__ = [
+    "append_docker_resource_limits",
     "build_docker_run_argv",
     "docker_cache_path",
     "docker_container_name",
@@ -70,6 +71,18 @@ def docker_volume_paths(account: dict) -> tuple[Path, Path]:
 def docker_cache_path(account: dict) -> Path:
     ad = Path(str(account.get("account_data_dir", "")).strip()).resolve()
     return ad / "cache"
+
+
+def append_docker_resource_limits(argv: list[str], config: Config) -> None:
+    mem = str(getattr(config, "pallas_protocol_docker_memory_limit", "") or "").strip()
+    if mem:
+        argv.extend(["--memory", mem])
+    swap = str(getattr(config, "pallas_protocol_docker_memory_swap", "") or "").strip()
+    if swap:
+        argv.extend(["--memory-swap", swap])
+    shm = str(getattr(config, "pallas_protocol_docker_shm_size", "") or "").strip()
+    if shm:
+        argv.extend(["--shm-size", shm])
 
 
 def build_docker_run_argv(
@@ -123,6 +136,7 @@ def build_docker_run_argv(
         "-v",
         f"{cache}:/app/napcat/cache",
     ]
+    append_docker_resource_limits(argv, config)
     if network_mode == "host":
         argv.extend(["--network", "host"])
     else:

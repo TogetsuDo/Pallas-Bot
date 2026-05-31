@@ -65,12 +65,47 @@ def test_build_napcat_docker_bridge_adds_host_gateway(tmp_path) -> None:
     cfg.pallas_protocol_docker_network_mode = "bridge"
     cfg.pallas_protocol_docker_uid = 1000
     cfg.pallas_protocol_docker_gid = 1000
+    cfg.pallas_protocol_docker_memory_limit = "768m"
+    cfg.pallas_protocol_docker_memory_swap = "1g"
+    cfg.pallas_protocol_docker_shm_size = "256m"
 
     account = {"id": "t1", "account_data_dir": str(ad), "webui_port": 6099}
     argv = build_docker_run_argv(account, cfg, lambda _: "123456")
     joined = " ".join(argv)
     assert "--add-host" in argv
     assert "host.docker.internal:host-gateway" in joined
+    assert "--memory" in argv
+    assert "768m" in argv
+    assert "--memory-swap" in argv
+    assert "1g" in argv
+    assert "--shm-size" in argv
+    assert "256m" in argv
+
+
+def test_build_napcat_docker_skips_empty_resource_limits(tmp_path) -> None:
+    from src.plugins.pallas_protocol.linux_docker import build_docker_run_argv
+
+    ad = tmp_path / "acct3"
+    (ad / "config").mkdir(parents=True)
+    (ad / ".config" / "QQ").mkdir(parents=True)
+    (ad / "cache").mkdir(parents=True)
+
+    cfg = MagicMock()
+    cfg.pallas_protocol_docker_image = "mlikiowa/napcat-docker:latest"
+    cfg.pallas_protocol_docker_internal_webui_port = 6099
+    cfg.pallas_protocol_docker_network_mode = "bridge"
+    cfg.pallas_protocol_docker_uid = 1000
+    cfg.pallas_protocol_docker_gid = 1000
+    cfg.pallas_protocol_docker_memory_limit = ""
+    cfg.pallas_protocol_docker_memory_swap = ""
+    cfg.pallas_protocol_docker_shm_size = ""
+
+    account = {"id": "t3", "account_data_dir": str(ad), "webui_port": 6099}
+    argv = build_docker_run_argv(account, cfg, lambda _: "123456")
+    joined = " ".join(argv)
+    assert "--memory" not in joined
+    assert "--memory-swap" not in joined
+    assert "--shm-size" not in joined
 
 
 def test_build_napcat_docker_host_network_skips_host_mapping(tmp_path) -> None:
