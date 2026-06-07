@@ -403,16 +403,18 @@ class UserConfig(Config):
 class TaskManager:
     _tasks: dict[str, dict] = {}
     _lock: asyncio.Lock = asyncio.Lock()
-    _TTL: int = 600
 
     @classmethod
     async def refresh(cls):
+        from src.platform.shard.coord.ai_task_registry import ai_task_ttl_sec
+
+        ttl = ai_task_ttl_sec()
         async with cls._lock:
             current_time = time.time()
             cls._tasks = {
                 task_id: task_status
                 for task_id, task_status in cls._tasks.items()
-                if task_status.get("start_time", 0) + cls._TTL >= current_time
+                if task_status.get("start_time", 0) + ttl >= current_time
             }
 
     @classmethod

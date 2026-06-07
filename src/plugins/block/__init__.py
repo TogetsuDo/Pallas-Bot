@@ -15,7 +15,11 @@ from src.features.cmd_perm.metadata_text import join_usage, usage_line
 from src.foundation.config import BotConfig
 from src.platform.multi_bot.fleet import fleet_bot_ids_contains
 from src.platform.multi_bot.session_seen import note_bot_session_seen
-from src.platform.shard.presence import note_worker_bot_connected, note_worker_bot_disconnected
+from src.platform.shard.presence import (
+    clear_protocol_bot_offline,
+    note_worker_bot_connected,
+    note_worker_bot_disconnected,
+)
 from src.platform.shard.registry.config import is_sharding_active
 
 from .config import Config, plugin_config
@@ -55,6 +59,7 @@ async def bot_connect(bot: Bot) -> None:
         qq = int(bot.self_id)
         plugin_config.bots.add(qq)
         note_bot_session_seen(qq)
+        await clear_protocol_bot_offline(qq)
         if is_sharding_active():
             await note_worker_bot_connected(bot)
         try:
@@ -74,8 +79,10 @@ async def bot_disconnect(bot: Bot) -> None:
             pass
         else:
             logger.info(f"Bot {bot.self_id} disconnected.")
+        qq = int(bot.self_id)
+        await clear_protocol_bot_offline(qq)
         if is_sharding_active():
-            await note_worker_bot_disconnected(int(bot.self_id))
+            await note_worker_bot_disconnected(qq)
         try:
             from src.platform.federate.peer_bots import sync_federate_peer_bot_roster
 

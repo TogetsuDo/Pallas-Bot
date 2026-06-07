@@ -221,6 +221,7 @@ _session_factory: async_sessionmaker[AsyncSession] | None = None
 _reply_query_snapshot_cache: OrderedDict[str, tuple[float, Context | None]] = OrderedDict()
 _reply_query_snapshot_inflight: dict[str, asyncio.Task[Context | None]] = {}
 _reply_query_snapshot_lock = asyncio.Lock()
+_DELETE_ID_BATCH = 1000
 
 
 def _ensure_pg_group_config_blocked_user_ids(connection) -> None:
@@ -409,6 +410,34 @@ def keywords_hash(keywords: str) -> str:
 # asyncpg 单语句参数上限 32767
 _ANSWER_BATCH = 500  # ContextAnswerRow 6 列 × 500 = 3000
 _MSG_BATCH = 16000  # ContextAnswerMessageRow 2 列 × 16000 = 32000
+
+
+async def delete_context_answer_orphans(
+    session: AsyncSession,
+    *,
+    ctx_id: int,
+    kept_ids: list[int],
+    chunk_size: int = _DELETE_ID_BATCH,
+) -> None:
+    """删除指定 Context 下未保留的 Answer，避免生成超长 NOT IN 参数列表。"""
+    if not kept_ids:
+        await session.execute(delete(ContextAnswerRow).where(ContextAnswerRow.context_id == ctx_id))
+        return
+
+    existing_ids = (
+        (await session.execute(select(ContextAnswerRow.id).where(ContextAnswerRow.context_id == ctx_id)))
+        .scalars()
+        .all()
+    )
+    kept_id_set = set(kept_ids)
+    orphan_ids = [int(ans_id) for ans_id in existing_ids if int(ans_id) not in kept_id_set]
+    for offset in range(0, len(orphan_ids), chunk_size):
+        chunk = orphan_ids[offset : offset + chunk_size]
+        await session.execute(
+            delete(ContextAnswerRow).where(ContextAnswerRow.context_id == ctx_id, ContextAnswerRow.id.in_(chunk))
+        )
+
+
 _BAN_BATCH = 6000  # ContextBanRow 5 列 × 6000 = 30000
 
 
@@ -586,8 +615,16 @@ async def cached_reply_query_snapshot(
     if not key:
         return None
     if pg_pool_under_pressure(threshold=0.55):
+        logger.debug(
+            "reply_query_snapshot.skip pg_pool_pressure kw_len={}",
+            len(key),
+        )
         return None
     if reply_db_fail_active(key):
+        logger.debug(
+            "reply_query_snapshot.skip reply_db_fail_cooldown kw_len={}",
+            len(key),
+        )
         return None
     now = time.monotonic()
     task: asyncio.Task[Context | None] | None = None
@@ -612,6 +649,10 @@ async def cached_reply_query_snapshot(
                 _reply_query_snapshot_inflight.pop(key, None)
         if is_pg_pool_timeout_error(exc):
             mark_reply_db_fail(key)
+            logger.debug(
+                "reply_query_snapshot.skip db_timeout kw_len={}",
+                len(key),
+            )
             return None
         raise
 
@@ -1053,8 +1094,47 @@ class PgContextRepository:
             if ctx_row is None:
                 return
 
-            await session.execute(delete(ContextAnswerRow).where(ContextAnswerRow.context_id == ctx_row.id))
-            await _insert_answers_batched(session, ctx_row.id, answers)
+            ctx_id = int(ctx_row.id)
+            await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": ctx_id})
+
+            kept_ids: list[int] = []
+            for answer in answers:
+                kw = _s(answer.keywords) or ""
+                ans_stmt = (
+                    pg_insert(ContextAnswerRow)
+                    .values(
+                        context_id=ctx_id,
+                        keywords=kw,
+                        keywords_hash=keywords_hash(kw),
+                        group_id=answer.group_id,
+                        count=answer.count,
+                        time=answer.time,
+                    )
+                    .on_conflict_do_update(
+                        constraint="uq_context_answer_ctx_group_kw",
+                        set_={
+                            "keywords": kw,
+                            "count": answer.count,
+                            "time": answer.time,
+                        },
+                    )
+                    .returning(ContextAnswerRow.id)
+                )
+                ans_id = int((await session.execute(ans_stmt)).scalar_one())
+                kept_ids.append(ans_id)
+
+                await session.execute(
+                    delete(ContextAnswerMessageRow).where(ContextAnswerMessageRow.answer_id == ans_id)
+                )
+                msg_rows = [
+                    ContextAnswerMessageRow(answer_id=ans_id, message=_s(message) or "") for message in answer.messages
+                ]
+                for offset in range(0, len(msg_rows), _MSG_BATCH):
+                    session.add_all(msg_rows[offset : offset + _MSG_BATCH])
+                    await session.flush()
+
+            await delete_context_answer_orphans(session, ctx_id=ctx_id, kept_ids=kept_ids)
+
             ctx_row.clear_time = clear_time
             await session.commit()
         await clear_reply_query_snapshot_cache(keywords)
@@ -1078,6 +1158,25 @@ class PgContextRepository:
             )
             await session.commit()
         await clear_reply_query_snapshot_cache(keywords)
+
+    async def find_ban_reply_target(self, group_id: int, reply_message: str) -> tuple[str, str] | None:
+        async with get_session(read_only=True) as session:
+            result = await session.execute(
+                select(ContextRow.keywords, ContextAnswerRow.keywords)
+                .join(ContextAnswerRow, ContextAnswerRow.context_id == ContextRow.id)
+                .join(ContextAnswerMessageRow, ContextAnswerMessageRow.answer_id == ContextAnswerRow.id)
+                .where(
+                    ContextAnswerRow.group_id == int(group_id),
+                    ContextAnswerMessageRow.message == _s(reply_message),
+                )
+                .order_by(ContextAnswerRow.time.desc(), ContextAnswerMessageRow.id.desc())
+                .limit(1)
+            )
+            row = result.one_or_none()
+            if row is None:
+                return None
+            pre_keywords, reply_keywords = row
+            return str(pre_keywords), str(reply_keywords)
 
 
 def row_to_message(row: MessageRow) -> Message:

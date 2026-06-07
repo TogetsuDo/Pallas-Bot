@@ -35,6 +35,9 @@ class MockContextRepo(ContextRepositoryExistenceMixin):
     async def append_ban(self, keywords, ban):
         pass
 
+    async def find_ban_reply_target(self, group_id, reply_message):
+        return None
+
 
 class MockMessageRepo:
     async def bulk_insert(self, messages):

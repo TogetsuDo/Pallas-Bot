@@ -220,6 +220,53 @@ async def test_ban_second_offense():
 
 
 @pytest.mark.asyncio
+async def test_ban_falls_back_when_reply_cache_missing():
+    from src.plugins.repeater.ban_manager import BanManager
+
+    group_id = 733291779
+    bot_id = 2927116873
+    reply_dict = defaultdict(lambda: defaultdict(list))
+
+    BanManager._blacklist_answer.clear()
+    BanManager._blacklist_answer_reserve.clear()
+
+    try:
+        with (
+            patch.object(
+                BanManager,
+                "find_ban_reply_fallback",
+                new=AsyncMock(
+                    return_value={
+                        "pre_keywords": "leave_notice_pre_kw",
+                        "reply_keywords": "leave_notice_reply_kw",
+                    }
+                ),
+            ) as mock_fallback,
+            patch(
+                "src.plugins.repeater.ban_manager.context_repo.append_ban",
+                new_callable=AsyncMock,
+            ) as mock_append,
+        ):
+            result = await BanManager.ban(
+                group_id,
+                bot_id,
+                "群友耀.原星(1101088091)退群了!",
+                "3023094357",
+                reply_dict,
+            )
+
+        assert result is True
+        mock_fallback.assert_awaited_once_with(group_id, "群友耀.原星(1101088091)退群了!")
+        pre_kw, ban_obj = mock_append.call_args.args
+        assert pre_kw == "leave_notice_pre_kw"
+        assert ban_obj.keywords == "leave_notice_reply_kw"
+        assert "leave_notice_reply_kw" in BanManager._blacklist_answer_reserve[group_id]
+    finally:
+        BanManager._blacklist_answer.clear()
+        BanManager._blacklist_answer_reserve.clear()
+
+
+@pytest.mark.asyncio
 async def test_select_blacklist():
     """
     Test BanManager._select_blacklist() loads data from database.

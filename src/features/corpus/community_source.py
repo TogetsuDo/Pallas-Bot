@@ -161,6 +161,9 @@ class RemoteCorpusRepository(ContextRepositoryExistenceMixin):
     async def append_ban(self, keywords: str, ban: Ban) -> None:
         return None
 
+    async def find_ban_reply_target(self, group_id: int, reply_message: str) -> tuple[str, str] | None:
+        return None
+
     async def _post_contribute(self, body: dict[str, Any]) -> None:
         if not self._api_bases:
             return

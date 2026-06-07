@@ -17,6 +17,13 @@ def _clear_shard_caches(monkeypatch, tmp_path):
     monkeypatch.setenv("PALLAS_BOT_ROLE", "hub")
     monkeypatch.setenv("PALLAS_SHARD_BOTS_PER", "5")
     monkeypatch.setenv("PALLAS_SHARD_WORKER_BASE_PORT", "8090")
+    monkeypatch.setenv("PALLAS_SHARD_AUTO_SCALE_WORKERS", "false")
+    reg_dir = tmp_path / "pallas_shard"
+    reg_dir.mkdir(parents=True)
+    monkeypatch.setattr(
+        "src.platform.shard.registry.store._registry_path",
+        lambda: reg_dir / "registry.json",
+    )
     clear_shard_registry_cache()
     get_shard_registry_settings.cache_clear()
     yield

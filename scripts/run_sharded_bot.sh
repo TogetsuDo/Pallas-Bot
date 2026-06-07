@@ -27,6 +27,7 @@ WORKER_BASE_PORT="${PALLAS_SHARD_WORKER_BASE_PORT:-8090}"
 WORKER_COUNT_OVERRIDE=""
 WORKERS_ONLY=0
 HUB_ONLY=0
+SCALE_ONLY=0
 DRY_RUN=0
 SKIP_PORT_SYNC=0
 SKIP_OCCUPIED_PORTS=1
@@ -57,7 +58,7 @@ usage() {
 用法:  ./scripts/run_sharded_bot.sh <命令> [选项]
 
 命令:
-  start     启动控制台与全部牛牛 worker（可加 --hub-only 仅启 hub）
+  start     启动控制台与全部牛牛 worker（可加 --hub-only 仅启 hub；--workers-only 仅拉起缺失 worker）
   stop      停止全部分片进程（可加 --workers-only 仅停 worker，或 --hub-only 仅停 hub）
   status    查看进程、端口、Redis 协调与配置摘要
   restart   先 stop 再 start（可加 --workers-only 仅重启 worker，或 --hub-only 仅重启 hub）
@@ -75,6 +76,7 @@ usage() {
   ./scripts/run_sharded_bot.sh status
   ./scripts/run_sharded_bot.sh restart
   ./scripts/run_sharded_bot.sh restart --workers-only
+  ./scripts/run_sharded_bot.sh start --workers-only
   ./scripts/run_sharded_bot.sh start --hub-only
   ./scripts/run_sharded_bot.sh stop --hub-only
   ./scripts/run_sharded_bot.sh restart --hub-only
@@ -91,7 +93,8 @@ usage() {
   --skip-port-sync     启动前不自动改写协议端里的反向 WS 地址
   --no-skip-occupied-ports
                        worker 严格使用 起点+N，不自动避开已占用端口
-  --workers-only       仅操作生产 worker（不停/不启 hub；restart 时常用）
+  --workers-only       仅操作生产 worker（不停/不启 hub；start 时只拉起缺失进程，restart 时全量重启）
+  --scale-only         扩容模式：不重分配端口、不同步协议端 ws_url（已有 worker 在跑时 start --workers-only 自动启用）
   --hub-only           仅操作 hub 控制台（不停/不启 worker；restart 时常用）
   --dry-run            只显示将要执行的命令，不真正启动
   -h, --help           显示本帮助
@@ -251,48 +254,18 @@ read_dotenv_port() {
   echo "${default}"
 }
 
+CALC_WORKERS_SCRIPT="${SCRIPT_DIR}/calc_worker_count.py"
+
 calc_worker_count() {
-  python3 - "${REPO_ROOT}" "${BOTS_PER_SHARD}" "${ACCOUNTS_JSON}" "${REGISTRY_JSON}" <<'PY'
-import json
-import math
-import sys
-from pathlib import Path
-
-root = Path(sys.argv[1])
-bots_per = max(1, int(sys.argv[2]))
-accounts_path = Path(sys.argv[3])
-registry_path = Path(sys.argv[4])
-need = 1
-
-if accounts_path.is_file():
-    try:
-        raw = json.loads(accounts_path.read_text(encoding="utf-8"))
-        items = raw.values() if isinstance(raw, dict) else raw
-        enabled = 0
-        for v in items:
-            if isinstance(v, dict) and v.get("enabled", True):
-                enabled += 1
-        if enabled > 0:
-            need = max(need, math.ceil(enabled / bots_per))
-    except (json.JSONDecodeError, OSError, TypeError):
-        pass
-
-if registry_path.is_file():
-    try:
-        reg = json.loads(registry_path.read_text(encoding="utf-8"))
-        assigns = reg.get("assignments") or {}
-        test_cfg = reg.get("test") or {}
-        test_sid = int(test_cfg.get("shard_id", 99))
-        if assigns:
-            normal_vals = [int(x) for x in assigns.values() if int(x) != test_sid]
-            if normal_vals:
-                max_sid = max(normal_vals)
-                need = max(need, max_sid + 1, math.ceil(len(normal_vals) / bots_per))
-    except (json.JSONDecodeError, OSError, ValueError, TypeError):
-        pass
-
-print(need)
-PY
+  local -a args=(--bots-per "${BOTS_PER_SHARD}" --accounts "${ACCOUNTS_JSON}" --registry "${REGISTRY_JSON}")
+  if [[ -n "${WORKER_BASE_PORT:-}" ]]; then
+    args+=(--base "${WORKER_BASE_PORT}")
+  fi
+  if [[ ! -f "${CALC_WORKERS_SCRIPT}" ]]; then
+    echo 1
+    return
+  fi
+  uv run python "${CALC_WORKERS_SCRIPT}" "${args[@]}" 2>/dev/null || echo 1
 }
 
 is_running() {
@@ -438,6 +411,11 @@ stop_production_workers() {
   stop_orphan_worker_processes
 }
 
+worker_port_for_sid() {
+  local sid="$1"
+  registry_port_for_shard "${sid}"
+}
+
 start_production_workers() {
   local workers="$1"
   local -a common
@@ -449,7 +427,8 @@ start_production_workers() {
     IFS=',' read -r -a _worker_ports <<< "${WORKER_PORTS_CSV}"
   fi
   while [[ "${sid}" -lt "${workers}" ]]; do
-    local wport=$((WORKER_BASE_PORT + sid))
+    local wport
+    wport="$(worker_port_for_sid "${sid}")"
     if [[ "${#_worker_ports[@]}" -gt "${sid}" && -n "${_worker_ports[sid]:-}" ]]; then
       wport="${_worker_ports[sid]}"
     fi
@@ -461,6 +440,44 @@ start_production_workers() {
       "${START_CMD[@]}" bot_worker.py
     sid=$((sid + 1))
   done
+}
+
+start_missing_production_workers() {
+  local workers="$1"
+  local -a common
+  mapfile -t common < <(shard_common_env)
+  load_shard_redis_env
+  local sid=0
+  while [[ "${sid}" -lt "${workers}" ]]; do
+    local wport pidfile
+    pidfile="${RUN_DIR}/worker-${sid}.pid"
+    wport="$(worker_port_for_sid "${sid}")"
+    if is_running "${pidfile}"; then
+      echo "  · worker-${sid}  WS:${wport}：已在运行（无需重复启动）"
+      sid=$((sid + 1))
+      continue
+    fi
+    start_one "worker-${sid}" "worker-${sid}  WS:${wport}" env \
+      "${common[@]}" \
+      PALLAS_BOT_ROLE=worker \
+      PALLAS_SHARD_ID="${sid}" \
+      PORT="${wport}" \
+      "${START_CMD[@]}" bot_worker.py
+    sid=$((sid + 1))
+  done
+}
+
+count_running_production_worker_ids() {
+  local running=0
+  local f
+  for f in "${RUN_DIR}"/worker-*.pid; do
+    [[ -e "${f}" ]] || continue
+    [[ "$(basename "${f}" .pid)" == "worker-test" ]] && continue
+    if is_running "${f}"; then
+      running=$((running + 1))
+    fi
+  done
+  echo "${running}"
 }
 
 wait_worker_ports_released() {
@@ -793,16 +810,93 @@ cmd_start_hub_only() {
   echo ""
   echo "  常用命令"
   echo "    status                  查看运行状态"
-  echo "    restart --workers-only  仅重启 worker"
+  echo "    start --workers-only    仅拉起缺失 worker"
+  echo "    restart --workers-only  全量重启 worker"
   echo "    restart --hub-only       仅重启 hub"
   if [[ "${hub_ok}" -eq 0 ]]; then
     return 1
   fi
 }
 
+cmd_start_workers_only() {
+  local workers="${WORKER_COUNT_OVERRIDE:-$(calc_worker_count)}"
+  local running_before
+  running_before="$(count_running_production_worker_ids)"
+  if [[ "${SCALE_ONLY}" -eq 0 && "${running_before}" -gt 0 ]]; then
+    SCALE_ONLY=1
+  fi
+
+  print_title "Pallas-Bot 分片模式 · 启动缺失 worker（保留已运行进程）"
+  print_config_summary "${workers}"
+  if is_running "${PID_HUB}"; then
+    echo "  hub        保持运行（:${HUB_PORT}）"
+  else
+    echo "  hub        未运行（本次不启动 hub）"
+  fi
+  if [[ "${SCALE_ONLY}" -eq 1 ]]; then
+    echo "  端口策略   扩容模式（registry 端口，不重分配、不同步协议端）"
+  else
+    echo "  端口策略   冷启动（评估端口并同步协议端 ws_url）"
+  fi
+  load_shard_redis_env
+  echo "  $(shard_coord_backend_hint)"
+  echo ""
+
+  if [[ "${SCALE_ONLY}" -eq 1 ]]; then
+    workers="$(calc_worker_count)"
+    echo "  正在启动缺失 worker（已在运行的分片将跳过）…"
+    start_missing_production_workers "${workers}"
+  else
+    prepare_shard_ports "${workers}" || return 1
+    workers="$(calc_worker_count)"
+    echo ""
+    echo "  正在启动 worker…"
+    start_production_workers "${workers}"
+  fi
+
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    echo ""
+    echo "  （预览模式，未实际启动）"
+    return 0
+  fi
+
+  echo ""
+  echo "  正在确认 worker…"
+  local worker_running=0 worker_fail=0
+  local f
+  for f in "${RUN_DIR}"/worker-*.pid; do
+    [[ -e "${f}" ]] || continue
+    [[ "$(basename "${f}" .pid)" == "worker-test" ]] && continue
+    if is_running "${f}"; then
+      worker_running=$((worker_running + 1))
+    else
+      worker_fail=$((worker_fail + 1))
+      local wname
+      wname="$(basename "${f}" .pid)"
+      echo "  · ${wname} 启动后已退出，请查看: ${LOG_DIR}/${wname}.log"
+    fi
+  done
+
+  print_title "worker 扩容完成"
+  echo "  汇总       worker ${worker_running}/${workers} 运行 · $(shard_coord_backend_hint)"
+  if [[ "${worker_fail}" -gt 0 ]]; then
+    echo "  提示       部分 worker 未保持运行，请检查端口与日志"
+  elif [[ "${worker_running}" -lt "${workers}" ]]; then
+    echo "  提示       仍有 worker 未启动，可再次执行 start --workers-only"
+  fi
+}
+
 cmd_start() {
+  if [[ "${WORKERS_ONLY}" -eq 1 && "${HUB_ONLY}" -eq 1 ]]; then
+    echo "  --workers-only 与 --hub-only 不能同时使用" >&2
+    return 1
+  fi
   if [[ "${HUB_ONLY}" -eq 1 ]]; then
     cmd_start_hub_only
+    return
+  fi
+  if [[ "${WORKERS_ONLY}" -eq 1 ]]; then
+    cmd_start_workers_only
     return
   fi
   local workers="${WORKER_COUNT_OVERRIDE:-$(calc_worker_count)}"
@@ -827,6 +921,7 @@ cmd_start() {
   wait_worker_ports_released "${workers}" || true
   echo ""
   prepare_shard_ports "${workers}" || return 1
+  workers="$(calc_worker_count)"
   echo ""
   echo "  正在启动进程…"
 
@@ -991,10 +1086,23 @@ cmd_status() {
     fi
     printf "    %-10s %-6s  WS:%s\n" "${name}" "${state}" "${port}"
   done
-  if [[ "${workers}" -eq 0 ]]; then
+  if [[ "${workers}" -eq 0 && "${expected_workers}" -eq 0 ]]; then
     echo "    （尚无生产 worker，请先 start）"
   else
-    echo "    小计       ${running_workers}/${workers} 运行"
+    echo "    小计       ${running_workers}/${expected_workers} 运行"
+    if [[ "${running_workers}" -lt "${expected_workers}" ]]; then
+      local sid=0 missing=0
+      while [[ "${sid}" -lt "${expected_workers}" ]]; do
+        local pf="${RUN_DIR}/worker-${sid}.pid"
+        if ! is_running "${pf}"; then
+          missing=$((missing + 1))
+          local mport
+          mport="$(registry_port_for_shard "${sid}")"
+          echo "    worker-${sid}   未启动  WS:${mport}"
+        fi
+        sid=$((sid + 1))
+      done
+    fi
   fi
 
   echo ""
@@ -1015,11 +1123,16 @@ cmd_status() {
   echo ""
   echo "  日志       ${LOG_DIR}/"
 
-  if [[ "${stale_workers}" -gt 0 ]]; then
+  if [[ "${stale_workers}" -gt 0 || "${running_workers}" -lt "${expected_workers}" ]]; then
     echo ""
-    echo "  提示：${stale_workers} 个 worker 未运行"
+    if [[ "${running_workers}" -lt "${expected_workers}" ]]; then
+      echo "  提示：应有 ${expected_workers} 个 worker，当前仅 ${running_workers} 个在运行"
+    else
+      echo "  提示：${stale_workers} 个 worker 未运行"
+    fi
     if is_running "${PID_HUB}"; then
-      echo "    ./scripts/run_sharded_bot.sh restart --workers-only"
+      echo "    ./scripts/run_sharded_bot.sh start --workers-only"
+      echo "    ./scripts/run_sharded_bot.sh restart --workers-only   # 需全量重启时"
     else
       echo "    ./scripts/run_sharded_bot.sh restart"
       echo "    ./scripts/run_sharded_bot.sh start --hub-only   # 仅启 WebUI 控制台"
@@ -1097,6 +1210,7 @@ cmd_restart_workers_only() {
   wait_worker_ports_released "${workers}" || true
   echo ""
   prepare_shard_ports "${workers}" || return 1
+  workers="$(calc_worker_count)"
   echo ""
   echo "  正在启动 worker…"
   start_production_workers "${workers}"
@@ -1221,6 +1335,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --workers-only)
       WORKERS_ONLY=1
+      shift
+      ;;
+    --scale-only)
+      SCALE_ONLY=1
       shift
       ;;
     --hub-only)

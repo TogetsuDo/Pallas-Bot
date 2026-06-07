@@ -6,6 +6,8 @@ import asyncio
 import time
 from typing import TYPE_CHECKING
 
+from nonebot import logger
+
 from src.features.corpus.reply_perf_config import find_cache_max_entries, find_cache_ttl_sec
 from src.foundation.db.pool_budget import is_pg_pool_timeout_error
 
@@ -50,12 +52,19 @@ async def _cached_find(
     inflight: dict[str, asyncio.Task[Context | None]],
     keywords: str,
     loader,
+    *,
+    for_reply: bool = False,
 ) -> Context | None:
     key = (keywords or "").strip()
     if not key:
         return None
     now = time.monotonic()
     if _reply_db_fail_active(key, now=now):
+        if for_reply:
+            logger.debug(
+                "corpus_find_reply.skip reply_db_fail_cooldown kw_len={}",
+                len(key),
+            )
         return None
     task: asyncio.Task[Context | None] | None = None
     async with _find_lock:
@@ -85,6 +94,11 @@ async def _cached_find(
                 inflight.pop(key, None)
         if is_pg_pool_timeout_error(exc):
             mark_reply_db_fail(key)
+            if for_reply:
+                logger.debug(
+                    "corpus_find_reply.skip db_timeout kw_len={}",
+                    len(key),
+                )
             return None
         raise
 
@@ -107,7 +121,7 @@ async def cached_find_by_keywords_for_reply(
     keywords: str,
     loader,
 ) -> Context | None:
-    return await _cached_find(_reply_find_cache, _reply_find_inflight, keywords, loader)
+    return await _cached_find(_reply_find_cache, _reply_find_inflight, keywords, loader, for_reply=True)
 
 
 async def invalidate_find_cache(keywords: str | None = None) -> None:

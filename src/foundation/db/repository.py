@@ -77,6 +77,10 @@ class ContextRepository(Protocol):
         """
         ...
 
+    async def find_ban_reply_target(self, group_id: int, reply_message: str) -> tuple[str, str] | None:
+        """按群号与 reply 原文精确反查 (pre_keywords, reply_keywords)。"""
+        ...
+
 
 class ContextRepositoryExistenceMixin:
     """为已实现 `find_by_keywords` 的仓储提供 `context_exists_by_keywords` 默认实现。"""

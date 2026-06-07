@@ -14,6 +14,8 @@ from src.platform.shard.registry.config import get_shard_registry_settings, is_s
 _PLUGIN = "pallas_shard"
 _PRESENCE_FILE = "worker_presence.json"
 _PRESENCE_STALE_SEC = 120.0
+# 协议端 bot_offline 已上报但 WS 尚未断开时，reconcile 仍会从 get_bots 刷新 presence
+_PROTOCOL_OFFLINE_QQS: set[int] = set()
 
 
 def _presence_path():
@@ -286,6 +288,53 @@ def prune_stale_presence_entries_sync(*, max_age_sec: float = _PRESENCE_STALE_SE
 
     _mutate_file(upd)
     return file_removed
+
+
+def mark_protocol_bot_offline_sync(*, qq: int) -> None:
+    """NapCat/Lagrange 离线通知：立刻清集群 presence，并在 WS 僵尸期间跳过 reconcile。"""
+    _PROTOCOL_OFFLINE_QQS.add(int(qq))
+    note_worker_bot_disconnected_sync(qq=int(qq))
+
+
+def clear_protocol_bot_offline_sync(*, qq: int) -> None:
+    _PROTOCOL_OFFLINE_QQS.discard(int(qq))
+
+
+def filter_local_qq_ids_for_presence(local_qq_ids: set[int]) -> set[int]:
+    if not _PROTOCOL_OFFLINE_QQS:
+        return local_qq_ids
+    offline = _PROTOCOL_OFFLINE_QQS
+    return {qq for qq in local_qq_ids if qq not in offline}
+
+
+async def mark_protocol_bot_offline(qq: int) -> None:
+    await asyncio.to_thread(mark_protocol_bot_offline_sync, qq=int(qq))
+
+
+async def clear_protocol_bot_offline(qq: int) -> None:
+    await asyncio.to_thread(clear_protocol_bot_offline_sync, qq=int(qq))
+
+
+async def close_local_bot_connection(qq: int) -> bool:
+    """主动关闭本进程 WS，触发 on_bot_disconnect（协议已离线但连接未断时）。"""
+    from nonebot import get_bots
+
+    key = str(int(qq))
+    bot = get_bots().get(key)
+    if bot is None:
+        return False
+    try:
+        adapter = getattr(bot, "adapter", None)
+        connections = getattr(adapter, "connections", None)
+        if not isinstance(connections, dict):
+            return False
+        websocket = connections.get(key)
+        if websocket is None:
+            return False
+        await websocket.close(4000, "protocol offline")
+        return True
+    except Exception:
+        return False
 
 
 def note_worker_bot_disconnected_sync(*, qq: int) -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 
 from nonebot import get_driver, logger
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
@@ -78,6 +79,14 @@ def group_at_qq_ids(event: GroupMessageEvent) -> frozenset[int]:
             continue
         try:
             out.add(int(qq))
+        except (TypeError, ValueError):
+            continue
+    if out:
+        return frozenset(out)
+    raw_message = event.raw_message or ""
+    for match in re.finditer(r"\[(?:CQ:)?at(?:,qq=|:qq=)(\d+)", raw_message):
+        try:
+            out.add(int(match.group(1)))
         except (TypeError, ValueError):
             continue
     return frozenset(out)

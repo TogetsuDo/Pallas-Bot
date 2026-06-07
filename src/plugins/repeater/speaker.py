@@ -99,7 +99,17 @@ class Speaker:
                     "reply_keywords": Speaker.SPEAK_FLAG,
                 })
 
-            bot_id = random.choice([bid for bid in group_replies.keys() if bid])
+            from src.platform.shard.registry.config import is_sharding_active
+
+            from .shard_opt import local_connected_bot_ids
+
+            bot_ids = [bid for bid in group_replies.keys() if bid]
+            if is_sharding_active():
+                local_bots = local_connected_bot_ids()
+                bot_ids = [bid for bid in bot_ids if bid in local_bots]
+            if not bot_ids:
+                continue
+            bot_id = random.choice(bot_ids)
 
             ban_keywords = await BanManager.find_ban_keywords(context=None, group_id=group_id)
 

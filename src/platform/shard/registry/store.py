@@ -408,6 +408,14 @@ def assign_bot_to_shard(bot_id: str, *, registry: ShardRegistry | None = None) -
     reg.assignments[key] = picked
     _ensure_shard_rows(reg)
     save_shard_registry(reg)
+    try:
+        from src.platform.shard.worker_scale import schedule_worker_scale_restart
+
+        schedule_worker_scale_restart(reason=f"assign {key} -> shard {picked}")
+    except Exception as err:
+        import logging
+
+        logging.getLogger(__name__).debug("worker scale schedule skipped: %s", err)
     return picked
 
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 import pytest
 
 from src.plugins.repeater.shard_opt import (
+    local_connected_bot_ids,
+    repeater_maintenance_runs_on_worker,
     repeater_scheduler_runs_on_worker,
     repeater_worker_handles_message,
 )
@@ -84,3 +86,37 @@ def test_scheduler_skips_worker_without_rep(monkeypatch):
         lambda: None,
     )
     assert repeater_scheduler_runs_on_worker() is False
+
+
+def test_maintenance_runs_only_on_shard_zero_when_sharded(monkeypatch):
+    monkeypatch.setattr(
+        "src.platform.shard.registry.config.is_sharding_active",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "src.platform.shard.registry.config.get_shard_registry_settings",
+        lambda: type("S", (), {"shard_id": 0})(),
+    )
+    assert repeater_maintenance_runs_on_worker() is True
+
+    monkeypatch.setattr(
+        "src.platform.shard.registry.config.get_shard_registry_settings",
+        lambda: type("S", (), {"shard_id": 3})(),
+    )
+    assert repeater_maintenance_runs_on_worker() is False
+
+
+def test_maintenance_runs_when_not_sharded(monkeypatch):
+    monkeypatch.setattr(
+        "src.platform.shard.registry.config.is_sharding_active",
+        lambda: False,
+    )
+    assert repeater_maintenance_runs_on_worker() is True
+
+
+def test_local_connected_bot_ids_reads_nonebot(monkeypatch):
+    monkeypatch.setattr(
+        "nonebot.get_bots",
+        lambda: {"1001": object(), "2002": object(), "bad": object()},
+    )
+    assert local_connected_bot_ids() == frozenset({1001, 2002})

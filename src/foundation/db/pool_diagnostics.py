@@ -1,4 +1,4 @@
-"""PG 连接池诊断：周期汇总 + 慢持连统计（默认 DEBUG，避免刷屏）。"""
+"""PG 连接池诊断：周期汇总 + 慢持连统计（健康态 DEBUG，异常态 INFO）。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from nonebot import get_driver, logger
 
 from src.foundation.config.repo_settings import repo_env_raw_value
 
-_TICK_SEC = 60.0
+_TICK_SEC_DEFAULT = 300.0
 _diag_task: asyncio.Task[None] | None = None
 _bound = False
 
@@ -32,6 +32,37 @@ def session_hold_warn_ms() -> float:
         except ValueError:
             pass
     return 500.0
+
+
+def pool_diag_tick_sec() -> float:
+    raw = repo_env_raw_value("PG_POOL_DIAG_TICK_SEC")
+    if raw is not None:
+        try:
+            return max(30.0, float(str(raw).strip()))
+        except ValueError:
+            pass
+    return _TICK_SEC_DEFAULT
+
+
+def pool_diag_tick_notable(
+    *,
+    under_pressure: bool,
+    idle_in_tx: int | None,
+    slow_sessions: int,
+    remote_skipped_pressure: int,
+    remote_skipped_busy: int,
+    mirror_skip: int,
+    learn_pool_wait: int,
+) -> bool:
+    if under_pressure or slow_sessions > 0:
+        return True
+    if idle_in_tx and idle_in_tx > 0:
+        return True
+    if remote_skipped_pressure > 0 or remote_skipped_busy > 0:
+        return True
+    if mirror_skip > 0 or learn_pool_wait > 0:
+        return True
+    return False
 
 
 def _is_ignored_caller_path(path: str) -> bool:
@@ -161,7 +192,20 @@ async def emit_pool_diagnostics_tick() -> None:
     if not slow_top:
         slow_top = "-"
 
-    logger.debug(
+    skipped_pressure = int(remote.get("skipped_pressure", 0))
+    skipped_busy = int(remote.get("skipped_busy", 0))
+    learn_pool_wait = int(learn.get("learn_pool_wait_spins", 0) or 0)
+    notable = pool_diag_tick_notable(
+        under_pressure=bool(budget.get("under_pressure")),
+        idle_in_tx=idle_tx,
+        slow_sessions=_slow_session_total,
+        remote_skipped_pressure=skipped_pressure,
+        remote_skipped_busy=skipped_busy,
+        mirror_skip=_mirror_skipped_pressure,
+        learn_pool_wait=learn_pool_wait,
+    )
+    diag_log = logger.info if notable else logger.debug
+    diag_log(
         "pg pool diag: checked_out={}/{} util={} idle_in_tx={} pg_wait=[{}] "
         "remote_skip_pressure={} remote_skip_busy={} mirror_skip={} "
         "slow_sessions={} slow_max_ms={:.0f} learn_q={} learn_pool_wait={} slow_top=[{}]",
@@ -170,13 +214,13 @@ async def emit_pool_diagnostics_tick() -> None:
         util_pct,
         idle_tx if idle_tx is not None else "?",
         wait_s,
-        remote.get("skipped_pressure", 0),
-        remote.get("skipped_busy", 0),
+        skipped_pressure,
+        skipped_busy,
         _mirror_skipped_pressure,
         _slow_session_total,
         _slow_hold_max_ms,
         learn.get("learn_queue_size", "?"),
-        learn.get("learn_pool_wait_spins", 0),
+        learn_pool_wait,
         slow_top,
     )
 
@@ -195,13 +239,13 @@ async def emit_pool_diagnostics_tick() -> None:
 
 
 async def pool_diagnostics_loop() -> None:
-    await asyncio.sleep(_TICK_SEC)
+    await asyncio.sleep(pool_diag_tick_sec())
     while True:
         try:
             await emit_pool_diagnostics_tick()
         except Exception as e:
             logger.warning("pg pool diagnostics tick failed: {}", e)
-        await asyncio.sleep(_TICK_SEC)
+        await asyncio.sleep(pool_diag_tick_sec())
 
 
 def bind_pg_pool_diagnostics() -> None:
@@ -228,7 +272,7 @@ def start_pg_pool_diagnostics_task() -> None:
     _diag_task = asyncio.create_task(pool_diagnostics_loop(), name="pg_pool_diagnostics")
     logger.debug(
         "pg pool diagnostics started (tick={}s, session_hold_warn={}ms)",
-        int(_TICK_SEC),
+        int(pool_diag_tick_sec()),
         int(session_hold_warn_ms()),
     )
 

@@ -1520,7 +1520,7 @@ def flush_worker_shard_console_stats_sync(*, include_hist: bool = False) -> None
     from src.platform.shard.console_stats import write_worker_stats_sync
     from src.platform.shard.coord_pending import coord_pending_snapshot_sync
     from src.platform.shard.ingress_metrics import ingress_metrics_snapshot
-    from src.platform.shard.presence import reconcile_local_worker_presence_sync
+    from src.platform.shard.presence import filter_local_qq_ids_for_presence, reconcile_local_worker_presence_sync
     from src.platform.shard.registry.config import get_shard_registry_settings
     from src.platform.shard.repeater_ingress_metrics import repeater_ingress_metrics_snapshot
 
@@ -1531,6 +1531,7 @@ def flush_worker_shard_console_stats_sync(*, include_hist: bool = False) -> None
         from nonebot import get_bots
 
         local_qq = {int(k) for k in get_bots().keys() if str(k).isdigit()}
+        local_qq = filter_local_qq_ids_for_presence(local_qq)
         reconcile_local_worker_presence_sync(shard_id=shard_id, local_qq_ids=local_qq)
     except Exception:
         pass

@@ -128,6 +128,22 @@ class MongoContextRepository:
             {"$push": {"ban": ban.model_dump(by_alias=True)}},
         )
 
+    async def find_ban_reply_target(self, group_id: int, reply_message: str) -> tuple[str, str] | None:
+        collection = Context.get_pymongo_collection()
+        pipeline = [
+            {"$match": {"answers": {"$elemMatch": {"group_id": int(group_id), "messages": str(reply_message)}}}},
+            {"$unwind": "$answers"},
+            {"$match": {"answers.group_id": int(group_id), "answers.messages": str(reply_message)}},
+            {"$sort": {"answers.time": -1}},
+            {"$limit": 1},
+            {"$project": {"_id": 0, "keywords": 1, "reply_keywords": "$answers.keywords"}},
+        ]
+        docs = await collection.aggregate(pipeline).to_list(length=1)
+        if not docs:
+            return None
+        doc = docs[0]
+        return str(doc.get("keywords") or ""), str(doc.get("reply_keywords") or "")
+
 
 class MongoMessageRepository:
     """MongoDB 版 MessageRepository 实现"""

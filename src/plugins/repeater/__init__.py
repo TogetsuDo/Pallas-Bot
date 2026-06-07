@@ -8,7 +8,7 @@ from nonebot.adapters import Bot
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, GroupRecallNoticeEvent, Message, MessageSegment, permission
 from nonebot.exception import ActionFailed
 from nonebot.plugin import PluginMetadata
-from nonebot.rule import Rule, keyword, to_me
+from nonebot.rule import Rule
 from nonebot.typing import T_State
 from nonebot_plugin_apscheduler import scheduler
 
@@ -25,6 +25,7 @@ from src.features.message_scrub.log_preview import scrub_intercept_log_preview
 from src.foundation.config import BotConfig
 from src.platform.observability import SlowPathTimer, slow_path_threshold_ms
 from src.plugins.dream.ban_ack_state import DREAM_BAN_ACK_SENT_STATE_KEY
+from src.shared.reply_command_rule import event_has_reply_target, event_targets_self, extract_reply_id_from_raw_message
 from src.shared.utils.array2cqcode import try_convert_to_cqcode
 from src.shared.utils.media_cache import get_image, insert_image
 
@@ -260,11 +261,49 @@ async def _(bot: Bot, event: GroupMessageEvent):
 
 
 async def is_reply(event: GroupMessageEvent) -> bool:
-    return bool(event.reply)
+    return event_has_reply_target(event)
+
+
+async def is_ban_reply_trigger(event: GroupMessageEvent) -> bool:
+    if "不可以" not in event.get_plaintext():
+        return False
+    if not await is_reply(event):
+        return False
+    return event_targets_self(event)
+
+
+def extract_ban_reply_raw_from_message(message: Message | str) -> str:
+    if isinstance(message, str):
+        return message
+
+    raw_message = ""
+    for item in message:
+        raw_reply = str(item)
+        raw_message += re.sub(r"(\[CQ\:.+)(?:,url=*)(\])", r"\1\2", raw_reply)
+    if not raw_message.strip():
+        raw_message = message.extract_plain_text()
+    return raw_message
+
+
+async def resolve_ban_reply_raw(bot: Bot, event: GroupMessageEvent) -> str:
+    if event.reply and getattr(event.reply, "message", None):
+        return extract_ban_reply_raw_from_message(event.reply.message)
+
+    reply_id = extract_reply_id_from_raw_message(event.raw_message)
+    if reply_id is None:
+        return ""
+
+    try:
+        msg = await bot.get_msg(message_id=reply_id)
+    except ActionFailed:
+        logger.warning(f"bot [{event.self_id}] failed to get replied msg [{reply_id}] in group [{event.group_id}]")
+        return ""
+
+    return extract_ban_reply_raw_from_message(Message(msg["message"]))
 
 
 ban_msg = on_message(
-    rule=to_me() & keyword("不可以") & Rule(is_reply),
+    rule=Rule(is_ban_reply_trigger),
     priority=5,
     block=True,
     permission=group_message_permission_for_command("repeater.ban"),
@@ -273,21 +312,18 @@ ban_msg = on_message(
 
 @ban_msg.handle()
 async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
-    if not event.reply:
+    raw_message = await resolve_ban_reply_raw(bot, event)
+    if not raw_message.strip():
+        logger.info(f"bot [{event.self_id}] ban skipped (empty reply target) in group [{event.group_id}]")
         return
-
-    raw_message = ""
-    for item in event.reply.message:  # type: ignore
-        raw_reply = str(item)
-        # 去掉图片消息中的 url, subType 等字段
-        raw_message += re.sub(r"(\[CQ\:.+)(?:,url=*)(\])", r"\1\2", raw_reply)
 
     logger.info(f"bot [{event.self_id}] ready to ban [{raw_message}] in group [{event.group_id}]")
 
-    try:
-        await bot.delete_msg(message_id=event.reply.message_id)  # type: ignore
-    except ActionFailed:
-        logger.warning(f"bot [{event.self_id}] failed to delete [{raw_message}] in group [{event.group_id}]")
+    if event.reply:
+        try:
+            await bot.delete_msg(message_id=event.reply.message_id)  # type: ignore
+        except ActionFailed:
+            logger.warning(f"bot [{event.self_id}] failed to delete [{raw_message}] in group [{event.group_id}]")
 
     banned = await Chat.ban(event.group_id, event.self_id, raw_message, str(event.user_id))
     if banned:
@@ -355,8 +391,14 @@ async def message_is_ban(bot: Bot, event: GroupMessageEvent, state: T_State) -> 
     return event.get_plaintext().strip() == "不可以发这个"
 
 
+async def is_ban_latest_trigger(bot: Bot, event: GroupMessageEvent, state: T_State) -> bool:
+    if not await message_is_ban(bot, event, state):
+        return False
+    return event_targets_self(event)
+
+
 ban_msg_latest = on_message(
-    rule=to_me() & Rule(message_is_ban),
+    rule=Rule(is_ban_latest_trigger),
     priority=5,
     block=True,
     permission=group_message_permission_for_command("repeater.ban_latest"),
@@ -390,10 +432,16 @@ async def speak_up():
 
     bot_id, group_id, messages, target_id = ret
 
+    try:
+        bot = get_bot(str(bot_id))
+    except (KeyError, ValueError):
+        logger.debug("speak_up skip bot [{}] not connected on this worker", bot_id)
+        return
+
     for msg in messages:
         logger.info(f"bot [{bot_id}] ready to speak [{msg}] to group [{group_id}]")
         try:
-            await get_bot(str(bot_id)).call_api(
+            await bot.call_api(
                 "send_group_msg",
                 **{
                     "message": msg,
@@ -401,7 +449,7 @@ async def speak_up():
                 },
             )
             if target_id:
-                await get_bot(str(bot_id)).call_api(
+                await bot.call_api(
                     "group_poke",
                     **{
                         "user_id": target_id,
@@ -421,5 +469,9 @@ async def speak_up():
 
 @scheduler.scheduled_job("cron", hour=4)
 async def update_data():
+    from .shard_opt import repeater_maintenance_runs_on_worker
+
+    if not repeater_maintenance_runs_on_worker():
+        return
     await Chat.sync()
     await Chat.clearup_context()

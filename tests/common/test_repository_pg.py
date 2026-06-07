@@ -90,6 +90,70 @@ async def test_upsert_answer_is_atomic(pg_engine):
 
 
 @pytest.mark.asyncio
+async def test_replace_answers_upserts_and_drops_orphans(pg_engine):
+    from src.foundation.db.modules import Answer, Context
+    from src.foundation.db.repository_pg import PgContextRepository
+
+    repo = PgContextRepository()
+    await repo.insert(
+        Context.model_construct(
+            keywords="kw-replace",
+            time=0,
+            trigger_count=1,
+            answers=[
+                Answer.model_construct(
+                    keywords="old-a",
+                    group_id=1,
+                    count=2,
+                    time=10,
+                    messages=["m-old"],
+                ),
+                Answer.model_construct(
+                    keywords="drop-me",
+                    group_id=2,
+                    count=1,
+                    time=11,
+                    messages=["gone"],
+                ),
+            ],
+            ban=[],
+            clear_time=0,
+        )
+    )
+
+    await repo.replace_answers(
+        "kw-replace",
+        [
+            Answer.model_construct(
+                keywords="old-a",
+                group_id=1,
+                count=5,
+                time=99,
+                messages=["m-new-1", "m-new-2"],
+            ),
+            Answer.model_construct(
+                keywords="new-b",
+                group_id=3,
+                count=1,
+                time=100,
+                messages=["fresh"],
+            ),
+        ],
+        clear_time=123,
+    )
+
+    found = await repo.find_by_keywords("kw-replace")
+    assert found is not None
+    assert found.clear_time == 123
+    assert len(found.answers) == 2
+    by_kw = {ans.keywords: ans for ans in found.answers}
+    assert by_kw["old-a"].count == 5
+    assert by_kw["old-a"].messages == ["m-new-1", "m-new-2"]
+    assert by_kw["new-b"].group_id == 3
+    assert "drop-me" not in by_kw
+
+
+@pytest.mark.asyncio
 async def test_find_by_keywords_for_reply_caps_messages(pg_engine, monkeypatch):
     """接话 find 仅加载最近 N 条 message，全量 find 不受影响。"""
     from src.features.corpus.reply_perf_config import clear_corpus_reply_perf_config_cache
@@ -177,6 +241,45 @@ def test_context_answer_rows_have_reply_indexes():
 
     assert "ix_context_answer_ctx_count_time" in answer_index_names
     assert "ix_context_answer_message_answer_id_id" in message_index_names
+
+
+@pytest.mark.asyncio
+async def test_delete_context_answer_orphans_chunks_large_deletes():
+    from src.foundation.db import repository_pg as mod
+
+    deleted_chunks: list[list[int]] = []
+
+    class FakeResult:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def scalars(self):
+            return self
+
+        def all(self):
+            return list(self._rows)
+
+    class FakeSession:
+        async def execute(self, stmt):
+            sql = str(
+                stmt.compile(
+                    dialect=postgresql.dialect(),
+                    compile_kwargs={"literal_binds": True},
+                )
+            )
+            if sql.startswith("SELECT context_answer.id"):
+                return FakeResult(range(1, 2506))
+            if sql.startswith("DELETE FROM context_answer"):
+                ids = sorted(int(v) for v in stmt._where_criteria[1].right.value)
+                deleted_chunks.append(ids)
+                return FakeResult([])
+            raise AssertionError(sql)
+
+    await mod.delete_context_answer_orphans(FakeSession(), ctx_id=7, kept_ids=[1, 2, 3, 4, 5], chunk_size=1000)
+
+    assert [len(chunk) for chunk in deleted_chunks] == [1000, 1000, 500]
+    assert deleted_chunks[0][0] == 6
+    assert deleted_chunks[-1][-1] == 2505
 
 
 def test_ensure_pg_message_group_user_time_index_creates_missing_index(monkeypatch):
@@ -366,6 +469,37 @@ async def test_append_ban_invalidates_recent_reply_snapshot(pg_engine, monkeypat
 
     assert refreshed is not None
     assert [ban.keywords for ban in refreshed.ban] == ["a"]
+
+
+@pytest.mark.asyncio
+async def test_find_ban_reply_target(pg_engine):
+    """按 group_id + reply 原文应能精确反查 ban 目标。"""
+    from src.foundation.db.modules import Context
+    from src.foundation.db.repository_pg import PgContextRepository
+
+    repo = PgContextRepository()
+    await repo.insert(
+        Context.model_construct(
+            keywords="pre-kw",
+            time=0,
+            trigger_count=1,
+            answers=[],
+            ban=[],
+            clear_time=0,
+        )
+    )
+    await repo.upsert_answer(
+        "pre-kw",
+        733291779,
+        "reply-kw",
+        100,
+        "群友耀.原星(1101088091)退群了!",
+        append_on_existing=True,
+    )
+
+    found = await repo.find_ban_reply_target(733291779, "群友耀.原星(1101088091)退群了!")
+
+    assert found == ("pre-kw", "reply-kw")
 
 
 @pytest.mark.asyncio

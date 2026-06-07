@@ -148,6 +148,25 @@ async def test_unified_ingress_bypass_skips_federate_claim(monkeypatch: pytest.M
     federate.assert_not_awaited()
 
 
+def test_group_at_qq_ids_falls_back_to_raw_message_when_at_segment_missing() -> None:
+    from src.plugins.ingress_gate import group_at_qq_ids
+
+    event = GroupMessageEvent.model_construct(
+        time=100,
+        self_id=2927116873,
+        post_type="message",
+        message_type="group",
+        sub_type="normal",
+        user_id=3023094357,
+        group_id=733291779,
+        message_id=1,
+        message=Message("[reply:id=101092384] 不可以"),
+        raw_message="[reply:id=101092384][at:qq=2927116873] 不可以",
+    )
+
+    assert group_at_qq_ids(event) == frozenset({2927116873})
+
+
 @pytest.mark.asyncio
 async def test_unified_ingress_discards_federate_peer_bot_before_claims(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(shard_cfg, "is_sharding_active", lambda: False)

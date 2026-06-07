@@ -160,6 +160,12 @@ async def handle_bot_offline_events(event: NoticeEvent):
             "source": source,
         }
 
+        qq = int(bot_id)
+        from src.platform.shard.presence import close_local_bot_connection, mark_protocol_bot_offline
+
+        await mark_protocol_bot_offline(qq)
+        asyncio.create_task(close_local_bot_connection(qq), name=f"protocol_offline_close_ws:{qq}")
+
         # 发送离线通知
         await notify_bot_offline(bot_id, nickname, offline_message)
 

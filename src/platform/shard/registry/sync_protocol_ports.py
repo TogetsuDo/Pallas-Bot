@@ -138,7 +138,8 @@ def sync_accounts_ws_urls(
             skipped_disabled += 1
             continue
 
-        assign_bot_to_shard(qq, registry=reg)
+        if reg.shard_for_bot(qq) is None:
+            assign_bot_to_shard(qq, registry=reg)
         template_url, _, _ = resolve_onebot_ws_url_for_bot(qq)
         if not template_url:
             continue

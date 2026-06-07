@@ -180,3 +180,24 @@ def test_reconcile_file_upserts_missing_local_bot(tmp_path, monkeypatch: pytest.
     assert bots["111"]["shard_id"] == 0
     assert "222" in bots
     assert 111 in mod.get_cluster_online_bot_ids()
+
+
+def test_protocol_offline_clears_presence_and_blocks_reconcile(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(mod, "plugin_data_dir", lambda name, create=True: tmp_path / name)
+    monkeypatch.setattr(mod, "is_sharding_active", lambda: True)
+    mod.clear_protocol_bot_offline_sync(qq=111)
+
+    mod.note_worker_bot_connected_sync(qq=111, connection_key="111", adapter="OneBot V11", shard_id=0)
+    assert 111 in mod.get_cluster_online_bot_ids()
+
+    mod.mark_protocol_bot_offline_sync(qq=111)
+    assert 111 not in mod.get_cluster_online_bot_ids()
+
+    filtered = mod.filter_local_qq_ids_for_presence({111})
+    assert filtered == set()
+    mod.reconcile_local_worker_presence_sync(shard_id=0, local_qq_ids=filtered)
+    assert 111 not in mod.get_cluster_online_bot_ids()
+
+    mod.clear_protocol_bot_offline_sync(qq=111)
+    mod.reconcile_local_worker_presence_sync(shard_id=0, local_qq_ids={111})
+    assert 111 in mod.get_cluster_online_bot_ids()

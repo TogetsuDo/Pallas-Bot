@@ -1,0 +1,47 @@
+import json
+
+import pytest
+
+from src.platform.shard.registry.store import ShardRegistry
+from src.platform.shard.registry.worker_count import calc_production_worker_count
+
+
+def test_count_from_ws_url_port(tmp_path):
+    accounts = tmp_path / "accounts.json"
+    accounts.write_text(
+        json.dumps(
+            {
+                "727130160": {
+                    "qq": "727130160",
+                    "enabled": True,
+                    "ws_url": "ws://172.17.0.1:7977/onebot/v11/ws",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    reg = ShardRegistry(bots_per_shard=5, worker_base_port=7970, ws_host="127.0.0.1")
+    assert (
+        calc_production_worker_count(
+            bots_per_shard=5,
+            accounts_path=accounts,
+            registry=reg,
+        )
+        == 8
+    )
+
+
+def test_enabled_count_not_less_than_ws_hint(tmp_path):
+    accounts = tmp_path / "accounts.json"
+    items = {
+        str(i): {"qq": str(i), "enabled": True, "ws_url": "ws://127.0.0.1:7970/onebot/v11/ws"}
+        for i in range(35)
+    }
+    items["727130160"] = {
+        "qq": "727130160",
+        "enabled": True,
+        "ws_url": "ws://172.17.0.1:7977/onebot/v11/ws",
+    }
+    accounts.write_text(json.dumps(items), encoding="utf-8")
+    reg = ShardRegistry(bots_per_shard=5, worker_base_port=7970, ws_host="127.0.0.1")
+    assert calc_production_worker_count(accounts_path=accounts, registry=reg) == 8

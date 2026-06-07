@@ -319,3 +319,9 @@ class CompositeContextRepository:
 
     async def append_ban(self, keywords: str, ban: Ban) -> None:
         await self._local.append_ban(keywords, ban)
+
+    async def find_ban_reply_target(self, group_id: int, reply_message: str) -> tuple[str, str] | None:
+        find_target = getattr(self._local, "find_ban_reply_target", None)
+        if not callable(find_target):
+            return None
+        return await find_target(group_id, reply_message)
