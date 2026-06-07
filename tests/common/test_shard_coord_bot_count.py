@@ -98,6 +98,63 @@ def test_finalize_reopens_order_when_registration_grows(tmp_path, monkeypatch):
     assert set(order) == {100, 300}
 
 
+def test_non_min_bot_can_rebuild_stale_order_after_registration_grows(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "_coord_dir", lambda: tmp_path)
+    path = mod._session_path(10086, 999004)
+    mod._ensure_session(
+        path,
+        group_id=10086,
+        user_id=1,
+        message_time=1,
+        seed="2026-05-22:10086",
+    )
+    mod._register_shard_bots(path, 1, [100])
+    data = mod._read_session(path)
+    assert data is not None
+    data["collect_until"] = time.time() - 0.01
+    data["order"] = [100]
+    data["finalized_by"] = 100
+    mod._write_session_atomic(path, data)
+
+    mod._register_shard_bots(path, 2, [300])
+    data = mod._read_session(path)
+    assert data is not None
+    data["collect_until"] = time.time() - 0.01
+    mod._write_session_atomic(path, data)
+
+    mod._try_finalize_order(path, 300)
+    data = mod._read_session(path)
+    assert data is not None
+    assert isinstance(data.get("order"), list)
+    assert set(data["order"]) == {100, 300}
+    assert data["finalized_by"] == 300
+
+
+def test_non_min_bot_does_not_clear_stale_order_without_rebuilding(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "_coord_dir", lambda: tmp_path)
+    path = mod._session_path(10086, 999005)
+    mod._ensure_session(
+        path,
+        group_id=10086,
+        user_id=1,
+        message_time=1,
+        seed="2026-05-22:10086",
+    )
+    mod._register_shard_bots(path, 1, [100, 200])
+    data = mod._read_session(path)
+    assert data is not None
+    data["collect_until"] = time.time() - 0.01
+    data["order"] = [100]
+    data["finalized_by"] = 100
+    mod._write_session_atomic(path, data)
+
+    mod._try_finalize_order(path, 200)
+    data = mod._read_session(path)
+    assert data is not None
+    assert isinstance(data.get("order"), list)
+    assert set(data["order"]) == {100, 200}
+
+
 def test_late_shard_extends_collect_window(tmp_path, monkeypatch):
     monkeypatch.setattr(mod, "_coord_dir", lambda: tmp_path)
     path = mod._session_path(10086, 999002)

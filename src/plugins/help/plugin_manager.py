@@ -13,6 +13,7 @@ from src.foundation.db import make_bot_config_repository, make_group_config_repo
 from src.foundation.db.modules import BotConfigModule, GroupConfigModule
 from src.foundation.paths import plugin_data_dir
 
+from .global_disable import resolve_global_disabled_plugin_names, sync_global_disable_remote_generation
 from .plugin_availability import is_plugin_help_available
 from .plugin_match import find_matching_plugins
 from .styles import load_config
@@ -107,39 +108,24 @@ def clear_help_cache(group_id: int | None = None):
 async def is_plugin_disabled(
     plugin_name: str, group_id: int | None = None, bot_id: int | None = None, ignore_cache: bool = False
 ) -> bool:
-    """
-    检查插件是否被禁用
-    """
-    if _pg_not_ready():
-        logger.debug("help is_plugin_disabled skipped: PostgreSQL not ready plugin={}", plugin_name)
-        return False
+    """检查插件是否被禁用（统一走 collect_disabled_plugin_names）。"""
     try:
-        if not ignore_cache and (bot_id or group_id):
-            disabled_names = await collect_disabled_plugin_names(bot_id, group_id)
-            if bot_id and await bot_config_repo.get(bot_id, ignore_cache=False) is None:
-                await bot_config_repo.get_or_create(bot_id, disabled_plugins=[])
+        if bot_id or group_id:
+            disabled_names = await collect_disabled_plugin_names(bot_id, group_id, ignore_cache=ignore_cache)
             return plugin_name in disabled_names
-
-        if bot_id:
-            bot_config = await bot_config_repo.get(bot_id, ignore_cache=ignore_cache)
-            if bot_config:
-                if plugin_name in bot_config.disabled_plugins:
-                    logger.debug(f"help plugin [{plugin_name}] disabled at bot scope bot_id={bot_id}")
-                    return True
-            else:
-                # 自愈：首次访问时自动建空配置
-                await bot_config_repo.get_or_create(bot_id, disabled_plugins=[])
-
-        if group_id:
-            group_config = await group_config_repo.get(group_id, ignore_cache=ignore_cache)
-            if group_config and plugin_name in group_config.disabled_plugins:
-                logger.debug(f"help plugin [{plugin_name}] disabled at group scope group_id={group_id}")
-                return True
-
-        return False
+        return plugin_name in merge_global_disabled_plugin_names(frozenset())
     except Exception as e:
         logger.error(f"help is_plugin_disabled failed plugin={plugin_name}: {e}")
         return False
+
+
+def merge_global_disabled_plugin_names(names: frozenset[str]) -> frozenset[str]:
+    global_names = resolve_global_disabled_plugin_names()
+    if not global_names:
+        return names
+    if not names:
+        return global_names
+    return frozenset((*names, *global_names))
 
 
 async def load_disabled_plugin_names_from_db(
@@ -148,18 +134,21 @@ async def load_disabled_plugin_names_from_db(
     *,
     ignore_cache: bool = False,
 ) -> frozenset[str]:
-    """合并 Bot 全局与群级的禁用插件名（直读仓储，不经门禁 TTL）。"""
+    """合并 Bot 全局、群级与全实例禁用插件名（直读仓储，不经门禁 TTL）。"""
     if _pg_not_ready():
-        return frozenset()
+        return merge_global_disabled_plugin_names(frozenset())
     bot_names = await load_disabled_bot_names_from_db(bot_id, ignore_cache=ignore_cache)
     if not group_id:
-        return bot_names
-    group_names = await load_disabled_group_names_from_db(group_id, ignore_cache=ignore_cache)
-    if not bot_names:
-        return group_names
-    if not group_names:
-        return bot_names
-    return frozenset((*bot_names, *group_names))
+        scoped = bot_names
+    else:
+        group_names = await load_disabled_group_names_from_db(group_id, ignore_cache=ignore_cache)
+        if not bot_names:
+            scoped = group_names
+        elif not group_names:
+            scoped = bot_names
+        else:
+            scoped = frozenset((*bot_names, *group_names))
+    return merge_global_disabled_plugin_names(scoped)
 
 
 async def load_disabled_bot_names_from_db(bot_id: int | None, *, ignore_cache: bool = False) -> frozenset[str]:
@@ -297,10 +286,11 @@ async def collect_disabled_plugin_names(
 ) -> frozenset[str]:
     """合并 Bot 全局与群级的禁用插件名，供批量判断（与逐插件调用 is_plugin_disabled 语义一致）。"""
     if _pg_not_ready():
-        return frozenset()
+        return merge_global_disabled_plugin_names(frozenset())
     if ignore_cache:
         return await load_disabled_plugin_names_from_db(bot_id, group_id, ignore_cache=True)
 
+    remote_changed = sync_global_disable_remote_generation()
     key = _disabled_gate_key(bot_id, group_id)
     while True:
         now = time.monotonic()
@@ -308,7 +298,7 @@ async def collect_disabled_plugin_names(
             hit = _disabled_gate_cache.get(key)
             if hit is not None:
                 exp, val = hit
-                if now < exp:
+                if now < exp and not remote_changed:
                     return val
                 _disabled_gate_cache.pop(key, None)
             if len(_disabled_gate_cache) > _DISABLED_GATE_CACHE_MAX:
@@ -335,11 +325,12 @@ async def collect_disabled_plugin_names(
             loader=load_disabled_group_names_from_db,
         )
         if not bot_names:
-            names = group_names
+            scoped = group_names
         elif not group_names:
-            names = bot_names
+            scoped = bot_names
         else:
-            names = frozenset((*bot_names, *group_names))
+            scoped = frozenset((*bot_names, *group_names))
+        names = merge_global_disabled_plugin_names(scoped)
 
         expire_at = time.monotonic() + _DISABLED_GATE_CACHE_TTL_SEC
         async with _disabled_gate_lock:
@@ -390,9 +381,6 @@ async def update_bot_config(bot_id: int, disabled_plugins: list[str]) -> BotConf
     await bot_config_repo.invalidate_cache()
     await invalidate_disabled_plugin_gate_cache(bot_id=bot_id)
 
-    # 清理所有缓存，因为全局设置影响所有群组
-    clear_help_cache()
-
     bot_config = await bot_config_repo.get(bot_id, ignore_cache=True)
     # 不用 assert：python -O 下 assert 会被剥离。
     # upsert_field 语义上应保证文档存在，若仍拿不到说明仓储实现出问题，显式报错
@@ -408,7 +396,6 @@ async def update_group_config(group_id: int, disabled_plugins: list[str]) -> Gro
     await group_config_repo.upsert_field(group_id, "disabled_plugins", disabled_plugins.copy())
     await group_config_repo.invalidate_cache()
     await invalidate_disabled_plugin_gate_cache(group_id=group_id)
-    clear_help_cache(group_id)
 
     group_config = await group_config_repo.get(group_id, ignore_cache=True)
     if group_config is None:

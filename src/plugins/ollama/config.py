@@ -51,7 +51,9 @@ class Config(BaseModel, extra="ignore"):
 
 def on_ollama_config_reload(cfg: Config) -> None:
     import src.plugins.ollama.chat_message as chat_pkg
+    from src.plugins.help.plugin_availability import invalidate_plugin_help_availability_cache
 
+    invalidate_plugin_help_availability_cache()
     chat_pkg.refresh_server_url(cfg)
     from src.plugins.ollama.prompts import clear_system_prompt_cache
 

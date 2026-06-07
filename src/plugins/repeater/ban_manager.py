@@ -25,16 +25,12 @@ class BanManager:
     _blacklist_answer_reserve = defaultdict(set)  # 候选黑名单（再次触发才正式封禁）
 
     @staticmethod
-    async def ban(group_id: int, bot_id: int, ban_raw_message: str, reason: str, reply_dict: dict) -> bool:
-        """
-        禁止以后回复这句话，仅对该群有效果
-        """
-
+    def find_ban_reply(group_id: int, bot_id: int, ban_raw_message: str, reply_dict: dict) -> dict | None:
         if group_id not in reply_dict:
-            return False
+            return None
 
-        ban_reply = None
         reply_data = reply_dict[group_id][bot_id][::-1]
+        ban_reply = None
 
         for reply in reply_data:
             cur_reply = reply["reply"]
@@ -54,25 +50,46 @@ class BanManager:
                         ban_reply = reply
                         break
 
-        if not ban_reply:
-            return False
+        return ban_reply
 
-        pre_keywords = ban_reply["pre_keywords"]
-        keywords = ban_reply["reply_keywords"]
+    @staticmethod
+    def iter_ban_bot_ids(group_id: int, bot_id: int, reply_dict: dict) -> list[int]:
+        bot_ids = [bot_id]
+        if group_id not in reply_dict:
+            return bot_ids
+        for bid in reply_dict[group_id]:
+            if bid not in bot_ids:
+                bot_ids.append(bid)
+        return bot_ids
 
-        # 通过 append_ban 细粒度 API 原子追加，避免整文档读-改-写。
-        # 当 Context(keywords=pre_keywords) 不存在时为 no-op（Mongo update_one matched=0）。
-        ban_reason = Ban(keywords=keywords, group_id=group_id, reason=reason, time=int(time.time()))
-        await context_repo.append_ban(pre_keywords, ban_reason)
+    @staticmethod
+    async def ban(group_id: int, bot_id: int, ban_raw_message: str, reason: str, reply_dict: dict) -> bool:
+        """
+        禁止以后回复这句话，仅对该群有效果
+        """
+        for candidate_bot_id in BanManager.iter_ban_bot_ids(group_id, bot_id, reply_dict):
+            ban_reply = BanManager.find_ban_reply(group_id, candidate_bot_id, ban_raw_message, reply_dict)
+            if not ban_reply:
+                continue
 
-        if keywords in BanManager._blacklist_answer_reserve[group_id]:
-            BanManager._blacklist_answer[group_id].add(keywords)
-            if keywords in BanManager._blacklist_answer_reserve[BanManager.BLACKLIST_FLAG]:
-                BanManager._blacklist_answer[BanManager.BLACKLIST_FLAG].add(keywords)
-        else:
-            BanManager._blacklist_answer_reserve[group_id].add(keywords)
+            pre_keywords = ban_reply["pre_keywords"]
+            keywords = ban_reply["reply_keywords"]
 
-        return True
+            # 通过 append_ban 细粒度 API 原子追加，避免整文档读-改-写。
+            # 当 Context(keywords=pre_keywords) 不存在时为 no-op（Mongo update_one matched=0）。
+            ban_reason = Ban(keywords=keywords, group_id=group_id, reason=reason, time=int(time.time()))
+            await context_repo.append_ban(pre_keywords, ban_reason)
+
+            if keywords in BanManager._blacklist_answer_reserve[group_id]:
+                BanManager._blacklist_answer[group_id].add(keywords)
+                if keywords in BanManager._blacklist_answer_reserve[BanManager.BLACKLIST_FLAG]:
+                    BanManager._blacklist_answer[BanManager.BLACKLIST_FLAG].add(keywords)
+            else:
+                BanManager._blacklist_answer_reserve[group_id].add(keywords)
+
+            return True
+
+        return False
 
     @staticmethod
     async def find_ban_keywords(context: Context | None, group_id) -> set:

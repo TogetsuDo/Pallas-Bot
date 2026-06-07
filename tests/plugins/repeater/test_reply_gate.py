@@ -19,6 +19,12 @@ def test_should_prepare_repeater_reply_skips_single_char_plaintext():
     assert should_prepare_repeater_reply(plain_text) is False
 
 
+def test_should_prepare_repeater_reply_keeps_single_char_plaintext_in_sharded_mode():
+    plain_text = "草"
+
+    assert should_prepare_repeater_reply(plain_text, sharding_active=True) is True
+
+
 def test_should_prepare_repeater_reply_keeps_normal_plaintext():
     plain_text = "你好呀"
 

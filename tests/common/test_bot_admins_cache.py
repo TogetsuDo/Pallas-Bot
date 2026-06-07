@@ -68,3 +68,22 @@ async def test_any_bot_admin_user_ids_cached_short_circuits_when_pg_not_ready(mo
 
     admins = await cache.any_bot_admin_user_ids_cached()
     assert admins == frozenset()
+
+
+@pytest.mark.asyncio
+async def test_get_bot_admins_skips_db_when_pool_under_pressure(monkeypatch):
+    from src.foundation.config import bot_admins_cache as cache
+
+    await cache.reset_bot_admins_cache()
+
+    async def fail_load(_bot_id: int):
+        raise AssertionError("should not load admins when pool is under pressure")
+
+    monkeypatch.setattr(cache, "_load_admins_db", fail_load)
+    monkeypatch.setattr(
+        "src.foundation.db.pool_budget.pg_pool_under_pressure",
+        lambda threshold=0.55: True,
+    )
+
+    admins = await cache.get_bot_admins_cached(123456)
+    assert admins == []

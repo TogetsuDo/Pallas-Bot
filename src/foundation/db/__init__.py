@@ -138,6 +138,24 @@ def _cfg(key: str, default: str = "") -> str:
     return os.getenv(key.upper(), default)
 
 
+def _cfg_int(key: str, default: int) -> int:
+    raw = _cfg(key, str(default)).strip()
+    try:
+        return int(raw)
+    except ValueError:
+        return int(default)
+
+
+def pg_session_server_settings() -> dict[str, str]:
+    """PG 会话级默认参数：即使用户未手调数据库，也尽量避免长事务挂死连接。"""
+    idle_in_tx_ms = max(1000, _cfg_int("PG_IDLE_IN_TRANSACTION_TIMEOUT_MS", 15000))
+    app_name = (_cfg("PG_APPLICATION_NAME", "PallasBot") or "PallasBot").strip() or "PallasBot"
+    return {
+        "application_name": app_name,
+        "idle_in_transaction_session_timeout": str(idle_in_tx_ms),
+    }
+
+
 async def init_mongodb_db() -> None:
     """初始化 MongoDB 连接。"""
     from nonebot.log import logger
@@ -283,6 +301,7 @@ async def init_postgresql_db() -> None:
         max_overflow=max_overflow,
         pool_recycle=pool_recycle,
         pool_pre_ping=True,
+        connect_args={"server_settings": pg_session_server_settings()},
     )
     await init_pg(engine)
     logger.info(f"{db_name} 连接成功！(pool={pool_size}+{max_overflow}, recycle={pool_recycle}s)")

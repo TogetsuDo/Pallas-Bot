@@ -14,6 +14,7 @@ _COORD_DIRS = (
     "bot_action",
     "duel_qte",
     "repeater_buffer",
+    "repeater_reply_buffer",
     "cage_duel",
     "duel_group",
     "bot_count",

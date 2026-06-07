@@ -312,10 +312,14 @@ def build_plugin_catalog_rows(
     *,
     ignored: set[str] | None = None,
     hidden: set[str] | None = None,
+    globally_disabled: set[str] | None = None,
+    global_disable_protected: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """合并磁盘插件与当前进程已加载插件（含第三方基础设施）。"""
     ignored = ignored or set()
     hidden = hidden or set()
+    globally_disabled = globally_disabled or set()
+    global_disable_protected = global_disable_protected or set()
     _, by_package = _loaded_plugin_index()
     extra_pkgs = discover_extra_plugin_packages()
     rows: list[dict[str, Any]] = []
@@ -341,6 +345,9 @@ def build_plugin_catalog_rows(
         has_config: bool,
     ) -> None:
         visible, ign, hid = _help_flags(nb_name, package)
+        ids = {nb_name, package, f"src.plugins.{package}"}
+        g_disabled = any(x in globally_disabled for x in ids if x)
+        g_protected = any(x in global_disable_protected for x in ids if x)
         rows.append({
             "name": package,
             "nb_plugin_name": nb_name,
@@ -352,6 +359,8 @@ def build_plugin_catalog_rows(
             "help_visible": visible,
             "help_ignored": ign,
             "help_hidden": hid,
+            "globally_disabled": g_disabled,
+            "global_disable_protected": g_protected,
             "plugin_source": plugin_source,
             "plugin_source_dir": plugin_source_dir,
         })

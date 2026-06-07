@@ -45,7 +45,7 @@ def test_build_heartbeat_payload_uses_runtime_version():
             "src.platform.shard.presence.count_connected_bots_for_reporting",
             return_value=1,
         ),
-        patch("src.features.community_stats.reporter.get_fleet_bot_ids", return_value=frozenset({1})),
+        patch("src.features.community_stats.reporter.get_catalog_bot_ids", return_value=frozenset({1})),
         patch(
             "src.features.community_stats.reporter.load_or_create_deployment_id",
             return_value="550e8400-e29b-41d4-a716-446655440000",

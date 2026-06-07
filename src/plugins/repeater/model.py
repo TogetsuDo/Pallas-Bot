@@ -19,6 +19,7 @@ from .config import get_repeater_config
 from .learner import Learner
 from .message_store import MessageStore
 from .responder import Responder
+from .topic_utils import filtered_recent_topics
 
 try:
     import jieba_next.analyse as jieba_analyse
@@ -248,3 +249,11 @@ class Chat:
     async def sync():
         await MessageStore._sync()
         await BanManager._sync_blacklist()
+
+    @staticmethod
+    async def merge_recent_topics(group_id: int, topics: list[str]) -> None:
+        filtered = filtered_recent_topics(topics)
+        if not filtered:
+            return
+        async with Chat._topics_lock:
+            Chat._recent_topics[group_id] += filtered

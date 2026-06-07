@@ -13,7 +13,9 @@ if TYPE_CHECKING:
 
 _BOT_ADMINS_CACHE_TTL_SEC = 45.0
 _BOT_ADMINS_CACHE_MAX = 10_000
+_BOT_ADMINS_DB_FAIL_TTL_SEC = 2.0
 _admins_cache: dict[int, tuple[float, list[int]]] = {}
+_admins_db_fail_until: dict[int, float] = {}
 _admins_lock = asyncio.Lock()
 _admins_generation: dict[int, int] = {}
 _fetch_tasks: dict[int, asyncio.Task[list[int]]] = {}
@@ -23,8 +25,23 @@ _any_bot_admin_cache: tuple[float, frozenset[int]] | None = None
 _any_bot_admin_generation = 0
 _any_bot_admin_fetch_task: asyncio.Task[frozenset[int]] | None = None
 _any_bot_admin_fetch_lock = asyncio.Lock()
+_any_bot_admin_db_fail_until: float = 0.0
 
 _repo = make_bot_config_repository()
+
+
+def mark_bot_admins_db_fail(bot_id: int) -> None:
+    _admins_db_fail_until[int(bot_id)] = time.monotonic() + _BOT_ADMINS_DB_FAIL_TTL_SEC
+
+
+def bot_admins_db_fail_active(bot_id: int) -> bool:
+    exp = _admins_db_fail_until.get(int(bot_id))
+    if exp is None:
+        return False
+    if time.monotonic() < exp:
+        return True
+    _admins_db_fail_until.pop(int(bot_id), None)
+    return False
 
 
 def _pg_not_ready() -> bool:
@@ -51,6 +68,7 @@ async def invalidate_bot_admins_cache(bot_ids: int | Iterable[int] | None = None
         async with _admins_lock:
             _admins_cache.clear()
             _admins_generation.clear()
+            _admins_db_fail_until.clear()
             _any_bot_admin_cache = None
             _any_bot_admin_generation += 1
         return
@@ -72,7 +90,17 @@ async def reset_bot_admins_cache() -> None:
 
 
 async def _load_admins_db(bot_id: int) -> list[int]:
-    doc = await _repo.get(bot_id)
+    from src.foundation.db.pool_budget import is_pg_pool_timeout_error, pg_pool_under_pressure
+
+    if pg_pool_under_pressure(threshold=0.55):
+        return []
+    try:
+        doc = await _repo.get(bot_id)
+    except Exception as exc:
+        if is_pg_pool_timeout_error(exc):
+            mark_bot_admins_db_fail(bot_id)
+            return []
+        raise
     if doc is None:
         return []
     raw = doc.admins or []
@@ -103,6 +131,9 @@ async def _await_admins_deduped(bot_id: int) -> list[int]:
 async def get_bot_admins_cached(bot_id: int) -> list[int]:
     if _pg_not_ready():
         return []
+    bot_id = int(bot_id)
+    if bot_admins_db_fail_active(bot_id):
+        return []
     while True:
         now = time.monotonic()
         async with _admins_lock:
@@ -132,10 +163,16 @@ async def get_bot_admins_cached(bot_id: int) -> list[int]:
 
 async def _load_any_bot_admin_user_ids() -> frozenset[int]:
     from src.foundation.db.pallas_console_data import list_all_bot_configs_public
+    from src.foundation.db.pool_budget import is_pg_pool_timeout_error, pg_pool_under_pressure
 
+    if pg_pool_under_pressure(threshold=0.55):
+        return frozenset()
     try:
         configs = await list_all_bot_configs_public()
-    except Exception:
+    except Exception as exc:
+        if is_pg_pool_timeout_error(exc):
+            mark_any_bot_admin_db_fail()
+            return frozenset()
         return frozenset()
 
     uids: set[int] = set()
@@ -146,6 +183,21 @@ async def _load_any_bot_admin_user_ids() -> frozenset[int]:
             except (TypeError, ValueError):
                 continue
     return frozenset(uids)
+
+
+def mark_any_bot_admin_db_fail() -> None:
+    global _any_bot_admin_db_fail_until
+    _any_bot_admin_db_fail_until = time.monotonic() + _BOT_ADMINS_DB_FAIL_TTL_SEC
+
+
+def any_bot_admin_db_fail_active() -> bool:
+    global _any_bot_admin_db_fail_until
+    if _any_bot_admin_db_fail_until <= 0:
+        return False
+    if time.monotonic() < _any_bot_admin_db_fail_until:
+        return True
+    _any_bot_admin_db_fail_until = 0.0
+    return False
 
 
 async def _await_any_bot_admin_user_ids_deduped() -> frozenset[int]:
@@ -176,6 +228,8 @@ async def any_bot_admin_user_ids_cached() -> frozenset[int]:
     global _any_bot_admin_cache
 
     if _pg_not_ready():
+        return frozenset()
+    if any_bot_admin_db_fail_active():
         return frozenset()
 
     while True:

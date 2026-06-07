@@ -289,6 +289,15 @@ def _ensure_pg_context_answer_message_reply_index(connection) -> None:
     )
 
 
+def _ensure_pg_stat_statements_extension(connection) -> None:
+    """启用 pg_stat_statements（若服务端已预加载）。失败时降级为仅无该视图的诊断。"""
+    try:
+        connection.execute(text("CREATE EXTENSION IF NOT EXISTS pg_stat_statements"))
+    except Exception:
+        # 例如服务端未配置 shared_preload_libraries；保持启动成功，由诊断层输出 unavailable。
+        pass
+
+
 def is_pg_initialized() -> bool:
     return _session_factory is not None
 
@@ -324,24 +333,26 @@ async def get_session(*, read_only: bool = False):
 
     caller = pg_session_caller_hint_entry()
     session = _session_factory()
+    # 只读路径用 AUTOCOMMIT：多段 SELECT 之间不会长期占着 idle in transaction 连接。
+    if read_only:
+        await session.connection(execution_options={"isolation_level": "AUTOCOMMIT"})
     t0 = time.monotonic()
     try:
         yield session
-        if read_only:
-            with contextlib.suppress(BaseException):
-                await session.commit()
     except BaseException:
         # CancelledError 非 Exception 子类；清理须 shield，避免 close/rollback 再被取消导致连接未归还池
-        with contextlib.suppress(BaseException):
-            await asyncio.shield(session.rollback())
+        if not read_only:
+            with contextlib.suppress(BaseException):
+                await asyncio.shield(session.rollback())
         raise
     finally:
         held_ms = (time.monotonic() - t0) * 1000.0
         if held_ms >= session_hold_warn_ms():
             note_slow_pg_session(held_ms, caller)
         try:
-            with contextlib.suppress(BaseException):
-                await asyncio.shield(session.rollback())
+            if not read_only:
+                with contextlib.suppress(BaseException):
+                    await asyncio.shield(session.rollback())
             await asyncio.shield(session.close())
         except BaseException:
             with contextlib.suppress(BaseException):
@@ -361,6 +372,7 @@ async def init_pg(engine: AsyncEngine) -> None:
         await conn.run_sync(_ensure_pg_message_group_user_time_index)
         await conn.run_sync(_ensure_pg_context_answer_reply_index)
         await conn.run_sync(_ensure_pg_context_answer_message_reply_index)
+        await conn.run_sync(_ensure_pg_stat_statements_extension)
 
 
 async def dispose_pg() -> None:
@@ -566,10 +578,16 @@ async def cached_reply_query_snapshot(
     keywords: str,
     loader,
 ) -> Context | None:
+    from src.features.corpus.find_cache import mark_reply_db_fail, reply_db_fail_active
     from src.features.corpus.reply_perf_config import reply_snapshot_max_entries, reply_snapshot_ttl_sec
+    from src.foundation.db.pool_budget import is_pg_pool_timeout_error, pg_pool_under_pressure
 
     key = (keywords or "").strip()
     if not key:
+        return None
+    if pg_pool_under_pressure(threshold=0.55):
+        return None
+    if reply_db_fail_active(key):
         return None
     now = time.monotonic()
     task: asyncio.Task[Context | None] | None = None
@@ -588,10 +606,13 @@ async def cached_reply_query_snapshot(
 
     try:
         ctx = await asyncio.shield(task)
-    except Exception:
+    except Exception as exc:
         async with _reply_query_snapshot_lock:
             if _reply_query_snapshot_inflight.get(key) is task:
                 _reply_query_snapshot_inflight.pop(key, None)
+        if is_pg_pool_timeout_error(exc):
+            mark_reply_db_fail(key)
+            return None
         raise
 
     async with _reply_query_snapshot_lock:

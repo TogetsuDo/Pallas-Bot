@@ -8,6 +8,7 @@ from src.platform.shard.coord_pending import coord_pending_snapshot_sync
 from src.platform.shard.ingress_metrics import merge_ingress_metrics
 from src.platform.shard.registry.config import is_sharding_active
 from src.platform.shard.registry.store import get_shard_registry
+from src.platform.shard.repeater_ingress_metrics import merge_repeater_ingress_metrics
 
 
 def pg_pool_estimate() -> dict[str, Any]:
@@ -64,13 +65,17 @@ def log_pg_pool_warning_if_needed() -> None:
 
 def aggregate_shard_observability() -> dict[str, Any]:
     from src.platform.shard.ingress_metrics import ingress_metrics_snapshot
+    from src.platform.shard.repeater_ingress_metrics import repeater_ingress_metrics_snapshot
 
     if not is_sharding_active():
         snap = ingress_metrics_snapshot()
+        repeater_snap = repeater_ingress_metrics_snapshot()
         return {
             "sharded": False,
             "ingress_cluster": snap,
             "ingress_process": snap,
+            "repeater_ingress_cluster": repeater_snap,
+            "repeater_ingress_process": repeater_snap,
             "coord_pending_live": coord_pending_snapshot_sync(),
             "workers": [],
             "pg_pool": pg_pool_estimate(),
@@ -80,21 +85,27 @@ def aggregate_shard_observability() -> dict[str, Any]:
 
     workers: list[dict[str, Any]] = []
     ingress_rows: list[dict[str, Any]] = []
+    repeater_rows: list[dict[str, Any]] = []
     for shard_id in iter_worker_shard_ids():
         blob = read_worker_stats_file(shard_id)
         ingress = blob.get("ingress")
+        repeater_ingress = blob.get("repeater_ingress")
         if isinstance(ingress, dict):
             ingress_rows.append(ingress)
+        if isinstance(repeater_ingress, dict):
+            repeater_rows.append(repeater_ingress)
         workers.append({
             "shard_id": int(shard_id),
             "updated_at": blob.get("updated_at"),
             "ingress": ingress if isinstance(ingress, dict) else {},
+            "repeater_ingress": repeater_ingress if isinstance(repeater_ingress, dict) else {},
             "coord_pending": blob.get("coord_pending") if isinstance(blob.get("coord_pending"), dict) else {},
         })
     coord_live = coord_pending_snapshot_sync()
     return {
         "sharded": is_sharding_active(),
         "ingress_cluster": merge_ingress_metrics(ingress_rows),
+        "repeater_ingress_cluster": merge_repeater_ingress_metrics(repeater_rows),
         "coord_pending_live": coord_live,
         "workers": workers,
         "pg_pool": pg_pool_estimate(),

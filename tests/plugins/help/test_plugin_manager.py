@@ -34,16 +34,14 @@ async def beanie_fixture():
 
 
 @pytest.mark.asyncio
-async def test_is_plugin_disabled_creates_bot_config_on_first_access(beanie_fixture):
+async def test_is_plugin_disabled_does_not_create_bot_config(beanie_fixture):
     from src.plugins.help import plugin_manager
 
-    # 首次查询时 bot config 不存在，函数应 auto-create
     result = await plugin_manager.is_plugin_disabled("foo", bot_id=12345)
     assert result is False
 
     bot_cfg = await plugin_manager.bot_config_repo.get(12345, ignore_cache=True)
-    assert bot_cfg is not None
-    assert bot_cfg.disabled_plugins == []
+    assert bot_cfg is None
 
 
 @pytest.mark.asyncio
@@ -124,8 +122,10 @@ async def test_update_group_config_roundtrip(beanie_fixture, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_collect_disabled_plugin_names_merges_bot_and_group(beanie_fixture):
-    from src.plugins.help import plugin_manager
+async def test_collect_disabled_plugin_names_merges_bot_and_group(beanie_fixture, tmp_path, monkeypatch):
+    from src.plugins.help import global_disable, plugin_manager
+
+    monkeypatch.setattr(global_disable, "plugin_data_dir", lambda _name: tmp_path)
 
     await plugin_manager.bot_config_repo.upsert_field(10, "disabled_plugins", ["g"])
     await plugin_manager.group_config_repo.upsert_field(2000, "disabled_plugins", ["c"])
@@ -134,6 +134,19 @@ async def test_collect_disabled_plugin_names_merges_bot_and_group(beanie_fixture
     for name in ("g", "c", "other"):
         exp = await plugin_manager.is_plugin_disabled(name, group_id=2000, bot_id=10, ignore_cache=True)
         assert (name in merged) is exp
+
+
+@pytest.mark.asyncio
+async def test_collect_disabled_plugin_names_merges_global(beanie_fixture, tmp_path, monkeypatch):
+    from src.plugins.help import global_disable, plugin_manager
+
+    monkeypatch.setattr(global_disable, "plugin_data_dir", lambda _name: tmp_path)
+    global_disable.save_global_disabled_plugins(["ollama"])
+
+    await plugin_manager.bot_config_repo.upsert_field(10, "disabled_plugins", ["g"])
+    await plugin_manager.group_config_repo.upsert_field(2000, "disabled_plugins", ["c"])
+    merged = await plugin_manager.collect_disabled_plugin_names(10, 2000, ignore_cache=True)
+    assert merged == frozenset({"g", "c", "ollama"})
 
 
 @pytest.mark.asyncio
@@ -223,9 +236,11 @@ async def test_collect_disabled_plugin_names_does_not_create_empty_bot_config(be
 
 
 @pytest.mark.asyncio
-async def test_collect_disabled_plugin_names_short_circuits_when_pg_not_ready(monkeypatch):
-    from src.plugins.help import plugin_manager
+async def test_collect_disabled_plugin_names_short_circuits_when_pg_not_ready(monkeypatch, tmp_path):
+    from src.plugins.help import global_disable, plugin_manager
 
+    monkeypatch.setattr(global_disable, "plugin_data_dir", lambda _name: tmp_path)
+    global_disable.save_global_disabled_plugins(["chat"])
     await plugin_manager.reset_disabled_plugin_gate_cache()
 
     async def fail_load(bot_id, group_id, *, ignore_cache=False):  # noqa: ARG001
@@ -236,7 +251,7 @@ async def test_collect_disabled_plugin_names_short_circuits_when_pg_not_ready(mo
     monkeypatch.setattr("src.foundation.db.repository_pg.is_pg_initialized", lambda: False)
 
     merged = await plugin_manager.collect_disabled_plugin_names(77, 5001)
-    assert merged == frozenset()
+    assert merged == frozenset({"chat"})
 
 
 @pytest.mark.asyncio

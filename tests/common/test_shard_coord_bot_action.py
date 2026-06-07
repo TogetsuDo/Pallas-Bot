@@ -4,6 +4,8 @@ import asyncio
 import json
 import time
 
+import pytest
+
 from src.platform.shard.coord import bot_action as mod
 
 
@@ -60,3 +62,35 @@ def test_prune_stale_bot_action_removes_overdue_open(tmp_path, monkeypatch):
         assert not done_path.is_file()
 
     asyncio.run(run())
+
+
+@pytest.mark.asyncio
+async def test_execute_local_repeater_fanout_reply_schedules_background_task(monkeypatch):
+    scheduled: list[str | None] = []
+
+    def fake_create_task(coro, *, name=None):
+        scheduled.append(name)
+        coro.close()
+
+        class _DummyTask:
+            pass
+
+        return _DummyTask()
+
+    async def fake_run_repeater_reply_for_bot(_bot_id: int, _payload: dict[str, object]) -> None:
+        await asyncio.sleep(3600)
+
+    from src.plugins.repeater import fanout_reply as fanout_mod
+
+    monkeypatch.setattr(mod.asyncio, "create_task", fake_create_task)
+    monkeypatch.setattr("nonebot.get_bots", lambda: {"300": object()})
+    monkeypatch.setattr(fanout_mod, "run_repeater_reply_for_bot", fake_run_repeater_reply_for_bot)
+
+    ok, result = await asyncio.wait_for(
+        mod._execute_local("repeater_fanout_reply", 300, {"group_id": 1}),
+        timeout=0.05,
+    )
+
+    assert ok is True
+    assert result is None
+    assert scheduled == ["repeater_fanout_reply_300"]

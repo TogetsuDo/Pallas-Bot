@@ -9,6 +9,7 @@ from src.foundation.db.context_repo_access import context_repo
 from .context_exists_cache import context_exists_for_learn, note_context_exists
 from .learner_context import group_messages_before
 from .message_store import MessageStore
+from .topic_utils import filtered_recent_topics
 
 if TYPE_CHECKING:
     from .model import ChatData
@@ -49,7 +50,7 @@ class Learner:
 
         async def _topics_callback(group_id: int, keywords_list: list[str]):
             async with topics_lock:
-                recent_topics[group_id] += [k for k in keywords_list if not k.startswith("牛牛")]
+                recent_topics[group_id] += filtered_recent_topics(keywords_list)
 
         await MessageStore.message_insert(chat_data, topics_callback=_topics_callback)
         return True

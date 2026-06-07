@@ -93,7 +93,7 @@ def install_hot_reload_config[C: BaseModel](
     """创建带缓存的 get/reload，并登记到 ``registry``。"""
     lock = Lock()
     cached: C | None = None
-    disk_rev: float | None = None
+    disk_rev: tuple[tuple[int, int], ...] | None = None
     parse = parse_env_value or default_parse_env_value
 
     def clear_cache() -> None:
@@ -108,6 +108,9 @@ def install_hot_reload_config[C: BaseModel](
         with lock:
             if disk_rev is not None and rev != disk_rev:
                 cached = None
+                from src.foundation.config.repo_settings import clear_merged_repo_settings_cache
+
+                clear_merged_repo_settings_cache()
             disk_rev = rev
             if cached is None:
                 if repo_settings_files_exist():

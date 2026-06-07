@@ -4,14 +4,12 @@ from __future__ import annotations
 
 
 def repeater_worker_handles_message(bot_id: int) -> bool:
-    """分片时仅本 worker 代表牛跑 on_message 主流程，避免同片多牛抢 message_id / learn。"""
+    """群消息入口统一放开到本 worker 本地牛，由后续去重/claim 收敛到单牛或 fanout。"""
     from src.platform.shard.registry.config import is_sharding_active
 
     if not is_sharding_active():
         return True
-    from src.platform.shard.local_representative import is_local_worker_representative
-
-    return is_local_worker_representative(bot_id)
+    return True
 
 
 def repeater_scheduler_runs_on_worker() -> bool:

@@ -1,4 +1,4 @@
-"""分片 worker：跨片同步 repeater 内存近期群消息（供 learn / 接话上下文）。"""
+"""分片 worker：跨片同步 repeater 牛牛回复缓存（供「不可以」等 ban 匹配）。"""
 
 from __future__ import annotations
 
@@ -7,20 +7,17 @@ import os
 import time
 import uuid
 from collections import deque
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from nonebot import logger
 
 from src.foundation.paths import plugin_data_dir
 from src.platform.shard.registry.config import get_shard_registry_settings, is_sharding_active
 
-if TYPE_CHECKING:
-    from src.plugins.repeater.model import ChatData
-
 _PLUGIN = "pallas_shard"
-_REDIS_CHANNEL = "pallas:repeater_buffer"
-_TTL_SEC = 90.0
-_MAX_GROUP_TAIL = 256
+_REDIS_CHANNEL = "pallas:repeater_reply_buffer"
+_TTL_SEC = 120.0
+_MAX_BOT_TAIL = 64
 _seen_event_ids: deque[str] = deque(maxlen=8000)
 _seen_set: set[str] = set()
 _redis_listener_started = False
@@ -29,7 +26,7 @@ _redis_listener_started = False
 def _coord_dir():
     from pathlib import Path
 
-    root = Path(plugin_data_dir(_PLUGIN, create=True)) / "coord" / "repeater_buffer"
+    root = Path(plugin_data_dir(_PLUGIN, create=True)) / "coord" / "repeater_reply_buffer"
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -121,31 +118,33 @@ def _registry_shard_ids() -> frozenset[int]:
     return frozenset(int(s.id) for s in reg.shards)
 
 
-def message_payload_from_chat_data(chat_data: ChatData) -> dict[str, Any]:
-    from src.plugins.repeater.topic_utils import filtered_recent_topics
-
+def reply_record_payload(group_id: int, bot_id: int, record: dict[str, Any]) -> dict[str, Any]:
     return {
-        "group_id": int(chat_data.group_id),
-        "user_id": int(chat_data.user_id),
-        "bot_id": int(chat_data.bot_id),
-        "raw_message": str(chat_data.raw_message),
-        "is_plain_text": bool(chat_data.is_plain_text),
-        "plain_text": str(chat_data.plain_text),
-        "keywords": str(chat_data.keywords),
-        "topics": filtered_recent_topics(list(getattr(chat_data, "_keywords_list", []) or [])),
-        "time": int(chat_data.time),
+        "group_id": int(group_id),
+        "bot_id": int(bot_id),
+        "time": int(record.get("time") or 0),
+        "pre_raw_message": str(record.get("pre_raw_message") or ""),
+        "pre_keywords": str(record.get("pre_keywords") or ""),
+        "reply": str(record.get("reply") or ""),
+        "reply_keywords": str(record.get("reply_keywords") or ""),
     }
 
 
-def buffer_event_envelope(chat_data: ChatData, *, event_id: str | None = None) -> dict[str, Any]:
+def buffer_event_envelope(
+    group_id: int,
+    bot_id: int,
+    record: dict[str, Any],
+    *,
+    event_id: str | None = None,
+) -> dict[str, Any]:
     return {
         "event_id": event_id or uuid.uuid4().hex,
         "source_shard_id": int(get_shard_registry_settings().shard_id),
-        "msg": message_payload_from_chat_data(chat_data),
+        "record": reply_record_payload(group_id, bot_id, record),
     }
 
 
-def publish_repeater_buffer_redis_sync(envelope: dict[str, Any]) -> bool:
+def publish_repeater_reply_buffer_redis_sync(envelope: dict[str, Any]) -> bool:
     from src.platform.coord.redis_settings import coord_redis_enabled
 
     if not coord_redis_enabled():
@@ -165,7 +164,7 @@ def publish_repeater_buffer_redis_sync(envelope: dict[str, Any]) -> bool:
         return False
 
 
-def publish_repeater_buffer_file_sync(envelope: dict[str, Any]) -> None:
+def publish_repeater_reply_buffer_file_sync(envelope: dict[str, Any]) -> None:
     event_id = str(envelope["event_id"])
     now = time.time()
     path = _coord_dir() / f"{event_id}.json"
@@ -178,41 +177,64 @@ def publish_repeater_buffer_file_sync(envelope: dict[str, Any]) -> None:
     _write_atomic(path, payload)
 
 
-def publish_repeater_buffer_event_sync(chat_data: ChatData) -> None:
+def publish_repeater_reply_record_sync(group_id: int, bot_id: int, record: dict[str, Any]) -> None:
     if not is_sharding_active():
         return
     if get_shard_registry_settings().role != "worker":
         return
-    envelope = buffer_event_envelope(chat_data)
-    if publish_repeater_buffer_redis_sync(envelope):
+    envelope = buffer_event_envelope(group_id, bot_id, record)
+    if publish_repeater_reply_buffer_redis_sync(envelope):
         return
-    publish_repeater_buffer_file_sync(envelope)
+    publish_repeater_reply_buffer_file_sync(envelope)
 
 
-def schedule_publish_repeater_buffer(chat_data: ChatData) -> None:
+def schedule_publish_repeater_reply_record(group_id: int, bot_id: int, record: dict[str, Any]) -> None:
     if not is_sharding_active():
         return
 
     async def job() -> None:
         try:
-            await asyncio.to_thread(publish_repeater_buffer_event_sync, chat_data)
+            await asyncio.to_thread(publish_repeater_reply_record_sync, group_id, bot_id, record)
         except Exception as err:
-            logger.debug(f"repeater_buffer publish: {err}")
+            logger.debug(f"repeater_reply_buffer publish: {err}")
 
     asyncio.create_task(job())
 
 
-def _message_tail_dup(group_msgs: list, msg: dict[str, Any]) -> bool:
-    uid = int(msg["user_id"])
-    t = int(msg["time"])
-    plain = str(msg.get("plain_text") or "")
-    for m in group_msgs[-8:]:
-        if int(m.user_id) == uid and int(m.time) == t and str(m.plain_text or "") == plain:
-            return True
+def _record_tail_dup(records: list, record: dict[str, Any]) -> bool:
+    t = int(record.get("time") or 0)
+    reply = str(record.get("reply") or "")
+    keywords = str(record.get("reply_keywords") or "")
+    for item in records[-8:]:
+        if int(item.get("time") or 0) == t and str(item.get("reply") or "") == reply:
+            if str(item.get("reply_keywords") or "") == keywords:
+                return True
     return False
 
 
-async def ingest_repeater_buffer_event(data: dict[str, Any]) -> None:
+async def apply_repeater_reply_record(record: dict[str, Any]) -> bool:
+    from src.plugins.repeater.model import Chat
+
+    group_id = int(record["group_id"])
+    bot_id = int(record["bot_id"])
+    entry = {
+        "time": int(record.get("time") or 0),
+        "pre_raw_message": str(record.get("pre_raw_message") or ""),
+        "pre_keywords": str(record.get("pre_keywords") or ""),
+        "reply": str(record.get("reply") or ""),
+        "reply_keywords": str(record.get("reply_keywords") or ""),
+    }
+    async with Chat._reply_lock:
+        bucket = Chat._reply_dict[group_id][bot_id]
+        if _record_tail_dup(bucket, entry):
+            return False
+        bucket.append(entry)
+        if len(bucket) > _MAX_BOT_TAIL:
+            del bucket[: len(bucket) - _MAX_BOT_TAIL]
+    return True
+
+
+async def ingest_repeater_reply_buffer_event(data: dict[str, Any]) -> None:
     event_id = str(data.get("event_id") or "")
     if not event_id or event_id in _seen_set:
         return
@@ -221,44 +243,14 @@ async def ingest_repeater_buffer_event(data: dict[str, Any]) -> None:
     if source == local_shard:
         _remember_event(event_id)
         return
-    msg = data.get("msg")
-    if not isinstance(msg, dict):
+    record = data.get("record")
+    if not isinstance(record, dict):
         return
-    await apply_repeater_buffer_message(msg)
+    await apply_repeater_reply_record(record)
     _remember_event(event_id)
 
 
-async def apply_repeater_buffer_message(msg: dict[str, Any]) -> bool:
-    from src.foundation.db import Message as MessageModel
-    from src.plugins.repeater.message_store import MessageStore
-    from src.plugins.repeater.model import Chat
-
-    group_id = int(msg["group_id"])
-    async with MessageStore._message_lock:
-        group_msgs = MessageStore._message_dict[group_id]
-        if _message_tail_dup(group_msgs, msg):
-            return False
-        group_msgs.append(
-            MessageModel.model_construct(
-                group_id=group_id,
-                user_id=int(msg["user_id"]),
-                bot_id=int(msg["bot_id"]),
-                raw_message=str(msg["raw_message"]),
-                is_plain_text=bool(msg["is_plain_text"]),
-                plain_text=str(msg["plain_text"]),
-                keywords=str(msg["keywords"]),
-                time=int(msg["time"]),
-            )
-        )
-        if len(group_msgs) > _MAX_GROUP_TAIL:
-            del group_msgs[: len(group_msgs) - _MAX_GROUP_TAIL]
-    topics = msg.get("topics")
-    if isinstance(topics, list):
-        await Chat.merge_recent_topics(group_id, [str(item) for item in topics])
-    return True
-
-
-async def poll_repeater_buffer_pending() -> None:
+async def poll_repeater_reply_buffer_pending() -> None:
     if not is_sharding_active():
         return
     if get_shard_registry_settings().role != "worker":
@@ -289,14 +281,14 @@ async def poll_repeater_buffer_pending() -> None:
             except OSError:
                 pass
             continue
-        msg = data.get("msg")
-        if not isinstance(msg, dict):
+        record = data.get("record")
+        if not isinstance(record, dict):
             try:
                 path.unlink(missing_ok=True)
             except OSError:
                 pass
             continue
-        await ingest_repeater_buffer_event(data)
+        await ingest_repeater_reply_buffer_event(data)
 
         def mark_applied(d: dict[str, Any]) -> None:
             applied = d.setdefault("applied_shard_ids", [])
@@ -313,7 +305,7 @@ async def poll_repeater_buffer_pending() -> None:
                 pass
 
 
-async def repeater_buffer_redis_listen_loop() -> None:
+async def repeater_reply_buffer_redis_listen_loop() -> None:
     from src.platform.coord.redis_claim import get_coord_redis_client
     from src.platform.coord.redis_settings import coord_redis_enabled
 
@@ -347,9 +339,9 @@ async def repeater_buffer_redis_listen_loop() -> None:
                 except json.JSONDecodeError:
                     continue
                 if isinstance(data, dict):
-                    await ingest_repeater_buffer_event(data)
+                    await ingest_repeater_reply_buffer_event(data)
         except Exception as err:
-            logger.debug(f"repeater_buffer redis listen: {err}")
+            logger.debug(f"repeater_reply_buffer redis listen: {err}")
             await asyncio.sleep(2.0)
         finally:
             if pubsub is not None:
@@ -359,7 +351,7 @@ async def repeater_buffer_redis_listen_loop() -> None:
                     pass
 
 
-def start_repeater_buffer_redis_listener() -> None:
+def start_repeater_reply_buffer_redis_listener() -> None:
     global _redis_listener_started
     if _redis_listener_started or not is_sharding_active():
         return
@@ -370,10 +362,10 @@ def start_repeater_buffer_redis_listener() -> None:
     if not coord_redis_enabled():
         return
     _redis_listener_started = True
-    asyncio.create_task(repeater_buffer_redis_listen_loop())
+    asyncio.create_task(repeater_reply_buffer_redis_listen_loop())
 
 
-async def prune_stale_repeater_buffer_files() -> None:
+async def prune_stale_repeater_reply_buffer_files() -> None:
     now = time.time()
     for path in _coord_dir().glob("*.json"):
         row = await asyncio.to_thread(_read, path)

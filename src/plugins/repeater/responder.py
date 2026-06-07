@@ -11,9 +11,11 @@ from nonebot.adapters.onebot.v11 import Message
 from src.foundation.config import BotConfig
 from src.foundation.db import Answer
 from src.foundation.db.context_repo_access import context_repo
+from src.foundation.db.pool_budget import is_pg_pool_timeout_error, pg_pool_under_pressure
 
 from .ban_manager import BanManager
 from .config import get_repeater_config
+from .topic_utils import filtered_recent_topics
 
 if TYPE_CHECKING:
     from .model import ChatData
@@ -75,9 +77,13 @@ class Responder:
     @staticmethod
     def should_skip_context_lookup(chat_data: "ChatData", keywords: str) -> bool:
         if getattr(chat_data, "is_plain_text", False):
+            from src.platform.shard.registry.config import is_sharding_active
+
             if getattr(chat_data, "to_me", False):
                 return False
             plain = str(getattr(chat_data, "plain_text", "") or "").strip()
+            if is_sharding_active():
+                return not plain
             keywords_len = int(getattr(chat_data, "keywords_len", 0) or 0)
             if keywords_len == 0:
                 return 0 < len(plain) <= Responder.EMPTY_KEYWORDS_PLAIN_SKIP_LEN
@@ -106,7 +112,10 @@ class Responder:
         """
         # 不回复太短的对话，大部分是“？”、“草”
         if chat_data.is_plain_text and len(chat_data.plain_text) < 2:
-            return None
+            from src.platform.shard.registry.config import is_sharding_active
+
+            if not is_sharding_active():
+                return None
 
         from .message_store import MessageStore
 
@@ -148,6 +157,8 @@ class Responder:
 
         raw_message = chat_data.raw_message
         keywords = chat_data.keywords
+        from .reply_record_sync import publish_reply_record
+
         async with reply_lock:
             group_bot_replies.append({
                 "time": int(time.time()),
@@ -170,13 +181,12 @@ class Responder:
                             "reply": item,
                             "reply_keywords": answer_keywords,
                         })
+                        publish_reply_record(group_id, bot_id, group_bot_replies[-1])
                     if "[CQ:" not in item:
                         async with topics_lock:
-                            recent_topics[group_id] += [
-                                k for k in answer_keywords.split(" ") if not k.startswith("牛牛")
-                            ]
+                            recent_topics[group_id] += filtered_recent_topics(answer_keywords.split(" "))
                     async with topics_lock:
-                        recent_topics[group_id] += [k for k in chat_data._keywords_list if not k.startswith("牛牛")]
+                        recent_topics[group_id] += filtered_recent_topics(chat_data._keywords_list)
                     # if "[CQ:" not in item and len(item) > Chat.DRUNK_TTS_THRESHOLD and \
                     #    await self.config.drunkenness():
                     #     yield Message(Chat._text_to_speech(item))
@@ -236,6 +246,9 @@ class Responder:
             for item in reply_data:
                 if item["reply"] == raw_message:
                     item["reply"] = new_msg
+                    from .reply_record_sync import publish_reply_record
+
+                    publish_reply_record(group_id, bot_id, item)
                     return True
         return False
 
@@ -285,11 +298,31 @@ class Responder:
             )
             return None
 
+        if pg_pool_under_pressure(threshold=0.55):
+            logger.debug(
+                "repeater.skip_reply_context pg_pool_pressure group_id={} bot_id={} kw_len={}",
+                group_id,
+                bot_id,
+                len(keywords),
+            )
+            return None
+
         find_reply = getattr(context_repo, "find_by_keywords_for_reply", None)
-        if callable(find_reply):
-            context = await find_reply(keywords)
-        else:
-            context = await context_repo.find_by_keywords(keywords)
+        try:
+            if callable(find_reply):
+                context = await find_reply(keywords)
+            else:
+                context = await context_repo.find_by_keywords(keywords)
+        except Exception as exc:
+            if is_pg_pool_timeout_error(exc):
+                logger.debug(
+                    "repeater.skip_reply_context db_timeout group_id={} bot_id={} kw_len={}",
+                    group_id,
+                    bot_id,
+                    len(keywords),
+                )
+                return None
+            raise
 
         if not context:
             return None

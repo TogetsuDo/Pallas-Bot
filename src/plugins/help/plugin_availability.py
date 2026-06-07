@@ -10,16 +10,31 @@ _CONFIG_GATED: dict[str, tuple[str, str, str]] = {
     "ollama": ("src.plugins.ollama.config", "get_ollama_config", "ollama_enable"),
 }
 
+_avail_cache: dict[str, bool] | None = None
+
+
+def invalidate_plugin_help_availability_cache() -> None:
+    global _avail_cache
+    _avail_cache = None
+
 
 def is_plugin_help_available(plugin_name: str) -> bool:
     gate = _CONFIG_GATED.get((plugin_name or "").strip())
     if gate is None:
         return True
+    global _avail_cache
+    if _avail_cache is None:
+        _avail_cache = {}
+    cached = _avail_cache.get(plugin_name)
+    if cached is not None:
+        return cached
     module_path, getter_name, field = gate
     try:
         mod = importlib.import_module(module_path)
         getter = getattr(mod, getter_name)
         cfg = getter()
-        return bool(getattr(cfg, field, False))
+        result = bool(getattr(cfg, field, False))
     except Exception:
-        return False
+        result = False
+    _avail_cache[plugin_name] = result
+    return result

@@ -22,6 +22,7 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule, to_me
 from nonebot.typing import T_State
 
+from src.features.ban_gate.snapshot import patch_group_banned, patch_user_banned
 from src.features.cmd_perm import (
     group_message_permission_for_command,
     private_message_permission_for_command,
@@ -34,7 +35,7 @@ from src.features.cmd_perm.metadata_defaults import (
 from src.features.cmd_perm.metadata_text import SCENE_AUTO, SCENE_GROUP, SCENE_PRIVATE, join_usage, usage_line
 from src.foundation.config import BotConfig, GroupConfig, UserConfig
 from src.foundation.paths import plugin_data_dir
-from src.plugins.blacklist import invalidate_user_ban_gate_cache
+from src.plugins.blacklist import invalidate_group_ban_gate_cache, invalidate_user_ban_gate_cache
 from src.shared.utils import HTTPXClient, is_bot_admin
 
 from .config import Config, plugin_config
@@ -537,4 +538,7 @@ async def handle_notice(event: _NoticeEvent):
         if plugin_config.enable_kick_ban:
             await GroupConfig(event.group_id).ban()
             await UserConfig(event.operator_id).ban()
+            await patch_group_banned(event.group_id, True)
+            await patch_user_banned(event.operator_id, True)
+            await invalidate_group_ban_gate_cache(event.group_id)
             await invalidate_user_ban_gate_cache(event.operator_id)

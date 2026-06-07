@@ -141,6 +141,9 @@ class Speaker:
                     "reply": speak,
                     "reply_keywords": Speaker.SPEAK_FLAG,
                 })
+                from .reply_record_sync import publish_reply_record
+
+                publish_reply_record(group_id, bot_id, group_replies[bot_id][-1])
 
             speak_list = [
                 Message(speak),

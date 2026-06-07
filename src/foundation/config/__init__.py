@@ -303,6 +303,9 @@ class GroupConfig(Config):
         """
         await self._update("banned", True)
 
+    async def unban(self) -> None:
+        await self._update("banned", False)
+
     async def is_banned(self) -> bool:
         """
         群是否被拉黑

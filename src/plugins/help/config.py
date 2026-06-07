@@ -98,7 +98,11 @@ class Config(BaseModel, extra="ignore"):
 
 def on_help_config_reload(cfg: Config) -> None:
     import src.plugins.help as help_pkg
+    from src.plugins.help.plugin_availability import invalidate_plugin_help_availability_cache
+    from src.plugins.help.renderer import invalidate_help_image_cache_suffix
 
+    invalidate_plugin_help_availability_cache()
+    invalidate_help_image_cache_suffix()
     help_pkg.refresh_style_cache(cfg)
 
 

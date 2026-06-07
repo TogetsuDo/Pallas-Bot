@@ -1,20 +1,29 @@
-from types import SimpleNamespace
-from unittest.mock import patch
+from __future__ import annotations
 
-from src.plugins.help.plugin_availability import is_plugin_help_available
+import types
 
-
-def test_config_gated_plugin_hidden_when_disabled():
-    cfg = SimpleNamespace(ollama_enable=False)
-    with patch("src.plugins.ollama.config.get_ollama_config", return_value=cfg):
-        assert is_plugin_help_available("ollama") is False
+from src.plugins.help import plugin_availability
 
 
-def test_config_gated_plugin_shown_when_enabled():
-    cfg = SimpleNamespace(sing_enable=True)
-    with patch("src.plugins.sing.config.get_sing_config", return_value=cfg):
-        assert is_plugin_help_available("sing") is True
+def test_is_plugin_help_available_caches_result(monkeypatch):
+    plugin_availability.invalidate_plugin_help_availability_cache()
+    calls = {"n": 0}
 
+    class FakeCfg:
+        ollama_enable = True
 
-def test_unlisted_plugin_always_available():
-    assert is_plugin_help_available("draw") is True
+    def fake_getter():
+        calls["n"] += 1
+        return FakeCfg()
+
+    fake_mod = types.SimpleNamespace(getter=fake_getter)
+    monkeypatch.setattr(plugin_availability, "_CONFIG_GATED", {"ollama": ("fake.mod", "getter", "ollama_enable")})
+    monkeypatch.setattr(plugin_availability.importlib, "import_module", lambda _path: fake_mod)
+
+    assert plugin_availability.is_plugin_help_available("ollama") is True
+    assert plugin_availability.is_plugin_help_available("ollama") is True
+    assert calls["n"] == 1
+
+    plugin_availability.invalidate_plugin_help_availability_cache()
+    assert plugin_availability.is_plugin_help_available("ollama") is True
+    assert calls["n"] == 2

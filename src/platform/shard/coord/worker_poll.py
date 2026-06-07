@@ -22,7 +22,7 @@ def coord_dirs_have_pending_json() -> bool:
     root = Path(plugin_data_dir("pallas_shard", create=False)) / "coord"
     if not root.is_dir():
         return False
-    for sub in ("bot_action", "duel_qte", "repeater_buffer"):
+    for sub in ("bot_action", "duel_qte", "repeater_buffer", "repeater_reply_buffer"):
         d = root / sub
         if d.is_dir() and any(d.glob("*.json")):
             return True
@@ -43,6 +43,10 @@ async def shard_coord_worker_poll_loop() -> None:
         poll_repeater_buffer_pending,
         prune_stale_repeater_buffer_files,
     )
+    from src.platform.shard.coord.repeater_reply_buffer import (
+        poll_repeater_reply_buffer_pending,
+        prune_stale_repeater_reply_buffer_files,
+    )
 
     tick = 0
     while True:
@@ -55,6 +59,10 @@ async def shard_coord_worker_poll_loop() -> None:
                         await poll_repeater_buffer_pending()
                     except Exception as buf_err:
                         logger.debug(f"shard_coord repeater_buffer poll: {buf_err}")
+                    try:
+                        await poll_repeater_reply_buffer_pending()
+                    except Exception as reply_buf_err:
+                        logger.debug(f"shard_coord repeater_reply_buffer poll: {reply_buf_err}")
                     if coord_dirs_have_pending_json():
                         await poll_duel_qte_pending(local_ids)
                 tick += 1
@@ -63,6 +71,7 @@ async def shard_coord_worker_poll_loop() -> None:
                     await prune_stale_duel_qte_files()
                     await prune_stale_bot_action_files()
                     await prune_stale_repeater_buffer_files()
+                    await prune_stale_repeater_reply_buffer_files()
                     await prune_stale_cage_duel_files()
                     await prune_stale_bot_count_files()
                     await prune_stale_duel_group_files()
@@ -80,9 +89,11 @@ def start_shard_coord_worker_watcher() -> None:
     if get_shard_registry_settings().role != "worker":
         return
     from src.platform.shard.coord.repeater_buffer import start_repeater_buffer_redis_listener
+    from src.platform.shard.coord.repeater_reply_buffer import start_repeater_reply_buffer_redis_listener
 
     _started = True
     start_repeater_buffer_redis_listener()
+    start_repeater_reply_buffer_redis_listener()
     asyncio.create_task(shard_coord_worker_poll_loop())
 
 

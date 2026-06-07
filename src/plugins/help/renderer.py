@@ -1,5 +1,6 @@
 import hashlib
 import io
+import time
 from pathlib import Path
 
 import pillowmd
@@ -14,6 +15,15 @@ from .pillowmd_bold import apply_help_light_bold_patch
 from .styles import get_default_style
 
 apply_help_light_bold_patch()
+
+_STYLE_SUFFIX_TTL_SEC = 60.0
+_style_suffix_cache: tuple[float, str] = (0.0, "")
+_HELP_CACHE_FILES_PER_DIR_MAX = 20
+
+
+def invalidate_help_image_cache_suffix() -> None:
+    global _style_suffix_cache
+    _style_suffix_cache = (0.0, "")
 
 
 def _help_style_files_revision() -> str:
@@ -41,7 +51,7 @@ def _help_style_files_revision() -> str:
     return ";".join(parts) if parts else "none"
 
 
-def _help_image_cache_suffix() -> str:
+def _compute_help_image_cache_suffix() -> str:
     from .config import get_help_config
 
     cfg = get_help_config()
@@ -63,6 +73,17 @@ def _help_image_cache_suffix() -> str:
     except OSError:
         paint_mtime = 0
     return f"{base}|pm={paint_mtime}"
+
+
+def _help_image_cache_suffix() -> str:
+    now = time.monotonic()
+    global _style_suffix_cache
+    cached_at, cached = _style_suffix_cache
+    if cached and now - cached_at < _STYLE_SUFFIX_TTL_SEC:
+        return cached
+    suffix = _compute_help_image_cache_suffix()
+    _style_suffix_cache = (now, suffix)
+    return suffix
 
 
 def resize_image_if_needed(image, max_width=1200, max_height=2800):
@@ -167,6 +188,50 @@ def save_image_to_cache(image_data: bytes, markdown_content: str, style_name: st
     """将图片保存到本地"""
     cache_path = get_cache_path(markdown_content, style_name, group_id)
     cache_path.write_bytes(image_data)
+    _prune_help_cache_dir(cache_path.parent, keep=_HELP_CACHE_FILES_PER_DIR_MAX, current=cache_path)
+
+
+def _prune_help_cache_dir(cache_dir: Path, *, keep: int, current: Path) -> None:
+    if keep < 1:
+        keep = 1
+    try:
+        pngs = [p for p in cache_dir.glob("*.png") if p.is_file()]
+    except OSError:
+        return
+    if len(pngs) <= keep:
+        return
+
+    def _sort_key(path: Path) -> tuple[int, str]:
+        try:
+            mtime_ns = path.stat().st_mtime_ns
+        except OSError:
+            mtime_ns = 0
+        return (mtime_ns, path.name)
+
+    try:
+        current_resolved = current.resolve()
+    except OSError:
+        current_resolved = current
+    survivors = {current_resolved}
+    remaining = keep - 1
+    if remaining > 0:
+        for path in sorted(pngs, key=_sort_key, reverse=True):
+            try:
+                resolved = path.resolve()
+            except OSError:
+                resolved = path
+            if resolved == current_resolved:
+                continue
+            survivors.add(resolved)
+            remaining -= 1
+            if remaining == 0:
+                break
+    for path in pngs:
+        try:
+            if path.resolve() not in survivors:
+                path.unlink(missing_ok=True)
+        except OSError:
+            continue
 
 
 async def _render_markdown(

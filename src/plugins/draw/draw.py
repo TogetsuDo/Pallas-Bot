@@ -13,10 +13,12 @@ from nonebot.params import CommandArg
 from nonebot.permission import SUPERUSER
 
 from src.features.cmd_perm import group_message_permission_for_command
+from src.features.message_scrub import is_message_scrub_blocked_async
+from src.features.message_scrub.log_preview import scrub_intercept_log_preview
 from src.foundation.config import GroupConfig
 from src.platform.multi_bot.group import (
-    claim_group_handler,
     try_begin_group_owned_gate,
+    try_claim_group_message_once,
 )
 
 from .config import ImageApiBackend, active_image_gen_settings, image_gen_config
@@ -213,6 +215,17 @@ async def pallas_draw_handle(bot: Bot, event: GroupMessageEvent, args: Message =
     if not await draw_group_cooldown_ready(group_id):
         return
 
+    if await is_message_scrub_blocked_async(
+        plain_text=event.get_plaintext(),
+        raw_message=event.raw_message,
+    ):
+        pv = scrub_intercept_log_preview(event.get_plaintext(), event.raw_message)
+        logger.info(
+            f"bot [{event.self_id}] draw command skipped (message_scrub) in group [{event.group_id}] "
+            f"user [{event.user_id}] msg_id [{event.message_id}] preview [{pv}]"
+        )
+        return
+
     backends = active_image_gen_settings().api_backends()
     if not backends or not any((b.model or "").strip() for b in backends):
         await pallas_draw.finish(
@@ -270,7 +283,13 @@ async def pallas_draw_handle(bot: Bot, event: GroupMessageEvent, args: Message =
             )
         )
 
-    if not await claim_group_handler("draw", event, bot_id):
+    if not await try_claim_group_message_once(
+        "draw",
+        event.group_id,
+        event.user_id,
+        event.get_plaintext(),
+        event.time,
+    ):
         return
 
     if not await acquire_draw_pending_slot():

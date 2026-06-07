@@ -7,6 +7,13 @@ import pytest
 from src.foundation.config import repo_settings as rs
 
 
+@pytest.fixture(autouse=True)
+def clear_repo_settings_cache():
+    rs.clear_merged_repo_settings_cache()
+    yield
+    rs.clear_merged_repo_settings_cache()
+
+
 def test_merged_prefers_webui_over_legacy_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     legacy = tmp_path / ".env"
     legacy.write_text('FOO=from_dotenv\n', encoding="utf-8")
@@ -54,7 +61,25 @@ def test_upsert_writes_webui_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     data = json.loads(webui.read_text(encoding="utf-8"))
     assert data["env"]["BAR"] == "2"
     assert os.environ.get("BAR") == "2"
+    assert rs.repo_env_raw_value("BAR") == "2"
     os.environ.pop("BAR", None)
+
+
+def test_merged_repo_settings_cache_by_disk_revision(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    webui = tmp_path / "webui.json"
+    webui.write_text(json.dumps({"env": {"FOO": "v1"}}), encoding="utf-8")
+    monkeypatch.setattr(rs, "repo_webui_settings_path", lambda: webui)
+    monkeypatch.setattr(rs, "repo_config_path", lambda: tmp_path / "missing.toml")
+    monkeypatch.setattr(rs, "repo_env_path", lambda: tmp_path / "missing.env")
+    monkeypatch.setattr(rs, "_REPO_ROOT", tmp_path)
+    rs.clear_merged_repo_settings_cache()
+    first = rs.merged_repo_settings_upper()
+    second = rs.merged_repo_settings_upper()
+    assert first is second
+    webui.write_text(json.dumps({"env": {"FOO": "v2_extra"}}), encoding="utf-8")
+    third = rs.merged_repo_settings_upper()
+    assert third is not first
+    assert third["FOO"] == "v2_extra"
 
 
 def test_bootstrap_flatten(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

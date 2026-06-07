@@ -58,7 +58,13 @@ class Config(BaseModel, extra="ignore"):
     )
 
 
-plugin_webui = install_hot_reload_config(Config, config_module=__name__)
+def on_sing_config_reload(cfg: Config) -> None:
+    from src.plugins.help.plugin_availability import invalidate_plugin_help_availability_cache
+
+    invalidate_plugin_help_availability_cache()
+
+
+plugin_webui = install_hot_reload_config(Config, config_module=__name__, on_reload=on_sing_config_reload)
 get_sing_config = plugin_webui.get
 reload_sing_config = plugin_webui.reload
 clear_sing_config_cache = plugin_webui.clear_cache

@@ -47,6 +47,8 @@ db = "PallasBot"
 # PostgreSQL（db_backend=postgresql 时）：分片约 (worker+hub) 进程 × (pool+overflow)，建议单进程 ≤20
 # PG_POOL_SIZE = "12"
 # PG_MAX_OVERFLOW = "8"
+# PG_IDLE_IN_TRANSACTION_TIMEOUT_MS = "15000"  # 默认 15s；防止异常只读事务长期占连接
+# PG_APPLICATION_NAME = "PallasBot"
 
 # 联邦控制面（Phase 2 ingress；协调 Redis 可手写或 bootstrap 下发）
 # [control_plane]

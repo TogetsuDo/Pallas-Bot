@@ -222,13 +222,8 @@ def _try_finalize_order(path: Path, self_bot_id: int) -> dict[str, Any] | None:
                 order_ids = {int(x) for x in existing}
             except (TypeError, ValueError):
                 order_ids = set()
-            reg_set = set(registered)
-            if order_ids == reg_set:
+            if order_ids == set(registered):
                 return
-            data["order"] = None
-            data.pop("finalized_by", None)
-        if min(registered) != self_bot_id:
-            return
         order = list(registered)
         seed = str(data.get("seed") or "")
         random.Random(seed).shuffle(order)

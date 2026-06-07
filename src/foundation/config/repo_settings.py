@@ -272,9 +272,9 @@ def _load_legacy_dotenv_upper() -> dict[str, str]:
     return merged
 
 
-def repo_settings_disk_revision() -> float:
-    """磁盘配置源最新 mtime（hub 写入 ``webui.json`` 后 worker 可据此失效缓存）。"""
-    rev = 0.0
+def repo_settings_disk_revision() -> tuple[tuple[int, int], ...]:
+    """各磁盘配置源的 (mtime_ns, size)；hub 写入 webui.json 后 worker 可据此失效缓存。"""
+    parts: list[tuple[int, int]] = []
     for path in (
         repo_config_path(),
         repo_webui_settings_path(),
@@ -282,12 +282,27 @@ def repo_settings_disk_revision() -> float:
         _REPO_ROOT / f".env.{nonebot_repo_dotenv_environment()}",
     ):
         if path.is_file():
-            rev = max(rev, path.stat().st_mtime)
-    return rev
+            st = path.stat()
+            parts.append((st.st_mtime_ns, st.st_size))
+    return tuple(parts)
+
+
+_merged_settings_cache: dict[str, str] | None = None
+_merged_settings_cache_rev: tuple[tuple[int, int], ...] | None = None
+
+
+def clear_merged_repo_settings_cache() -> None:
+    global _merged_settings_cache, _merged_settings_cache_rev
+    _merged_settings_cache = None
+    _merged_settings_cache_rev = None
 
 
 def merged_repo_settings_upper() -> dict[str, str]:
-    """合并磁盘配置，键名为大写；每次调用重新读盘。"""
+    """合并磁盘配置，键名为大写；同进程内按磁盘 revision 缓存，避免热路径反复读盘。"""
+    global _merged_settings_cache, _merged_settings_cache_rev
+    rev = repo_settings_disk_revision()
+    if _merged_settings_cache is not None and _merged_settings_cache_rev == rev:
+        return _merged_settings_cache
     merged: dict[str, str] = {}
     for part in (
         _load_pallas_toml_upper,
@@ -295,6 +310,8 @@ def merged_repo_settings_upper() -> dict[str, str]:
         _load_webui_json_upper,
     ):
         merged.update(part())
+    _merged_settings_cache = merged
+    _merged_settings_cache_rev = rev
     return merged
 
 
@@ -365,6 +382,7 @@ def upsert_repo_settings_items(items: dict[str, str]) -> None:
         json.dumps(doc, ensure_ascii=False, indent=2) + "\n",
     )
     export_webui_inspection_toml(env, doc["sections"])
+    clear_merged_repo_settings_cache()
     for k, v in items.items():
         key = (k or "").strip().upper()
         if key:
@@ -394,6 +412,7 @@ def remove_repo_settings_keys(keys: list[str]) -> None:
         json.dumps(doc, ensure_ascii=False, indent=2) + "\n",
     )
     export_webui_inspection_toml(env, doc["sections"])
+    clear_merged_repo_settings_cache()
 
 
 def upsert_env_dotenv_items(items: dict[str, str]) -> None:

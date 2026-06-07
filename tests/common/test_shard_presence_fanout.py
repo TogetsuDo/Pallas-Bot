@@ -117,3 +117,47 @@ def test_resolve_fanout_gate_uses_single_bot_list_lookup(monkeypatch):
 
     asyncio.run(run())
     assert calls == [1]
+
+
+def test_repeater_can_attempt_reply_uses_any_ready_fanout_bot(monkeypatch):
+    monkeypatch.setattr(fanout_mod, "repeater_fanout_enabled", lambda: True)
+    monkeypatch.setattr(fanout_mod, "list_fanout_bot_ids", lambda _gid: asyncio.sleep(0, result=[100, 200]))
+
+    cooldowns = {100: False, 200: True}
+
+    class _FakeBotConfig:
+        def __init__(self, bot_id: int, group_id: int = 0) -> None:
+            self.bot_id = bot_id
+            self.group_id = group_id
+
+        async def is_cooldown(self, action_type: str) -> bool:
+            assert action_type == "repeat"
+            return cooldowns[self.bot_id]
+
+    monkeypatch.setattr(fanout_mod, "BotConfig", _FakeBotConfig)
+
+    async def run() -> None:
+        assert await fanout_mod.repeater_can_attempt_reply(100, 1) is True
+
+    asyncio.run(run())
+
+
+def test_repeater_can_attempt_reply_rejects_when_no_fanout_bot_ready(monkeypatch):
+    monkeypatch.setattr(fanout_mod, "repeater_fanout_enabled", lambda: True)
+    monkeypatch.setattr(fanout_mod, "list_fanout_bot_ids", lambda _gid: asyncio.sleep(0, result=[100, 200]))
+
+    class _FakeBotConfig:
+        def __init__(self, bot_id: int, group_id: int = 0) -> None:
+            self.bot_id = bot_id
+            self.group_id = group_id
+
+        async def is_cooldown(self, action_type: str) -> bool:
+            assert action_type == "repeat"
+            return False
+
+    monkeypatch.setattr(fanout_mod, "BotConfig", _FakeBotConfig)
+
+    async def run() -> None:
+        assert await fanout_mod.repeater_can_attempt_reply(100, 1) is False
+
+    asyncio.run(run())

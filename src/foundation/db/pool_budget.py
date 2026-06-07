@@ -2,12 +2,33 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
 from typing import Any
 
-from src.foundation.config.repo_settings import repo_env_raw_value
+from src.foundation.config.repo_settings import repo_env_raw_value, repo_settings_disk_revision
+
+_POOL_SNAPSHOT_TTL_SEC = 0.12
+_capacity_cache: int | None = None
+_capacity_rev: tuple[tuple[int, int], ...] | None = None
+_snapshot_cache: dict[str, int] | None = None
+_snapshot_at: float = 0.0
+
+
+def clear_pool_budget_runtime_cache() -> None:
+    global _capacity_cache, _capacity_rev, _snapshot_cache, _snapshot_at
+    _capacity_cache = None
+    _capacity_rev = None
+    _snapshot_cache = None
+    _snapshot_at = 0.0
 
 
 def pg_pool_capacity() -> int:
+    global _capacity_cache, _capacity_rev
+    rev = repo_settings_disk_revision()
+    if _capacity_cache is not None and _capacity_rev == rev:
+        return _capacity_cache
+
     def cfg(key: str, default: str) -> int:
         raw = repo_env_raw_value(key)
         try:
@@ -15,13 +36,23 @@ def pg_pool_capacity() -> int:
         except ValueError:
             return int(default)
 
-    return cfg("PG_POOL_SIZE", "10") + cfg("PG_MAX_OVERFLOW", "20")
+    capacity = cfg("PG_POOL_SIZE", "10") + cfg("PG_MAX_OVERFLOW", "20")
+    _capacity_cache = capacity
+    _capacity_rev = rev
+    return capacity
 
 
 def pg_pool_snapshot() -> dict[str, int] | None:
+    global _snapshot_cache, _snapshot_at
+    now = time.monotonic()
+    if _snapshot_cache is not None and (now - _snapshot_at) < _POOL_SNAPSHOT_TTL_SEC:
+        return _snapshot_cache
     from src.foundation.db.repository_pg import pg_pool_live_stats
 
-    return pg_pool_live_stats()
+    snap = pg_pool_live_stats()
+    _snapshot_cache = snap
+    _snapshot_at = now
+    return snap
 
 
 def pg_pool_checked_out() -> int | None:
@@ -48,6 +79,17 @@ def pg_pool_under_pressure(*, threshold: float = 0.75) -> bool:
     return util >= threshold
 
 
+def is_pg_pool_timeout_error(exc: BaseException) -> bool:
+    """SQLAlchemy QueuePool 等待连接超时等，接话热路径应快速放弃而非占满 matcher 墙钟。"""
+    if isinstance(exc, (TimeoutError, asyncio.TimeoutError)):
+        return True
+    exc_type = type(exc)
+    if exc_type.__module__.startswith("sqlalchemy") and exc_type.__name__ == "TimeoutError":
+        return True
+    msg = str(exc)
+    return "QueuePool limit" in msg or "connection timed out" in msg
+
+
 def cap_by_pg_pool(requested: int, *, workload_fraction: float = 0.30) -> int:
     """按池容量上限裁剪后台并发（至少 1，不超过 requested）。"""
     capacity = pg_pool_capacity()
@@ -69,10 +111,11 @@ def remote_corpus_concurrency_limit() -> int:
 def pool_budget_status() -> dict[str, Any]:
     snap = pg_pool_snapshot()
     capacity = pg_pool_capacity()
+    util = pg_pool_utilization()
     return {
         "capacity": capacity,
         "live": snap,
-        "utilization": pg_pool_utilization(),
-        "under_pressure": pg_pool_under_pressure(),
+        "utilization": util,
+        "under_pressure": util is not None and util >= 0.75,
         "remote_corpus_limit": remote_corpus_concurrency_limit(),
     }

@@ -23,7 +23,6 @@ from src.features.corpus.prefetch import bind_corpus_prefetch_lifecycle
 from src.features.message_scrub import is_message_scrub_blocked_async
 from src.features.message_scrub.log_preview import scrub_intercept_log_preview
 from src.foundation.config import BotConfig
-from src.platform.bot_runtime.send_unavailable import BOT_SEND_UNAVAILABLE_ERRORS, log_bot_send_unavailable
 from src.platform.observability import SlowPathTimer, slow_path_threshold_ms
 from src.plugins.dream.ban_ack_state import DREAM_BAN_ACK_SENT_STATE_KEY
 from src.shared.utils.array2cqcode import try_convert_to_cqcode
@@ -183,12 +182,14 @@ async def _(bot: Bot, event: GroupMessageEvent):
         return
 
     config = BotConfig(event.self_id, event.group_id)
-    can_reply = await config.is_cooldown("repeat")
+    from .fanout_reply import repeater_can_attempt_reply
+
+    can_reply = await repeater_can_attempt_reply(int(event.self_id), int(event.group_id))
 
     chat: Chat | None = None
     bundle = None
     fanout_gate = None
-    if can_reply and should_prepare_repeater_reply(ctx.plain_body):
+    if can_reply and should_prepare_repeater_reply(ctx.plain_body, sharding_active=ctx.sharding_active):
         chat = Chat(event)
         from .fanout_reply import resolve_fanout_gate
 
@@ -200,7 +201,25 @@ async def _(bot: Bot, event: GroupMessageEvent):
                 "repeater.find_reply_bundle",
                 threshold_ms=slow_path_threshold_ms("PALLAS_SLOW_REPEATER_BUNDLE_MS", 120.0),
             )
-            bundle = await chat.find_reply_bundle()
+            try:
+                bundle = await chat.find_reply_bundle()
+            except Exception as exc:
+                from src.foundation.db.pool_budget import is_pg_pool_timeout_error
+
+                if is_pg_pool_timeout_error(exc):
+                    logger.debug(
+                        "repeater.find_reply_bundle db_timeout bot={} group={}",
+                        event.self_id,
+                        event.group_id,
+                    )
+                else:
+                    logger.debug(
+                        "repeater.find_reply_bundle failed bot={} group={}: {}",
+                        event.self_id,
+                        event.group_id,
+                        exc,
+                    )
+                bundle = None
             reply_timer.mark("find_reply_bundle")
             reply_timer.finish(
                 bot_id=int(event.self_id),
@@ -235,34 +254,9 @@ async def _(bot: Bot, event: GroupMessageEvent):
         return
 
     await config.refresh_cooldown("repeat")
-    delay = random.randint(2, 5)
-    async for item in answers:
-        msg = await post_proc(item, event.self_id, event.group_id)
-        logger.info(f"bot [{event.self_id}] ready to send [{str(msg)[:30]}] to group [{event.group_id}]")
+    from .fanout_reply import dispatch_repeater_reply
 
-        await asyncio.sleep(delay)
-        await config.refresh_cooldown("repeat")
-        try:
-            await any_msg.send(msg)
-        except BOT_SEND_UNAVAILABLE_ERRORS as e:
-            log_bot_send_unavailable(
-                e,
-                context="repeater",
-                bot=event.self_id,
-                group=event.group_id,
-            )
-            return
-        except ActionFailed:
-            if not await BotConfig(event.self_id).security():
-                continue
-
-            # 自动删除失效消息。若 bot 处于风控期，请勿开启该功能
-            shutup = await is_shutup(event.self_id, event.group_id)
-            if not shutup:  # 说明这条消息失效了
-                logger.info(f"bot [{event.self_id}] ready to ban [{str(item)}] in group [{event.group_id}]")
-                await Chat.ban(event.group_id, event.self_id, str(item), "ActionFailed")
-                break
-        delay = random.randint(1, 3)
+    dispatch_repeater_reply(int(event.self_id), int(event.group_id), answers)
 
 
 async def is_reply(event: GroupMessageEvent) -> bool:
@@ -279,8 +273,8 @@ ban_msg = on_message(
 
 @ban_msg.handle()
 async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
-    if "[CQ:reply," not in try_convert_to_cqcode(event.raw_message):
-        return False
+    if not event.reply:
+        return
 
     raw_message = ""
     for item in event.reply.message:  # type: ignore
@@ -300,8 +294,11 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
         if not state.get(DREAM_BAN_ACK_SENT_STATE_KEY):
             state[REPEATER_BAN_ACK_SENT_STATE_KEY] = True
             await ban_msg.finish("这对角可能会不小心撞倒些家具，我会尽量小心。")
-    elif not state.get(DREAM_BAN_ACK_SENT_STATE_KEY):
-        pass
+    else:
+        logger.info(
+            f"bot [{event.self_id}] ban missed (no reply cache match) in group [{event.group_id}] "
+            f"user [{event.user_id}]"
+        )
 
 
 async def is_admin_recall_self_msg(bot: Bot, event: GroupRecallNoticeEvent):

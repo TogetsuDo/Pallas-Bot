@@ -284,9 +284,18 @@ def _help_menu_control() -> tuple[set[str], set[str]]:
 
 def _list_plugins_dict() -> list[dict[str, Any]]:
     from src.console.webui.plugin_catalog import build_plugin_catalog_rows
+    from src.plugins.help.global_disable import (
+        GLOBAL_DISABLE_PROTECTED_PLUGINS,
+        load_global_disabled_plugins,
+    )
 
     ignored, hidden = _help_menu_control()
-    return build_plugin_catalog_rows(ignored=ignored, hidden=hidden)
+    return build_plugin_catalog_rows(
+        ignored=ignored,
+        hidden=hidden,
+        globally_disabled=set(load_global_disabled_plugins()),
+        global_disable_protected=set(GLOBAL_DISABLE_PROTECTED_PLUGINS),
+    )
 
 
 def _jsonable_value(v: Any) -> Any:
@@ -1513,6 +1522,7 @@ def flush_worker_shard_console_stats_sync(*, include_hist: bool = False) -> None
     from src.platform.shard.ingress_metrics import ingress_metrics_snapshot
     from src.platform.shard.presence import reconcile_local_worker_presence_sync
     from src.platform.shard.registry.config import get_shard_registry_settings
+    from src.platform.shard.repeater_ingress_metrics import repeater_ingress_metrics_snapshot
 
     if not is_sharded_worker():
         return
@@ -1530,6 +1540,7 @@ def flush_worker_shard_console_stats_sync(*, include_hist: bool = False) -> None
         preserve_matcher_hist=not include_hist,
         worker_meta={
             "ingress": ingress_metrics_snapshot(),
+            "repeater_ingress": repeater_ingress_metrics_snapshot(),
             "coord_pending": coord_pending_snapshot_sync(),
         },
     )
@@ -3811,6 +3822,12 @@ class _HelpMenuVisibilityBody(BaseModel):
     hidden_plugins: list[str] = Field(default_factory=list, max_length=2000)
 
 
+class _GlobalPluginDisableBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    disabled_plugins: list[str] = Field(default_factory=list, max_length=2000)
+
+
 class _PluginConfigUpdateBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -3907,9 +3924,13 @@ async def _apply_group_config_patch(group_id: int, body: _GroupConfigPatch) -> d
             fields[field_name] = raw
     await repo.upsert_fields(group_id, fields)
     if "blocked_user_ids" in fields:
-        from src.plugins.blacklist import invalidate_group_ban_gate_cache
+        from src.plugins.blacklist import apply_group_blocked_users_change
 
-        await invalidate_group_ban_gate_cache(group_id)
+        await apply_group_blocked_users_change(group_id, fields["blocked_user_ids"])
+    if "banned" in fields:
+        from src.plugins.blacklist import apply_group_banned_change
+
+        await apply_group_banned_change(group_id, bool(fields["banned"]))
     if "disabled_plugins" in fields:
         from src.plugins.help.plugin_manager import invalidate_disabled_plugin_gate_cache
 
@@ -3926,7 +3947,12 @@ async def _apply_user_config_patch(user_id: int, body: _UserConfigPatch) -> dict
 
     repo = make_user_config_repository()
     await repo.get_or_create(user_id, banned=False)
-    await repo.upsert_fields(user_id, body.model_dump(exclude_none=True))
+    fields = body.model_dump(exclude_none=True)
+    await repo.upsert_fields(user_id, fields)
+    if "banned" in fields:
+        from src.plugins.blacklist import apply_user_banned_change
+
+        await apply_user_banned_change(user_id, bool(fields["banned"]))
     doc = await repo.get(user_id, ignore_cache=True)
     if doc is None:
         raise HTTPException(status_code=500, detail="user_config upsert 后回读失败")
@@ -4022,9 +4048,13 @@ async def _upsert_db_table_row(table: str, row_id: int, data: dict[str, Any]) ->
             await repo.upsert_field(int(row_id), k, v)
         await repo.invalidate_cache()
         if "blocked_user_ids" in payload:
-            from src.plugins.blacklist import invalidate_group_ban_gate_cache
+            from src.plugins.blacklist import apply_group_blocked_users_change
 
-            await invalidate_group_ban_gate_cache(int(row_id))
+            await apply_group_blocked_users_change(int(row_id), payload["blocked_user_ids"])
+        if "banned" in payload:
+            from src.plugins.blacklist import apply_group_banned_change
+
+            await apply_group_banned_change(int(row_id), bool(payload["banned"]))
         if "disabled_plugins" in payload:
             from src.plugins.help.plugin_manager import invalidate_disabled_plugin_gate_cache
 
@@ -4043,6 +4073,10 @@ async def _upsert_db_table_row(table: str, row_id: int, data: dict[str, Any]) ->
         for k, v in payload.items():
             await repo.upsert_field(int(row_id), k, v)
         await repo.invalidate_cache()
+        if "banned" in payload:
+            from src.plugins.blacklist import apply_user_banned_change
+
+            await apply_user_banned_change(int(row_id), bool(payload["banned"]))
         got = await _get_db_table_row_public("user_config", int(row_id))
         if got is None:
             raise ValueError("upsert 后回读失败")
@@ -4312,6 +4346,49 @@ def register_extended_api(
             raise HTTPException(status_code=500, detail=str(e)) from e
         _drop_read_cache(("plugins",))
         return JSONResponse({"ok": True, "data": {"hidden_plugins": hidden}})
+
+    @router.get(f"{x}/plugins/global-disable", include_in_schema=True)
+    async def _plugins_global_disable_get() -> JSONResponse:
+        try:
+            from src.plugins.help.global_disable import (
+                GLOBAL_DISABLE_PROTECTED_PLUGINS,
+                load_global_disabled_plugins,
+            )
+
+            data = {
+                "disabled_plugins": load_global_disabled_plugins(),
+                "protected_plugins": sorted(GLOBAL_DISABLE_PROTECTED_PLUGINS),
+            }
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": data})
+
+    @router.put(f"{x}/plugins/global-disable", include_in_schema=True)
+    async def _plugins_global_disable_put(
+        body: _GlobalPluginDisableBody,
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        try:
+            from src.plugins.help.global_disable import (
+                GLOBAL_DISABLE_PROTECTED_PLUGINS,
+                save_global_disabled_plugins,
+            )
+            from src.plugins.help.plugin_manager import invalidate_disabled_plugin_gate_cache
+
+            disabled = save_global_disabled_plugins(body.disabled_plugins)
+            await invalidate_disabled_plugin_gate_cache(clear_all=True)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        _drop_read_cache(("plugins",))
+        return JSONResponse({
+            "ok": True,
+            "data": {
+                "disabled_plugins": disabled,
+                "protected_plugins": sorted(GLOBAL_DISABLE_PROTECTED_PLUGINS),
+            },
+        })
 
     @router.get(f"{x}/plugins/{{plugin_name}}/config", include_in_schema=True)
     async def _plugin_config_get(plugin_name: str) -> JSONResponse:

@@ -32,7 +32,14 @@ async def satisfies_command_permission(bot: Bot, event: Event, command_id: str) 
         return False
 
     async def bot_ok() -> bool:
-        return await user_is_bot_admin(sid, uid) or await user_is_admin_of_any_bot(uid)
+        try:
+            return await user_is_bot_admin(sid, uid) or await user_is_admin_of_any_bot(uid)
+        except Exception as exc:
+            from src.foundation.db.pool_budget import is_pg_pool_timeout_error
+
+            if is_pg_pool_timeout_error(exc):
+                return False
+            raise
 
     if level == "bot_moderator":
         return await bot_ok()

@@ -21,6 +21,11 @@ from src.platform.multi_bot.dedup import (
     try_claim_group_message_once,
 )
 from src.platform.shard.registry.config import is_sharding_active
+from src.platform.shard.repeater_ingress_metrics import (
+    record_repeater_ingress_claim,
+    record_repeater_ingress_early_discard,
+    record_repeater_ingress_event,
+)
 
 from .fanout_reply import repeater_fanout_enabled
 from .shard_opt import repeater_worker_handles_message
@@ -40,16 +45,21 @@ async def remember_group_message_id(group_id: int, message_id: int) -> bool:
 
 
 async def build_repeater_event_context(bot_id: int, event: GroupMessageEvent):
+    record_repeater_ingress_event()
     if not repeater_worker_handles_message(bot_id):
+        record_repeater_ingress_early_discard("worker_gate")
         return None
 
     plain_body = event.get_plaintext()
     if plain_body and is_plugin_command_plaintext(plain_body):
+        record_repeater_ingress_early_discard("plugin_command")
         return None
     if ingress_fanout_bypasses_claim(plain_body):
+        record_repeater_ingress_early_discard("fanout_bypass")
         return None
 
     if not await remember_group_message_id(event.group_id, event.message_id):
+        record_repeater_ingress_early_discard("message_id_dup")
         return None
 
     norm_raw = normalize_group_raw_message(event.raw_message)
@@ -59,30 +69,37 @@ async def build_repeater_event_context(bot_id: int, event: GroupMessageEvent):
         norm_raw,
         event.time,
     ):
+        record_repeater_ingress_early_discard("group_event_dup")
         return None
 
     body = plain_body or event.raw_message
     if not federate_ingress_cached_win(event, include_message_time=True, plain=plain_body, body=body):
-        if not await claim_federate_group_message_ingress(
+        won = await claim_federate_group_message_ingress(
             event,
             include_message_time=True,
             plain=plain_body,
             body=body,
-        ):
+        )
+        record_repeater_ingress_claim(won=won)
+        if not won:
+            record_repeater_ingress_early_discard("federate_claim")
             return None
 
     sharding_active = is_sharding_active()
     if not sharding_active:
-        if not await try_claim_group_message_once(
+        won = await try_claim_group_message_once(
             "repeater_ingress",
             event.group_id,
             event.user_id,
             plain_body,
             event.time,
-        ):
+        )
+        record_repeater_ingress_claim(won=won)
+        if not won:
+            record_repeater_ingress_early_discard("local_claim")
             return None
     elif not repeater_fanout_enabled():
-        if not await try_claim_cross_bot_message(
+        won = await try_claim_cross_bot_message(
             "repeater_reply",
             event.group_id,
             event.user_id,
@@ -90,7 +107,10 @@ async def build_repeater_event_context(bot_id: int, event: GroupMessageEvent):
             event.time,
             bot_id,
             use_plaintext=True,
-        ):
+        )
+        record_repeater_ingress_claim(won=won)
+        if not won:
+            record_repeater_ingress_early_discard("cross_bot_claim")
             return None
 
     return SimpleNamespace(

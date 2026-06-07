@@ -46,6 +46,20 @@ async def count_fanout_capable_bots(group_id: int) -> int:
     return len(await list_fanout_bot_ids(group_id))
 
 
+async def list_ready_fanout_bot_ids(group_id: int) -> list[int]:
+    bot_ids = await list_fanout_bot_ids(group_id)
+    if not bot_ids:
+        return []
+    ready = await asyncio.gather(*(BotConfig(bid, group_id).is_cooldown("repeat") for bid in bot_ids))
+    return [bid for bid, ok in zip(bot_ids, ready, strict=True) if ok]
+
+
+async def repeater_can_attempt_reply(bot_id: int, group_id: int) -> bool:
+    if not repeater_fanout_enabled():
+        return await BotConfig(bot_id, group_id).is_cooldown("repeat")
+    return bool(await list_ready_fanout_bot_ids(group_id))
+
+
 def repeater_fanout_enabled() -> bool:
     if not get_repeater_config().fanout_enabled:
         return False
@@ -184,6 +198,23 @@ async def resolve_fanout_gate(event: GroupMessageEvent) -> FanoutGate:
         return FanoutGate(lost=True)
 
     return FanoutGate(won=True, bot_ids=tuple(bot_ids))
+
+
+async def _run_repeater_reply_send(bot_id: int, group_id: int, answers) -> None:
+    try:
+        await send_repeater_answers(bot_id, group_id, answers)
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        logger.warning("repeater reply background failed bot={} group={}: {}", bot_id, group_id, e)
+
+
+def dispatch_repeater_reply(bot_id: int, group_id: int, answers) -> None:
+    """单牛接话：sleep + 多段 send 放到后台，避免占用 on_message matcher 墙钟。"""
+    asyncio.create_task(
+        _run_repeater_reply_send(int(bot_id), int(group_id), answers),
+        name=f"repeater_reply_{bot_id}_{group_id}",
+    )
 
 
 async def send_repeater_answers(bot_id: int, group_id: int, answers) -> None:

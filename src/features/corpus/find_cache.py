@@ -7,6 +7,7 @@ import time
 from typing import TYPE_CHECKING
 
 from src.features.corpus.reply_perf_config import find_cache_max_entries, find_cache_ttl_sec
+from src.foundation.db.pool_budget import is_pg_pool_timeout_error
 
 if TYPE_CHECKING:
     from src.foundation.db.modules import Context
@@ -16,6 +17,32 @@ _reply_find_cache: dict[str, tuple[float, Context | None]] = {}
 _find_inflight: dict[str, asyncio.Task[Context | None]] = {}
 _reply_find_inflight: dict[str, asyncio.Task[Context | None]] = {}
 _find_lock = asyncio.Lock()
+_REPLY_DB_FAIL_TTL_SEC = 2.0
+_reply_db_fail_until: dict[str, float] = {}
+
+
+def _reply_db_fail_active(key: str, *, now: float | None = None) -> bool:
+    exp = _reply_db_fail_until.get(key)
+    if exp is None:
+        return False
+    cur = time.monotonic() if now is None else now
+    if cur < exp:
+        return True
+    _reply_db_fail_until.pop(key, None)
+    return False
+
+
+def mark_reply_db_fail(keywords: str) -> None:
+    key = (keywords or "").strip()
+    if key:
+        _reply_db_fail_until[key] = time.monotonic() + _REPLY_DB_FAIL_TTL_SEC
+
+
+def reply_db_fail_active(keywords: str) -> bool:
+    key = (keywords or "").strip()
+    if not key:
+        return False
+    return _reply_db_fail_active(key)
 
 
 async def _cached_find(
@@ -28,6 +55,8 @@ async def _cached_find(
     if not key:
         return None
     now = time.monotonic()
+    if _reply_db_fail_active(key, now=now):
+        return None
     task: asyncio.Task[Context | None] | None = None
     async with _find_lock:
         hit = cache.get(key)
@@ -50,10 +79,13 @@ async def _cached_find(
 
     try:
         ctx = await asyncio.shield(task)
-    except Exception:
+    except Exception as exc:
         async with _find_lock:
             if inflight.get(key) is task:
                 inflight.pop(key, None)
+        if is_pg_pool_timeout_error(exc):
+            mark_reply_db_fail(key)
+            return None
         raise
 
     expire_at = time.monotonic() + find_cache_ttl_sec()
@@ -85,11 +117,13 @@ async def invalidate_find_cache(keywords: str | None = None) -> None:
             _reply_find_cache.clear()
             _find_inflight.clear()
             _reply_find_inflight.clear()
+            _reply_db_fail_until.clear()
             return
         key = keywords.strip()
         if key:
             _find_cache.pop(key, None)
             _reply_find_cache.pop(key, None)
+            _reply_db_fail_until.pop(key, None)
 
 
 async def reset_find_cache_for_tests() -> None:

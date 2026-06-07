@@ -291,7 +291,7 @@ async def test_send_heartbeat_success(monkeypatch):
             "src.platform.shard.presence.count_connected_bots_for_reporting",
             return_value=1,
         ),
-        patch("src.features.community_stats.reporter.get_fleet_bot_ids", return_value=frozenset({1, 2})),
+        patch("src.features.community_stats.reporter.get_catalog_bot_ids", return_value=frozenset({1, 2})),
         patch("src.features.community_stats.reporter.httpx.AsyncClient", return_value=mock_client),
     ):
         assert await send_community_stats_heartbeat() is True
@@ -311,7 +311,7 @@ def test_build_payload_sharded():
             "src.platform.shard.presence.count_connected_bots_for_reporting",
             return_value=2,
         ),
-        patch("src.features.community_stats.reporter.get_fleet_bot_ids", return_value=frozenset({111, 222, 333})),
+        patch("src.features.community_stats.reporter.get_catalog_bot_ids", return_value=frozenset({111, 222, 333})),
         patch("src.features.community_stats.reporter.get_shard_registry") as mock_reg,
         patch("src.features.community_stats.reporter.is_test_shard_record", return_value=False),
         patch(
@@ -325,6 +325,29 @@ def test_build_payload_sharded():
         assert payload["online_bots"] == 2
         assert payload["catalog_bots"] == 3
         assert payload["shard_workers"] == 2
+
+
+def test_build_payload_non_sharded_catalog_from_block_bots(monkeypatch):
+    class FakeCfg:
+        bots = {111, 222, 333}
+
+    import src.plugins.block as block_mod
+
+    monkeypatch.setattr(block_mod, "plugin_config", FakeCfg())
+    with (
+        patch("src.features.community_stats.reporter.is_sharding_active", return_value=False),
+        patch(
+            "src.platform.shard.presence.count_connected_bots_for_reporting",
+            return_value=2,
+        ),
+        patch(
+            "src.features.community_stats.reporter.load_or_create_deployment_id",
+            return_value="550e8400-e29b-41d4-a716-446655440000",
+        ),
+    ):
+        payload = build_heartbeat_payload()
+    assert payload["catalog_bots"] == 3
+    assert payload["online_bots"] == 2
 
 
 @pytest.mark.asyncio
@@ -357,7 +380,7 @@ async def test_send_heartbeat_fallback_after_primary_fails(monkeypatch, tmp_path
             "src.platform.shard.presence.count_connected_bots_for_reporting",
             return_value=1,
         ),
-        patch("src.features.community_stats.reporter.get_fleet_bot_ids", return_value=frozenset({1})),
+        patch("src.features.community_stats.reporter.get_catalog_bot_ids", return_value=frozenset({1})),
         patch.object(httpx.AsyncClient, "post", fake_post),
     ):
         assert await send_community_stats_heartbeat() is True

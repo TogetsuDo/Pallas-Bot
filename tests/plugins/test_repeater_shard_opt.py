@@ -40,17 +40,38 @@ def test_repeater_worker_handles_unified(monkeypatch):
     assert repeater_worker_handles_message(999) is True
 
 
-def test_repeater_worker_handles_only_representative(monkeypatch):
+def test_repeater_worker_handles_all_local_bots_when_sharded_without_fanout(monkeypatch):
     monkeypatch.setattr(
         "src.platform.shard.registry.config.is_sharding_active",
         lambda: True,
+    )
+    monkeypatch.setattr(
+        "src.plugins.repeater.config.get_repeater_config",
+        lambda: type("C", (), {"fanout_enabled": False})(),
     )
     monkeypatch.setattr(
         "src.platform.shard.local_representative.is_local_worker_representative",
         lambda bid: bid == 100,
     )
     assert repeater_worker_handles_message(100) is True
-    assert repeater_worker_handles_message(200) is False
+    assert repeater_worker_handles_message(200) is True
+
+
+def test_repeater_worker_handles_all_local_bots_when_fanout_enabled(monkeypatch):
+    monkeypatch.setattr(
+        "src.platform.shard.registry.config.is_sharding_active",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "src.plugins.repeater.config.get_repeater_config",
+        lambda: type("C", (), {"fanout_enabled": True})(),
+    )
+    monkeypatch.setattr(
+        "src.platform.shard.local_representative.is_local_worker_representative",
+        lambda bid: bid == 100,
+    )
+    assert repeater_worker_handles_message(100) is True
+    assert repeater_worker_handles_message(200) is True
 
 
 def test_scheduler_skips_worker_without_rep(monkeypatch):

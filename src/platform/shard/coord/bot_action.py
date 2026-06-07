@@ -220,7 +220,17 @@ async def _execute_local(action: str, bot_qq: int, payload: dict[str, Any]) -> t
         if action == "repeater_fanout_reply":
             from src.plugins.repeater.fanout_reply import run_repeater_reply_for_bot
 
-            await run_repeater_reply_for_bot(int(bot_qq), payload)
+            async def repeater_job() -> None:
+                try:
+                    await run_repeater_reply_for_bot(int(bot_qq), payload)
+                except Exception as err:
+                    logger.warning("repeater_fanout remote bot={} failed: {}", int(bot_qq), err)
+
+            # Fanout 代发包含随机延迟与真实发送，不应阻塞 coord 请求直到整条发送链结束。
+            asyncio.create_task(
+                repeater_job(),
+                name=f"repeater_fanout_reply_{int(bot_qq)}",
+            )
             return True, None
         if action == "onebot_call_api":
             api = str(payload.get("api") or "").strip()
@@ -381,11 +391,23 @@ async def _run_pending_request(path, local_ids: frozenset[str]) -> None:
     if req_id in _inflight:
         return
     _inflight.add(req_id)
+    action = str(data.get("action") or "")
+    bot_qq = int(data.get("bot_qq") or 0)
+    payload = data.get("payload") or {}
+
+    if action == "repeater_fanout_reply":
+        try:
+            # 这类请求仅用于跨 worker 触发后台 fanout；识别到目标本地牛后立即 ack，
+            # 避免轮询 task 本身调度延迟又把请求留到过期窗口。
+            await asyncio.to_thread(_finish_request, path, ok=True, result=None)
+            await _execute_local(action, bot_qq, payload)
+        finally:
+            _inflight.discard(req_id)
+        return
 
     async def job() -> None:
         try:
-            action = str(data.get("action") or "")
-            ok, result = await _execute_local(action, int(data.get("bot_qq") or 0), data.get("payload") or {})
+            ok, result = await _execute_local(action, bot_qq, payload)
             await asyncio.to_thread(_finish_request, path, ok=ok, result=result)
         finally:
             _inflight.discard(req_id)

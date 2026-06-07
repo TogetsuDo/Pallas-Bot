@@ -69,6 +69,14 @@ services:
     container_name: pallasbot_postgres
     image: postgres:16-alpine
     restart: always
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - track_io_timing=on
+      - -c
+      - idle_in_transaction_session_timeout=15s
     # 与 Bot 共用 compose.env 里的 PG_*：由 compose 插值写入镜像所需 POSTGRES_*（见文件首条注释）
     environment:
       TZ: Asia/Shanghai

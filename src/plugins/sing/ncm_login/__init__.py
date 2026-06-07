@@ -1,3 +1,4 @@
+import asyncio
 import re
 
 import httpx
@@ -27,6 +28,7 @@ class NCMLoginConfig(BaseModel, extra="ignore"):
 
 
 ncm_cfg = NCMLoginConfig()
+NCM_SEARCH_TIMEOUT = 15.0
 
 ncm_login_cmd = on_command("网易云登录", priority=10, block=True, permission=permission_for_command("sing.ncm_login"))
 ncm_logout_cmd = on_command("网易云登出", priority=10, block=True, permission=permission_for_command("sing.ncm_logout"))
@@ -138,14 +140,32 @@ async def get_song_id(song_name: str):
     if song_name.isdigit():
         return song_name
 
-    res = await ncm.cloudsearch.GetSearchResult(song_name, 1, 10)
+    try:
+        res = await asyncio.wait_for(
+            ncm.cloudsearch.GetSearchResult(song_name, 1, 10),
+            timeout=NCM_SEARCH_TIMEOUT,
+        )
+    except TimeoutError:
+        logger.warning(f"ncm cloudsearch timeout for song {song_name!r}")
+        return None
+    except Exception as e:
+        logger.warning(f"ncm cloudsearch failed for song {song_name!r}: {e}")
+        return None
+
     if "result" not in res or "songCount" not in res["result"]:
         return None
 
     if res["result"]["songCount"] == 0:
         return None
 
-    logged_in = await is_ncm_logged_in()
+    try:
+        logged_in = await asyncio.wait_for(is_ncm_logged_in(), timeout=NCM_SEARCH_TIMEOUT)
+    except TimeoutError:
+        logger.warning(f"ncm login status check timeout for song {song_name!r}")
+        return None
+    except Exception as e:
+        logger.warning(f"ncm login status check failed for song {song_name!r}: {e}")
+        return None
 
     for song in res["result"]["songs"]:
         # 如果未登录，跳过vip

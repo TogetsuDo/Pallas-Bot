@@ -22,11 +22,13 @@ from nonebot.utils import run_coro_with_shield
 
 from src.features.ban_gate.snapshot import (
     fallback_db_timeout_sec,
+    is_group_banned_fast,
     is_user_blocked_in_group_fast,
     is_user_globally_banned_fast,
+    patch_group_banned,
     patch_group_blocked_users,
     patch_user_banned,
-    refresh_ban_gate_snapshot,
+    schedule_ban_gate_snapshot_refresh,
 )
 from src.features.cmd_perm import permission_for_command, satisfies_command_permission
 from src.features.cmd_perm.metadata_defaults import (
@@ -54,6 +56,29 @@ _group_gate_generation: dict[int, int] = {}
 _group_fetch_tasks: dict[int, asyncio.Task[frozenset[int]]] = {}
 _group_fetch_tasks_lock = asyncio.Lock()
 
+_GROUP_SELF_BAN_GATE_CACHE_TTL_SEC = 45.0
+_group_self_banned_cache: dict[int, tuple[float, bool]] = {}
+_group_self_ban_gate_lock = asyncio.Lock()
+_group_self_gate_generation: dict[int, int] = {}
+_group_self_fetch_tasks: dict[int, asyncio.Task[bool]] = {}
+_group_self_fetch_tasks_lock = asyncio.Lock()
+
+
+async def apply_user_banned_change(user_id: int, banned: bool) -> None:
+    """WebUI / 命令写入 user_config.banned 后同步本进程快照与门禁。"""
+    await patch_user_banned(user_id, banned)
+    await invalidate_user_ban_gate_cache(user_id)
+
+
+async def apply_group_banned_change(group_id: int, banned: bool) -> None:
+    await patch_group_banned(group_id, banned)
+    await invalidate_group_ban_gate_cache(group_id)
+
+
+async def apply_group_blocked_users_change(group_id: int, user_ids: list[int]) -> None:
+    await patch_group_blocked_users(group_id, user_ids)
+    await invalidate_group_ban_gate_cache(group_id)
+
 
 async def invalidate_user_ban_gate_cache(uids: int | Iterable[int]) -> None:
     """使给定 QQ 的门禁缓存失效（拉黑/解禁或其它写入 banned 后应调用）。"""
@@ -64,7 +89,7 @@ async def invalidate_user_ban_gate_cache(uids: int | Iterable[int]) -> None:
         for u in ids:
             _ban_gate_cache.pop(u, None)
             _user_gate_generation[u] = _user_gate_generation.get(u, 0) + 1
-    asyncio.create_task(refresh_ban_gate_snapshot())
+    schedule_ban_gate_snapshot_refresh()
 
 
 async def reset_user_ban_gate_cache() -> None:
@@ -80,16 +105,24 @@ async def reset_user_ban_gate_cache() -> None:
 
 
 async def invalidate_group_ban_gate_cache(group_ids: int | Iterable[int] | None = None) -> None:
-    """使给定群的「本群拉黑」门禁缓存失效；不传参则清空全部。"""
+    """使给定群的「本群拉黑 / 群封禁」门禁缓存失效；不传参则清空全部。"""
     if group_ids is None:
         async with _group_fetch_tasks_lock:
             for t in list(_group_fetch_tasks.values()):
                 if not t.done():
                     t.cancel()
             _group_fetch_tasks.clear()
+        async with _group_self_fetch_tasks_lock:
+            for t in list(_group_self_fetch_tasks.values()):
+                if not t.done():
+                    t.cancel()
+            _group_self_fetch_tasks.clear()
         async with _group_ban_gate_lock:
             _group_ban_gate_cache.clear()
             _group_gate_generation.clear()
+        async with _group_self_ban_gate_lock:
+            _group_self_banned_cache.clear()
+            _group_self_gate_generation.clear()
         return
     async with _group_ban_gate_lock:
         ids = [group_ids] if isinstance(group_ids, int) else list(group_ids)
@@ -97,7 +130,12 @@ async def invalidate_group_ban_gate_cache(group_ids: int | Iterable[int] | None 
             gid = int(g)
             _group_ban_gate_cache.pop(gid, None)
             _group_gate_generation[gid] = _group_gate_generation.get(gid, 0) + 1
-    asyncio.create_task(refresh_ban_gate_snapshot())
+    async with _group_self_ban_gate_lock:
+        for g in ids:
+            gid = int(g)
+            _group_self_banned_cache.pop(gid, None)
+            _group_self_gate_generation[gid] = _group_self_gate_generation.get(gid, 0) + 1
+    schedule_ban_gate_snapshot_refresh()
 
 
 async def reset_group_ban_gate_cache() -> None:
@@ -250,12 +288,84 @@ async def query_group_blocked_for_gate(group_id: int, user_id: int) -> bool:
         return blocked
 
 
+async def _fetch_group_banned_db(group_id: int) -> bool:
+    try:
+        return await asyncio.wait_for(
+            GroupConfig(group_id).is_banned(),
+            timeout=_IS_BANNED_DB_TIMEOUT_SEC,
+        )
+    except TimeoutError:
+        logger.warning("group self ban gate: is_banned timeout gid={}", group_id)
+        return False
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        logger.exception("group self ban gate: is_banned failed gid={}", group_id)
+        return False
+
+
+async def _await_group_banned_deduped(group_id: int) -> bool:
+    async with _group_self_fetch_tasks_lock:
+        t = _group_self_fetch_tasks.get(group_id)
+        if t is not None and not t.done():
+            task = t
+        else:
+
+            async def _runner() -> bool:
+                try:
+                    return await _fetch_group_banned_db(group_id)
+                finally:
+                    async with _group_self_fetch_tasks_lock:
+                        cur = asyncio.current_task()
+                        if _group_self_fetch_tasks.get(group_id) is cur:
+                            _group_self_fetch_tasks.pop(group_id, None)
+
+            task = asyncio.create_task(_runner())
+            _group_self_fetch_tasks[group_id] = task
+    return await asyncio.shield(task)
+
+
+async def query_group_ban_status_for_gate(group_id: int) -> bool:
+    """群是否被全局拉黑（GroupConfig.banned）；超时/异常 fail-open。"""
+    fast = is_group_banned_fast(group_id)
+    if fast is not None:
+        return fast
+
+    while True:
+        now = time.monotonic()
+        async with _group_self_ban_gate_lock:
+            hit = _group_self_banned_cache.get(group_id)
+            if hit is not None:
+                exp, val = hit
+                if now < exp:
+                    return val
+                del _group_self_banned_cache[group_id]
+            if len(_group_self_banned_cache) > _BAN_GATE_CACHE_MAX:
+                stale = [k for k, (e, _) in _group_self_banned_cache.items() if now >= e]
+                for k in stale:
+                    del _group_self_banned_cache[k]
+                if len(_group_self_banned_cache) > _BAN_GATE_CACHE_MAX:
+                    _group_self_banned_cache.clear()
+            gen_snapshot = _group_self_gate_generation.get(group_id, 0)
+
+        banned = await _await_group_banned_deduped(group_id)
+
+        expire_at = time.monotonic() + _GROUP_SELF_BAN_GATE_CACHE_TTL_SEC
+        async with _group_self_ban_gate_lock:
+            if _group_self_gate_generation.get(group_id, 0) != gen_snapshot:
+                continue
+            _group_self_banned_cache[group_id] = (expire_at, banned)
+        return banned
+
+
 __plugin_meta__ = PluginMetadata(
     name="牛牛黑名单",
-    description="私聊全局拉黑、群内本群屏蔽用户。",
+    description="私聊全局拉黑用户/群，群内维护本群屏蔽用户。",
     usage=join_usage(
-        usage_line("牛牛拉黑 / 牛牛屏蔽 + QQ 或 @", "私聊为全局，群内仅本群"),
-        usage_line("牛牛解禁 + QQ 或 @", "对应解除"),
+        usage_line("牛牛拉黑 / 牛牛屏蔽 + QQ 或 @", "私聊为全局用户，群内仅本群"),
+        usage_line("牛牛拉黑群 / 牛牛屏蔽群 + 群号", "私聊须写群号；群内可省略为本群"),
+        usage_line("牛牛解禁 / 牛牛取消拉黑 + 目标", "解除用户拉黑"),
+        usage_line("牛牛解禁群 / 牛牛取消拉黑群 + 群号", "解除群拉黑"),
     ),
     type="application",
     homepage=PLUGIN_HOMEPAGE,
@@ -264,8 +374,8 @@ __plugin_meta__ = PluginMetadata(
         "version": PLUGIN_EXTRA_VERSION,
         "menu_template": PLUGIN_MENU_TEMPLATE,
         "command_permissions": [
-            {"id": "blacklist.add", "label": "牛牛拉黑 / 牛牛屏蔽", "default": "staff"},
-            {"id": "blacklist.remove", "label": "牛牛解禁", "default": "staff"},
+            {"id": "blacklist.add", "label": "牛牛拉黑 / 牛牛屏蔽 / 牛牛拉黑群", "default": "staff"},
+            {"id": "blacklist.remove", "label": "牛牛解禁 / 牛牛解禁群", "default": "staff"},
         ],
         "menu_data": [
             {
@@ -275,7 +385,16 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_condition": "牛牛拉黑 / 牛牛屏蔽 / 牛牛解禁 + QQ 或 @",
                 "command_permissions": ["blacklist.add", "blacklist.remove"],
                 "brief_des": "屏蔽用户消息",
-                "detail_des": "私聊为全局拉黑；群内仅屏蔽本群。可写多个 QQ 或 @。",
+                "detail_des": "私聊为全局用户拉黑；群内仅屏蔽本群。可写多个 QQ 或 @。",
+            },
+            {
+                "func": "群拉黑与解禁",
+                "trigger_method": "on_cmd",
+                "trigger_scene": SCENE_BOTH,
+                "trigger_condition": "牛牛拉黑群 / 牛牛屏蔽群 / 牛牛解禁群 + 群号",
+                "command_permissions": ["blacklist.add", "blacklist.remove"],
+                "brief_des": "屏蔽整群消息",
+                "detail_des": "写入 GroupConfig.banned；群内省略群号时作用于当前群。",
             },
             {
                 "func": "事件门禁",
@@ -312,6 +431,17 @@ def collect_target_qqs_from_plain_and_message(plain_text: str, message) -> list[
     return out
 
 
+def collect_group_ids_from_plain(plain_text: str) -> list[int]:
+    ids = [int(m.group(1)) for m in re.finditer(r"(?<![0-9])([1-9][0-9]{4,14})(?![0-9])", plain_text or "")]
+    out: list[int] = []
+    seen: set[int] = set()
+    for gid in ids:
+        if gid not in seen:
+            seen.add(gid)
+            out.append(gid)
+    return out
+
+
 def event_group_id(event: Event) -> int | None:
     gid = getattr(event, "group_id", None)
     if isinstance(gid, int) and gid > 0:
@@ -340,13 +470,19 @@ def event_actor_user_id(event: Event) -> int | None:
 async def block_globally_banned_users(bot: Bot, event: Event):
     if "onebot.v11" not in type(event).__module__:
         return
+
+    gid = event_group_id(event)
+    if gid is not None:
+        group_banned = await run_coro_with_shield(query_group_ban_status_for_gate(gid))
+        if group_banned:
+            logger.debug(f"drop event in banned group [{gid}]")
+            raise IgnoredException("banned group")
+
     uid = event_actor_user_id(event)
     if uid is None:
         return
     if uid == int(bot.self_id):
         return
-
-    gid = event_group_id(event)
 
     async def resolve_ban_gate() -> tuple[bool, bool]:
         global_banned = await query_user_ban_status_for_gate(uid)
@@ -400,6 +536,22 @@ blacklist_remove_cmd = on_command(
     permission=permission_for_command("blacklist.remove"),
 )
 
+blacklist_add_group_cmd = on_command(
+    "牛牛拉黑群",
+    aliases={"牛牛屏蔽群"},
+    priority=5,
+    block=True,
+    permission=permission_for_command("blacklist.add"),
+)
+
+blacklist_remove_group_cmd = on_command(
+    "牛牛解禁群",
+    aliases={"牛牛取消屏蔽群", "牛牛取消拉黑群"},
+    priority=5,
+    block=True,
+    permission=permission_for_command("blacklist.remove"),
+)
+
 
 @blacklist_add_cmd.handle()
 async def handle_blacklist_add(bot: Bot, event: GroupMessageEvent | PrivateMessageEvent):
@@ -445,3 +597,47 @@ async def handle_blacklist_remove(bot: Bot, event: GroupMessageEvent | PrivateMe
     await patch_group_blocked_users(event.group_id, await GroupConfig(event.group_id).blocked_user_ids())
     await invalidate_group_ban_gate_cache(event.group_id)
     await blacklist_remove_cmd.finish(f"在这里，米诺斯又愿倾听这 {len(targets)} 个灵魂：{', '.join(map(str, targets))}")
+
+
+@blacklist_add_group_cmd.handle()
+async def handle_blacklist_add_group(bot: Bot, event: GroupMessageEvent | PrivateMessageEvent):
+    plain = event.get_plaintext()
+    if isinstance(event, GroupMessageEvent):
+        targets = collect_group_ids_from_plain(plain)
+        if not targets:
+            targets = [event.group_id]
+    else:
+        targets = collect_group_ids_from_plain(plain)
+        if not targets:
+            await blacklist_add_group_cmd.finish("博士，哪些群将失去米诺斯的眷顾？")
+            return
+    for gid in targets:
+        await GroupConfig(gid).ban()
+        await patch_group_banned(gid, True)
+    await invalidate_group_ban_gate_cache(targets)
+    scope = "本群" if isinstance(event, GroupMessageEvent) and targets == [event.group_id] else "全局"
+    await blacklist_add_group_cmd.finish(
+        f"米诺斯不再眷顾这 {len(targets)} 个群聊（{scope}）：{', '.join(map(str, targets))}"
+    )
+
+
+@blacklist_remove_group_cmd.handle()
+async def handle_blacklist_remove_group(bot: Bot, event: GroupMessageEvent | PrivateMessageEvent):
+    plain = event.get_plaintext()
+    if isinstance(event, GroupMessageEvent):
+        targets = collect_group_ids_from_plain(plain)
+        if not targets:
+            targets = [event.group_id]
+    else:
+        targets = collect_group_ids_from_plain(plain)
+        if not targets:
+            await blacklist_remove_group_cmd.finish("博士，有哪些群又获得了米诺斯的眷顾？")
+            return
+    for gid in targets:
+        await GroupConfig(gid).unban()
+        await patch_group_banned(gid, False)
+    await invalidate_group_ban_gate_cache(targets)
+    scope = "本群" if isinstance(event, GroupMessageEvent) and targets == [event.group_id] else "全局"
+    await blacklist_remove_group_cmd.finish(
+        f"这 {len(targets)} 个群聊又获得了米诺斯的眷顾（{scope}）：{', '.join(map(str, targets))}"
+    )

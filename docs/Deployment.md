@@ -281,6 +281,20 @@ WantedBy=multi-user.target
 
 ---
 
-## 开发者群
+## 社区与支持
 
-QQ 群：[牛牛听话！](https://jq.qq.com/?_wv=1027&k=tlLDuWzc)
+与 [README 社区区块](../README.md#qq-群) 保持一致。
+
+### 开发者
+
+- [`牛牛听话!`](https://qm.qq.com/q/yIiAajYwms)
+
+### 拉牛牛
+
+- [`西海福牛养殖基地`](https://qm.qq.com/q/5GjZ2xHeb6)
+- [`牛牛工坊`](http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=snSe5PkcmHZrD0OA5Wzl2RAnM-qoAMUc&authKey=T%2FQlcyy31oE7YyMDMd7Yys7utl5a9jP84VYgnknra8Knsq3BhEy5TrwiWK7rG8j6&noverify=0&group_code=1043301356)
+
+### 闲聊
+
+- [`西海福牛养殖学院`](https://qm.qq.com/q/8P)
+- [`丽丽玛玛玛?`](https://qm.qq.com/q/Qgc6ir7Jk)

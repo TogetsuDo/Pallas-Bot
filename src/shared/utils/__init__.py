@@ -1,5 +1,4 @@
 import asyncio
-from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
@@ -40,23 +39,20 @@ class HTTPXClient:
     }
 
     @classmethod
-    @asynccontextmanager
-    async def get_client(cls):
+    async def _ensure_client(cls) -> httpx.AsyncClient:
         async with cls._lock:
             if cls._client is None or cls._client.is_closed:
                 cls._client = httpx.AsyncClient(
                     timeout=cls.DEFAULT_TIMEOUT,
                 )
-            try:
-                yield cls._client
-            except httpx.TransportError as e:
-                logger.error(f"httpx client transport error: {e}")
-                await cls.close()
-                cls._client = None
-                raise
-            except httpx.HTTPError as e:
-                logger.warning(f"httpx client HTTP error: {e}")
-                raise
+            return cls._client
+
+    @classmethod
+    async def _reset_client(cls) -> None:
+        async with cls._lock:
+            if cls._client and not cls._client.is_closed:
+                await cls._client.aclose()
+            cls._client = None
 
     @classmethod
     async def close(cls):
@@ -76,10 +72,15 @@ class HTTPXClient:
     async def get(cls, url: str, **kwargs) -> httpx.Response | None:
         @retry(**cls.DEFAULT_RETRY)
         async def _get():
-            async with cls.get_client() as client:
+            client = await cls._ensure_client()
+            try:
                 response = await client.get(url, **kwargs)
                 response.raise_for_status()
                 return response
+            except httpx.TransportError as e:
+                logger.error(f"httpx client transport error: {e}")
+                await cls._reset_client()
+                raise
 
         try:
             return await _get()
@@ -91,10 +92,15 @@ class HTTPXClient:
     async def post(cls, url: str, json: dict[str, Any] | None = None, **kwargs) -> httpx.Response | None:
         @retry(**cls.DEFAULT_RETRY)
         async def _post():
-            async with cls.get_client() as client:
+            client = await cls._ensure_client()
+            try:
                 response = await client.post(url, json=json, **kwargs)
                 response.raise_for_status()
                 return response
+            except httpx.TransportError as e:
+                logger.error(f"httpx client transport error: {e}")
+                await cls._reset_client()
+                raise
 
         try:
             return await _post()
@@ -106,10 +112,15 @@ class HTTPXClient:
     async def delete(cls, url: str, **kwargs) -> httpx.Response | None:
         @retry(**cls.DEFAULT_RETRY)
         async def _delete():
-            async with cls.get_client() as client:
+            client = await cls._ensure_client()
+            try:
                 response = await client.delete(url, **kwargs)
                 response.raise_for_status()
                 return response
+            except httpx.TransportError as e:
+                logger.error(f"httpx client transport error: {e}")
+                await cls._reset_client()
+                raise
 
         try:
             return await _delete()
