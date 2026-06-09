@@ -62,6 +62,47 @@ class _DuelRaceQteSession:
 
 
 _race_sessions: dict[str, _DuelRaceQteSession] = {}
+_active_qte_groups: set[str] = set()
+_active_qte_users_by_group: dict[str, frozenset[str]] = {}
+
+
+def sync_active_qte_group(gid: str) -> None:
+    """会话增减后刷新群级活跃标记（供 greeting 热路径快速查询）。"""
+    now = time.time()
+    active_users: set[str] = set()
+    race = _race_sessions.get(gid)
+    if race is not None and not race.future.done() and now <= race.deadline:
+        active_users.update((str(race.challenger_id), str(race.defender_id)))
+    for (g, _), sess in _sessions.items():
+        if g == gid and not sess.future.done() and now <= sess.deadline:
+            active_users.add(str(_))
+    if active_users:
+        _active_qte_groups.add(gid)
+        _active_qte_users_by_group[gid] = frozenset(active_users)
+        return
+    _active_qte_groups.discard(gid)
+    _active_qte_users_by_group.pop(gid, None)
+
+
+def duel_qte_active_in_group(group_id: int) -> bool:
+    """本群是否存在未过期且未完成的 QTE 会话（供 greeting 等让路）。"""
+    gid = str(group_id)
+    if gid not in _active_qte_groups:
+        return False
+    sync_active_qte_group(gid)
+    return gid in _active_qte_groups
+
+
+def duel_qte_blocks_greeting_user(group_id: int, user_id: str | int) -> bool:
+    """仅当该用户正参与本群 QTE 时，屏蔽 greeting 抢占。"""
+    gid = str(group_id)
+    if gid not in _active_qte_groups:
+        return False
+    sync_active_qte_group(gid)
+    users = _active_qte_users_by_group.get(gid)
+    if not users:
+        return False
+    return str(user_id) in users
 
 
 def qte_session_id(group_id: int, user_id: str | int) -> tuple[str, str]:
@@ -199,6 +240,7 @@ def schedule_bot_qte_auto_answer(
                 logger.debug(f"duel bot qte send failed: {err}")
         if not fut.done():
             fut.set_result(bool(success_roll and outgoing == required_key))
+            sync_active_qte_group(str(group_id))
 
     asyncio.create_task(job())
 
@@ -270,6 +312,7 @@ def schedule_bot_race_qte_auto_answer(
                 await try_claim_race_coord_winner(race_coord_sid, responder_id)
             elif not fut.done():
                 fut.set_result(responder_id)
+                sync_active_qte_group(str(group_id))
 
         asyncio.create_task(job())
 
@@ -397,12 +440,14 @@ def complete_duel_qte(event: GroupMessageEvent) -> None:
     if race is not None and not race.future.done() and uid in (race.challenger_id, race.defender_id):
         if event.get_plaintext().strip() == race.required_key:
             race.future.set_result(uid)
+            sync_active_qte_group(gid)
         return
     sid = qte_session_id(event.group_id, uid)
     sess = _sessions.get(sid)
     if sess is None or sess.future.done():
         return
     sess.future.set_result(True)
+    sync_active_qte_group(gid)
 
 
 def resolve_qte_responder_qq(target: str, actor: str, challenger_id: str, defender_id: str) -> str:
@@ -701,6 +746,7 @@ async def _run_operator_intrusion_race_qte(
         challenger_id=challenger_id,
         defender_id=defender_id,
     )
+    sync_active_qte_group(gid)
     schedule_bot_race_qte_auto_answer(
         group_id,
         challenger_id,
@@ -717,6 +763,7 @@ async def _run_operator_intrusion_race_qte(
         winner_uid = None
     finally:
         _race_sessions.pop(gid, None)
+        sync_active_qte_group(gid)
 
     if winner_uid:
         winner_actor = actor_from_user_id(winner_uid, challenger_id, defender_id)
@@ -1009,6 +1056,7 @@ async def _run_operator_intrusion_qte(
         return
 
     _sessions[sid] = _DuelQteSession(future=fut, required_key=required_key, deadline=deadline)
+    sync_active_qte_group(sid[0])
     schedule_bot_qte_auto_answer(group_id, responder, required_key, fut, window_sec, qte_kind="intrusion")
     ok = False
     try:
@@ -1017,6 +1065,7 @@ async def _run_operator_intrusion_qte(
         ok = False
     finally:
         _sessions.pop(sid, None)
+        sync_active_qte_group(sid[0])
 
     if ok:
         kind = str(intrusion_ctx.get("picked_skill_kind") or "neutral")
@@ -1253,6 +1302,7 @@ async def _run_keyword_race_qte(
         challenger_id=challenger_id,
         defender_id=defender_id,
     )
+    sync_active_qte_group(gid)
     schedule_bot_race_qte_auto_answer(
         group_id,
         challenger_id,
@@ -1269,6 +1319,7 @@ async def _run_keyword_race_qte(
         winner_uid = None
     finally:
         _race_sessions.pop(gid, None)
+        sync_active_qte_group(gid)
 
     snap = snapshot_combat(stacks)
     if winner_uid:
@@ -1478,6 +1529,7 @@ async def run_event_qte_if_any(
         return
 
     _sessions[sid] = _DuelQteSession(future=fut, required_key=required_key, deadline=deadline)
+    sync_active_qte_group(sid[0])
     schedule_bot_qte_auto_answer(
         group_id,
         responder,
@@ -1494,6 +1546,7 @@ async def run_event_qte_if_any(
         ok = False
     finally:
         _sessions.pop(sid, None)
+        sync_active_qte_group(sid[0])
 
     snap = snapshot_combat(stacks)
     if ok:
@@ -1542,4 +1595,6 @@ def clear_all_duel_qte_sessions() -> int:
             race.future.set_result(None)
             n += 1
         _race_sessions.pop(gid, None)
+    _active_qte_groups.clear()
+    _active_qte_users_by_group.clear()
     return n
