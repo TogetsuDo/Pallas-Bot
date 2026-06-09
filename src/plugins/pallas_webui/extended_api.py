@@ -1517,7 +1517,7 @@ def flush_unified_console_live_stats_sync(*, include_hist: bool = False) -> None
 
 def flush_worker_shard_console_stats_sync(*, include_hist: bool = False) -> None:
     from src.platform.bot_runtime.roles import is_sharded_worker
-    from src.platform.shard.console_stats import write_worker_stats_sync
+    from src.platform.shard.console_stats import process_memory_snapshot, write_worker_stats_sync
     from src.platform.shard.coord_pending import coord_pending_snapshot_sync
     from src.platform.shard.ingress_metrics import ingress_metrics_snapshot
     from src.platform.shard.presence import filter_local_qq_ids_for_presence, reconcile_local_worker_presence_sync
@@ -1543,6 +1543,7 @@ def flush_worker_shard_console_stats_sync(*, include_hist: bool = False) -> None
             "ingress": ingress_metrics_snapshot(),
             "repeater_ingress": repeater_ingress_metrics_snapshot(),
             "coord_pending": coord_pending_snapshot_sync(),
+            "process_memory": process_memory_snapshot(),
         },
     )
 
