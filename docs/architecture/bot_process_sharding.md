@@ -100,9 +100,9 @@ uv run python scripts/sync_shard_protocol_ports.py --dry-run
 
 `PALLAS_SHARD_WS_HOST`：写入注册表、供协议端连接的 worker 主机（Docker 内网或对外 IP 时改为实际可达地址）。worker 的 `PORT` 须与 `data/pallas_shard/registry.json` 中 `shards[].port` 一致。
 
-### 跨进程 claim（可选 Redis）
+### 跨进程 claim（需 Redis）
 
-与 **Pallas-Bot-AI** 共用 Redis 时，可减少 `data/*/message_claims` 的磁盘竞争（ingress / 插件抢占）。在 **`config/pallas.toml` 的 `[env]`** 中配置（勿再依赖根目录 `.env`）：
+当前分片模式的跨进程 claim **依赖 Redis**。与 **Pallas-Bot-AI** 共用 Redis 时可直接复用；在 **`config/pallas.toml` 的 `[env]`** 中配置（勿再依赖根目录 `.env`）：
 
 | 键 | 说明 |
 |----|------|
@@ -111,9 +111,9 @@ uv run python scripts/sync_shard_protocol_ports.py --dry-run
 | `PALLAS_COORD_REDIS_CLAIM_TTL_SEC` | claim 键 TTL，默认 86400 |
 | `pallas:presence:bots` | （自动）worker 在线状态 HASH；Redis 不可用时仍用 `worker_presence.json` |
 
-`./scripts/run_sharded_bot.sh start` 会读取 **`pallas.toml` / `webui.json`** 并调用 `detect_shard_redis.py` 自动探测；不可达时回退文件 claim。
+`./scripts/run_sharded_bot.sh start` 会读取 **`pallas.toml` / `webui.json`** 并调用 `detect_shard_redis.py` 自动探测；未配置、缺依赖或不可达时，分片 claim 将不可用，应先补齐 Redis 配置后再启动。
 
-依赖：`uv sync --extra coord-redis`（仅在使用 Redis 时需要安装 `redis` 包）。
+依赖：`uv sync --extra coord-redis`（或 `deploy-shard`，用于安装 `redis` 包）。
 
 ### 共享路径
 

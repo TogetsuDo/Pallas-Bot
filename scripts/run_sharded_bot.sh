@@ -109,7 +109,7 @@ EOF
 }
 
 load_shard_redis_env() {
-  # 与 Pallas-Bot-AI 共用 REDIS_URL 时自动启用跨进程 claim（不可达则回退文件）
+  # 与 Pallas-Bot-AI 共用 REDIS_URL 时自动启用跨进程 claim。
   if [[ ! -f "${DETECT_REDIS_SCRIPT}" ]]; then
     return 0
   fi
@@ -123,7 +123,7 @@ shard_coord_backend_hint() {
   if [[ "${PALLAS_COORD_REDIS_ENABLED:-}" == "true" && -n "${PALLAS_COORD_REDIS_URL:-}" ]]; then
     echo "跨进程 claim：Redis"
   else
-    echo "跨进程 claim：共享 data/ 文件"
+    echo "跨进程 claim：Redis 未就绪（分片 claim 不可用）"
   fi
 }
 
@@ -149,7 +149,7 @@ redis_status_get() {
 print_redis_status_block() {
   echo "  跨进程协调 (ingress claim)"
   if [[ ! -f "${DETECT_REDIS_SCRIPT}" ]]; then
-    echo "    后端     共享 data/ 文件（未找到探测脚本）"
+    echo "    状态     未找到探测脚本，无法确认 Redis"
     return
   fi
   load_redis_status_lines
@@ -164,13 +164,13 @@ print_redis_status_block() {
   backend="${backend:-file}"
   if [[ "${policy}" == "false" ]]; then
     echo "    策略     已禁用 (PALLAS_COORD_REDIS_ENABLED=false)"
-    echo "    后端     共享 data/ 文件"
+    echo "    状态     分片 claim 不可用"
     return
   fi
   if [[ -z "${url}" ]]; then
     echo "    策略     ${policy}"
     echo "    配置     未设置 REDIS_URL（pallas.toml [env] 或 webui.json）"
-    echo "    后端     共享 data/ 文件"
+    echo "    状态     分片 claim 不可用"
     return
   fi
   echo "    策略     ${policy}"
@@ -183,12 +183,12 @@ print_redis_status_block() {
   if [[ "${reachable}" == "yes" ]]; then
     echo "    连通     可达 → 启动 worker 时将使用 Redis"
   else
-    echo "    连通     不可达 → 回退共享 data/ 文件"
+    echo "    连通     不可达 → 分片 claim 不可用"
   fi
   if [[ "${active}" == "yes" ]]; then
     echo "    当前     Redis 已启用"
   else
-    echo "    当前     文件 claim"
+    echo "    当前     Redis 未启用"
   fi
 }
 
