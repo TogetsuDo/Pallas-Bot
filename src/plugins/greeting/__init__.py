@@ -484,6 +484,9 @@ _NoticeEvent = (
 
 @all_notice.handle()
 async def handle_notice(event: _NoticeEvent):
+    if event.notice_type == "group_msg_emoji_like":
+        return
+
     if await greeting_plugin_disabled(getattr(event, "group_id", None), event.self_id):
         return
 

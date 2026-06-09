@@ -21,9 +21,15 @@ _PLUGIN = "pallas_shard"
 _REDIS_CHANNEL = "pallas:repeater_buffer"
 _TTL_SEC = 90.0
 _MAX_GROUP_TAIL = 256
+_PUBLISH_QUEUE_MAX = 512
 _seen_event_ids: deque[str] = deque(maxlen=8000)
 _seen_set: set[str] = set()
 _redis_listener_started = False
+_publish_pending: deque[dict[str, Any]] = deque()
+_publish_event: asyncio.Event | None = None
+_publish_worker_task: asyncio.Task[None] | None = None
+_publish_worker_loop_ref: asyncio.AbstractEventLoop | None = None
+_publish_dropped = 0
 
 
 def _coord_dir():
@@ -189,17 +195,72 @@ def publish_repeater_buffer_event_sync(chat_data: ChatData) -> None:
     publish_repeater_buffer_file_sync(envelope)
 
 
+def publish_repeater_buffer_payload_sync(payload: dict[str, Any]) -> None:
+    if not is_sharding_active():
+        return
+    if get_shard_registry_settings().role != "worker":
+        return
+    envelope = {
+        "event_id": uuid.uuid4().hex,
+        "source_shard_id": int(get_shard_registry_settings().shard_id),
+        "msg": dict(payload),
+    }
+    if publish_repeater_buffer_redis_sync(envelope):
+        return
+    publish_repeater_buffer_file_sync(envelope)
+
+
+def _ensure_publish_worker() -> None:
+    global _publish_event, _publish_worker_task, _publish_worker_loop_ref
+    loop = asyncio.get_running_loop()
+    if _publish_worker_loop_ref is not loop:
+        _publish_worker_loop_ref = loop
+        _publish_event = asyncio.Event()
+        _publish_worker_task = None
+    if _publish_worker_task is None or _publish_worker_task.done():
+        _publish_worker_task = asyncio.create_task(
+            _run_publish_worker(),
+            name="repeater_buffer_publish_worker",
+        )
+
+
+def _enqueue_publish_payload(payload: dict[str, Any]) -> None:
+    global _publish_dropped
+    if len(_publish_pending) >= _PUBLISH_QUEUE_MAX:
+        _publish_pending.popleft()
+        _publish_dropped += 1
+        if _publish_dropped == 1 or _publish_dropped % 100 == 0:
+            logger.debug(
+                "repeater_buffer publish queue full, dropping oldest payloads dropped={} max={}",
+                _publish_dropped,
+                _PUBLISH_QUEUE_MAX,
+            )
+    _publish_pending.append(payload)
+    if _publish_event is not None:
+        _publish_event.set()
+
+
+async def _run_publish_worker() -> None:
+    while True:
+        event = _publish_event
+        if event is None:
+            return
+        await event.wait()
+        while _publish_pending:
+            payload = _publish_pending.popleft()
+            try:
+                await asyncio.to_thread(publish_repeater_buffer_payload_sync, payload)
+            except Exception as err:
+                logger.debug(f"repeater_buffer publish: {err}")
+        event.clear()
+
+
 def schedule_publish_repeater_buffer(chat_data: ChatData) -> None:
     if not is_sharding_active():
         return
-
-    async def job() -> None:
-        try:
-            await asyncio.to_thread(publish_repeater_buffer_event_sync, chat_data)
-        except Exception as err:
-            logger.debug(f"repeater_buffer publish: {err}")
-
-    asyncio.create_task(job())
+    payload = message_payload_from_chat_data(chat_data)
+    _ensure_publish_worker()
+    _enqueue_publish_payload(payload)
 
 
 def _message_tail_dup(group_msgs: list, msg: dict[str, Any]) -> bool:

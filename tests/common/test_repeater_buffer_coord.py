@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import suppress
+
+import pytest
 
 from src.foundation.db import Message as MessageModel
 from src.platform.shard.coord import repeater_buffer as mod
@@ -181,3 +184,107 @@ def test_repeater_buffer_skips_duplicate_tail(tmp_path, monkeypatch):
     }
     assert asyncio.run(mod.apply_repeater_buffer_message(msg)) is False
     assert len(MessageStore._message_dict[100]) == 1
+
+
+@pytest.mark.asyncio
+async def test_schedule_publish_repeater_buffer_reuses_single_worker(monkeypatch):
+    created: list[str | None] = []
+    published: list[dict[str, object]] = []
+    real_create_task = asyncio.create_task
+
+    async def fake_to_thread(fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    def fake_create_task(coro, *args, **kwargs):
+        created.append(kwargs.get("name"))
+        return real_create_task(coro)
+
+    monkeypatch.setattr(mod, "is_sharding_active", lambda: True)
+    monkeypatch.setattr(mod, "publish_repeater_buffer_payload_sync", lambda payload: published.append(dict(payload)))
+    monkeypatch.setattr(mod.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(mod.asyncio, "create_task", fake_create_task)
+    monkeypatch.setattr(mod, "_publish_pending", mod.deque())
+    monkeypatch.setattr(mod, "_publish_event", None)
+    monkeypatch.setattr(mod, "_publish_worker_task", None)
+    monkeypatch.setattr(mod, "_publish_worker_loop_ref", None)
+
+    chat = type(
+        "Chat",
+        (),
+        {
+            "group_id": 1,
+            "user_id": 2,
+            "bot_id": 3,
+            "raw_message": "hi",
+            "plain_text": "hi",
+            "is_plain_text": True,
+            "keywords": "hi",
+            "_keywords_list": ["hi"],
+            "time": 99,
+        },
+    )()
+
+    mod.schedule_publish_repeater_buffer(chat)
+    mod.schedule_publish_repeater_buffer(chat)
+    mod.schedule_publish_repeater_buffer(chat)
+
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    worker = mod._publish_worker_task
+    if worker is not None:
+        worker.cancel()
+        with suppress(asyncio.CancelledError):
+            await worker
+
+    assert len(created) == 1
+    assert len(published) == 3
+
+
+@pytest.mark.asyncio
+async def test_schedule_publish_repeater_buffer_drops_oldest_when_queue_full(monkeypatch):
+    published: list[dict[str, object]] = []
+
+    async def fake_to_thread(fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    monkeypatch.setattr(mod, "is_sharding_active", lambda: True)
+    monkeypatch.setattr(mod, "publish_repeater_buffer_payload_sync", lambda payload: published.append(dict(payload)))
+    monkeypatch.setattr(mod.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(mod, "_PUBLISH_QUEUE_MAX", 2)
+    monkeypatch.setattr(mod, "_publish_pending", mod.deque())
+    monkeypatch.setattr(mod, "_publish_event", None)
+    monkeypatch.setattr(mod, "_publish_worker_task", None)
+    monkeypatch.setattr(mod, "_publish_worker_loop_ref", None)
+
+    def make_chat(idx: int):
+        return type(
+            "Chat",
+            (),
+            {
+                "group_id": 1,
+                "user_id": idx,
+                "bot_id": 3,
+                "raw_message": f"m{idx}",
+                "plain_text": f"m{idx}",
+                "is_plain_text": True,
+                "keywords": f"m{idx}",
+                "_keywords_list": [f"m{idx}"],
+                "time": 100 + idx,
+            },
+        )()
+
+    mod.schedule_publish_repeater_buffer(make_chat(1))
+    mod.schedule_publish_repeater_buffer(make_chat(2))
+    mod.schedule_publish_repeater_buffer(make_chat(3))
+
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+
+    worker = mod._publish_worker_task
+    if worker is not None:
+        worker.cancel()
+        with suppress(asyncio.CancelledError):
+            await worker
+
+    assert [item["plain_text"] for item in published] == ["m2", "m3"]
