@@ -404,20 +404,13 @@ async def note_worker_bot_connected(bot) -> None:
         pass
     sid = get_shard_registry_settings().shard_id
     conn_key = str(getattr(bot, "self_id", qq))
-    nickname = ""
-    try:
-        raw = await bot.call_api("get_login_info")
-        if isinstance(raw, dict):
-            nickname = str(raw.get("nickname") or "").strip()
-    except Exception:
-        pass
     await asyncio.to_thread(
         note_worker_bot_connected_sync,
         qq=qq,
         connection_key=conn_key,
         adapter=adapter,
         shard_id=sid,
-        nickname=nickname,
+        nickname="",
     )
 
 

@@ -8,6 +8,7 @@
     PORT=8090
 """
 
+import asyncio
 import os
 
 os.environ.setdefault("PALLAS_SHARD_ENABLED", "true")
@@ -64,6 +65,15 @@ driver.register_adapter(ONEBOT_V11Adapter)
 register_onebot_v11_custom_events()
 
 
+async def _ensure_worker_voices_background() -> None:
+    try:
+        ok = await ensure_voices()
+        if not ok:
+            nonebot.logger.warning("bot_worker: voice ensure failed or incomplete")
+    except Exception as err:
+        nonebot.logger.warning("bot_worker: voice ensure failed: {}", err)
+
+
 @driver.on_startup
 async def startup():
     await init_db()
@@ -97,7 +107,7 @@ async def startup():
     if coord_redis_enabled():
         nonebot.logger.info("bot_worker: cross-process claims via Redis ({})", resolve_coord_redis_url())
     start_shard_coord_worker_watcher()
-    await ensure_voices()
+    asyncio.create_task(_ensure_worker_voices_background(), name="worker_ensure_voices")
 
 
 @driver.on_shutdown

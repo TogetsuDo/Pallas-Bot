@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -239,3 +240,41 @@ def test_disconnect_missing_presence_does_not_write_file(tmp_path, monkeypatch: 
 
     assert writes == []
     assert not mod._presence_path().exists()
+
+
+@pytest.mark.asyncio
+async def test_note_worker_bot_connected_does_not_call_login_info(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(mod, "is_sharding_active", lambda: True)
+    monkeypatch.setattr(mod, "get_shard_registry_settings", lambda: SimpleNamespace(shard_id=7))
+
+    captured: dict[str, object] = {}
+
+    async def fake_to_thread(fn, /, *args, **kwargs):
+        captured["fn"] = fn
+        captured["kwargs"] = kwargs
+        return None
+
+    monkeypatch.setattr(mod.asyncio, "to_thread", fake_to_thread)
+
+    class _Adapter:
+        @staticmethod
+        def get_name() -> str:
+            return "OneBot V11"
+
+    class _Bot:
+        self_id = "123456"
+        adapter = _Adapter()
+
+        async def call_api(self, *_args, **_kwargs):
+            raise AssertionError("get_login_info should not be called during bot_connect")
+
+    await mod.note_worker_bot_connected(_Bot())
+
+    assert captured["fn"] is mod.note_worker_bot_connected_sync
+    assert captured["kwargs"] == {
+        "qq": 123456,
+        "connection_key": "123456",
+        "adapter": "OneBot V11",
+        "shard_id": 7,
+        "nickname": "",
+    }

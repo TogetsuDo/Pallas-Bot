@@ -130,3 +130,45 @@ def test_call_me_rule_skips_when_duel_qte_active(monkeypatch) -> None:
 
     spectator = SimpleNamespace(raw_message="帕拉斯", group_id=777, user_id=200)
     assert greeting_mod.call_me_message_rule(spectator) is True
+
+
+def test_duel_qte_blocks_greeting_via_cluster_mirror(monkeypatch) -> None:
+    gid = "733291779"
+    qte_mod._cluster_qte_users.clear()
+    qte_mod._cluster_qte_deadline.clear()
+    qte_mod._active_qte_groups.clear()
+    qte_mod._active_qte_users_by_group.clear()
+    monkeypatch.setattr(
+        "src.platform.shard.registry.config.is_sharding_active",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "src.platform.shard.coord.duel_qte_redis.greeting_user_blocked_redis_sync",
+        lambda group_id, user_id: False,
+    )
+    try:
+        qte_mod.apply_cluster_qte_greeting(gid, frozenset({"2964163468"}), time.time() + 30.0)
+        assert qte_mod.duel_qte_blocks_greeting_user(int(gid), "2964163468") is True
+        assert qte_mod.duel_qte_blocks_greeting_user(int(gid), "999") is False
+    finally:
+        qte_mod._cluster_qte_users.clear()
+        qte_mod._cluster_qte_deadline.clear()
+
+
+def test_bot_race_qte_use_cluster_coord_when_sharding(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "src.platform.shard.registry.config.is_sharding_active",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        qte_mod,
+        "is_fleet_bot_qq",
+        lambda qq: qq in {2136204582, 3257801645},
+    )
+    assert qte_mod.bot_race_qte_use_cluster_coord("2136204582", "3257801645") is True
+    assert qte_mod.bot_race_qte_use_cluster_coord("2964163468", "2136204582") is True
+    monkeypatch.setattr(
+        "src.platform.shard.registry.config.is_sharding_active",
+        lambda: False,
+    )
+    assert qte_mod.bot_race_qte_use_cluster_coord("2136204582", "3257801645") is False
