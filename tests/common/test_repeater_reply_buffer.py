@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
-from contextlib import suppress
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -98,54 +97,49 @@ async def test_ban_searches_other_bot_reply_cache():
 
 
 @pytest.mark.asyncio
-async def test_schedule_publish_repeater_reply_record_reuses_single_worker(monkeypatch):
+async def test_schedule_publish_repeater_reply_record_does_not_drop_burst(monkeypatch):
     from src.platform.shard.coord import repeater_reply_buffer as mod
 
-    created: list[str | None] = []
     published: list[dict[str, object]] = []
-    real_create_task = asyncio.create_task
 
     async def fake_to_thread(fn, *args, **kwargs):
+        await asyncio.sleep(0.002)
         return fn(*args, **kwargs)
 
-    def fake_create_task(coro, *args, **kwargs):
-        created.append(kwargs.get("name"))
-        return real_create_task(coro)
-
     monkeypatch.setattr(mod, "is_sharding_active", lambda: True)
-    monkeypatch.setattr(mod, "publish_repeater_reply_payload_sync", lambda payload: published.append(dict(payload)))
+    monkeypatch.setattr(
+        mod,
+        "publish_repeater_reply_record_sync",
+        lambda group_id, bot_id, record: published.append(
+            {
+                "group_id": group_id,
+                "bot_id": bot_id,
+                **dict(record),
+            }
+        ),
+    )
     monkeypatch.setattr(mod.asyncio, "to_thread", fake_to_thread)
-    monkeypatch.setattr(mod.asyncio, "create_task", fake_create_task)
-    monkeypatch.setattr(mod, "_publish_pending", mod.deque())
-    monkeypatch.setattr(mod, "_publish_event", None)
-    monkeypatch.setattr(mod, "_publish_worker_task", None)
-    monkeypatch.setattr(mod, "_publish_worker_loop_ref", None)
 
-    record = {
-        "time": 1,
-        "pre_raw_message": "q",
-        "pre_keywords": "qk",
-        "reply": "a",
-        "reply_keywords": "ak",
-    }
-    mod.schedule_publish_repeater_reply_record(1, 2, record)
-    mod.schedule_publish_repeater_reply_record(1, 2, record)
-    mod.schedule_publish_repeater_reply_record(1, 2, record)
+    total = 700
+    for idx in range(total):
+        mod.schedule_publish_repeater_reply_record(
+            1,
+            2,
+            {
+                "time": idx,
+                "pre_raw_message": f"q{idx}",
+                "pre_keywords": f"qk{idx}",
+                "reply": f"a{idx}",
+                "reply_keywords": f"ak{idx}",
+            },
+        )
 
-    await asyncio.sleep(0)
-    await asyncio.sleep(0)
+    await asyncio.sleep(0.5)
 
-    worker = mod._publish_worker_task
-    if worker is not None:
-        worker.cancel()
-        with suppress(asyncio.CancelledError):
-            await worker
-
-    assert len(created) == 1
-    assert len(published) == 3
+    assert [item["reply"] for item in published] == [f"a{idx}" for idx in range(total)]
 
 
-def test_publish_reply_record_sharding_without_redis_skips_file_fallback(monkeypatch) -> None:
+def test_publish_reply_record_sharding_without_redis_skips_publish(monkeypatch) -> None:
     from src.platform.shard.coord import repeater_reply_buffer as mod
 
     monkeypatch.setattr(mod, "publish_repeater_reply_buffer_redis_sync", lambda env: False)
@@ -159,12 +153,6 @@ def test_publish_reply_record_sharding_without_redis_skips_file_fallback(monkeyp
         "src.platform.coord.redis_settings.coord_redis_enabled",
         lambda: False,
     )
-    wrote: list[str] = []
-    monkeypatch.setattr(
-        mod,
-        "publish_repeater_reply_buffer_file_sync",
-        lambda env: wrote.append(str(env["event_id"])),
-    )
 
     mod.publish_repeater_reply_record_sync(
         1,
@@ -177,4 +165,3 @@ def test_publish_reply_record_sharding_without_redis_skips_file_fallback(monkeyp
             "reply_keywords": "ak",
         },
     )
-    assert wrote == []
