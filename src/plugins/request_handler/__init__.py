@@ -29,11 +29,18 @@ from src.features.cmd_perm.metadata_defaults import (
 from src.features.cmd_perm.metadata_text import SCENE_GROUP, SCENE_PRIVATE, join_usage, usage_line
 from src.foundation.config import BotConfig, GroupConfig, UserConfig, get_bot_admins, user_is_bot_admin
 from src.foundation.paths import plugin_data_dir
+from src.plugins.request_handler.approval_notice_text import parse_approval_notice_meta
 from src.plugins.request_handler.approval_reply_text import (
     classify_approval_reply_text,
     extract_approval_reply_text_from_body,
 )
 from src.plugins.request_handler.config import Config
+from src.plugins.request_handler.storage import (
+    load_json_file,
+    merge_write_bot_entry,
+    merge_write_bot_nested_entries,
+    save_json_file,
+)
 from src.plugins.request_handler.texts import (
     APPROVE_ALL_FRIENDS_COMMAND,
     APPROVE_ALL_GROUPS_ALIASES,
@@ -228,33 +235,27 @@ _NOTIFY_RECORD_MAX_AGE_SEC = 7 * 24 * 3600
 
 
 def load_json(path: Path) -> dict:
-    if path.exists():
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    return {}
+    return load_json_file(path)
 
 
 def save_json(path: Path, data: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(data, ensure_ascii=False, indent=2)
-    fd, tmp_path = tempfile.mkstemp(
-        dir=path.parent,
-        prefix=f".{path.name}.",
-        suffix=".tmp",
-        text=True,
-    )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fp:
-            fp.write(payload)
-        Path(tmp_path).replace(path)
-    except Exception:
-        try:
-            Path(tmp_path).unlink()
-        except OSError:
-            pass
-        raise
+    save_json_file(path, data)
+
+
+def persist_pending_friend(bot_key: str) -> None:
+    merge_write_bot_nested_entries(FRIEND_REQ_FILE, pending_friend, bot_key)
+
+
+def persist_pending_group(bot_key: str) -> None:
+    merge_write_bot_nested_entries(GROUP_REQ_FILE, pending_group, bot_key)
+
+
+def persist_last_notified_bot(bot_key: str) -> None:
+    merge_write_bot_entry(LAST_NOTIFIED_FILE, last_notified_store, bot_key)
+
+
+def persist_approval_notice_bot(bot_key: str) -> None:
+    merge_write_bot_nested_entries(APPROVAL_NOTICE_FILE, approval_notice_map, bot_key)
 
 
 def load_doubt_poll_state() -> tuple[set[str], dict[str, set[str]]]:
@@ -308,7 +309,7 @@ def failure_cleanup_friend(bot_key: str, uid_str: str) -> None:
     bot_pending = pending_friend.get(bot_key)
     if bot_pending and uid_str in bot_pending:
         bot_pending.pop(uid_str, None)
-        save_json(FRIEND_REQ_FILE, pending_friend)
+        persist_pending_friend(bot_key)
     doubt_cache = cached_doubt_friend.get(bot_key)
     if doubt_cache and uid_str in doubt_cache:
         doubt_cache.pop(uid_str, None)
@@ -320,7 +321,7 @@ def failure_cleanup_group(bot_key: str, group_key: str) -> None:
     bot_pending = pending_group.get(bot_key)
     if bot_pending and group_key in bot_pending:
         bot_pending.pop(group_key, None)
-        save_json(GROUP_REQ_FILE, pending_group)
+        persist_pending_group(bot_key)
     clear_quick_approve_state(bot_key, "group", group_key)
 
 
@@ -363,9 +364,21 @@ def load_last_notified_store() -> tuple[dict[str, dict[str, str | float]], bool]
     return out, dirty
 
 
-def persist_last_notified_store() -> None:
+def persist_last_notified_store(bot_key: str | None = None) -> None:
     prune_stale_last_notified_entries()
-    save_json(LAST_NOTIFIED_FILE, last_notified_store)
+    if bot_key is not None:
+        persist_last_notified_bot(bot_key)
+        return
+
+    for current_bot_key in list(last_notified_store.keys()):
+        persist_last_notified_bot(current_bot_key)
+
+    disk_data = load_json(LAST_NOTIFIED_FILE)
+    stale_keys = [str(key) for key in disk_data.keys() if str(key) not in last_notified_store]
+    if stale_keys:
+        for stale_bot_key in stale_keys:
+            last_notified_store.pop(stale_bot_key, None)
+            persist_last_notified_bot(stale_bot_key)
 
 
 def prune_stale_last_notified_entries() -> bool:
@@ -386,7 +399,7 @@ def prune_stale_last_notified_entries() -> bool:
 
 def set_last_notified(bot_key: str, kind: str, target_id: str) -> None:
     last_notified_store[bot_key] = {"kind": kind, "target_id": target_id, "ts": time.time()}
-    persist_last_notified_store()
+    persist_last_notified_store(bot_key)
 
 
 def get_last_notified(bot_key: str) -> tuple[str, str, float] | None:
@@ -403,7 +416,7 @@ def get_last_notified(bot_key: str) -> tuple[str, str, float] | None:
         ts = 0.0
     if notify_ts_expired(ts):
         last_notified_store.pop(bot_key, None)
-        persist_last_notified_store()
+        persist_last_notified_store(bot_key)
         return None
     return kind, target_id, ts
 
@@ -478,9 +491,21 @@ def prune_stale_approval_notice_entries() -> bool:
     return changed
 
 
-def persist_approval_notice_map() -> None:
+def persist_approval_notice_map(bot_key: str | None = None) -> None:
     prune_stale_approval_notice_entries()
-    save_json(APPROVAL_NOTICE_FILE, approval_notice_map)
+    if bot_key is not None:
+        persist_approval_notice_bot(bot_key)
+        return
+
+    for current_bot_key in list(approval_notice_map.keys()):
+        persist_approval_notice_bot(current_bot_key)
+
+    disk_data = load_json(APPROVAL_NOTICE_FILE)
+    stale_keys = [str(key) for key in disk_data.keys() if str(key) not in approval_notice_map]
+    if stale_keys:
+        for stale_bot_key in stale_keys:
+            approval_notice_map.pop(stale_bot_key, None)
+            persist_approval_notice_bot(stale_bot_key)
 
 
 def register_approval_notice(bot_key: str, message_id: int, kind: str, target_id: str, *, persist: bool = True) -> None:
@@ -490,7 +515,7 @@ def register_approval_notice(bot_key: str, message_id: int, kind: str, target_id
         "ts": time.time(),
     }
     if persist:
-        persist_approval_notice_map()
+        persist_approval_notice_map(bot_key)
 
 
 def extract_message_id(result: object) -> int | None:
@@ -522,9 +547,9 @@ def clear_quick_approve_state(bot_key: str, kind: str, target_id: str) -> None:
         if not bot_msgs:
             approval_notice_map.pop(bot_key, None)
     if ln_changed:
-        persist_last_notified_store()
+        persist_last_notified_store(bot_key)
     if notice_changed:
-        persist_approval_notice_map()
+        persist_approval_notice_map(bot_key)
 
 
 # {bot_id: {user_id: flag}}
@@ -629,7 +654,7 @@ async def approve_friend_by_uid(bot: Bot, bot_key: str, uid_str: str) -> tuple[b
         except Exception as e:
             return False, f"操作未成功：{e}（请稍后重试）"
         bot_pending.pop(uid_str, None)
-        save_json(FRIEND_REQ_FILE, pending_friend)
+        persist_pending_friend(bot_key)
         nickname = await get_nickname(bot, int(uid_str))
         return True, f"已同意好友：{nickname}（{uid_str}）"
 
@@ -664,7 +689,7 @@ async def reject_friend_by_uid(bot: Bot, bot_key: str, uid_str: str) -> tuple[bo
         except Exception as e:
             return False, f"操作未成功：{e}（请稍后重试）"
         bot_pending.pop(uid_str, None)
-        save_json(FRIEND_REQ_FILE, pending_friend)
+        persist_pending_friend(bot_key)
         nickname = await get_nickname(bot, int(uid_str))
         return True, f"已拒绝好友：{nickname}（{uid_str}）"
 
@@ -703,7 +728,7 @@ async def approve_group_invite_by_gid(bot: Bot, bot_key: str, group_key: str) ->
     except Exception as e:
         return False, f"操作未成功：{e}（请稍后重试）"
     bot_pending.pop(group_key, None)
-    save_json(GROUP_REQ_FILE, pending_group)
+    persist_pending_group(bot_key)
     nickname = await get_nickname(bot, req["user_id"])
     group_name = await get_group_name(bot, group_id)
     return True, f"已同意入群申请：{group_name}（{group_id}），邀请人 {nickname}（{req['user_id']}）"
@@ -725,7 +750,7 @@ async def reject_group_invite_by_gid(bot: Bot, bot_key: str, group_key: str) -> 
     except Exception as e:
         return False, f"操作未成功：{e}（请稍后重试）"
     bot_pending.pop(group_key, None)
-    save_json(GROUP_REQ_FILE, pending_group)
+    persist_pending_group(bot_key)
     nickname = await get_nickname(bot, req["user_id"])
     group_name = await get_group_name(bot, group_id)
     return True, f"已拒绝入群申请：{group_name}（{group_id}），邀请人 {nickname}（{req['user_id']}）"
@@ -788,7 +813,7 @@ async def notify_admins(bot: Bot, msg: str, *, kind: str, target_id: str) -> boo
         except Exception:
             pass
     if registered:
-        persist_approval_notice_map()
+        persist_approval_notice_map(bot_key)
     return delivered_any
 
 
@@ -864,20 +889,23 @@ async def approval_reply_rule(bot: Bot, event: Event) -> bool:
         return False
     if not event.reply:
         return False
+    quoted_body = None
+    if event.reply.message is not None:
+        quoted_body = event.reply.message.extract_plain_text()
     bot_key = str(bot.self_id)
     mid = str(event.reply.message_id)
     bot_msgs = approval_notice_map.get(bot_key)
-    if not bot_msgs or mid not in bot_msgs:
-        return False
-    meta = bot_msgs[mid]
-    ts = float(meta.get("ts") or 0)
-    if ts and notify_ts_expired(ts):
-        bot_msgs.pop(mid, None)
-        if not bot_msgs:
-            approval_notice_map.pop(bot_key, None)
-        persist_approval_notice_map()
-        return False
-    return True
+    if bot_msgs and mid in bot_msgs:
+        meta = bot_msgs[mid]
+        ts = float(meta.get("ts") or 0)
+        if ts and notify_ts_expired(ts):
+            bot_msgs.pop(mid, None)
+            if not bot_msgs:
+                approval_notice_map.pop(bot_key, None)
+            persist_approval_notice_map(bot_key)
+            return False
+        return True
+    return parse_approval_notice_meta(quoted_body) is not None
 
 
 approval_reply_cmd = on_message(rule=Rule(approval_reply_rule), priority=4, block=True)
@@ -887,12 +915,14 @@ approval_reply_cmd = on_message(rule=Rule(approval_reply_rule), priority=4, bloc
 async def handle_approval_reply(bot: Bot, event: PrivateMessageEvent):
     bot_key = str(bot.self_id)
     mid = str(event.reply.message_id)
-    meta = approval_notice_map.get(bot_key, {}).get(mid)
-    if not meta:
-        return
     quoted_body = None
     if event.reply and event.reply.message is not None:
         quoted_body = event.reply.message.extract_plain_text()
+    meta = approval_notice_map.get(bot_key, {}).get(mid)
+    if not meta:
+        meta = parse_approval_notice_meta(quoted_body)
+    if not meta:
+        return
     text = extract_approval_reply_text_from_body(event.get_plaintext() or "", quoted_body)
     action = classify_approval_reply_text(text)
     if action is None:
@@ -924,13 +954,13 @@ async def handle_friend_request(bot: Bot, event: FriendRequestEvent):
     bot_id = int(bot.self_id)
     bot_key = str(bot_id)
     pending_friend.setdefault(bot_key, {})[str(event.user_id)] = event.flag
-    save_json(FRIEND_REQ_FILE, pending_friend)
+    persist_pending_friend(bot_key)
 
     bot_config = BotConfig(bot_id)
     if await bot_config.auto_accept_friend():
         await event.approve(bot)
         pending_friend.get(bot_key, {}).pop(str(event.user_id), None)
-        save_json(FRIEND_REQ_FILE, pending_friend)
+        persist_pending_friend(bot_key)
         return
 
     if not await request_handler_plugin_disabled(bot_id=bot_id):
@@ -1077,13 +1107,13 @@ async def handle_group_request(bot: Bot, event: GroupRequestEvent):
             "group_id": event.group_id,
             "comment": event.comment or "",
         }
-        save_json(GROUP_REQ_FILE, pending_group)
+        persist_pending_group(bot_key)
 
         bot_config = BotConfig(bot_id)
         if await bot_config.auto_accept_group() or await user_is_bot_admin(bot_id, event.user_id):
             await event.approve(bot)
             pending_group.get(bot_key, {}).pop(group_key, None)
-            save_json(GROUP_REQ_FILE, pending_group)
+            persist_pending_group(bot_key)
             return
 
         if not await request_handler_plugin_disabled(bot_id=bot_id):
@@ -1125,7 +1155,7 @@ async def handle_approve_all_friends(bot: Bot, event: MessageEvent):
             cleared_friend_ids.add(uid)
         except Exception:
             fail += 1
-    save_json(FRIEND_REQ_FILE, pending_friend)
+    persist_pending_friend(bot_key)
 
     for uid, flag in list(doubt_requests.items()):
         try:
@@ -1172,7 +1202,7 @@ async def handle_reject_all_friends(bot: Bot, event: MessageEvent):
             cleared_friend_ids.add(uid)
         except Exception:
             fail += 1
-    save_json(FRIEND_REQ_FILE, pending_friend)
+    persist_pending_friend(bot_key)
 
     for uid, flag in list(doubt_requests.items()):
         try:
@@ -1215,7 +1245,7 @@ async def handle_approve_all_groups(bot: Bot, event: MessageEvent):
             cleared_group_keys.add(key)
         except Exception:
             fail += 1
-    save_json(GROUP_REQ_FILE, pending_group)
+    persist_pending_group(bot_key)
     for gkey in cleared_group_keys:
         clear_quick_approve_state(bot_key, "group", gkey)
     await approve_all_groups_cmd.finish(f"已同意 {ok} 条入群申请" + (f"，{fail} 条失败" if fail else ""))
@@ -1243,7 +1273,7 @@ async def handle_reject_all_groups(bot: Bot, event: MessageEvent):
             cleared_group_keys.add(key)
         except Exception:
             fail += 1
-    save_json(GROUP_REQ_FILE, pending_group)
+    persist_pending_group(bot_key)
     for gkey in cleared_group_keys:
         clear_quick_approve_state(bot_key, "group", gkey)
     await reject_all_groups_cmd.finish(f"已拒绝 {ok} 条入群申请" + (f"，{fail} 条失败" if fail else ""))

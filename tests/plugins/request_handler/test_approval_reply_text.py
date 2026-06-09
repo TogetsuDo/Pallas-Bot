@@ -24,10 +24,7 @@ def test_unknown_body_is_not_classified() -> None:
 
 
 def test_quote_only_reply_body_matches_quoted_notice() -> None:
-    quoted = (
-        "[好友申请]\n申请人：测试（123456）\n"
-        "验证：-\n帮助：牛牛帮助 申请管理"
-    )
+    quoted = "[好友申请]\n申请人：测试（123456）\n验证：-\n帮助：牛牛帮助 申请管理"
     assert extract_approval_reply_text_from_body(quoted, quoted) == ""
     assert classify_approval_reply_text(extract_approval_reply_text_from_body(quoted, quoted)) == "approve"
 
