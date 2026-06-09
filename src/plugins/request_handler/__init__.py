@@ -29,6 +29,10 @@ from src.features.cmd_perm.metadata_defaults import (
 from src.features.cmd_perm.metadata_text import SCENE_GROUP, SCENE_PRIVATE, join_usage, usage_line
 from src.foundation.config import BotConfig, GroupConfig, UserConfig, get_bot_admins, user_is_bot_admin
 from src.foundation.paths import plugin_data_dir
+from src.plugins.request_handler.approval_reply_text import (
+    classify_approval_reply_text,
+    extract_approval_reply_text_from_body,
+)
 from src.plugins.request_handler.config import Config
 from src.plugins.request_handler.texts import (
     APPROVE_ALL_FRIENDS_COMMAND,
@@ -540,18 +544,6 @@ if _last_notified_dirty:
 if _approval_notice_dirty:
     save_json(APPROVAL_NOTICE_FILE, approval_notice_map)
 
-# 引用审批通知时允许的正文（小写比较）；空字符串表示仅引用不打字（视为同意）
-_APPROVE_REPLY_TEXT = frozenset({"", "同意", "好", "yes", "y", "ok"})
-_REJECT_REPLY_TEXT = frozenset({"拒绝", "不要", "否", "no", "n"})
-
-
-def classify_approval_reply_text(text: str) -> str | None:
-    if text in _APPROVE_REPLY_TEXT:
-        return "approve"
-    if text in _REJECT_REPLY_TEXT:
-        return "reject"
-    return None
-
 
 def rows_from_doubt_friends_api(result: object) -> list[dict]:
     if isinstance(result, list):
@@ -898,7 +890,10 @@ async def handle_approval_reply(bot: Bot, event: PrivateMessageEvent):
     meta = approval_notice_map.get(bot_key, {}).get(mid)
     if not meta:
         return
-    text = event.get_plaintext().strip().lower()
+    quoted_body = None
+    if event.reply and event.reply.message is not None:
+        quoted_body = event.reply.message.extract_plain_text()
+    text = extract_approval_reply_text_from_body(event.get_plaintext() or "", quoted_body)
     action = classify_approval_reply_text(text)
     if action is None:
         await approval_reply_cmd.finish("引用审批消息后，正文须为：同意 / 好 / 留空，或 拒绝 / 不要 / 否。")
