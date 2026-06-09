@@ -30,6 +30,7 @@ _publish_event: asyncio.Event | None = None
 _publish_worker_task: asyncio.Task[None] | None = None
 _publish_worker_loop_ref: asyncio.AbstractEventLoop | None = None
 _publish_dropped = 0
+_missing_redis_warned = False
 
 
 def _coord_dir():
@@ -185,6 +186,7 @@ def publish_repeater_buffer_file_sync(envelope: dict[str, Any]) -> None:
 
 
 def publish_repeater_buffer_event_sync(chat_data: ChatData) -> None:
+    global _missing_redis_warned
     if not is_sharding_active():
         return
     if get_shard_registry_settings().role != "worker":
@@ -192,10 +194,18 @@ def publish_repeater_buffer_event_sync(chat_data: ChatData) -> None:
     envelope = buffer_event_envelope(chat_data)
     if publish_repeater_buffer_redis_sync(envelope):
         return
+    from src.platform.coord.redis_settings import coord_redis_enabled
+
+    if not coord_redis_enabled():
+        if not _missing_redis_warned:
+            logger.warning("repeater_buffer: sharding requires Redis; skip file fallback publish")
+            _missing_redis_warned = True
+        return
     publish_repeater_buffer_file_sync(envelope)
 
 
 def publish_repeater_buffer_payload_sync(payload: dict[str, Any]) -> None:
+    global _missing_redis_warned
     if not is_sharding_active():
         return
     if get_shard_registry_settings().role != "worker":
@@ -206,6 +216,13 @@ def publish_repeater_buffer_payload_sync(payload: dict[str, Any]) -> None:
         "msg": dict(payload),
     }
     if publish_repeater_buffer_redis_sync(envelope):
+        return
+    from src.platform.coord.redis_settings import coord_redis_enabled
+
+    if not coord_redis_enabled():
+        if not _missing_redis_warned:
+            logger.warning("repeater_buffer: sharding requires Redis; skip file fallback publish")
+            _missing_redis_warned = True
         return
     publish_repeater_buffer_file_sync(envelope)
 

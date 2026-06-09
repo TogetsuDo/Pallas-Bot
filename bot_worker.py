@@ -68,6 +68,14 @@ register_onebot_v11_custom_events()
 async def startup():
     await init_db()
     await start_ban_gate_snapshot()
+    from src.platform.coord.redis_settings import (
+        coord_redis_enabled,
+        ensure_coord_redis_ready_for_sharding,
+        resolve_coord_redis_url,
+    )
+    from src.platform.shard.coord.worker_poll import start_shard_coord_worker_watcher
+
+    ensure_coord_redis_ready_for_sharding()
     s = get_shard_registry_settings()
     reg = get_shard_registry()
     port = worker_port_for_shard(s.shard_id, registry=reg)
@@ -85,8 +93,6 @@ async def startup():
             port,
             s.shard_id,
         )
-    from src.platform.coord.redis_settings import coord_redis_enabled, resolve_coord_redis_url
-    from src.platform.shard.coord.worker_poll import start_shard_coord_worker_watcher
 
     if coord_redis_enabled():
         nonebot.logger.info("bot_worker: cross-process claims via Redis ({})", resolve_coord_redis_url())

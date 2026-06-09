@@ -87,6 +87,45 @@ def test_publish_prefers_redis_over_file(tmp_path, monkeypatch):
     assert wrote == []
 
 
+def test_publish_sharding_without_redis_skips_file_fallback(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "_coord_dir", lambda: tmp_path)
+    monkeypatch.setattr(mod, "publish_repeater_buffer_redis_sync", lambda env: False)
+    monkeypatch.setattr(mod, "is_sharding_active", lambda: True)
+    monkeypatch.setattr(
+        mod,
+        "get_shard_registry_settings",
+        lambda: type("S", (), {"role": "worker", "shard_id": 0, "enabled": True})(),
+    )
+    monkeypatch.setattr(
+        "src.platform.coord.redis_settings.coord_redis_enabled",
+        lambda: False,
+    )
+    wrote: list[str] = []
+    monkeypatch.setattr(
+        mod,
+        "publish_repeater_buffer_file_sync",
+        lambda env: wrote.append(str(env["event_id"])),
+    )
+
+    chat = type(
+        "Chat",
+        (),
+        {
+            "group_id": 1,
+            "user_id": 2,
+            "bot_id": 3,
+            "raw_message": "hi",
+            "plain_text": "hi",
+            "is_plain_text": True,
+            "keywords": "hi",
+            "_keywords_list": ["hi"],
+            "time": 99,
+        },
+    )()
+    mod.publish_repeater_buffer_event_sync(chat)
+    assert wrote == []
+
+
 def test_repeater_buffer_cross_shard_append_topics(tmp_path, monkeypatch):
     monkeypatch.setattr(mod, "_coord_dir", lambda: tmp_path)
     monkeypatch.setattr(mod, "_registry_shard_ids", lambda: frozenset({0, 1}))

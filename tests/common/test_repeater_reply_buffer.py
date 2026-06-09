@@ -143,3 +143,38 @@ async def test_schedule_publish_repeater_reply_record_reuses_single_worker(monke
 
     assert len(created) == 1
     assert len(published) == 3
+
+
+def test_publish_reply_record_sharding_without_redis_skips_file_fallback(monkeypatch) -> None:
+    from src.platform.shard.coord import repeater_reply_buffer as mod
+
+    monkeypatch.setattr(mod, "publish_repeater_reply_buffer_redis_sync", lambda env: False)
+    monkeypatch.setattr(mod, "is_sharding_active", lambda: True)
+    monkeypatch.setattr(
+        mod,
+        "get_shard_registry_settings",
+        lambda: type("S", (), {"role": "worker", "shard_id": 0, "enabled": True})(),
+    )
+    monkeypatch.setattr(
+        "src.platform.coord.redis_settings.coord_redis_enabled",
+        lambda: False,
+    )
+    wrote: list[str] = []
+    monkeypatch.setattr(
+        mod,
+        "publish_repeater_reply_buffer_file_sync",
+        lambda env: wrote.append(str(env["event_id"])),
+    )
+
+    mod.publish_repeater_reply_record_sync(
+        1,
+        2,
+        {
+            "time": 1,
+            "pre_raw_message": "q",
+            "pre_keywords": "qk",
+            "reply": "a",
+            "reply_keywords": "ak",
+        },
+    )
+    assert wrote == []
