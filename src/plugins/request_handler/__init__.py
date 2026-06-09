@@ -45,7 +45,7 @@ __plugin_meta__ = PluginMetadata(
     description="好友/入群申请提醒与审批，支持自动同意开关。",
     usage=join_usage(
         usage_line("查看好友申请 / 查看入群邀请", "列出待处理项"),
-        usage_line("同意", "处理最新提醒，或引用某条提醒后同意"),
+        usage_line("同意 / 拒绝", "处理最新提醒，或引用某条提醒后同意/拒绝"),
         usage_line("同意好友 / 拒绝好友 〈QQ〉", "按 QQ 审批好友"),
         usage_line("同意所有好友 / 拒绝所有好友", "批量好友"),
         usage_line("同意入群 / 拒绝入群 〈群号〉", "按群号审批入群"),
@@ -62,6 +62,7 @@ __plugin_meta__ = PluginMetadata(
             {"id": "request.list_friends", "label": "查看好友申请", "default": "bot_moderator"},
             {"id": "request.list_groups", "label": "查看入群邀请", "default": "bot_moderator"},
             {"id": "request.approve_latest", "label": "同意（快捷）", "default": "bot_moderator"},
+            {"id": "request.reject_latest", "label": "拒绝（快捷）", "default": "bot_moderator"},
             {"id": "request.approve_friend", "label": "同意好友", "default": "bot_moderator"},
             {"id": "request.reject_friend", "label": "拒绝好友", "default": "bot_moderator"},
             {"id": "request.approve_all_friends", "label": "同意所有好友", "default": "bot_moderator"},
@@ -75,7 +76,7 @@ __plugin_meta__ = PluginMetadata(
             {"id": "request.disable_auto_friend", "label": "关闭自动同意好友", "default": "bot_moderator"},
             {"id": "request.enable_auto_group", "label": "开启自动同意入群", "default": "bot_moderator"},
             {"id": "request.disable_auto_group", "label": "关闭自动同意入群", "default": "bot_moderator"},
-            {"id": "request.approval_reply", "label": "引用审批消息快捷同意", "default": "bot_moderator"},
+            {"id": "request.approval_reply", "label": "引用审批消息快捷同意/拒绝", "default": "bot_moderator"},
         ],
         "menu_data": [
             {
@@ -97,13 +98,26 @@ __plugin_meta__ = PluginMetadata(
                 "detail_des": "私聊「同意」对应牛牛最新一条提醒；引用某条审批提醒则只处理该条",
             },
             {
-                "func": "引用审批消息快捷同意",
+                "func": "快捷拒绝最近申请",
+                "trigger_method": "on_cmd",
+                "trigger_scene": SCENE_PRIVATE,
+                "trigger_condition": "拒绝",
+                "command_permission": "request.reject_latest",
+                "brief_des": "快捷拒绝一条申请",
+                "detail_des": "私聊「拒绝」对应牛牛最新一条提醒；引用某条审批提醒则只处理该条",
+            },
+            {
+                "func": "引用审批消息快捷操作",
                 "trigger_method": "on_message",
                 "trigger_scene": SCENE_PRIVATE,
-                "trigger_condition": "引用审批提醒：同意 / 好 / 留空",
-                "command_permission": "request.approval_reply",
-                "brief_des": "按引用对应单一申请同意",
-                "detail_des": "须引用仍有效的审批消息；好友或入群邀请分别走对应处理逻辑",
+                "trigger_condition": "引用审批提醒：同意 / 好 / 留空，或 拒绝 / 不要 / 否",
+                "command_permissions": [
+                    "request.approval_reply",
+                    "request.reject_friend",
+                    "request.reject_group",
+                ],
+                "brief_des": "按引用对应单一申请同意或拒绝",
+                "detail_des": "须引用仍有效的审批消息；同意与拒绝分别校验对应命令权限",
             },
             {
                 "func": "好友申请审批",
@@ -182,22 +196,22 @@ LAST_NOTIFIED_FILE = DATA_DIR / "last_notified_request.json"
 APPROVAL_NOTICE_FILE = DATA_DIR / "approval_notice_messages.json"
 DOUBT_POLL_STATE_FILE = DATA_DIR / "doubt_friend_poll_state.json"
 
-# 审批提醒元数据：超过此时长视为过期，不再用于「同意」与引用回复（秒）
+# 审批提醒元数据：超过此时长视为过期，不再用于「同意/拒绝」与引用回复（秒）
 _NOTIFY_RECORD_MAX_AGE_SEC = 7 * 24 * 3600
 
 RH_HELP_CMD = "牛牛帮助 申请管理"
 RH_HELP_HINT = f"帮助：{RH_HELP_CMD}"
 RH_LIST_TAIL_FRIEND = (
     "怎么操作：\n"
-    "• 私聊只发「同意」→ 处理牛牛最新一条好友审批提醒；\n"
-    "• 引用某条审批消息后再发 同意 → 只处理那条对应的申请；\n"
+    "• 私聊只发「同意」/「拒绝」→ 处理牛牛最新一条好友审批提醒；\n"
+    "• 引用某条审批消息后再发 同意 / 拒绝 → 只处理那条对应的申请；\n"
     "• 「同意好友 <QQ号>」→ 按号码同意、「拒绝好友 <QQ号>」→ 按号码拒绝；\n"
     "• 「同意所有好友」→ 全部同意、「拒绝所有好友」→ 全部拒绝。"
 )
 RH_LIST_TAIL_GROUP = (
     "怎么操作：\n"
-    "• 私聊只发「同意」→ 处理牛牛最新一条入群提醒；\n"
-    "• 引用某条入群提醒后再发 同意 → 只处理那条邀请；\n"
+    "• 私聊只发「同意」/「拒绝」→ 处理牛牛最新一条入群提醒；\n"
+    "• 引用某条入群提醒后再发 同意 / 拒绝 → 只处理那条邀请；\n"
     "• 「同意入群 <群号>」同意、「拒绝入群 <群号>」拒绝；\n"
     "• 「同意所有入群」→ 全部同意、「拒绝所有入群」→ 全部拒绝。"
 )
@@ -520,8 +534,17 @@ if _last_notified_dirty:
 if _approval_notice_dirty:
     save_json(APPROVAL_NOTICE_FILE, approval_notice_map)
 
-# 引用审批通知时允许的正文（小写比较）；空字符串表示仅引用不打字
+# 引用审批通知时允许的正文（小写比较）；空字符串表示仅引用不打字（视为同意）
 _APPROVE_REPLY_TEXT = frozenset({"", "同意", "好", "yes", "y", "ok"})
+_REJECT_REPLY_TEXT = frozenset({"拒绝", "不要", "否", "no", "n"})
+
+
+def classify_approval_reply_text(text: str) -> str | None:
+    if text in _APPROVE_REPLY_TEXT:
+        return "approve"
+    if text in _REJECT_REPLY_TEXT:
+        return "reject"
+    return None
 
 
 def rows_from_doubt_friends_api(result: object) -> list[dict]:
@@ -688,10 +711,33 @@ async def approve_group_invite_by_gid(bot: Bot, bot_key: str, group_key: str) ->
     return True, f"已同意入群邀请：{group_name}（{group_id}），邀请人 {nickname}（{req['user_id']}）"
 
 
+async def reject_group_invite_by_gid(bot: Bot, bot_key: str, group_key: str) -> tuple[bool, str]:
+    bot_pending = pending_group.get(bot_key, {})
+    req = bot_pending.get(group_key)
+    group_id = int(group_key)
+    if not req:
+        group_name = await get_group_name(bot, group_id)
+        return False, f"未找到待处理邀请：{group_name}（{group_id}）"
+
+    try:
+        await bot.set_group_add_request(flag=req["flag"], sub_type="invite", approve=False)
+    except ActionFailed as e:
+        failure_cleanup_group(bot_key, group_key)
+        return False, api_failure_user_message(e)
+    except Exception as e:
+        return False, f"操作未成功：{e}（请稍后重试）"
+    bot_pending.pop(group_key, None)
+    save_json(GROUP_REQ_FILE, pending_group)
+    nickname = await get_nickname(bot, req["user_id"])
+    group_name = await get_group_name(bot, group_id)
+    return True, f"已拒绝入群邀请：{group_name}（{group_id}），邀请人 {nickname}（{req['user_id']}）"
+
+
 request_cmd = on_request(priority=14, block=False)
 
 list_friends_cmd = on_command("查看好友申请", priority=5, block=True)
 approve_latest_cmd = on_command("同意", priority=5, block=True)
+reject_latest_cmd = on_command("拒绝", priority=5, block=True)
 approve_friend_cmd = on_command("同意好友", priority=5, block=True)
 approve_all_friends_cmd = on_command("同意所有好友", priority=5, block=True)
 reject_all_friends_cmd = on_command("拒绝所有好友", priority=5, block=True)
@@ -805,7 +851,12 @@ async def poll_doubt_friends_job() -> None:
 async def approval_reply_rule(bot: Bot, event: Event) -> bool:
     if not isinstance(event, PrivateMessageEvent):
         return False
-    if not await satisfies_command_permission(bot, event, "request.approval_reply"):
+    has_perm = False
+    for perm_id in ("request.approval_reply", "request.reject_friend", "request.reject_group"):
+        if await satisfies_command_permission(bot, event, perm_id):
+            has_perm = True
+            break
+    if not has_perm:
         return False
     if not event.reply:
         return False
@@ -836,14 +887,26 @@ async def handle_approval_reply(bot: Bot, event: PrivateMessageEvent):
     if not meta:
         return
     text = event.get_plaintext().strip().lower()
-    if text not in _APPROVE_REPLY_TEXT:
-        await approval_reply_cmd.finish("引用审批消息后，正文须为：同意 / 好 / 留空。")
+    action = classify_approval_reply_text(text)
+    if action is None:
+        await approval_reply_cmd.finish("引用审批消息后，正文须为：同意 / 好 / 留空，或 拒绝 / 不要 / 否。")
     kind = str(meta["kind"])
     target_id = str(meta["target_id"])
-    if kind == "friend":
-        ok, msg = await approve_friend_by_uid(bot, bot_key, target_id)
+    if action == "approve":
+        if not await satisfies_command_permission(bot, event, "request.approval_reply"):
+            await approval_reply_cmd.finish("你没有引用同意的权限。")
+        if kind == "friend":
+            ok, msg = await approve_friend_by_uid(bot, bot_key, target_id)
+        else:
+            ok, msg = await approve_group_invite_by_gid(bot, bot_key, target_id)
     else:
-        ok, msg = await approve_group_invite_by_gid(bot, bot_key, target_id)
+        reject_perm = "request.reject_friend" if kind == "friend" else "request.reject_group"
+        if not await satisfies_command_permission(bot, event, reject_perm):
+            await approval_reply_cmd.finish("你没有引用拒绝的权限。")
+        if kind == "friend":
+            ok, msg = await reject_friend_by_uid(bot, bot_key, target_id)
+        else:
+            ok, msg = await reject_group_invite_by_gid(bot, bot_key, target_id)
     if ok:
         clear_quick_approve_state(bot_key, kind, target_id)
     await approval_reply_cmd.finish(msg)
@@ -920,6 +983,30 @@ async def handle_approve_latest(bot: Bot, event: MessageEvent, args: Message = C
     if ok:
         clear_quick_approve_state(bot_key, kind, target_id)
     await approve_latest_cmd.finish(msg)
+
+
+@reject_latest_cmd.handle()
+async def handle_reject_latest(bot: Bot, event: MessageEvent, args: Message = CommandArg()):  # noqa: B008
+    if not await satisfies_command_permission(bot, event, "request.reject_latest"):
+        return
+    arg = args.extract_plain_text().strip()
+    if arg:
+        await reject_latest_cmd.finish(
+            "单独发送「拒绝」时不要跟其它内容；带号码请用「拒绝好友」「拒绝入群」。"
+            "若要拒绝较早一条提醒，请引用那条提醒后再操作。"
+        )
+    bot_key = str(bot.self_id)
+    entry = get_last_notified(bot_key)
+    if not entry:
+        await reject_latest_cmd.finish("没有可用的「最新一条」提醒；请先查看列表或使用带 QQ 号、群号的拒绝命令。")
+    kind, target_id, _ts = entry
+    if kind == "friend":
+        ok, msg = await reject_friend_by_uid(bot, bot_key, target_id)
+    else:
+        ok, msg = await reject_group_invite_by_gid(bot, bot_key, target_id)
+    if ok:
+        clear_quick_approve_state(bot_key, kind, target_id)
+    await reject_latest_cmd.finish(msg)
 
 
 @approve_friend_cmd.handle()
@@ -1229,26 +1316,8 @@ async def handle_reject_group(bot: Bot, event: MessageEvent, args: Message = Com
         await reject_group_cmd.finish("格式：拒绝入群 <群号>")
 
     bot_key = str(bot.self_id)
-    group_id = int(arg)
-    group_key = str(group_id)
-    bot_pending = pending_group.get(bot_key, {})
-    req = bot_pending.get(group_key)
-    if not req:
-        group_name = await get_group_name(bot, group_id)
-        await reject_group_cmd.finish(f"未找到待处理邀请：{group_name}（{group_id}）")
-
-    try:
-        await bot.set_group_add_request(flag=req["flag"], sub_type="invite", approve=False)
-    except ActionFailed as e:
-        failure_cleanup_group(bot_key, group_key)
-        await reject_group_cmd.finish(api_failure_user_message(e))
-        return
-    except Exception as e:
-        await reject_group_cmd.finish(f"操作未成功：{e}（请稍后重试）")
-        return
-    bot_pending.pop(group_key, None)
-    save_json(GROUP_REQ_FILE, pending_group)
-    clear_quick_approve_state(bot_key, "group", group_key)
-    nickname = await get_nickname(bot, req["user_id"])
-    group_name = await get_group_name(bot, group_id)
-    await reject_group_cmd.finish(f"已拒绝入群邀请：{group_name}（{group_id}），邀请人 {nickname}（{req['user_id']}）")
+    group_key = str(int(arg))
+    ok, msg = await reject_group_invite_by_gid(bot, bot_key, group_key)
+    if ok:
+        clear_quick_approve_state(bot_key, "group", group_key)
+    await reject_group_cmd.finish(msg)
