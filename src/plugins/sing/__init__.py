@@ -226,8 +226,8 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
         chunk_index=chunk_index,
         key=key,
     )
-    await sing_msg.finish("欢呼吧！")
     await config.update_sing_progress(sing_progress)
+    await sing_msg.finish("欢呼吧！")
 
 
 async def is_play(bot: Bot, event: Event, state: T_State) -> bool:
