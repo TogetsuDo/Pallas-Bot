@@ -3842,6 +3842,19 @@ class _GlobalPluginDisableBody(BaseModel):
     disabled_plugins: list[str] = Field(default_factory=list, max_length=2000)
 
 
+class _GroupFleetWhitelistEntryBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    group_id: int = Field(ge=1)
+    plugins: list[str] = Field(default_factory=list, max_length=2000)
+
+
+class _GroupFleetWhitelistBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    entries: list[_GroupFleetWhitelistEntryBody] = Field(default_factory=list, max_length=5000)
+
+
 class _PluginConfigUpdateBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -4400,6 +4413,47 @@ def register_extended_api(
             "ok": True,
             "data": {
                 "disabled_plugins": disabled,
+                "protected_plugins": sorted(GLOBAL_DISABLE_PROTECTED_PLUGINS),
+            },
+        })
+
+    @router.get(f"{x}/plugins/group-fleet-whitelist", include_in_schema=True)
+    async def _plugins_group_fleet_whitelist_get() -> JSONResponse:
+        try:
+            from src.plugins.help.global_disable import GLOBAL_DISABLE_PROTECTED_PLUGINS
+            from src.plugins.help.group_fleet_whitelist import load_group_fleet_whitelist
+
+            data = {
+                "entries": load_group_fleet_whitelist(),
+                "protected_plugins": sorted(GLOBAL_DISABLE_PROTECTED_PLUGINS),
+            }
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": data})
+
+    @router.put(f"{x}/plugins/group-fleet-whitelist", include_in_schema=True)
+    async def _plugins_group_fleet_whitelist_put(
+        body: _GroupFleetWhitelistBody,
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        try:
+            from src.plugins.help.global_disable import GLOBAL_DISABLE_PROTECTED_PLUGINS
+            from src.plugins.help.group_fleet_whitelist import save_group_fleet_whitelist
+            from src.plugins.help.plugin_manager import invalidate_disabled_plugin_gate_cache
+
+            entries = save_group_fleet_whitelist(
+                [{"group_id": item.group_id, "plugins": item.plugins} for item in body.entries]
+            )
+            await invalidate_disabled_plugin_gate_cache(clear_all=True)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        _drop_read_cache(("plugins",))
+        return JSONResponse({
+            "ok": True,
+            "data": {
+                "entries": entries,
                 "protected_plugins": sorted(GLOBAL_DISABLE_PROTECTED_PLUGINS),
             },
         })
