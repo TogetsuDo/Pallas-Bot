@@ -663,9 +663,7 @@ async def _handle_group_plugin_operation(
             False,
             f"呜...看来是喝多了...无法感受到米诺斯的联系，{scope_info}{action_name} {user_visible_name}失败了...",
         )
-    await ensure_superuser_group_fleet_whitelist(
-        plugin_name, group_id, is_superuser=is_superuser, enabling=enabling
-    )
+    await ensure_superuser_group_fleet_whitelist(plugin_name, group_id, is_superuser=is_superuser, enabling=enabling)
     action_name = "停止" if should_disable else "启用"
     return True, f"听你的，博士。{scope_info}我为你{action_name}了{user_visible_name}"
 

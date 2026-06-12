@@ -4443,9 +4443,9 @@ def register_extended_api(
             from src.plugins.help.group_fleet_whitelist import save_group_fleet_whitelist
             from src.plugins.help.plugin_manager import invalidate_disabled_plugin_gate_cache
 
-            entries = save_group_fleet_whitelist(
-                [{"group_id": item.group_id, "plugins": item.plugins} for item in body.entries]
-            )
+            entries = save_group_fleet_whitelist([
+                {"group_id": item.group_id, "plugins": item.plugins} for item in body.entries
+            ])
             await invalidate_disabled_plugin_gate_cache(clear_all=True)
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e

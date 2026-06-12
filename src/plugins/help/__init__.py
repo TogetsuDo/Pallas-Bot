@@ -225,9 +225,7 @@ async def toggle_all_plugins(bot: Bot, event: GroupMessageEvent | PrivateMessage
 
     count = 0
     for plugin in plugins:
-        success, _ = await toggle_plugin(
-            plugin.name or "", group_id, bot_id, action=action, is_superuser=is_superuser
-        )
+        success, _ = await toggle_plugin(plugin.name or "", group_id, bot_id, action=action, is_superuser=is_superuser)
         if success:
             count += 1
 

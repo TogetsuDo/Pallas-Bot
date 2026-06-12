@@ -148,7 +148,5 @@ async def handle_plugin_operation(
         elif args[1].isdigit():
             group_id = int(args[1])
 
-    success, message = await toggle_plugin(
-        plugin_name, group_id, bot_id, action, is_superuser=is_superuser
-    )
+    success, message = await toggle_plugin(plugin_name, group_id, bot_id, action, is_superuser=is_superuser)
     await matcher.finish(message)
