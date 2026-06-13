@@ -6018,6 +6018,9 @@ def register_extended_api(
                 dist_ver = ""
             effective_version = (dist_ver or "").strip() or new_tag or "unknown"
             set_console_meta({**get_console_meta(), "version": effective_version})
+            from src.plugins.pallas_webui.api import invalidate_health_snapshot
+
+            invalidate_health_snapshot()
             logger.info("Pallas-Bot 控制台: WebUI 已更新至 {}（发布 tag: {}）", effective_version, new_tag)
             _drop_read_cache(("update_check_webui:",))
             return JSONResponse({
