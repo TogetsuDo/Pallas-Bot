@@ -51,9 +51,7 @@ async def bot_community_roster_show_qq_by_accounts(account_ids: list[int]) -> di
 
         async with get_session(read_only=True) as session:
             result = await session.execute(
-                select(BotConfigRow.account, BotConfigRow.community_roster_show_qq).where(
-                    BotConfigRow.account.in_(ids)
-                )
+                select(BotConfigRow.account, BotConfigRow.community_roster_show_qq).where(BotConfigRow.account.in_(ids))
             )
             out = {int(a): True for a in ids}
             for account, show_qq in result.all():

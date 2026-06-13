@@ -244,9 +244,7 @@ def _ensure_pg_bot_config_community_roster_show_qq(connection) -> None:
     names = {c["name"] for c in insp.get_columns("bot_config")}
     if "community_roster_show_qq" in names:
         return
-    connection.execute(
-        text("ALTER TABLE bot_config ADD COLUMN community_roster_show_qq BOOLEAN NOT NULL DEFAULT true")
-    )
+    connection.execute(text("ALTER TABLE bot_config ADD COLUMN community_roster_show_qq BOOLEAN NOT NULL DEFAULT true"))
 
 
 def _ensure_pg_user_config_maa_devices(connection) -> None:
