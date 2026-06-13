@@ -132,7 +132,7 @@ async def send_community_stats_heartbeat() -> bool:
     if is_auto_endpoint_mode(cfg) and urls[0] == PRIMARY_HEARTBEAT:
         touch_primary_probe_unix()
     show_qq_by_account: dict[int, bool] | None = None
-    if cfg.roster_public and cfg.roster_public_qq:
+    if cfg.roster_public:
         from src.foundation.db.pallas_console_data import bot_community_roster_show_qq_by_accounts
         from src.plugins.bot_status.list_mode import status_inventory_bot_ids
 

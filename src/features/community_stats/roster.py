@@ -48,6 +48,8 @@ def build_public_roster_entries(
 
     entries: list[dict[str, object]] = []
     for qq in sorted(inventory):
+        if not bool(qq_flags.get(int(qq), True)):
+            continue
         sid = str(qq)
         nickname = (names.get(sid) or "").strip() or f"牛 {qq % 10000}"
         weight = min(10_000_000, max(0, weights.get(sid, 0)))
@@ -56,7 +58,6 @@ def build_public_roster_entries(
             "nickname": nickname[:64],
             "online": int(qq) in online_ids,
             "message_weight": weight,
-            "show_qq": bool(qq_flags.get(int(qq), True)),
         })
         if len(entries) >= max_entries:
             break

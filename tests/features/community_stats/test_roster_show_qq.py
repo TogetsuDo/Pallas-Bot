@@ -3,7 +3,7 @@ from __future__ import annotations
 from src.features.community_stats.roster import build_public_roster_entries
 
 
-def test_build_public_roster_entries_respects_per_bot_show_qq(monkeypatch) -> None:
+def test_build_public_roster_entries_skips_opt_out_bots(monkeypatch) -> None:
     monkeypatch.setattr(
         "src.plugins.bot_status.list_mode.status_inventory_bot_ids",
         lambda: {10001, 10002},
@@ -22,12 +22,10 @@ def test_build_public_roster_entries_respects_per_bot_show_qq(monkeypatch) -> No
     )
 
     rows = build_public_roster_entries(show_qq_by_account={10001: True, 10002: False})
-    by_qq = {int(row["qq"]): row for row in rows}
-    assert by_qq[10001]["show_qq"] is True
-    assert by_qq[10002]["show_qq"] is False
+    assert [int(row["qq"]) for row in rows] == [10001]
 
 
-def test_build_public_roster_entries_defaults_show_qq_true(monkeypatch) -> None:
+def test_build_public_roster_entries_includes_all_when_unset(monkeypatch) -> None:
     monkeypatch.setattr(
         "src.plugins.bot_status.list_mode.status_inventory_bot_ids",
         lambda: {20001},
@@ -46,4 +44,5 @@ def test_build_public_roster_entries_defaults_show_qq_true(monkeypatch) -> None:
     )
 
     rows = build_public_roster_entries()
-    assert rows[0]["show_qq"] is True
+    assert len(rows) == 1
+    assert int(rows[0]["qq"]) == 20001
