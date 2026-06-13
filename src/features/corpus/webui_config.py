@@ -171,7 +171,7 @@ class CorpusFederationWebuiConfig(BaseModel):
         default=False,
         description=field_help(
             "是否在社区主站公开本部署牛牛名册",
-            "开启后随统计上报昵称、在线状态与近 7 日消息量；用于主站气泡墙展示",
+            "开启后随统计上报 QQ、昵称、在线状态与近 7 日消息量；主站气泡墙可点击查看 QQ 资料",
             "不上报群号与消息正文；默认关闭，可随时关掉",
         ),
     )
