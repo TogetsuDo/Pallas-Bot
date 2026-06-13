@@ -29,7 +29,11 @@ def rolling_message_weight_by_self_id(*, days: int = 7) -> dict[str, int]:
     return weights
 
 
-def build_public_roster_entries(*, max_entries: int = 256) -> list[dict[str, object]]:
+def build_public_roster_entries(
+    *,
+    max_entries: int = 256,
+    show_qq_by_account: dict[int, bool] | None = None,
+) -> list[dict[str, object]]:
     from src.console.webui.protocol_accounts import protocol_account_display_names
     from src.plugins.bot_status.list_mode import cluster_online_bot_ids_for_status, status_inventory_bot_ids
 
@@ -40,6 +44,7 @@ def build_public_roster_entries(*, max_entries: int = 256) -> list[dict[str, obj
     online_ids = cluster_online_bot_ids_for_status()
     names = protocol_account_display_names()
     weights = rolling_message_weight_by_self_id(days=7)
+    qq_flags = show_qq_by_account or {}
 
     entries: list[dict[str, object]] = []
     for qq in sorted(inventory):
@@ -51,6 +56,7 @@ def build_public_roster_entries(*, max_entries: int = 256) -> list[dict[str, obj
             "nickname": nickname[:64],
             "online": int(qq) in online_ids,
             "message_weight": weight,
+            "show_qq": bool(qq_flags.get(int(qq), True)),
         })
         if len(entries) >= max_entries:
             break

@@ -3741,6 +3741,7 @@ class _BotConfigPatch(BaseModel):
     auto_accept_friend: bool | None = None
     auto_accept_group: bool | None = None
     security: bool | None = None
+    community_roster_show_qq: bool | None = None
 
 
 class _GroupConfigPatch(BaseModel):
@@ -4044,6 +4045,7 @@ async def _upsert_db_table_row(table: str, row_id: int, data: dict[str, Any]) ->
             "security",
             "taken_name",
             "drunk",
+            "community_roster_show_qq",
         }
         for k in payload:
             if k not in allowed:
