@@ -4381,6 +4381,22 @@ def register_extended_api(
         data = await _cached_read(key="community-stats", loader=_load, ttl_sec=30.0, stale_sec=120.0)
         return JSONResponse({"ok": True, "data": data})
 
+    @router.get(f"{x}/community-corpus-hot", include_in_schema=True)
+    async def _community_corpus_hot(
+        period: str = Query(default="day"),
+        limit: int = Query(default=40, ge=5, le=80),
+    ) -> JSONResponse:
+        from src.features.community_stats.public_stats import fetch_community_corpus_hot
+
+        period_norm = period if period in {"day", "week", "month"} else "day"
+
+        async def _load() -> dict[str, Any]:
+            return await fetch_community_corpus_hot(period=period_norm, limit=limit)
+
+        cache_key = f"community-corpus-hot:{period_norm}:{limit}"
+        data = await _cached_read(key=cache_key, loader=_load, ttl_sec=120.0, stale_sec=300.0)
+        return JSONResponse({"ok": True, "data": data})
+
     @router.get(f"{x}/corpus-status", include_in_schema=True)
     async def _corpus_status() -> JSONResponse:
         from src.features.corpus.status import build_corpus_status_snapshot
