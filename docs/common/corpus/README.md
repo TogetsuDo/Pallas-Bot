@@ -69,7 +69,7 @@
 | 本机热词 | 控制台「本机语料热词」；累计本部署全部群学习语料 |
 | 社区高频池 | `mode=pool`，不按时间截断 |
 | 近期活跃 | `mode=recent` + 日/周/月 |
-| backfill | `PALLAS_CORPUS_BACKFILL_ENABLED=true` 且已开启上传时，后台渐进同步历史语料 |
+| backfill | WebUI **通用配置 → 语料联邦 → 历史语料同步**，或 `PALLAS_CORPUS_BACKFILL_ENABLED=true` |
 | 机群快照 | 心跳可选附带本机 Top 词，中心 `mode=fleet` 叠加展示 |
 
 上传仅含关键词与短句，不含群号与 QQ。
