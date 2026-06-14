@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from nonebot.adapters.onebot.v11 import MessageSegment
 
-from .commands import CMD_END, CMD_JOIN, CMD_OPEN, CMD_START
+from .commands import CMD_END, CMD_JOIN, CMD_OPEN, CMD_START, CMD_VOTE
 
 
-def open_room_message(*, user_id: int) -> MessageSegment:
+def open_room_message(*, user_id: int, min_players: int) -> MessageSegment:
     return (
         MessageSegment.text("房已开，房主 ")
         + MessageSegment.at(user_id)
-        + MessageSegment.text(f"。想玩发「{CMD_JOIN}」，人满后房主发「{CMD_START}」开局。")
+        + MessageSegment.text(f"。想玩发「{CMD_JOIN}」，至少 {min_players} 人时房主发「{CMD_START}」开局。")
     )
 
 
@@ -21,20 +21,12 @@ def quit_ok(count: int) -> str:
     return f"已退出，还剩 {count} 人。"
 
 
-def start_game_hint(*, player_names: str) -> str:
-    return f"词已私聊发出。\n轮到谁 @牛牛 述词\n玩家：{player_names}\n"
+def speak_phase_hint(*, round_no: int) -> str:
+    return f"第 {round_no} 轮 · 自由描述，议完房主发「{CMD_VOTE}」开始投票。"
 
 
-def speak_turn_prompt(*, user_id: int, round_no: int | None = None) -> MessageSegment:
-    if round_no is None:
-        head = ""
-    else:
-        head = f"第 {round_no} 轮 · "
-    return MessageSegment.text(head) + MessageSegment.at(user_id) + MessageSegment.text(" 请 @牛牛 述词。")
-
-
-def speak_wait_turn(*, user_id: int) -> MessageSegment:
-    return MessageSegment.text("还没轮到你，请等 ") + MessageSegment.at(user_id) + MessageSegment.text(" 先述词。")
+def start_game_hint(*, numbered: str, round_no: int = 1) -> str:
+    return f"词已私聊发出。\n{speak_phase_hint(round_no=round_no)}\n{numbered}\n"
 
 
 def role_word_private(*, role: str, word: str, show_role: bool) -> str:
@@ -44,11 +36,11 @@ def role_word_private(*, role: str, word: str, show_role: bool) -> str:
 
 
 def vote_invite_private(*, numbered: str) -> str:
-    return f"【牛牛卧底 · 投票】私聊回复序号，0 弃权。\n\n{numbered}"
+    return f"{CMD_VOTE}\n私聊回复序号，0 弃权。\n\n{numbered}"
 
 
 def vote_invite_email(*, numbered: str) -> str:
-    return f"牛牛卧底 · 投票\n私聊没收到？看邮箱。回复序号投票，0 弃权。\n\n{numbered}"
+    return f"{CMD_VOTE}\n私聊回复序号，0 弃权。\n私聊没收到？看邮箱。\n\n{numbered}"
 
 
 def role_word_email(*, role: str, word: str, show_role: bool) -> str:
@@ -68,16 +60,16 @@ def delivery_report(*, email_users: list[str], failed_users: list[str]) -> str:
     return "\n".join(lines)
 
 
-def speak_already() -> str:
-    return "你这轮已经述过词了。"
-
-
 def speak_round_to_vote() -> str:
-    return "大家都述完了，请看私聊投票。"
+    return "进入投票，请看私聊。"
 
 
 def vote_recorded(name: str) -> str:
     return f"已投给 {name}。"
+
+
+def vote_abstained() -> str:
+    return "已弃权。"
 
 
 def game_over_tail() -> str:
@@ -85,11 +77,11 @@ def game_over_tail() -> str:
 
 
 def vote_all_abstain() -> str:
-    return "全员弃权，重新述词。"
+    return f"全员弃权，重新讨论；房主发「{CMD_VOTE}」再投。"
 
 
 def vote_tie() -> str:
-    return "最高票相同，重新述词。"
+    return f"最高票相同，重新讨论；房主发「{CMD_VOTE}」再投。"
 
 
 def vote_eliminated_hidden(name: str) -> str:
@@ -100,8 +92,8 @@ def vote_eliminated_reveal(*, name: str, role: str, summary: str) -> str:
     return f"{name} 出局，是{role}。\n{summary}"
 
 
-def round_start(round_no: int) -> str:
-    return f"第 {round_no} 轮，按顺序 @牛牛 述词。"
+def round_start(*, round_no: int, numbered: str) -> str:
+    return f"{speak_phase_hint(round_no=round_no)}\n{numbered}"
 
 
 def vote_stats_header() -> str:
@@ -135,7 +127,7 @@ def status_panel(*, round_no: int, alive: int, numbered: str, voting: bool) -> s
     if voting:
         lines.append("投票：私聊回复序号，0 弃权。")
     else:
-        lines.append("述词：按顺序 @牛牛。")
+        lines.append(f"讨论中：房主发「{CMD_VOTE}」开始投票。")
     return "\n".join(lines)
 
 
@@ -187,6 +179,14 @@ def err_already_dealt() -> str:
     return "词已经发过了。"
 
 
+def err_not_owner_vote() -> str:
+    return f"只有房主能发「{CMD_VOTE}」。"
+
+
+def err_already_voting() -> str:
+    return "已经在投票了，请看私聊。"
+
+
 def err_not_enough_players(min_players: int, count: int) -> str:
     return f"人数不够：至少 {min_players} 人，现在 {count} 人。"
 
@@ -216,11 +216,11 @@ def pm_already_voted() -> str:
 
 
 def pm_cannot_abstain_yet() -> str:
-    return "还在述词，还不能弃权。"
+    return f"还没开始投票，等房主发「{CMD_VOTE}」。"
 
 
 def pm_cannot_vote_yet() -> str:
-    return "还在述词，还不能投票。"
+    return f"还没开始投票，等房主发「{CMD_VOTE}」。"
 
 
 def pm_invalid_index(numbered: str) -> str:

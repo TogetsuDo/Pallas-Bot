@@ -16,7 +16,6 @@ from .copy import (
     role_word_email,
     role_word_private,
     round_start,
-    speak_turn_prompt,
     vote_all_abstain,
     vote_eliminated_hidden,
     vote_eliminated_reveal,
@@ -59,33 +58,33 @@ def current_alive_order(game: Game) -> list[int]:
     return [user_id for user_id in game.alive_order if game.players[user_id].is_alive]
 
 
+def player_seat_no(game: Game, user_id: int) -> int:
+    return game.alive_order.index(user_id) + 1
+
+
 def build_index_map(game: Game) -> dict[int, int]:
-    order = current_alive_order(game)
-    return dict(enumerate(order, start=1))
+    """本局固定座位号 → 玩家 uid（仅在场）。"""
+    out: dict[int, int] = {}
+    for user_id in game.alive_order:
+        player = game.players.get(user_id)
+        if player is None or not player.is_alive:
+            continue
+        out[player_seat_no(game, user_id)] = user_id
+    return out
 
 
 def render_alive_numbered(game: Game) -> str:
     index_map = build_index_map(game)
     lines = []
-    for index in sorted(index_map.keys()):
-        user_id = index_map[index]
+    for seat in sorted(index_map.keys()):
+        user_id = index_map[seat]
         player = game.players[user_id]
-        lines.append(f"{index}. {player.nickname}")
+        lines.append(f"{seat}. {player.nickname}")
     return "\n".join(lines)
 
 
 def is_voting_phase(game: Game) -> bool:
     return bool(game.expecting_pm_vote) and game.vote_round_tag == game.round_no
-
-
-def current_speaker_id(game: Game) -> int | None:
-    for user_id in game.alive_order:
-        player = game.players.get(user_id)
-        if player is None or not player.is_alive:
-            continue
-        if not player.has_spoken_this_round:
-            return user_id
-    return None
 
 
 def pick_words() -> tuple[str, str]:
@@ -195,12 +194,10 @@ async def settle_and_announce(bot: Bot, game: Game) -> None:
         await bot.send_group_msg(group_id=group_id, message=vote_all_abstain())
         game.reset_round_flags()
         sync_active_game(game)
-        next_speaker = current_speaker_id(game)
-        if next_speaker is not None:
-            await bot.send_group_msg(
-                group_id=group_id,
-                message=speak_turn_prompt(user_id=next_speaker, round_no=game.round_no),
-            )
+        await bot.send_group_msg(
+            group_id=group_id,
+            message=round_start(round_no=game.round_no, numbered=render_alive_numbered(game)),
+        )
         return
 
     index_map = build_index_map(game)
@@ -226,12 +223,10 @@ async def settle_and_announce(bot: Bot, game: Game) -> None:
         await bot.send_group_msg(group_id=group_id, message=vote_tie())
         game.reset_round_flags()
         sync_active_game(game)
-        next_speaker = current_speaker_id(game)
-        if next_speaker is not None:
-            await bot.send_group_msg(
-                group_id=group_id,
-                message=speak_turn_prompt(user_id=next_speaker, round_no=game.round_no),
-            )
+        await bot.send_group_msg(
+            group_id=group_id,
+            message=round_start(round_no=game.round_no, numbered=render_alive_numbered(game)),
+        )
         return
 
     eliminated = top[0]
@@ -273,11 +268,7 @@ async def settle_and_announce(bot: Bot, game: Game) -> None:
     )
     game.reset_round_flags()
     sync_active_game(game)
-
-    await bot.send_group_msg(group_id=group_id, message=round_start(game.round_no))
-    next_speaker = current_speaker_id(game)
-    if next_speaker is not None:
-        await bot.send_group_msg(
-            group_id=group_id,
-            message=speak_turn_prompt(user_id=next_speaker, round_no=game.round_no),
-        )
+    await bot.send_group_msg(
+        group_id=group_id,
+        message=round_start(round_no=game.round_no, numbered=render_alive_numbered(game)),
+    )

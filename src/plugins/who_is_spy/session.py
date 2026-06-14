@@ -10,18 +10,22 @@ from src.platform.multi_bot.dedup import (
 from src.platform.multi_bot.group import is_group_owned_gate_holder
 
 from .coord_store import (
+    GAME_SNAPSHOT_KEY,
     clear_game_snapshot,
+    game_from_snapshot,
     read_game_snapshot,
     read_prep_players,
     write_game_snapshot,
     write_prep_players,
 )
 from .group_lock import (
+    SPY_GROUP_LOCK,
     clear_spy_room_session,
     end_spy_room_lock,
     mark_spy_room_session,
     read_spy_prep_room,
     spy_room_coord_live,
+    spy_session_active,
 )
 from .logic import games, get_nickname
 from .models import Game, Player
@@ -55,16 +59,38 @@ def persist_game(game: Game) -> None:
         persist_prep(game)
 
 
-def resolve_game_sync(group_id: int) -> Game | None:
-    """内存无局时从协调层恢复快照（同步，供 Rule / ingress 使用）。"""
+def read_active_game_snapshot(group_id: int) -> Game | None:
+    """协调层已开局快照；read_game_snapshot 失败时回读 lock 原文。"""
     gid = group_key(group_id)
+    snap = read_game_snapshot(gid)
+    if snap is not None and snap.ready:
+        return snap
+    data = SPY_GROUP_LOCK.read(gid)
+    if not data:
+        return None
+    raw = data.get(GAME_SNAPSHOT_KEY)
+    if not isinstance(raw, dict):
+        return None
+    parsed = game_from_snapshot(raw)
+    if parsed is not None and parsed.ready:
+        return parsed
+    return None
+
+
+def resolve_game_sync(group_id: int) -> Game | None:
+    """内存无局或仅有筹备房时，优先用协调层已开局快照（供 Rule / ingress 使用）。"""
+    gid = group_key(group_id)
+    active = read_active_game_snapshot(gid)
+    if active is not None:
+        return bind_local_game(active)
     cached = games.get(gid)
     if cached is not None:
-        return cached
+        if cached.ready or not spy_session_active(gid):
+            return cached
     snap = read_game_snapshot(gid)
-    if snap is None or not snap.ready:
-        return None
-    return bind_local_game(snap)
+    if snap is not None:
+        return bind_local_game(snap)
+    return None
 
 
 async def begin_spy_room(group_id: int) -> SpyRoomGate:
@@ -112,22 +138,22 @@ async def restore_prep_game(bot, group_id: int) -> Game | None:
 async def load_local_prep_game(bot, group_id: int) -> Game | None:
     """主持牛 worker 内存无 games 时，从 spy_group 占位恢复筹备房。"""
     gid = group_key(group_id)
+    active = read_active_game_snapshot(gid)
+    if active is not None:
+        return bind_local_game(active)
     cached = games.get(gid)
     if cached is not None:
         return cached
-    active = read_game_snapshot(gid)
-    if active is not None and active.ready:
-        return bind_local_game(active)
     return await restore_prep_game(bot, gid)
 
 
 async def load_local_game(bot, group_id: int) -> Game | None:
-    """筹备或进行中：优先内存，其次协调层快照 / 筹备名册。"""
+    """筹备或进行中：优先协调层已开局快照，其次内存 / 筹备名册。"""
     gid = group_key(group_id)
+    active = read_active_game_snapshot(gid)
+    if active is not None:
+        return bind_local_game(active)
     cached = games.get(gid)
     if cached is not None:
         return cached
-    active = read_game_snapshot(gid)
-    if active is not None:
-        return bind_local_game(active)
     return await restore_prep_game(bot, gid)
