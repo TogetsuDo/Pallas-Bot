@@ -18,8 +18,7 @@ from . import handlers as _handlers  # noqa: E402, F401
 __plugin_meta__ = PluginMetadata(
     name="牛牛卧底",
     description=(
-        "谁是卧底：房主开房、玩家加入，发词后按顺序 @牛牛 述词，"
-        "全员述毕私聊匿名投票，直至平民或卧底一方获胜。"
+        "谁是卧底：房主开房、玩家加入，发词后按顺序 @牛牛 述词，全员述毕私聊匿名投票，直至平民或卧底一方获胜。"
     ),
     usage=join_usage(
         usage_line(CMD_OPEN, "房主开房间"),
@@ -109,8 +108,7 @@ __plugin_meta__ = PluginMetadata(
                 "command_permission": "who_is_spy.status",
                 "brief_des": "察看局势与序次",
                 "detail_des": (
-                    "显示轮次、在场人数与带序次的名单。"
-                    "述词阶段提示按顺序 @牛牛；投票阶段提示私聊数字与 0 弃权。"
+                    "显示轮次、在场人数与带序次的名单。述词阶段提示按顺序 @牛牛；投票阶段提示私聊数字与 0 弃权。"
                 ),
             },
             {
@@ -120,10 +118,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_condition": CMD_END,
                 "command_permission": "who_is_spy.end",
                 "brief_des": "结束房间",
-                "detail_des": (
-                    f"房主或群管可发「{CMD_END}」结束对局或清理占位房间。"
-                    "空房间一段时间后会自动清理。"
-                ),
+                "detail_des": (f"房主或群管可发「{CMD_END}」结束对局或清理占位房间。空房间一段时间后会自动清理。"),
             },
             {
                 "func": "私聊投票",

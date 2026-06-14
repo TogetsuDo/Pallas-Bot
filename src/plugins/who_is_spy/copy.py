@@ -22,11 +22,7 @@ def quit_ok(count: int) -> str:
 
 
 def start_game_hint(*, player_names: str) -> str:
-    return (
-        "词牌已私聊发放。\n"
-        "群内可自由聊天；按名册顺序 @牛牛 述词，全员述毕后私聊数字投票（0 弃权）。\n"
-        f"在场：{player_names}"
-    )
+    return f"词牌已私聊发放。\n按顺序 @牛牛 述词\n在场：{player_names}"
 
 
 def speak_turn_prompt(*, user_id: int, round_no: int | None = None) -> MessageSegment:
@@ -34,18 +30,12 @@ def speak_turn_prompt(*, user_id: int, round_no: int | None = None) -> MessageSe
         head = "请 "
     else:
         head = f"第 {round_no} 轮 · 请 "
-    return (
-        MessageSegment.text(head)
-        + MessageSegment.at(user_id)
-        + MessageSegment.text(" @牛牛 述词。")
-    )
+    return MessageSegment.text(head) + MessageSegment.at(user_id) + MessageSegment.text(" @牛牛 述词。")
 
 
 def speak_wait_turn(*, user_id: int) -> MessageSegment:
     return (
-        MessageSegment.text("还没轮到你。请等待 ")
-        + MessageSegment.at(user_id)
-        + MessageSegment.text(" @牛牛 述词。")
+        MessageSegment.text("还没轮到你。请等待 ") + MessageSegment.at(user_id) + MessageSegment.text(" @牛牛 述词。")
     )
 
 
@@ -132,12 +122,7 @@ def game_win_summary(
     undercover_word: str,
     undercover_names: str,
 ) -> str:
-    return (
-        f"{headline}\n"
-        f"平民词：{civilian_word}\n"
-        f"卧底词：{undercover_word}\n"
-        f"卧底：{undercover_names}"
-    )
+    return f"{headline}\n平民词：{civilian_word}\n卧底词：{undercover_word}\n卧底：{undercover_names}"
 
 
 def email_subject_words() -> str:
