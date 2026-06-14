@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from src.platform.multi_bot.dedup import needs_group_host_bot_gate, release_group_owned_gate_sync
 
 from .config import get_spy_config
+from .coord_store import clear_game_snapshot, write_game_snapshot
 from .copy import (
     email_subject_vote,
     email_subject_words,
@@ -26,7 +27,7 @@ from .copy import (
     vote_tie,
 )
 from .deliver import deliver_player_message
-from .group_lock import clear_spy_room_session, end_spy_room_lock
+from .group_lock import clear_spy_room_session
 from .store import WORD_BANK
 
 if TYPE_CHECKING:
@@ -35,6 +36,11 @@ if TYPE_CHECKING:
     from .models import Game
 
 games: dict[int, Game] = {}
+
+
+def sync_active_game(game: Game) -> None:
+    if game.ready:
+        write_game_snapshot(game)
 
 
 async def get_nickname(bot: Bot, group_id: int, user_id: int) -> str:
@@ -163,14 +169,15 @@ async def pm_invite_for_voting(bot: Bot, game: Game) -> tuple[list[str], list[st
 
 async def schedule_cleanup(group_id: int, delay: int | None = None) -> None:
     cleanup_sec = delay if delay is not None else get_spy_config().spy_room_cleanup_sec
+    gid = int(group_id)
     try:
         await asyncio.sleep(cleanup_sec)
-        game = games.get(group_id)
+        game = games.get(gid)
         if game and not game.ready:
-            games.pop(group_id, None)
-            end_spy_room_lock(group_id)
+            games.pop(gid, None)
+            clear_game_snapshot(gid)
             if needs_group_host_bot_gate():
-                release_group_owned_gate_sync("who_is_spy", group_id)
+                release_group_owned_gate_sync("who_is_spy", gid)
     except Exception:
         pass
 
@@ -187,6 +194,7 @@ async def settle_and_announce(bot: Bot, game: Game) -> None:
     if not game.vote_box:
         await bot.send_group_msg(group_id=group_id, message=vote_all_abstain())
         game.reset_round_flags()
+        sync_active_game(game)
         next_speaker = current_speaker_id(game)
         if next_speaker is not None:
             await bot.send_group_msg(
@@ -217,6 +225,7 @@ async def settle_and_announce(bot: Bot, game: Game) -> None:
     if len(top) >= 2:
         await bot.send_group_msg(group_id=group_id, message=vote_tie())
         game.reset_round_flags()
+        sync_active_game(game)
         next_speaker = current_speaker_id(game)
         if next_speaker is not None:
             await bot.send_group_msg(
@@ -252,6 +261,7 @@ async def settle_and_announce(bot: Bot, game: Game) -> None:
         game.votes.clear()
         game.vote_box.clear()
         clear_spy_room_session(group_id)
+        clear_game_snapshot(int(group_id))
 
         await bot.send_group_msg(group_id=group_id, message=game_over_tail())
         asyncio.create_task(schedule_cleanup(group_id))
@@ -262,6 +272,7 @@ async def settle_and_announce(bot: Bot, game: Game) -> None:
         message=vote_eliminated_hidden(eliminated_player.nickname),
     )
     game.reset_round_flags()
+    sync_active_game(game)
 
     await bot.send_group_msg(group_id=group_id, message=round_start(game.round_no))
     next_speaker = current_speaker_id(game)

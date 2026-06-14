@@ -60,7 +60,6 @@ from .logic import (
     build_index_map,
     current_speaker_id,
     deliver_role_words,
-    games,
     get_nickname,
     is_voting_phase,
     pm_invite_for_voting,
@@ -71,9 +70,15 @@ from .models import Game, Player
 from .session import (
     SPY_HOST_GATE_SEC,
     begin_spy_room,
+    bind_local_game,
     close_spy_room,
+    group_key,
+    load_local_game,
     load_local_prep_game,
     mark_spy_room_active,
+    persist_game,
+    persist_prep,
+    resolve_game_sync,
 )
 from .store import WORD_BANK
 
@@ -117,11 +122,9 @@ async def claim_group_event(event: GroupMessageEvent) -> bool:
 
 
 def is_group_speaking(event: GroupMessageEvent) -> bool:
-    group_id = event.group_id
-    if group_id not in games:
-        return False
-    game = games[group_id]
-    if not game.ready or is_voting_phase(game):
+    gid = group_key(event.group_id)
+    game = resolve_game_sync(gid)
+    if game is None or not game.ready or is_voting_phase(game):
         return False
     text = str(event.get_plaintext() or "").strip()
     if is_spy_group_command(text):
@@ -145,7 +148,7 @@ async def can_close_spy_room(bot: Bot, event: GroupMessageEvent, game: Game | No
     return role in ("owner", "admin")
 
 
-group_speak = on_message(rule=Rule(is_group_speaking), priority=11, block=False, permission=GROUP)
+group_speak = on_message(rule=Rule(is_group_speaking), priority=4, block=False, permission=GROUP)
 
 
 @group_speak.handle()
@@ -153,9 +156,9 @@ async def handle_group_speak(bot: Bot, event: GroupMessageEvent) -> None:
     if not await claim_group_event(event):
         return
 
-    group_id = event.group_id
+    gid = group_key(event.group_id)
     user_id = event.user_id
-    game = games.get(group_id)
+    game = await load_local_game(bot, gid)
     if game is None or not game.ready:
         return
 
@@ -175,9 +178,11 @@ async def handle_group_speak(bot: Bot, event: GroupMessageEvent) -> None:
             return
 
         game.players[user_id].has_spoken_this_round = True
+        persist_game(game)
 
         if all(game.players[pid].has_spoken_this_round for pid in order_alive):
             email_names, failed_names = await pm_invite_for_voting(bot, game)
+            persist_game(game)
             extra = delivery_report(email_users=email_names, failed_users=failed_names)
             msg = speak_round_to_vote()
             if extra:
@@ -195,24 +200,26 @@ async def handle_open(bot: Bot, event: GroupMessageEvent) -> None:
     if not await claim_group_event(event):
         return
 
-    group_id = event.group_id
+    gid = group_key(event.group_id)
     user_id = event.user_id
-    if group_id in games and games[group_id].ready:
+    cached = await load_local_game(bot, gid)
+    if cached is not None and cached.ready:
         await cmd_open.finish(err_game_in_progress())
 
-    if group_id not in games:
-        gate = await begin_spy_room(group_id)
+    if cached is None:
+        gate = await begin_spy_room(gid)
         if gate == "busy":
             await cmd_open.finish(err_room_busy())
 
-    games[group_id] = Game(group_id=group_id, owner_id=user_id)
-    nick = await get_nickname(bot, group_id, user_id)
-    games[group_id].players[user_id] = Player(uid=user_id, nickname=nick)
+    game = bind_local_game(Game(group_id=gid, owner_id=user_id))
+    nick = await get_nickname(bot, gid, user_id)
+    game.players[user_id] = Player(uid=user_id, nickname=nick)
+    persist_prep(game)
 
     if needs_group_host_bot_gate():
-        await bind_group_owned_gate(PLUGIN_KEY, group_id, int(bot.self_id), gate_sec=SPY_HOST_GATE_SEC)
-    mark_spy_prep_room(group_id, owner_id=user_id, host_bot_id=int(bot.self_id))
-    if not await try_acquire_group_broadcast_slot(PLUGIN_KEY, group_id, ttl_sec=3.0):
+        await bind_group_owned_gate(PLUGIN_KEY, gid, int(bot.self_id), gate_sec=SPY_HOST_GATE_SEC)
+    mark_spy_prep_room(gid, owner_id=user_id, host_bot_id=int(bot.self_id))
+    if not await try_acquire_group_broadcast_slot(PLUGIN_KEY, gid, ttl_sec=3.0):
         return
     await cmd_open.finish(open_room_message(user_id=user_id))
 
@@ -223,9 +230,9 @@ async def handle_join(bot: Bot, event: GroupMessageEvent) -> None:
         return
 
     cfg = get_spy_config()
-    group_id = event.group_id
+    gid = group_key(event.group_id)
     user_id = event.user_id
-    game = await load_local_prep_game(bot, group_id)
+    game = await load_local_prep_game(bot, gid)
     if game is None:
         await cmd_join.finish(err_no_room())
     if game.ready:
@@ -235,8 +242,9 @@ async def handle_join(bot: Bot, event: GroupMessageEvent) -> None:
     if len(game.players) >= cfg.spy_max_players:
         await cmd_join.finish(err_room_full(cfg.spy_max_players))
 
-    nick = await get_nickname(bot, group_id, user_id)
+    nick = await get_nickname(bot, gid, user_id)
     game.players[user_id] = Player(uid=user_id, nickname=nick)
+    persist_prep(game)
     await cmd_join.finish(join_ok(len(game.players)))
 
 
@@ -245,11 +253,11 @@ async def handle_quit(event: GroupMessageEvent) -> None:
     if not await claim_group_event(event):
         return
 
-    group_id = event.group_id
+    gid = group_key(event.group_id)
     user_id = event.user_id
-    if group_id not in games:
+    game = resolve_game_sync(gid)
+    if game is None:
         await cmd_quit.finish(err_no_room_quit())
-    game = games[group_id]
     if game.ready:
         await cmd_quit.finish(err_cannot_quit_started())
     if user_id not in game.players:
@@ -257,6 +265,7 @@ async def handle_quit(event: GroupMessageEvent) -> None:
     if user_id == game.owner_id:
         await cmd_quit.finish(err_owner_cannot_quit())
     del game.players[user_id]
+    persist_prep(game)
     await cmd_quit.finish(quit_ok(len(game.players)))
 
 
@@ -266,9 +275,9 @@ async def handle_start(bot: Bot, event: GroupMessageEvent, arg: Message = Comman
         return
 
     cfg = get_spy_config()
-    group_id = event.group_id
+    gid = group_key(event.group_id)
     user_id = event.user_id
-    game = await load_local_prep_game(bot, group_id)
+    game = await load_local_prep_game(bot, gid)
     if game is None:
         await cmd_start.finish(err_no_room())
     if user_id != game.owner_id:
@@ -289,7 +298,8 @@ async def handle_start(bot: Bot, event: GroupMessageEvent, arg: Message = Comman
     assign_roles(game, undercover_count)
     game.ready = True
     game.reset_round_flags()
-    mark_spy_room_active(group_id)
+    mark_spy_room_active(gid)
+    persist_game(game)
 
     show_role = cfg.spy_show_role_default
     email_names, failed_names = await deliver_role_words(bot, game, show_role=show_role)
@@ -311,8 +321,8 @@ async def handle_status(bot: Bot, event: GroupMessageEvent) -> None:
     if not await claim_group_event(event):
         return
 
-    group_id = event.group_id
-    game = await load_local_prep_game(bot, group_id)
+    gid = group_key(event.group_id)
+    game = await load_local_game(bot, gid)
     if game is None:
         await cmd_status.finish(err_no_spy_room())
     text = status_panel(
@@ -329,18 +339,18 @@ async def handle_end(bot: Bot, event: GroupMessageEvent) -> None:
     if not await claim_group_event(event):
         return
 
-    group_id = event.group_id
-    game = games.get(group_id)
+    gid = group_key(event.group_id)
+    game = await load_local_game(bot, gid)
     if game is not None:
         if not await can_close_spy_room(bot, event, game):
             await cmd_end.finish(err_end_owner_only())
-        close_spy_room(group_id)
+        close_spy_room(gid)
         await cmd_end.finish(room_closed())
         return
 
-    lock = SPY_GROUP_LOCK.read(group_id)
+    lock = SPY_GROUP_LOCK.read(gid)
     if lock and lock.get("busy") and await can_close_spy_room(bot, event, None):
-        close_spy_room(group_id)
+        close_spy_room(gid)
         await cmd_end.finish(room_closed())
         return
 
@@ -352,7 +362,7 @@ def is_waiting_pm_vote(event: PrivateMessageEvent) -> bool:
     text = str(event.get_plaintext() or "").strip()
     if not text.isdigit():
         return False
-    for game in games.values():
+    for game in resolve_all_active_games():
         if (
             game.ready
             and user_id in game.players
@@ -362,6 +372,13 @@ def is_waiting_pm_vote(event: PrivateMessageEvent) -> bool:
         ):
             return True
     return False
+
+
+def resolve_all_active_games() -> list[Game]:
+    from .logic import games as memory_games
+
+    seen: dict[int, Game] = {gid: g for gid, g in memory_games.items() if g.ready}
+    return list(seen.values())
 
 
 pm_numeric_vote = on_message(
@@ -378,7 +395,7 @@ async def handle_pm_vote(bot: Bot, event: PrivateMessageEvent) -> None:
     number = int(event.get_plaintext().strip())
 
     game: Game | None = None
-    for candidate in games.values():
+    for candidate in resolve_all_active_games():
         if (
             candidate.ready
             and user_id in candidate.players
@@ -401,6 +418,7 @@ async def handle_pm_vote(bot: Bot, event: PrivateMessageEvent) -> None:
             if not all(player.has_spoken_this_round for player in game.alive_players()):
                 await pm_numeric_vote.finish(pm_cannot_abstain_yet())
             game.votes[user_id] = None
+            persist_game(game)
             all_done = set(game.votes.keys()) >= set(game.alive_ids())
         if all_done:
             await settle_and_announce(bot, game)
@@ -420,6 +438,7 @@ async def handle_pm_vote(bot: Bot, event: PrivateMessageEvent) -> None:
         if target_user_id not in game.players or not game.players[target_user_id].is_alive:
             await pm_numeric_vote.finish(pm_target_gone())
         game.votes[user_id] = target_user_id
+        persist_game(game)
         voted_name = game.players[target_user_id].nickname
         all_done = set(game.votes.keys()) >= set(game.alive_ids())
 

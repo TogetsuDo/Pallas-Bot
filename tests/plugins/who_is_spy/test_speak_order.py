@@ -20,4 +20,4 @@ def test_current_speaker_follows_alive_order() -> None:
 def test_vote_stats_abstain_line() -> None:
     from src.plugins.who_is_spy.copy import vote_stats_abstain
 
-    assert vote_stats_abstain(2) == "- 弃权：2 票"
+    assert vote_stats_abstain(2) == "- 弃权 2 票"
