@@ -152,6 +152,10 @@ async def import_remote_context_to_local(local, ctx: Context) -> bool:
 
 
 async def execute_corpus_prefetch(keywords: str) -> None:
+    from src.platform.ingress.message_load import should_pause_tasks
+
+    if should_pause_tasks():
+        return
     from src.features.corpus.factory import build_community_repository
     from src.features.corpus.remote_budget import should_skip_remote_corpus
 

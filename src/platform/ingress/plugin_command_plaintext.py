@@ -74,6 +74,9 @@ def clear_plugin_command_plaintext_cache() -> None:
 
     clear_hosted_activity_ingress_cache()
     clear_ingress_policy_cache()
+    from src.platform.ingress.route_index import clear_route_index_cache
+
+    clear_route_index_cache()
 
 
 @lru_cache(maxsize=2048)
