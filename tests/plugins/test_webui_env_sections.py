@@ -10,6 +10,8 @@ def _import_command_limit_plugins() -> None:
     import src.plugins.bot_status  # noqa: F401
     import src.plugins.connectivity  # noqa: F401
     import src.plugins.help  # noqa: F401
+    import src.plugins.maa  # noqa: F401
+    import src.plugins.sing  # noqa: F401
 
 
 def _patch_loaded_command_limit_plugins(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -18,11 +20,15 @@ def _patch_loaded_command_limit_plugins(monkeypatch: pytest.MonkeyPatch) -> None
     from src.plugins.bot_status import __plugin_meta__ as bot_status_meta
     from src.plugins.connectivity import __plugin_meta__ as connectivity_meta
     from src.plugins.help import __plugin_meta__ as help_meta
+    from src.plugins.maa import __plugin_meta__ as maa_meta
+    from src.plugins.sing import __plugin_meta__ as sing_meta
 
     plugins = [
         SimpleNamespace(name="bot_status", metadata=bot_status_meta),
         SimpleNamespace(name="connectivity", metadata=connectivity_meta),
         SimpleNamespace(name="help", metadata=help_meta),
+        SimpleNamespace(name="maa", metadata=maa_meta),
+        SimpleNamespace(name="sing", metadata=sing_meta),
     ]
     monkeypatch.setattr("src.features.command_limits.schema.get_loaded_plugins", lambda: plugins)
 
@@ -150,6 +156,8 @@ def test_command_limits_section_payload_shape(monkeypatch: pytest.MonkeyPatch):
     assert data["module"] == "src.features.command_limits"
     assert "command_limits_ui" in data
     assert any(row["id"] == "help.help" for row in data["command_limits_ui"]["commands"])
+    assert any(row["id"] == "sing.sing" for row in data["command_limits_ui"]["commands"])
+    assert any(row["id"] == "maa.control" for row in data["command_limits_ui"]["commands"])
 
 
 def test_command_limits_section_payload_keeps_zero_override(monkeypatch: pytest.MonkeyPatch):

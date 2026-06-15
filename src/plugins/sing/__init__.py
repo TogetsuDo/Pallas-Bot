@@ -50,6 +50,12 @@ __plugin_meta__ = PluginMetadata(
             {"id": "sing.ncm_login", "label": "网易云登录", "default": "superuser"},
             {"id": "sing.ncm_logout", "label": "网易云登出", "default": "superuser"},
         ],
+        "command_limits": [
+            {"id": "sing.sing", "cd_sec": 8},
+            {"id": "sing.play", "cd_sec": 3},
+            {"id": "sing.request_song", "cd_sec": 5},
+            {"id": "sing.song_title", "cd_sec": 2},
+        ],
         "menu_data": [
             {
                 "func": "牛牛唱歌",

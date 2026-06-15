@@ -7,6 +7,8 @@ def _import_command_limit_plugins() -> None:
     import src.plugins.bot_status  # noqa: F401
     import src.plugins.connectivity  # noqa: F401
     import src.plugins.help  # noqa: F401
+    import src.plugins.maa  # noqa: F401
+    import src.plugins.sing  # noqa: F401
 
 
 def _patch_loaded_plugins(monkeypatch):
@@ -15,11 +17,15 @@ def _patch_loaded_plugins(monkeypatch):
     from src.plugins.bot_status import __plugin_meta__ as bot_status_meta
     from src.plugins.connectivity import __plugin_meta__ as connectivity_meta
     from src.plugins.help import __plugin_meta__ as help_meta
+    from src.plugins.maa import __plugin_meta__ as maa_meta
+    from src.plugins.sing import __plugin_meta__ as sing_meta
 
     plugins = [
         SimpleNamespace(name="bot_status", metadata=bot_status_meta),
         SimpleNamespace(name="connectivity", metadata=connectivity_meta),
         SimpleNamespace(name="help", metadata=help_meta),
+        SimpleNamespace(name="maa", metadata=maa_meta),
+        SimpleNamespace(name="sing", metadata=sing_meta),
     ]
     monkeypatch.setattr("src.features.command_limits.schema.get_loaded_plugins", lambda: plugins)
 
@@ -54,6 +60,8 @@ def test_existing_plugin_metadata_declares_command_limits():
     from src.plugins.bot_status import __plugin_meta__ as bot_status_meta
     from src.plugins.connectivity import __plugin_meta__ as connectivity_meta
     from src.plugins.help import __plugin_meta__ as help_meta
+    from src.plugins.maa import __plugin_meta__ as maa_meta
+    from src.plugins.sing import __plugin_meta__ as sing_meta
 
     assert [item.id for item in command_limits_from_metadata(bot_status_meta)] == [
         "bot_status.status",
@@ -61,6 +69,19 @@ def test_existing_plugin_metadata_declares_command_limits():
     ]
     assert [item.id for item in command_limits_from_metadata(connectivity_meta)] == ["connectivity.probe"]
     assert [item.id for item in command_limits_from_metadata(help_meta)] == ["help.help"]
+    assert [item.id for item in command_limits_from_metadata(sing_meta)] == [
+        "sing.sing",
+        "sing.play",
+        "sing.request_song",
+        "sing.song_title",
+    ]
+    assert [item.id for item in command_limits_from_metadata(maa_meta)] == [
+        "maa.status",
+        "maa.clear_queue",
+        "maa.switch_device",
+        "maa.raw_task",
+        "maa.control",
+    ]
 
 
 def test_command_limits_ui_groups_existing_plugins(monkeypatch):
@@ -76,6 +97,8 @@ def test_command_limits_ui_groups_existing_plugins(monkeypatch):
     assert commands["help.help"]["plugin"] == "help"
     assert commands["bot_status.status"]["plugin"] == "bot_status"
     assert commands["connectivity.probe"]["plugin"] == "connectivity"
+    assert commands["sing.sing"]["plugin"] == "sing"
+    assert commands["maa.control"]["plugin"] == "maa"
 
 
 def test_command_limits_ui_uses_override_values(monkeypatch):
@@ -86,6 +109,33 @@ def test_command_limits_ui_uses_override_values(monkeypatch):
     ui = build_command_limits_ui({"help.help": 9})
     commands = {row["id"]: row for row in ui["commands"]}
     assert commands["help.help"]["effective_cd_sec"] == 9
+
+
+def test_command_limits_ui_includes_worker_plugins_from_disk_when_hub_loaded_plugins_are_partial(monkeypatch):
+    from types import SimpleNamespace
+
+    from src.features.command_limits.schema import build_command_limits_ui, clear_merged_command_limits_cache
+    from src.plugins.help import __plugin_meta__ as help_meta
+
+    clear_merged_command_limits_cache()
+    monkeypatch.setattr(
+        "src.features.command_limits.schema.get_loaded_plugins",
+        lambda: [SimpleNamespace(name="help", metadata=help_meta)],
+    )
+    monkeypatch.setattr(
+        "src.features.command_limits.schema.discover_plugin_packages",
+        lambda: ["help", "maa", "sing"],
+    )
+    monkeypatch.setattr(
+        "src.features.command_limits.schema.discover_extra_plugin_packages",
+        dict,
+    )
+    ui = build_command_limits_ui({})
+    commands = {row["id"]: row for row in ui["commands"]}
+
+    assert "help.help" in commands
+    assert "sing.sing" in commands
+    assert "maa.control" in commands
 
 
 def test_effective_command_limit_prefers_override(monkeypatch):

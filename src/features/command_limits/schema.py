@@ -7,9 +7,60 @@ from typing import Any
 
 from nonebot import get_loaded_plugins
 
-from .metadata import command_limits_from_metadata
+from src.console.webui.plugin_catalog import discover_extra_plugin_packages, discover_plugin_packages
+from src.foundation.paths import PROJECT_ROOT
+
+from .metadata import command_limits_from_metadata, parse_command_limits_stub
 
 _merged_defaults_cache: dict[str, int] | None = None
+
+
+def _loaded_plugin_rows() -> list[tuple[str, str, list[Any]]]:
+    rows: list[tuple[str, str, list[Any]]] = []
+    for plugin in get_loaded_plugins():
+        if not plugin.name:
+            continue
+        meta = getattr(plugin, "metadata", None)
+        title = (getattr(meta, "name", None) or plugin.name or "").strip() or plugin.name
+        decls = command_limits_from_metadata(meta)
+        if decls:
+            rows.append((plugin.name, title, decls))
+    return rows
+
+
+def _disk_plugin_rows() -> list[tuple[str, str, list[Any]]]:
+    loaded_names = {name for name, _title, _decls in _loaded_plugin_rows()}
+    extra_pkgs = discover_extra_plugin_packages()
+    roots = [
+        (package, PROJECT_ROOT / "src" / "plugins" / package)
+        for package in discover_plugin_packages()
+    ]
+    roots.extend(extra_pkgs.items())
+
+    rows: list[tuple[str, str, list[Any]]] = []
+    seen: set[str] = set()
+    for package, root in roots:
+        if package in loaded_names or package in seen:
+            continue
+        init_path = root / "__init__.py"
+        if not init_path.is_file():
+            continue
+        stub = parse_command_limits_stub(init_path)
+        if not stub:
+            continue
+        decls = stub.get("command_limits") or []
+        if not decls:
+            continue
+        title = str(stub.get("name") or package).strip() or package
+        rows.append((package, title, decls))
+        seen.add(package)
+    return rows
+
+
+def _all_command_limit_rows() -> list[tuple[str, str, list[Any]]]:
+    loaded = _loaded_plugin_rows()
+    disk = _disk_plugin_rows()
+    return loaded + disk
 
 
 def clear_merged_command_limits_cache() -> None:
@@ -22,11 +73,8 @@ def merged_default_command_limits() -> dict[str, int]:
     if _merged_defaults_cache is not None:
         return _merged_defaults_cache
     merged: dict[str, int] = {}
-    for plugin in get_loaded_plugins():
-        if not plugin.name:
-            continue
-        meta = getattr(plugin, "metadata", None)
-        for row in command_limits_from_metadata(meta):
+    for _plugin_name, _title, decls in _all_command_limit_rows():
+        for row in decls:
             merged[row.id] = row.cd_sec
     _merged_defaults_cache = merged
     return _merged_defaults_cache
@@ -45,13 +93,9 @@ def effective_command_limit_for(command_id: str, overrides: dict[str, int] | Non
 def build_command_limits_ui(overrides: dict[str, int]) -> dict[str, Any]:
     defaults = merged_default_command_limits()
     meta_rows: dict[str, tuple[str, str, str]] = {}
-    for plugin in get_loaded_plugins():
-        if not plugin.name:
-            continue
-        meta = getattr(plugin, "metadata", None)
-        title = (getattr(meta, "name", None) or plugin.name or "").strip() or plugin.name
-        for row in command_limits_from_metadata(meta):
-            meta_rows[row.id] = (plugin.name, title, row.id)
+    for plugin_name, title, decls in _all_command_limit_rows():
+        for row in decls:
+            meta_rows[row.id] = (plugin_name, title, row.id)
 
     groups: dict[str, dict[str, Any]] = {}
     for cid, default_cd in sorted(defaults.items(), key=itemgetter(0)):

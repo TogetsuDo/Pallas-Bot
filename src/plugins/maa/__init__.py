@@ -61,6 +61,13 @@ __plugin_meta__ = PluginMetadata(
             {"id": "maa.control", "label": "MAA 远控指令", "default": "everyone"},
             {"id": "maa.status", "label": "牛牛MAA状态", "default": "everyone"},
         ],
+        "command_limits": [
+            {"id": "maa.status", "cd_sec": 2},
+            {"id": "maa.clear_queue", "cd_sec": 3},
+            {"id": "maa.switch_device", "cd_sec": 2},
+            {"id": "maa.raw_task", "cd_sec": 3},
+            {"id": "maa.control", "cd_sec": 2},
+        ],
         "menu_data": [
             {
                 "func": "绑定设备",
