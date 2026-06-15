@@ -190,15 +190,27 @@ flowchart TB
 
 ---
 
-### Phase 3 — 出站整形与重活外置（2 周）
+### Phase 3 — 出站整形与重活外置（2 周）✅ 已实现
 
 **问题**：fanout / 多牛同响时 **发送** 与 **渲染** 放大。
 
 **做法**：
 
-1. **`send_queue.py`**：patch `OneBotV11Adapter._call_api`（参考真寻），`send_msg` 类 API 入队；worker 池 + 最小间隔；队列满时降级（点赞可丢、群消息优先）。
-2. **渲染 / Playwright**：统一经现有 `media_cache` / 插件队列，matcher 只 `create_task` 入队。
-3. **Pallas-Bot-AI**：保持外置；ingress 层对 AI lane 单独限流即可。
+1. **`send_queue.py`**：patch `OneBotV11Adapter._call_api`，`send_*msg` 类 API 入队；worker 池 + 每牛最小间隔；队列高压时丢弃点赞类 API，群消息优先入队。
+2. **渲染 / Playwright**：经现有 `media_cache` 队列（Phase 2 已与 `message_load` 联动）。
+3. **Pallas-Bot-AI**：保持外置；ingress 层 `remote` lane 限流。
+
+配置：
+
+| 键 | 默认 |
+|----|------|
+| `PALLAS_SEND_QUEUE_ENABLED` | 开 |
+| `PALLAS_SEND_QUEUE_WORKERS` | `2` |
+| `PALLAS_SEND_QUEUE_MAX_DEPTH` | `256` |
+| `PALLAS_SEND_QUEUE_MIN_INTERVAL_MS` | `50` |
+| `PALLAS_SEND_QUEUE_ENQUEUE_TIMEOUT_SEC` | `2.0` |
+
+可观测：`send_queue_status()` 返回 `depth` / `dropped` / `sent` 等计数（Phase 4 WebUI 可接）。
 
 **验收**：fanout 口令（如报数）N=15 牛，协议端无 burst 断连；发送队列深度可观测。
 

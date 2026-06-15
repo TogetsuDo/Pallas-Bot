@@ -9,6 +9,12 @@ from src.platform.ingress.matcher_dispatch import (
     uninstall_matcher_dispatch,
 )
 from src.platform.ingress.route_index import build_route_index, route_index_enabled, route_index_strict
+from src.platform.ingress.send_queue import (
+    install_send_queue,
+    start_send_queue_workers,
+    stop_send_queue_workers,
+    uninstall_send_queue,
+)
 
 _HOOK_REGISTERED = False
 
@@ -33,11 +39,15 @@ def register_ingress_dispatch_runtime() -> None:
                 len(index.indexed_modules),
                 route_index_strict(),
             )
+        install_send_queue()
+        await start_send_queue_workers()
         install_matcher_dispatch()
 
     @driver.on_shutdown
     async def uninstall_ingress_dispatch_on_shutdown() -> None:
         uninstall_matcher_dispatch()
+        await stop_send_queue_workers()
+        uninstall_send_queue()
 
     _HOOK_REGISTERED = True
     if matcher_dispatch_enabled():

@@ -50,6 +50,13 @@ def record_lane_wait(wait_ms: float) -> None:
         signal_overload(3.0)
 
 
+def record_send_queue_pressure(depth: int, max_depth: int) -> None:
+    if max_depth <= 0:
+        return
+    if depth >= max(1, int(max_depth * 0.85)):
+        signal_overload(2.0)
+
+
 def reset_message_load_for_tests() -> None:
     global _OVERLOAD_UNTIL, _LAST_ACTIVITY
     _OVERLOAD_UNTIL = 0.0
