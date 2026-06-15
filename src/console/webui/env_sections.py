@@ -439,7 +439,7 @@ def _ingress_dispatch_payload_extras() -> dict[str, Any]:
         "field_groups": [
             {
                 "id": "matcher",
-                "title": "Matcher 预筛选",
+                "title": "消息预筛选",
                 "field_names": [
                     "matcher_dispatch_enabled",
                     "matcher_dispatch_overload_threshold",
@@ -447,12 +447,12 @@ def _ingress_dispatch_payload_extras() -> dict[str, Any]:
             },
             {
                 "id": "route_index",
-                "title": "命令路由索引",
+                "title": "口令路由索引",
                 "field_names": ["route_index_enabled", "route_index_strict"],
             },
             {
                 "id": "lanes",
-                "title": "Dispatch Lane",
+                "title": "并发档位限流",
                 "field_names": [
                     "dispatch_lanes_enabled",
                     "lane_acquire_timeout_sec",

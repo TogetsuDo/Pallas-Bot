@@ -71,9 +71,9 @@ class IngressDispatchRuntimeConfig(BaseModel):
     matcher_dispatch_enabled: bool = Field(
         default=True,
         description=field_help(
-            "启用 matcher 预筛选与 handle_event patch",
-            "关闭后恢复 NoneBot 原生 matcher 扇出",
-            "保存后立即生效",
+            "减少群消息在插件里反复试匹配的开销，闲聊时跳过纯口令类插件",
+            "选开或关；多牛、插件多的群一般保持开启",
+            "关闭后恢复 NoneBot 默认匹配方式；保存后立即生效",
         ),
     )
     matcher_dispatch_overload_threshold: int = Field(
@@ -81,33 +81,33 @@ class IngressDispatchRuntimeConfig(BaseModel):
         ge=1,
         le=256,
         description=field_help(
-            "单条群消息选中 matcher 超过此数时触发过载信号",
-            "填正整数，默认 24",
-            "过载时后台 prefetch 等任务让路",
+            "单条群消息需检查的插件过多时，视为入站过载并暂缓后台任务",
+            "填正整数，默认 24；插件特别多时可试 32～48",
+            "触发后社区语料 prefetch 等后台任务会暂时让路",
         ),
     )
     route_index_enabled: bool = Field(
         default=True,
         description=field_help(
-            "启用命令路由索引",
-            "关闭后闲聊与命令均回退全量 matcher 扫描",
-            "保存后立即生效",
+            "按口令前缀或全文只激活可能相关的插件，减少无关扫描",
+            "选开或关；一般保持开启",
+            "关闭后每条消息仍会尝试全部插件 matcher",
         ),
     )
     route_index_strict: bool = Field(
         default=False,
         description=field_help(
-            "路由索引 strict 模式",
-            "开启后未命中索引的命令 matcher 不再回退全量",
-            "生产稳定前建议保持关闭",
+            "未收录的口令是否还允许回退到全量插件扫描",
+            "关表示漏网口令仍有机会被匹配；开表示只认索引里列出的插件",
+            "稳定运行前建议保持关闭，避免口令无反应",
         ),
     )
     dispatch_lanes_enabled: bool = Field(
         default=True,
         description=field_help(
-            "启用 dispatch lane 并发预算",
-            "关闭后 matcher 不再按档位限流",
-            "保存后立即生效",
+            "按口令、闲聊、数据库、外呼等档位限制同时运行的插件数量",
+            "选开或关；一般保持开启",
+            "关闭后重命令可能占满数据库连接或拖慢整群回复",
         ),
     )
     lane_acquire_timeout_sec: float = Field(
@@ -115,9 +115,9 @@ class IngressDispatchRuntimeConfig(BaseModel):
         ge=0.0,
         le=30.0,
         description=field_help(
-            "lane acquire 最长等待秒数",
-            "超时则丢弃该 matcher 执行",
-            "命令流量可回复忙提示",
+            "某个插件等待空闲档位最多等多久",
+            "填秒数，默认 1.0；繁忙群可试 0.5～2.0",
+            "超时则跳过该次执行；口令流量可能收到忙回复",
         ),
     )
     lane_wait_overload_ms: int = Field(
@@ -125,17 +125,17 @@ class IngressDispatchRuntimeConfig(BaseModel):
         ge=50,
         le=5000,
         description=field_help(
-            "lane 等待超过此毫秒数时触发过载",
-            "默认 250",
-            "与 message_load 联动",
+            "档位排队过久时触发全站过载信号",
+            "填毫秒，默认 250",
+            "与首页「入站调度」面板中的过载计数联动",
         ),
     )
     lane_busy_reply: bool = Field(
         default=True,
         description=field_help(
-            "命令 lane 满时发送人设忙回复",
-            "关闭则静默丢弃",
-            "保存后立即生效",
+            "口令档已满时是否向群里发一句「忙不过来」的人设回复",
+            "选开或关；一般保持开启",
+            "关闭时静默丢弃，群友可能误以为没触发命令",
         ),
     )
     lane_command: int = Field(
@@ -143,9 +143,9 @@ class IngressDispatchRuntimeConfig(BaseModel):
         ge=1,
         le=128,
         description=field_help(
-            "command 档位并发上限",
-            "口令与 CommandRule matcher",
-            "保存后清 lane 缓存",
+            "同时执行多少条口令类命令",
+            "填正整数，默认 16",
+            "保存后立即调整档位上限",
         ),
     )
     lane_chat: int = Field(
@@ -153,9 +153,9 @@ class IngressDispatchRuntimeConfig(BaseModel):
         ge=1,
         le=256,
         description=field_help(
-            "chat 档位并发上限",
-            "群聊被动与轻量 regex",
-            "保存后清 lane 缓存",
+            "同时执行多少条闲聊、接话类被动插件",
+            "填正整数，默认 32",
+            "保存后立即调整档位上限",
         ),
     )
     lane_storage: int = Field(
@@ -163,9 +163,9 @@ class IngressDispatchRuntimeConfig(BaseModel):
         ge=1,
         le=64,
         description=field_help(
-            "storage 档位并发上限",
-            "PG 密集 matcher，高压时自动收紧",
-            "默认 min(8, PG_POOL_SIZE)",
+            "同时执行多少条频繁读写数据库的插件",
+            "填正整数，默认 8；不宜超过 PG 连接池大小",
+            "数据库压力大时会自动减半",
         ),
     )
     lane_remote: int = Field(
@@ -173,17 +173,17 @@ class IngressDispatchRuntimeConfig(BaseModel):
         ge=1,
         le=64,
         description=field_help(
-            "remote 档位并发上限",
-            "HTTP、AI、渲染等外呼",
-            "保存后清 lane 缓存",
+            "同时执行多少条画图、AI、HTTP 等对外请求的重命令",
+            "填正整数，默认 4",
+            "保存后立即调整档位上限",
         ),
     )
     send_queue_enabled: bool = Field(
         default=True,
         description=field_help(
-            "启用 OneBot 出站 send 队列",
-            "关闭后 send 类 API 直连协议端",
-            "变更 worker 数需重启进程",
+            "把发送群消息等出站动作排队，避免全员同响时瞬间打满协议端",
+            "选开或关；一般保持开启",
+            "关闭后发送请求直连协议端",
         ),
     )
     send_queue_workers: int = Field(
@@ -191,9 +191,9 @@ class IngressDispatchRuntimeConfig(BaseModel):
         ge=1,
         le=16,
         description=field_help(
-            "出站队列 worker 数",
-            "默认 2",
-            "变更后需重启 Bot",
+            "有多少条线程从队列里取消息并发送",
+            "填正整数，默认 2",
+            "变更后需重启 Bot 才生效",
         ),
     )
     send_queue_max_depth: int = Field(
@@ -201,8 +201,8 @@ class IngressDispatchRuntimeConfig(BaseModel):
         ge=32,
         le=4096,
         description=field_help(
-            "出站队列最大深度",
-            "高压时丢弃低优先级 API",
+            "出站队列最多积压多少条待发送",
+            "填正整数，默认 256；队列满时点赞等低优先级动作可能被丢弃",
             "保存后立即生效",
         ),
     )
@@ -211,9 +211,9 @@ class IngressDispatchRuntimeConfig(BaseModel):
         ge=0,
         le=2000,
         description=field_help(
-            "同牛连续发送最小间隔毫秒",
-            "默认 50",
-            "保存后立即生效",
+            "同一只牛两次发送之间至少间隔多久",
+            "填毫秒，默认 50；填 0 表示不限制",
+            "可减轻协议端突发发送压力",
         ),
     )
     send_queue_enqueue_timeout_sec: float = Field(
@@ -221,9 +221,9 @@ class IngressDispatchRuntimeConfig(BaseModel):
         ge=0.0,
         le=30.0,
         description=field_help(
-            "入队最长等待秒数",
-            "超时则丢弃该次发送",
-            "保存后立即生效",
+            "一条发送请求在队列外最多等多久才能入队",
+            "填秒数，默认 2.0",
+            "超时则放弃该次发送",
         ),
     )
 
