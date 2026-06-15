@@ -38,7 +38,7 @@
 | [插件规范](architecture/plugin-convention.md) | `src/plugins` 组织方式 |
 | [配置存储](architecture/settings-storage.md) | pallas.toml + webui.json |
 | [多进程分片](architecture/bot_process_sharding.md) | hub + worker，可选生产部署 |
-| [中央入站调度](architecture/central-ingress-dispatch.md) | platform 基础设施：dispatch 分期路线（优先于上分片） |
+| [中央入站调度](architecture/central-ingress-dispatch.md) | unified / worker 内 matcher 预筛选、lane、出站整形 |
 | [控制面与语料联邦](architecture/control-plane-corpus-federation.md) | 维护者：Composite 语料、Bootstrap |
 | [站点定制与更新](architecture/site-customization-and-updates.md) | local/plugins、更新策略 |
 

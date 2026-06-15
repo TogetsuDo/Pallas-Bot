@@ -1,5 +1,3 @@
-"""OneBot 出站 API 整形：send 类 action 入队，worker 池 + 最小间隔。"""
-
 from __future__ import annotations
 
 import asyncio

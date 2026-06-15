@@ -1,5 +1,3 @@
-"""命令路由索引：启动时从 PluginMetadata 构建 prefix / exact 倒排。"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass

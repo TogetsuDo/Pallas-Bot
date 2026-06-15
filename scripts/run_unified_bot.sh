@@ -109,7 +109,7 @@ stop_bot() {
 
 status_bot() {
   local port
-    port="$(read_listen_port)"
+  port="$(read_listen_port)"
   echo "PALLAS_SHARD_ENABLED=false (期望)"
   echo "监听端口 ${port}"
   if is_running; then

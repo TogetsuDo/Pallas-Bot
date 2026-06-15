@@ -1,5 +1,3 @@
-"""中央入站 dispatch 指标（unified / worker 进程内）。"""
-
 from __future__ import annotations
 
 import time

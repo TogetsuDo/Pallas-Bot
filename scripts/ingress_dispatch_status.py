@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""入站 dispatch 可观测摘要（供 run_unified_bot.sh observability 等）。"""
 
 from __future__ import annotations
 
