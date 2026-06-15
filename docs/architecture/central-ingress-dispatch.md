@@ -188,7 +188,7 @@ uv run python scripts/ingress_dispatch_status.py
 
 unified 进程须已运行；脚本读取当前进程内存指标，非分片聚合。
 
-分片下的跨 worker 指标见 [多进程分片 · WebUI 与日志](bot_process_sharding.md#webui-与日志hub) 中的 `shard-observability`。
+分片下的跨 worker 指标见 [多进程分片 · WebUI 与日志](bot_process_sharding.md#webui-与日志hub) 中的 `shard-observability`。分片 hub 上 `GET /pallas/api/ingress-dispatch` 汇总各 worker 落盘的 dispatch 快照。
 
 ## 扩容路径
 
