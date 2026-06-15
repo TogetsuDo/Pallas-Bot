@@ -80,7 +80,7 @@ flowchart TB
 |------|--------------|-------------|
 | 早退 / 舰队过滤 | auth hook、bot_filter | `ingress_gate` 插件 |
 | 只跑少量 handler | ActivationIndex、priority | `platform/ingress` + `bot_runtime/ingress_dispatch_runtime` |
-| 分 lane 限并发 | passive_db / passive_ai | `platform/ingress/dispatch_lanes`（待做） |
+| 分 lane 限并发 | storage / remote | `platform/ingress/dispatch_lanes` |
 | 出站排队 | send_queue | `platform/ingress/send_queue`（待做） |
 | 多进程 | 无内置分片 | `bot_process_sharding`（备选） |
 
@@ -147,28 +147,44 @@ flowchart TB
 
 ---
 
-### Phase 2 — Dispatch Lane 与全局预算（2～3 周）
+### Phase 2 — Dispatch Lane 与全局预算（2～3 周）✅ 已实现
 
 **问题**：少数重命令（AI、画图、PG 密集）占满连接池与 loop。
 
 **做法**（借鉴真寻 `auth_checker` lane）：
 
-1. **`dispatch_lanes.py`**：matcher 静态分类：
-   - `command_exact` / `command_regex`
-   - `passive_light`（内存、无 DB）
-   - `passive_db` / `passive_http` / `passive_ai` / `passive_render`
-2. 每 lane **asyncio.Semaphore**，上限来自 `pallas.toml` / WebUI，并与现有 **`pool_budget`** 联动（PG 高压时自动收紧 `passive_db`）。
-3. **`check_and_run_matcher` 外包一层**：进入 handler 前 `async with lane_sem`；超时则丢弃或短回复「牛牛忙」。
+1. **`dispatch_lanes.py`**：matcher 分四档并发预算：
+   - **`command`**：口令（`on_command` / 带 CommandRule）
+   - **`chat`**：群聊被动 matcher（轻量接话、regex 玩法）
+   - **`storage`**：PG 密集（与 **`pool_budget`** 联动，高压时自动收紧）
+   - **`remote`**：外呼重活（HTTP / AI / 渲染）
+2. 每档 **asyncio 条件变量** 限并发，上限来自 env / WebUI。
+3. **`check_and_run_matcher` 外包一层**：进入 handler 前 acquire；超时则丢弃，命令流量可发人设忙回复。
 4. **`message_load`**：lane 等待超过阈值时 `signal_overload`，扩展暂停面至：语料 prefetch、image capture、定时主动发言（非 fanout）。
 
-默认 lane 上限（可配置）：
+插件 `extra["ingress_route"].lane` 填上述四档之一；旧名（如 `passive_ai`）会自动映射。
 
-| Lane | 建议默认 |
+配置：
+
+| 键 | 默认 |
+|----|------|
+| `PALLAS_DISPATCH_LANES_ENABLED` | 开 |
+| `PALLAS_LANE_ACQUIRE_TIMEOUT_SEC` | `1.0` |
+| `PALLAS_LANE_WAIT_OVERLOAD_MS` | `250` |
+| `PALLAS_LANE_BUSY_REPLY` | 开 |
+| `PALLAS_LANE_COMMAND` | `16` |
+| `PALLAS_LANE_CHAT` | `32` |
+| `PALLAS_LANE_STORAGE` | `min(8, PG_POOL_SIZE)` |
+| `PALLAS_LANE_REMOTE` | `4` |
+
+默认档位上限：
+
+| 档位 | 建议默认 |
 |------|----------|
-| `passive_db` | `min(8, PG_POOL_SIZE)` |
-| `passive_ai` | `2` |
-| `passive_render` | `2` |
-| `command_exact` | `16` |
+| `storage` | `min(8, PG_POOL_SIZE)` |
+| `remote` | `4` |
+| `command` | `16` |
+| `chat` | `32` |
 
 **验收**：人工触发 5 条并发 AI 命令，PG `checked_out` 不超过池容量 80%；loop 不被无限排队拖死。
 

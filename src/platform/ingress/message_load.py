@@ -4,6 +4,7 @@ import time
 
 _OVERLOAD_UNTIL = 0.0
 _LAST_ACTIVITY = time.monotonic()
+_LANE_WAIT_OVERLOAD_MS = 250
 
 
 def mark_activity() -> None:
@@ -30,6 +31,23 @@ def is_overloaded() -> bool:
 
 def should_pause_tasks() -> bool:
     return is_overloaded()
+
+
+def lane_wait_overload_threshold_ms() -> int:
+    from src.foundation.config.repo_settings import repo_env_raw_value
+
+    raw = repo_env_raw_value("PALLAS_LANE_WAIT_OVERLOAD_MS")
+    if raw is None:
+        return _LANE_WAIT_OVERLOAD_MS
+    try:
+        return max(50, int(str(raw).strip()))
+    except ValueError:
+        return _LANE_WAIT_OVERLOAD_MS
+
+
+def record_lane_wait(wait_ms: float) -> None:
+    if wait_ms >= lane_wait_overload_threshold_ms():
+        signal_overload(3.0)
 
 
 def reset_message_load_for_tests() -> None:

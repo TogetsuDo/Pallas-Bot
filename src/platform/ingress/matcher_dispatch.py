@@ -9,6 +9,11 @@ from nonebot.log import logger
 from nonebot.matcher import matchers
 
 from src.foundation.config.repo_settings import repo_env_raw_value
+from src.platform.ingress.dispatch_lanes import (
+    check_and_run_matcher_with_lane,
+    install_dispatch_lanes,
+    uninstall_dispatch_lanes,
+)
 from src.platform.ingress.matcher_activation import (
     event_command_traffic,
     resolve_route_for_event,
@@ -79,6 +84,26 @@ async def patched_handle_event(bot: Bot, event: Event) -> None:
         total_selected = 0
 
         break_flag = False
+        lane_busy_sent = False
+        lane_busy_lock = nb_message.anyio.Lock()
+
+        async def run_selected_matcher(matcher) -> None:
+            nonlocal lane_busy_sent
+            async with lane_busy_lock:
+                already_sent = lane_busy_sent
+            sent = await check_and_run_matcher_with_lane(
+                matcher,
+                bot,
+                event,
+                state.copy(),
+                stack,
+                dependency_cache,
+                command_traffic=command_traffic,
+                busy_reply_sent=already_sent,
+            )
+            if sent:
+                async with lane_busy_lock:
+                    lane_busy_sent = True
 
         def handle_stop_propagation(_exc_group) -> None:
             nonlocal break_flag
@@ -117,17 +142,7 @@ async def patched_handle_event(bot: Bot, event: Event) -> None:
             }):
                 async with nb_message.anyio.create_task_group() as tg:
                     for matcher in selected_matchers:
-                        tg.start_soon(
-                            nb_message.run_coro_with_shield,
-                            nb_message.check_and_run_matcher(
-                                matcher,
-                                bot,
-                                event,
-                                state.copy(),
-                                stack,
-                                dependency_cache,
-                            ),
-                        )
+                        tg.start_soon(nb_message.run_coro_with_shield, run_selected_matcher(matcher))
 
         if show_log:
             nb_message.logger.debug("Checking for matchers completed")
@@ -139,6 +154,7 @@ def install_matcher_dispatch() -> None:
     global _PATCHED, _ORIGINAL_HANDLE_EVENT
     if _PATCHED or not matcher_dispatch_enabled():
         return
+    install_dispatch_lanes()
     _ORIGINAL_HANDLE_EVENT = nb_message.handle_event
 
     async def wrapped(bot: Bot, event: Event) -> None:
@@ -160,6 +176,7 @@ def uninstall_matcher_dispatch() -> None:
     nb_message.handle_event = _ORIGINAL_HANDLE_EVENT  # type: ignore[assignment]
     _PATCHED = False
     _ORIGINAL_HANDLE_EVENT = None
+    uninstall_dispatch_lanes()
 
 
 def matcher_dispatch_installed() -> bool:
