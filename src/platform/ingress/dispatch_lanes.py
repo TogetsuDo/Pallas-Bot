@@ -282,7 +282,7 @@ async def check_and_run_matcher_with_lane(
 
     lane = lane_for_matcher(matcher)
     acquired, wait_ms = await acquire_lane(lane)
-    record_lane_wait(wait_ms)
+    record_lane_wait(wait_ms, busy=not acquired)
     if not acquired:
         return await maybe_send_lane_busy_reply(
             bot,

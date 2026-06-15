@@ -216,13 +216,17 @@ flowchart TB
 
 ---
 
-### Phase 4 — 观测与压测基线（与 Phase 1～3 并行）
+### Phase 4 — 观测与压测基线（与 Phase 1～3 并行）✅ 已实现
 
-1. **指标**（WebUI「入站调度」或扩展现有分片可观测）：
-   - 每群消息：`ingress_outcome`、`matchers_considered`、`matchers_run`、`lane_wait_ms`
-   - 过载：`overload_signals_total`、`prefetch_paused_total`
-2. **脚本**：扩展 `run_unified_bot.sh` 对照文档，固定 `data/` 30 牛 synthetic 群消息 replay。
-3. **告警阈值**：P95 ingress 路径 > 100ms 或 PG 池 > 85% 持续 5min。
+1. **指标**（WebUI `GET /pallas/api/ingress-dispatch`）：
+   - 每群消息：`group_messages`、`matchers_considered` / `matchers_selected` / `matchers_run`、`ingress_duration_ms_p95`
+   - lane：`lane_wait_ms_avg`、`lane_busy`
+   - 过载：`overload_signals`、`prefetch_paused`
+   - 附带 `send_queue`、`pool_budget` 快照与 `alerts`
+2. **脚本**：`scripts/ingress_dispatch_status.py`；`run_unified_bot.sh observability` 输出摘要。
+3. **告警阈值**（写入 `alerts` 数组）：ingress P95 > 100ms；PG 池利用率 ≥ 85%。
+
+压测 replay（30 牛 synthetic 群消息）留作后续运维脚本扩展。
 
 ---
 

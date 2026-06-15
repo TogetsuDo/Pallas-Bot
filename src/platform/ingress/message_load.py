@@ -23,6 +23,9 @@ def signal_overload(duration: float = 5.0) -> None:
     until = time.monotonic() + duration
     if until > _OVERLOAD_UNTIL:
         _OVERLOAD_UNTIL = until
+        from src.platform.ingress.dispatch_metrics import record_overload_signal
+
+        record_overload_signal()
 
 
 def is_overloaded() -> bool:
@@ -45,9 +48,12 @@ def lane_wait_overload_threshold_ms() -> int:
         return _LANE_WAIT_OVERLOAD_MS
 
 
-def record_lane_wait(wait_ms: float) -> None:
+def record_lane_wait(wait_ms: float, *, busy: bool = False) -> None:
     if wait_ms >= lane_wait_overload_threshold_ms():
         signal_overload(3.0)
+    from src.platform.ingress.dispatch_metrics import record_lane_wait as record_lane_wait_metric
+
+    record_lane_wait_metric(wait_ms, busy=busy)
 
 
 def record_send_queue_pressure(depth: int, max_depth: int) -> None:

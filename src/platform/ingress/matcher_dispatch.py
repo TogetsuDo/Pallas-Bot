@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import time
 from typing import TYPE_CHECKING, Any
 
 import nonebot.message as nb_message
@@ -14,6 +15,7 @@ from src.platform.ingress.dispatch_lanes import (
     install_dispatch_lanes,
     uninstall_dispatch_lanes,
 )
+from src.platform.ingress.dispatch_metrics import record_group_message_ingress, record_preprocessor_dropped
 from src.platform.ingress.matcher_activation import (
     event_command_traffic,
     resolve_route_for_event,
@@ -51,6 +53,7 @@ def overload_selected_threshold() -> int:
 
 
 async def patched_handle_event(bot: Bot, event: Event) -> None:
+    ingress_started = time.perf_counter()
     mark_activity()
     show_log = True
     log_msg = f" {nb_message.escape_tag(bot.type)} {nb_message.escape_tag(bot.self_id)} | "
@@ -72,6 +75,8 @@ async def patched_handle_event(bot: Bot, event: Event) -> None:
             stack=stack,
             dependency_cache=dependency_cache,
         ):
+            if isinstance(event, GroupMessageEvent):
+                record_preprocessor_dropped()
             return
 
         with contextlib.suppress(Exception):
@@ -82,13 +87,16 @@ async def patched_handle_event(bot: Bot, event: Event) -> None:
         command_traffic = event_command_traffic(event, state, resolution=resolution) if apply_dispatch else True
         threshold = overload_selected_threshold()
         total_selected = 0
+        total_considered = 0
+        matchers_run = 0
 
         break_flag = False
         lane_busy_sent = False
         lane_busy_lock = nb_message.anyio.Lock()
 
         async def run_selected_matcher(matcher) -> None:
-            nonlocal lane_busy_sent
+            nonlocal lane_busy_sent, matchers_run
+            matchers_run += 1
             async with lane_busy_lock:
                 already_sent = lane_busy_sent
             sent = await check_and_run_matcher_with_lane(
@@ -132,6 +140,7 @@ async def patched_handle_event(bot: Bot, event: Event) -> None:
             if not selected_matchers:
                 continue
 
+            total_considered += len(priority_matchers)
             total_selected += len(selected_matchers)
             if total_selected > threshold:
                 signal_overload(3.0)
@@ -146,6 +155,15 @@ async def patched_handle_event(bot: Bot, event: Event) -> None:
 
         if show_log:
             nb_message.logger.debug("Checking for matchers completed")
+
+        if apply_dispatch:
+            record_group_message_ingress(
+                duration_ms=(time.perf_counter() - ingress_started) * 1000.0,
+                command_traffic=command_traffic,
+                matchers_considered=total_considered,
+                matchers_selected=total_selected,
+                matchers_run=matchers_run,
+            )
 
         await nb_message._apply_event_postprocessors(bot, event, state, stack, dependency_cache)
 

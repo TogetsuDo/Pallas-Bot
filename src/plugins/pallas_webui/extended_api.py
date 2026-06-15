@@ -4252,6 +4252,13 @@ def register_extended_api(
         data = await cached_read(key="shard-observability", loader=_load, ttl_sec=2.0, stale_sec=8.0)
         return JSONResponse({"ok": True, "data": data})
 
+    @router.get(f"{x}/ingress-dispatch", include_in_schema=True)
+    async def _ingress_dispatch_metrics() -> JSONResponse:
+        from src.platform.ingress.dispatch_metrics import dispatch_metrics_snapshot
+
+        data = dispatch_metrics_snapshot()
+        return JSONResponse({"ok": True, "data": data})
+
     @router.get(f"{x}/message-stats", include_in_schema=True)
     async def _message_stats(
         self_id: int | None = Query(default=None, ge=1),
