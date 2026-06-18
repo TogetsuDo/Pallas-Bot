@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.plugins.who_is_spy.commands import CMD_END, CMD_OPEN, is_spy_group_command
+from packages.who_is_spy.commands import CMD_END, CMD_OPEN, is_spy_group_command
 
 
 def test_is_spy_group_command_matches_end() -> None:

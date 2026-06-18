@@ -1,4 +1,4 @@
-from src.plugins.maa.tasks import (
+from packages.maa.tasks import (
     MAA_RAW_TASK_PREFIX,
     canonical_remote_task_type,
     is_control_phrase_line,
@@ -15,8 +15,8 @@ def test_control_phrase_case_insensitive() -> None:
 
 
 def test_maa_status_command_prefix() -> None:
-    from src.foundation.command_prefix import extract_command_tail_any, matches_command_prefix
-    from src.plugins.maa.command_match import STATUS_COMMAND
+    from packages.maa.command_match import STATUS_COMMAND
+    from pallas.core.foundation.command_prefix import extract_command_tail_any, matches_command_prefix
 
     assert matches_command_prefix("牛牛maa状态", STATUS_COMMAND)
     assert extract_command_tail_any("牛牛maa状态", STATUS_COMMAND) == ""

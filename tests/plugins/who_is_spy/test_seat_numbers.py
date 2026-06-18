@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from src.plugins.who_is_spy.logic import assign_roles, build_index_map, render_alive_numbered
-from src.plugins.who_is_spy.models import Game, Player
+from packages.who_is_spy.logic import assign_roles, build_index_map, render_alive_numbered
+from packages.who_is_spy.models import Game, Player
 
 
 def test_seat_numbers_stable_after_elimination() -> None:
@@ -32,7 +32,7 @@ def test_assign_roles_shuffles_seat_order(monkeypatch) -> None:
         items[:] = shuffles[call]
         call += 1
 
-    monkeypatch.setattr("src.plugins.who_is_spy.logic.random.shuffle", fake_shuffle)
+    monkeypatch.setattr("packages.who_is_spy.logic.random.shuffle", fake_shuffle)
 
     assign_roles(game, undercover_count=1, blank_count=0, avoid_recent=0)
     first = list(game.alive_order)

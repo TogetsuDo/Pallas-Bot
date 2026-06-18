@@ -1,6 +1,6 @@
 """dream 采集黑名单。"""
 
-from src.plugins.dream.capture_filter import dream_capture_blocked_by_substrings
+from packages.dream.capture_filter import dream_capture_blocked_by_substrings
 
 
 def test_dream_capture_blocked_when_plain_contains_buke() -> None:

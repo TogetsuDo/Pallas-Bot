@@ -2,7 +2,7 @@
 
 控制台 UI 由独立仓库 **[Pallas-Bot-WebUI](https://github.com/PallasBot/Pallas-Bot-WebUI)** 构建，产物由主仓 `pallas_webui` 插件挂载，基址 **`/pallas/`**。
 
-后端 API 实现在主仓 `src/plugins/pallas_webui/`（如 `extended_api.py`）；**插件配置热重载**等通用能力在 `src/console/webui/`，一般无需改 API 层即可接入新插件配置（见 [WebUI 插件配置](../common/webui/README.md)）。
+后端 API 实现在主仓 `src/plugins/pb_webui/`（如 `extended_api.py`）；**插件配置热重载**等通用能力在 `src/console/webui/`，一般无需改 API 层即可接入新插件配置（见 [WebUI 插件配置](../common/webui/README.md)）。
 
 ## 本地联调
 
@@ -30,7 +30,17 @@ cd Pallas-Bot-WebUI
 npm run build   # vue-tsc + vite build
 ```
 
-将 `dist/` 内容按主仓 `pallas_webui` 约定复制或 CI 发布到主仓静态资源目录。生产环境通常直接使用主仓内置构建结果，无需单独起 Vite。
+主仓 CI / Release 会从 **Pallas-Bot-WebUI** checkout 源码，经 `tools/build_webui_dist.sh` 构建并打包 **`dist.zip`**（zip 根为 `public/`），随 **Pallas-Bot Release** 附件发布。Bot 启动时解压到 **`data/pallas_webui`**，静态目录为 **`data/pallas_webui/public`**（与 `webui_public_path()` 一致）。
+
+本地手动部署：将构建产物放入 `data/pallas_webui/public/`，或解压 Release 的 `dist.zip` 到 `data/pallas_webui/`。
+
+```bash
+# 主仓内一键构建 zip（需已 clone WebUI 到 ../Pallas-Bot-WebUI 等路径）
+./tools/build_webui_dist.sh /path/to/Pallas-Bot-WebUI dist.zip
+unzip -d data/pallas_webui dist.zip
+```
+
+自动更新默认从 **`PallasBot/Pallas-Bot`** Release 下载 `dist.zip`（配置项 `pallas_webui_dist_zip_repo`）。
 
 ## 代码约定
 
@@ -67,7 +77,7 @@ npm run build   # vue-tsc + vite build
 | --- | --- |
 | 新页面、样式、前端交互 | Pallas-Bot-WebUI |
 | 新 API、权限、配置落盘 | Pallas-Bot（`pallas_webui` / `common/webui`） |
-| 内嵌协议端静态页 | 主仓 `src/plugins/pallas_protocol/web/static/`（同样遵守窄屏） |
+| 内嵌协议端静态页 | 主仓 `src/plugins/pb_protocol/web/static/`（同样遵守窄屏） |
 
 PR 仍建议**单一主题**：前后端分拆为两个 PR 时，在描述中互相链接。
 

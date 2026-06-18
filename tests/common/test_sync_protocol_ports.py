@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
-from src.platform.shard.registry.sync_protocol_ports import (
+from pallas.core.platform.shard.registry.sync_protocol_ports import (
     onebot_instance_ws_drifted,
     sync_accounts_ws_urls,
     sync_onebot_instances_from_accounts,
@@ -50,7 +49,7 @@ def test_sync_protocol_ports_no_change_when_already_aligned(tmp_path, monkeypatc
     )
     monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
     monkeypatch.setattr(
-        "src.platform.shard.registry.store._registry_path",
+        "pallas.core.platform.shard.registry.store._registry_path",
         lambda: reg_dir / "registry.json",
     )
 
@@ -101,7 +100,7 @@ def test_sync_protocol_ports_detects_port_drift(tmp_path, monkeypatch):
     )
     monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
     monkeypatch.setattr(
-        "src.platform.shard.registry.store._registry_path",
+        "pallas.core.platform.shard.registry.store._registry_path",
         lambda: reg_dir / "registry.json",
     )
 

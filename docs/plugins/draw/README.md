@@ -1,12 +1,14 @@
 # draw（牛牛画画）
 
-群内 AI 生图；可纯文字或带参考图（附图/回复图）。依赖画画网关，次数受限。
+> **官方扩展**：[`pallas-plugin-draw`](https://github.com/TogetsuDo/pallas-plugin-draw)（`uv sync --extra plugins-draw`）
+
+群内按文字描述生图，或带参考图改图；默认走 AI 服务 `image.generate`，`plugin_runtime` 仅兼容兜底。
 
 ## 用户命令
 
 | 口令 | 场景 | 说明 |
 | --- | --- | --- |
-| 牛牛画画 … | 群内 | 按描述生图或改图 |
+| 牛牛画画 … | 群内 | 生图或改图（可附图/回复图） |
 
 ## 命令权限
 
@@ -16,25 +18,16 @@
 
 ## 配置
 
-[`config.py`](../../../src/plugins/draw/config.py) 与 WebUI **插件 → 牛牛画画**；网关亦可在 **服务网关 / 连通性** 配置。
-
-### 命名约定
-
-| 层面 | 名称 |
-| --- | --- |
-| 插件包名 / 命令 ID | `draw`（如 `draw.draw`） |
-| WebUI / 帮助展示 | 牛牛画画 |
-| 配置键 / 环境变量 | `pallas_image_*`（如 `pallas_image_base_url`、`pallas_image_draw_per_user_limit`） |
-
-历史原因：生图能力早于插件包统一命名，字段前缀沿用 `pallas_image_`；新增文档与 WebUI 文案以「牛牛画画 / draw」为准，勿再引入第二套别名。
+WebUI **插件 → 牛牛画画** 或 **服务网关 / 连通性**；字段前缀 `pallas_image_*`。
 
 ## 排障
 
 | 现象 | 处理 |
 | --- | --- |
-| 失败提示 | 看返回文案；用 `牛牛连通` 测网关 |
-| 次数用尽 | 等待重置或调配额配置 |
+| 失败 | 看返回提示；发 **牛牛连通** 测画画服务 |
+| 次数用尽 | 等待重置或调配额 |
 
 ## 实现
 
-[`src/plugins/draw/`](../../../src/plugins/draw/)
+源码在扩展仓 [`src/pallas_plugin_draw/`](https://github.com/TogetsuDo/pallas-plugin-draw/tree/main/src/pallas_plugin_draw)。  
+主仓仅保留内核槽位（`import_plugin_submodule`、`ai_callback` hook、`platform/media/draw_reference`）。

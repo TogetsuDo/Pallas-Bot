@@ -16,8 +16,8 @@ async def test_message_insert(beanie_fixture):
     """
     Test that message_insert correctly adds a message to _message_dict.
     """
-    from src.plugins.repeater.message_store import MessageStore
-    from src.plugins.repeater.model import ChatData
+    from packages.repeater.message_store import MessageStore
+    from packages.repeater.model import ChatData
 
     # Setup: Initialize MessageStore state
     MessageStore._message_lock = asyncio.Lock()
@@ -67,8 +67,8 @@ async def test_sync_persistence(beanie_fixture):
     """
     Test that sync is triggered and insert_many is called when thresholds are met.
     """
-    from src.plugins.repeater.message_store import MessageStore
-    from src.plugins.repeater.model import ChatData
+    from packages.repeater.message_store import MessageStore
+    from packages.repeater.model import ChatData
 
     # Setup: Initialize MessageStore state
     MessageStore._message_lock = asyncio.Lock()
@@ -83,7 +83,7 @@ async def test_sync_persistence(beanie_fixture):
         bot_id = 11111
 
         # Mock insert_many to track calls
-        with patch("src.plugins.repeater.message_store.message_repo.bulk_insert") as mock_insert:
+        with patch("packages.repeater.message_store.message_repo.bulk_insert") as mock_insert:
             mock_insert.return_value = AsyncMock(return_value=None)()
 
             # Insert messages to exceed count threshold
@@ -112,8 +112,8 @@ async def test_get_random_message(beanie_fixture):
     """
     Test get_random_message_from_each_group returns one message per group.
     """
-    from src.plugins.repeater.message_store import MessageStore
-    from src.plugins.repeater.model import ChatData
+    from packages.repeater.message_store import MessageStore
+    from packages.repeater.model import ChatData
 
     # Setup: Initialize MessageStore state
     MessageStore._message_lock = asyncio.Lock()
@@ -160,8 +160,8 @@ async def test_topics_callback_called(beanie_fixture):
     """
     Test that topics_callback is called when message is plain text.
     """
-    from src.plugins.repeater.message_store import MessageStore
-    from src.plugins.repeater.model import ChatData
+    from packages.repeater.message_store import MessageStore
+    from packages.repeater.model import ChatData
 
     # Setup: Initialize MessageStore state
     MessageStore._message_lock = asyncio.Lock()

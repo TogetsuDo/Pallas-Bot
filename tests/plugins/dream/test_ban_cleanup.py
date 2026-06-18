@@ -1,4 +1,4 @@
-from src.plugins.dream.ban_cleanup import dream_ban_plain_variants, strip_cq_image_urls
+from packages.dream.ban_cleanup import dream_ban_plain_variants, strip_cq_image_urls
 
 
 def test_strip_cq_image_urls_removes_url_param() -> None:

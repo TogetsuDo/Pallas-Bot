@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.plugins.who_is_spy.args import parse_start_args, parse_undercover_count
+from packages.who_is_spy.args import parse_start_args, parse_undercover_count
 
 
 def test_parse_undercover_count_from_text() -> None:

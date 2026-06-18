@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from src.foundation.config import repo_settings as rs
+from pallas.core.foundation.config import repo_settings as rs
 
 
 @pytest.fixture(autouse=True)
@@ -16,7 +16,7 @@ def clear_repo_settings_cache():
 
 def test_merged_prefers_webui_over_legacy_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     legacy = tmp_path / ".env"
-    legacy.write_text('FOO=from_dotenv\n', encoding="utf-8")
+    legacy.write_text("FOO=from_dotenv\n", encoding="utf-8")
     webui = tmp_path / "webui.json"
     webui.write_text(json.dumps({"env": {"FOO": "from_webui"}}), encoding="utf-8")
     monkeypatch.setattr(rs, "repo_config_path", lambda: tmp_path / "missing.toml")
@@ -110,7 +110,7 @@ db = "MyDb"
 def test_get_invalidates_cache_when_webui_json_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from pydantic import BaseModel, Field
 
-    from src.console.webui.plugin_config import install_hot_reload_config
+    from pallas.console.webui.plugin_config import install_hot_reload_config
 
     class Cfg(BaseModel):
         flag: bool = Field(default=False)

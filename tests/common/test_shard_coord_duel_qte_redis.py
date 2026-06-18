@@ -5,8 +5,8 @@ import time
 
 import pytest
 
-from src.platform.shard.coord import duel_qte_redis as mod
-from src.plugins.duel import duel_qte as qte_mod
+from packages.duel import duel_qte as qte_mod
+from pallas.core.platform.shard.coord import duel_qte_redis as mod
 
 
 def test_apply_greeting_envelope_updates_cluster_mirror() -> None:
@@ -59,9 +59,9 @@ async def test_duel_qte_session_listener_reads_messages_via_to_thread(monkeypatc
 
     monkeypatch.setattr("nonebot.get_bots", lambda: {"123": object()})
     monkeypatch.setattr(mod.asyncio, "to_thread", fake_to_thread)
-    monkeypatch.setattr("src.platform.coord.redis_settings.coord_redis_enabled", lambda: True)
-    monkeypatch.setattr("src.platform.coord.redis_claim.get_coord_redis_client", lambda: _Client())
-    monkeypatch.setattr("src.platform.shard.coord.duel_qte.wake_duel_qte_session", fake_wake)
+    monkeypatch.setattr("pallas.core.platform.coord.redis_settings.coord_redis_enabled", lambda: True)
+    monkeypatch.setattr("pallas.core.platform.coord.redis_claim.get_coord_redis_client", lambda: _Client())
+    monkeypatch.setattr("pallas.core.platform.shard.coord.duel_qte.wake_duel_qte_session", fake_wake)
 
     with pytest.raises(asyncio.CancelledError):
         await mod.duel_qte_session_redis_listen_loop()

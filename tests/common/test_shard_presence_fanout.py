@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-from src.platform.shard import presence as presence_mod
-from src.platform.shard.coord import bot_action as ba_mod
-from src.plugins.repeater import fanout_reply as fanout_mod
+from packages.repeater import fanout_reply as fanout_mod
+from pallas.core.platform.shard import presence as presence_mod
+from pallas.core.platform.shard.coord import bot_action as ba_mod
 
 
 def test_bot_has_cluster_connection_local(monkeypatch):
@@ -39,7 +39,7 @@ def test_list_fanout_bot_ids_filters_offline(monkeypatch):
     monkeypatch.setattr(fanout_mod, "is_sharding_active", lambda: True)
     monkeypatch.setattr(presence_mod, "get_cluster_online_bot_ids", lambda: frozenset({100, 200}))
     monkeypatch.setattr(
-        "src.plugins.duel.duel_bots.list_group_online_bot_ids",
+        "packages.duel.duel_bots.list_group_online_bot_ids",
         fake_list,
     )
 
@@ -68,7 +68,7 @@ def test_list_fanout_bot_ids_uses_short_ttl_cache(monkeypatch):
     monkeypatch.setattr(fanout_mod, "is_sharding_active", lambda: False)
     monkeypatch.setattr(fanout_mod.time, "monotonic", lambda: now)
     monkeypatch.setattr(
-        "src.plugins.duel.duel_bots.list_group_online_bot_ids",
+        "packages.duel.duel_bots.list_group_online_bot_ids",
         fake_list,
     )
 

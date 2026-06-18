@@ -13,7 +13,7 @@
 3. 群消息 / 私聊限定使用合并 helper（**禁止** `Permission & Permission`）：
 
 ```python
-from src.features.cmd_perm import (
+from pallas.api.perm import (
     group_message_permission_for_command,
     private_message_permission_for_command,
 )
@@ -24,7 +24,7 @@ on_command("群内", permission=group_message_permission_for_command("my_plugin.
 4. 消息流中手动判断：
 
 ```python
-from src.features.cmd_perm import satisfies_command_permission
+from pallas.api.perm import satisfies_command_permission
 
 await satisfies_command_permission(bot, event, "my_plugin.action")
 ```
@@ -41,7 +41,7 @@ await satisfies_command_permission(bot, event, "my_plugin.action")
 高频命令在 `cmd_perm` 通过后，用统一 helper 做群级 / 私聊级 CD，存储 key 为 `cmd_limit:{command_id}`：
 
 ```python
-from src.features.command_limits import is_command_cooldown_ready, refresh_command_cooldown
+from pallas.api.limits import is_command_cooldown_ready, refresh_command_cooldown
 
 if not await is_command_cooldown_ready(event, "my_plugin.demo", 10):
     return
@@ -56,7 +56,7 @@ await refresh_command_cooldown(event, "my_plugin.demo", 10)
 
 ```python
 from pydantic import BaseModel, Field
-from src.console.webui import install_hot_reload_config
+from pallas.api.config import install_hot_reload_config
 
 class Config(BaseModel, extra="ignore"):
     threshold: int = Field(default=3, description="触发阈值。")
@@ -72,33 +72,55 @@ get_config = plugin_webui.get
 
 详见 [WebUI 插件配置](../../common/webui/README.md)
 
+### 元数据级与 `reload_policy`
+
+配置热重载只覆盖 `config.py`。若插件会改 `PluginMetadata.extra` 里的 help、ingress、`command_permissions` 等，且希望 **WebUI 保存后不必重启**：
+
+```python
+extra={
+    ...
+    "reload_policy": "metadata",
+}
+```
+
+| 场景 | 建议 |
+| --- | --- |
+| 只调开关、阈值 | 默认即可（`config_only` 或不写） |
+| 改 help / ingress / 权限默认声明 | `metadata` |
+| 改 Python handler / 业务逻辑 | 重启；`full` 暂同 metadata，代码热载未落地 |
+
+分级说明：[热重载分级](../../architecture/hot-reload-tiers.md)。与声明式 `plugin_storage` 无关，但可一并写在 `extra` 供能力总览展示。
+
 ## 消息审查（message_scrub）
 
 复读、做梦等插件的入站消息可先经统一审查过滤（广告、风控等）。插件侧按 [message_scrub](../../common/message_scrub/README.md) 登记 hook，避免在各插件重复实现。
 
 ## 跨插件与内核层
 
-可复用能力优先沉淀到 `src/` 内核层（见 [common-layers](../../architecture/common-layers.md)）：
+可复用能力优先沉淀到 `pallas/` 内核层（见 [common-layers](../../architecture/common-layers.md)）：
 
 | 层 | 路径 | 典型用途 |
 | --- | --- | --- |
-| foundation | `src.foundation.config` | 群/用户/Bot 级配置、冷却 |
-| foundation | `src.foundation.paths` | `data/`、`resource/` 路径 |
-| foundation | `src.foundation.db` | 数据库 repository |
-| features | `src.features.cmd_perm` | 命令权限 |
-| features | `src.features.command_limits` | 命令冷却 |
-| features | `src.features.message_scrub` | 入站审查 |
-| console | `src.console.webui` | 控制台配置热重载 |
-| platform | `src.platform.shard` | 分片 presence、协调 |
+| api | `pallas.api.commands` | 口令注册、PluginHandlerContext |
+| api | `pallas.api.config` | 控制台配置热重载 |
+| api | `pallas.api.perm` | 命令权限 |
+| api | `pallas.api.limits` | 命令冷却 |
+| api | `pallas.api.storage` | 群/用户级声明式存储 |
+| api | `pallas.api.paths` | `data/`、`resource/` 路径 |
+| api | `pallas.api.metadata` | 帮助文案、菜单模板 |
+| core | `pallas.core.foundation.config` | 群/用户/Bot 级配置 |
+| core | `pallas.core.foundation.db` | 数据库 repository |
+| core | `pallas.core.platform.shard` | 分片 presence、协调 |
+| product | `pallas.product.message_scrub` | 入站审查（内置专用） |
 
-引入内核层时保持**语义单一**，避免把某一插件的业务泄漏到 `src/features` 或 `src/foundation`。
+> **社区 / pip 扩展**：仅用 `pallas.api.*`（L1）。**内置 `packages/`**：可用 `pallas.api.*` + `pallas.product.*`（L2）。引入内核层时保持**语义单一**，避免把某一插件的业务泄漏到内核。
 
 ## 站点自有插件与覆盖
 
 | 场景 | 做法 |
 | --- | --- |
 | 私有功能、不提交主仓 | `local/plugins/<name>/` + `extra_plugin_dirs` |
-| 整包替换主仓同名插件 | `local/plugins/<原名>/`（加载优先于 `src/plugins/`） |
+| 整包替换主仓同名插件 | `local/plugins/<原名>/`（加载优先于 `packages/`） |
 | 只改主仓少量核心文件 | `local/patches/*.patch` 或提 PR |
 
 见 [站点定制与更新](../../architecture/site-customization-and-updates.md)
@@ -107,7 +129,7 @@ get_config = plugin_webui.get
 
 - hub / worker 共用 `data/` 卷时，WebUI 配置与各插件 `data/<name>/` 一致
 - worker 侧 `get_*_config()` 可按磁盘 mtime 拾取新配置
-- 涉及 Bot 连接、presence 时使用 `src.platform.shard` 提供的 API，勿假设单进程内存全局状态
+- 涉及 Bot 连接、presence 时使用 `pallas.core.platform.shard` 提供的 API，勿假设单进程内存全局状态
 
 见 [多进程分片](../../architecture/bot_process_sharding.md)、[中央入站调度](../../architecture/central-ingress-dispatch.md)
 
@@ -122,7 +144,7 @@ logger.info(f"bot [{bot_id}] action in group [{group_id}]")
 ## AI 与外部服务
 
 - 对话 / 唱歌 / TTS 等扩展见 [Pallas-Bot-AI](https://github.com/PallasBot/Pallas-Bot-AI) 与文档站「AI 扩展」
-- 画画、MAA 等网关字段见 WebUI「服务网关」与 `src/console/webui/service_gateways_section.py`
+- 画画、MAA 等网关字段见 WebUI「服务网关」与 `pallas/console/webui/service_gateways_section.py`
 
 ## 测试与排障
 

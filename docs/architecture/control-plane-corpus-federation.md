@@ -1,5 +1,7 @@
 # 控制面、联邦语料与外接语料
 
+> **现行总纲**：见 [Pallas 核心契约](pallas-core-contract.md)。
+
 **维护者向**：Composite 语料、Bootstrap、联邦 ingress 与中心 API 契约。部署配置见 [语料联邦](../common/corpus/README.md)。
 
 ## 现状与待做
@@ -9,6 +11,7 @@
 | local + community 多读源、enroll、failover | 已交付 |
 | WebUI 语料联邦、`/corpus-status` | 已交付 |
 | 联邦 ingress 去重（`platform/federate` + `ingress_gate`） | 已交付 |
+| bootstrap `corpus_community` 只读快照入本地状态面 | 已交付 |
 | `corpus_fed` 第二 PG | 待做 |
 | fleet 远程快照合并 | 待做 |
 | heartbeat `actions`、write_fanout 增强 | 待做 |
@@ -64,6 +67,16 @@ Base：`https://stats.pallasbot.top`
 | POST | `/v1/heartbeat` | 扩展 `corpus` 状态与 `actions` |
 
 `group_id: 0` 表示社区全局 anonymized 语料。`BootstrapResponse` 含 `db.business`、`db.corpus_fed`、`corpus_community`、`coord.redis_url` 等字段。
+
+当前主仓已消费其中两类 bootstrap 下发项：
+
+- `federate_id` / `coord`
+- `corpus_community` 只读快照（进入 `control_plane_bootstrap` 与 `/corpus-status`）
+
+仍未消费为运行时主配置的项：
+
+- `db.corpus_fed`
+- heartbeat `actions`
 
 ## 相关文档
 

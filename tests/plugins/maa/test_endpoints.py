@@ -1,11 +1,11 @@
 import pytest
 from fastapi import FastAPI
 
-from src.plugins.maa import config as maa_cfg_mod
-from src.plugins.maa import endpoints as ep_mod
-from src.plugins.maa import http_api as http_api_mod
-from src.plugins.maa import http_routes as routes_mod
-from src.plugins.maa.config import Config
+from packages.maa import config as maa_cfg_mod
+from packages.maa import endpoints as ep_mod
+from packages.maa import http_api as http_api_mod
+from packages.maa import http_routes as routes_mod
+from packages.maa.config import Config
 
 
 def patch_maa_config(monkeypatch: pytest.MonkeyPatch, cfg: Config) -> None:
@@ -58,8 +58,8 @@ def test_resolve_probe_uses_hub_public_base_on_sharded_worker(
         maa_report_status_path="/maa/reportStatus",
     )
     patch_maa_config(monkeypatch, cfg)
-    monkeypatch.setattr("src.platform.shard.registry.config.is_sharding_active", lambda: True)
-    monkeypatch.setattr("src.platform.bot_runtime.roles.is_sharded_worker", lambda: True)
+    monkeypatch.setattr("pallas.core.platform.shard.registry.config.is_sharding_active", lambda: True)
+    monkeypatch.setattr("pallas.core.platform.bot_runtime.roles.is_sharded_worker", lambda: True)
 
     class _DConf:
         host = "0.0.0.0"
@@ -74,13 +74,13 @@ def test_resolve_probe_uses_hub_public_base_on_sharded_worker(
 
 def test_maa_public_http_base_uses_hub_when_sharded(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = Config()
-    monkeypatch.setattr("src.platform.shard.registry.config.is_sharding_active", lambda: True)
+    monkeypatch.setattr("pallas.core.platform.shard.registry.config.is_sharding_active", lambda: True)
 
     class _S:
         ws_host = "127.0.0.1"
         hub_port = 8088
 
-    monkeypatch.setattr("src.platform.shard.registry.config.get_shard_registry_settings", lambda: _S())
+    monkeypatch.setattr("pallas.core.platform.shard.registry.config.get_shard_registry_settings", lambda: _S())
     base, inferred = ep_mod.maa_public_http_base(cfg)
     assert base == "http://127.0.0.1:8088"
     assert inferred is True
@@ -89,8 +89,8 @@ def test_maa_public_http_base_uses_hub_when_sharded(monkeypatch: pytest.MonkeyPa
 def test_probe_uses_public_base_on_sharded_worker(monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = Config(maa_public_base_url="https://hub.example.com")
     patch_maa_config(monkeypatch, cfg)
-    monkeypatch.setattr("src.platform.shard.registry.config.is_sharding_active", lambda: True)
-    monkeypatch.setattr("src.platform.bot_runtime.roles.is_sharded_worker", lambda: True)
+    monkeypatch.setattr("pallas.core.platform.shard.registry.config.is_sharding_active", lambda: True)
+    monkeypatch.setattr("pallas.core.platform.bot_runtime.roles.is_sharded_worker", lambda: True)
 
     class _DConf:
         host = "0.0.0.0"
@@ -105,7 +105,7 @@ def test_resolve_probe_keeps_public_base_when_unified(monkeypatch: pytest.Monkey
     cfg = Config(maa_public_base_url="https://nb.example.com")
     patch_maa_config(monkeypatch, cfg)
     monkeypatch.setattr(
-        "src.platform.shard.registry.config.is_sharding_active",
+        "pallas.core.platform.shard.registry.config.is_sharding_active",
         lambda: False,
     )
     ep = ep_mod.resolve_maa_probe_http_endpoints()

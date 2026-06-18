@@ -1,0 +1,179 @@
+"""接话语料命中时偶尔轻顺口气（select 主路径下的增味分支）。"""
+
+from __future__ import annotations
+
+import random
+import time
+from typing import TYPE_CHECKING
+
+from nonebot import logger
+from ulid import ULID
+
+from pallas.core.foundation.config import TaskManager
+from pallas.core.platform.ai_callback.task_types import REPEATER_POLISH_LITE_TASK_TYPE
+from pallas.product.llm.client import submit_chat_task
+from pallas.product.llm.config import get_llm_config
+from pallas.product.llm.models import ChatSubmitRequest
+from pallas.product.llm.task_metrics import record_bot_llm_task
+from pallas.product.persona.compile_persona_prompt import load_polish_lite_system_prompt
+
+if TYPE_CHECKING:
+    from nonebot.adapters.onebot.v11 import GroupMessageEvent
+
+
+def should_polish_lite_sample(
+    bot_id: int,
+    group_id: int,
+    message_id: int,
+    *,
+    sample_rate: float,
+) -> bool:
+    rate = max(0.0, min(1.0, float(sample_rate)))
+    if rate <= 0.0:
+        return False
+    if rate >= 1.0:
+        return True
+    seed = int(bot_id) ^ int(group_id) ^ int(message_id)
+    rng = random.Random(seed)
+    return rng.random() < rate
+
+
+def build_polish_lite_user_text(user_text: str, candidate_text: str) -> str:
+    message = str(user_text or "").strip()
+    candidate = str(candidate_text or "").strip()
+    if not message or not candidate or "[CQ:" in message or "[CQ:" in candidate:
+        return ""
+    return (
+        f"【用户消息】{message}\n"
+        f"【候选回复】{candidate}\n"
+        "请在不改变原意的前提下轻顺口气；勿扩写、勿加设定词。只输出一句。"
+    )
+
+
+async def maybe_submit_repeater_llm_polish_lite(
+    event: GroupMessageEvent,
+    *,
+    user_text: str,
+    candidate_text: str,
+) -> bool:
+    cfg = get_llm_config()
+    if not cfg.llm_polish_lite_enabled or not cfg.llm_chat_enabled:
+        return False
+
+    candidate = str(candidate_text or "").strip()
+    plain = str(user_text or "").strip()
+    if not candidate or not plain or "[CQ:" in candidate or "[CQ:" in plain:
+        return False
+
+    group_id = int(event.group_id)
+    user_id = int(event.user_id)
+    bot_id = int(event.self_id)
+    prompt_user = build_polish_lite_user_text(plain, candidate)
+    if not prompt_user:
+        return False
+
+    system_prompt = load_polish_lite_system_prompt()
+    if not system_prompt:
+        return False
+
+    from pallas.product.llm.inference_params import derive_llm_inference_params
+    from pallas.product.persona import resolve_persona_for_message
+
+    persona = await resolve_persona_for_message(bot_id, group_id, plain)
+    temperature, token_count = derive_llm_inference_params(persona, mode="normal", purpose="polish_lite")
+
+    session_id = f"repeater_pll_{bot_id}_{group_id}_{user_id}"
+    request_id = str(ULID())
+    await TaskManager.add_task(
+        request_id,
+        {
+            "bot_id": bot_id,
+            "group_id": group_id,
+            "user_id": user_id,
+            "task_type": REPEATER_POLISH_LITE_TASK_TYPE,
+            "fallback_text": candidate,
+            "start_time": time.time(),
+        },
+    )
+    result = await submit_chat_task(
+        ChatSubmitRequest(
+            request_id=request_id,
+            session_id=session_id,
+            user_text=prompt_user,
+            system_prompt=system_prompt,
+            bot_id=bot_id,
+            group_id=group_id,
+            user_id=user_id,
+            mode="normal",
+            task="repeater_polish_lite",
+            token_count=token_count,
+            temperature=temperature,
+        ),
+        cfg=cfg,
+    )
+    if not result.ok:
+        await TaskManager.remove_task(request_id)
+        record_bot_llm_task(REPEATER_POLISH_LITE_TASK_TYPE, "submit_skip")
+        logger.debug(
+            "repeater llm polish_lite submit skipped: status={} group={} user={}",
+            result.status,
+            group_id,
+            user_id,
+        )
+        return False
+
+    record_bot_llm_task(REPEATER_POLISH_LITE_TASK_TYPE, "submit_ok")
+    logger.info(
+        "repeater llm polish_lite queued: request_id={} group={} user={} candidate_len={}",
+        request_id,
+        group_id,
+        user_id,
+        len(candidate),
+    )
+    return True
+
+
+async def maybe_submit_repeater_corpus_llm(
+    event: GroupMessageEvent,
+    *,
+    user_text: str,
+    candidates: list[str],
+    candidate_text: str,
+) -> bool:
+    """语料 hit：select 主路径；select_polish_lite 模式下按采样偶尔走 polish_lite。"""
+    cfg = get_llm_config()
+    pool = [str(item).strip() for item in candidates if str(item).strip() and "[CQ:" not in str(item)]
+    candidate = str(candidate_text or "").strip()
+
+    if cfg.llm_polish_lite_enabled and candidate and pool:
+        if should_polish_lite_sample(
+            int(event.self_id),
+            int(event.group_id),
+            int(event.message_id),
+            sample_rate=cfg.llm_polish_lite_sample_rate,
+        ):
+            if await maybe_submit_repeater_llm_polish_lite(
+                event,
+                user_text=user_text,
+                candidate_text=candidate,
+            ):
+                return True
+
+    if len(pool) >= 2 and cfg.llm_select_enabled:
+        from pallas.product.llm.select import maybe_submit_repeater_llm_select
+
+        if await maybe_submit_repeater_llm_select(
+            event,
+            user_text=user_text,
+            candidates=pool,
+            fallback_text=candidate,
+        ):
+            return True
+
+    if candidate and cfg.llm_polish_enabled:
+        from pallas.product.llm.polish import maybe_submit_repeater_llm_polish
+
+        if await maybe_submit_repeater_llm_polish(event, candidate_text=candidate):
+            return True
+
+    return False

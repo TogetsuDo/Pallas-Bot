@@ -2,8 +2,7 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-from src.shared.utils.github_release import github_release_asset_url
-from src.plugins.pallas_protocol.runtime.installer import (
+from packages.pb_protocol.runtime.installer import (
     _asset_name_from_url,
     _looks_like_http_url,
     _pick_appimage_asset_from_release,
@@ -17,6 +16,7 @@ from src.plugins.pallas_protocol.runtime.installer import (
     find_onekey_post_install_program_dir,
     resolve_program_dir_under_extract,
 )
+from pallas.core.shared.utils.github_release import github_release_asset_url
 
 
 def test_github_release_asset_url_latest() -> None:
@@ -102,39 +102,39 @@ def test_asset_is_windows_onekey() -> None:
 
 
 def test_default_release_asset_for_platform() -> None:
-    with patch("src.plugins.pallas_protocol.runtime.installer.sys.platform", "win32"):
+    with patch("packages.pb_protocol.runtime.installer.sys.platform", "win32"):
         assert default_release_asset_for_platform() == "NapCat.Shell.Windows.OneKey.zip"
     with (
-        patch("src.plugins.pallas_protocol.runtime.installer.sys.platform", "linux"),
-        patch("src.plugins.pallas_protocol.runtime.installer.py_platform.machine", return_value="x86_64"),
+        patch("packages.pb_protocol.runtime.installer.sys.platform", "linux"),
+        patch("packages.pb_protocol.runtime.installer.py_platform.machine", return_value="x86_64"),
     ):
         assert default_release_asset_for_platform() == "NapCat-amd64.AppImage"
     with (
-        patch("src.plugins.pallas_protocol.runtime.installer.sys.platform", "linux"),
-        patch("src.plugins.pallas_protocol.runtime.installer.py_platform.machine", return_value="aarch64"),
+        patch("packages.pb_protocol.runtime.installer.sys.platform", "linux"),
+        patch("packages.pb_protocol.runtime.installer.py_platform.machine", return_value="aarch64"),
     ):
         assert default_release_asset_for_platform() == "NapCat-arm64.AppImage"
     # 提供 tag 时应拼接为 NapCat-{tag}-{arch}.AppImage
     with (
-        patch("src.plugins.pallas_protocol.runtime.installer.sys.platform", "linux"),
-        patch("src.plugins.pallas_protocol.runtime.installer.py_platform.machine", return_value="x86_64"),
+        patch("packages.pb_protocol.runtime.installer.sys.platform", "linux"),
+        patch("packages.pb_protocol.runtime.installer.py_platform.machine", return_value="x86_64"),
     ):
         assert default_release_asset_for_platform("v4.18.1") == "NapCat-v4.18.1-amd64.AppImage"
     with (
-        patch("src.plugins.pallas_protocol.runtime.installer.sys.platform", "linux"),
-        patch("src.plugins.pallas_protocol.runtime.installer.py_platform.machine", return_value="aarch64"),
+        patch("packages.pb_protocol.runtime.installer.sys.platform", "linux"),
+        patch("packages.pb_protocol.runtime.installer.py_platform.machine", return_value="aarch64"),
     ):
         assert default_release_asset_for_platform("v4.18.1") == "NapCat-v4.18.1-arm64.AppImage"
     for plat in ("darwin", "freebsd15"):
-        with patch("src.plugins.pallas_protocol.runtime.installer.sys.platform", plat):
+        with patch("packages.pb_protocol.runtime.installer.sys.platform", plat):
             assert default_release_asset_for_platform() == "NapCat.Shell.zip", plat
 
 
 def test_default_release_repo_for_platform() -> None:
-    with patch("src.plugins.pallas_protocol.runtime.installer.sys.platform", "linux"):
+    with patch("packages.pb_protocol.runtime.installer.sys.platform", "linux"):
         assert default_release_repo_for_platform() == "NapNeko/NapCatAppImageBuild"
     for plat in ("win32", "darwin", "freebsd15"):
-        with patch("src.plugins.pallas_protocol.runtime.installer.sys.platform", plat):
+        with patch("packages.pb_protocol.runtime.installer.sys.platform", plat):
             assert default_release_repo_for_platform() == "NapNeko/NapCatQQ"
 
 

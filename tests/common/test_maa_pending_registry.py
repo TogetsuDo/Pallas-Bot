@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.platform.shard.coord import maa_pending_registry as mod
-from src.plugins.maa.store import NotifyTarget, PendingTask, pending_task_to_dict
+from packages.maa.store import NotifyTarget, PendingTask, pending_task_to_dict
+from pallas.core.platform.shard.coord import maa_pending_registry as mod
 
 
 @pytest.mark.asyncio
@@ -30,11 +30,11 @@ async def test_shard_pending_enqueue_and_list(fake_coord_redis) -> None:
 @pytest.mark.asyncio
 async def test_store_pending_count_uses_shard_redis(fake_coord_redis, monkeypatch) -> None:
     monkeypatch.setattr(
-        "src.platform.shard.context.is_sharding_active",
+        "pallas.core.platform.shard.context.is_sharding_active",
         lambda: True,
     )
 
-    from src.plugins.maa.store import MaaStore
+    from packages.maa.store import MaaStore
 
     store = MaaStore()
     task = PendingTask(

@@ -1,6 +1,6 @@
 import pillowmd.CustomMarkdownRenderer as cmr
 
-from src.plugins.help import pillowmd_bold as bold_mod
+from packages.help import pillowmd_bold as bold_mod
 
 
 def test_apply_help_light_bold_patch_once() -> None:

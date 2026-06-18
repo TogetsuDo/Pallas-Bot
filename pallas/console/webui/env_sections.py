@@ -1,0 +1,740 @@
+"""WebUI 通用配置各段注册与读写。"""
+
+from __future__ import annotations
+
+import importlib
+from dataclasses import dataclass
+from functools import lru_cache
+from typing import Any
+
+from pydantic import BaseModel
+from pydantic_core import PydanticUndefined
+
+from pallas.core.foundation.config.dotenv import env_value_to_str, upsert_env_dotenv_items
+from pallas.core.foundation.paths import PACKAGE_ROOT, PROJECT_ROOT
+
+
+@lru_cache(maxsize=1)
+def _message_scrub_models() -> tuple[type[BaseModel], Any]:
+    mod = importlib.import_module("pallas.product.message_scrub.config")
+    return mod.MessageScrubConfig, mod.get_message_scrub_config
+
+
+def _field_kind_from_annotation(ann: Any) -> str:
+    from .field_meta import field_kind_from_annotation as kind_from_ann
+
+    return kind_from_ann(ann)
+
+
+def _jsonable_value(v: Any) -> Any:
+    if v is PydanticUndefined:
+        return None
+    if isinstance(v, BaseModel):
+        return v.model_dump(mode="python")
+    if isinstance(v, dict):
+        return {str(k): _jsonable_value(val) for k, val in v.items()}
+    if isinstance(v, list):
+        return [_jsonable_value(x) for x in v]
+    if isinstance(v, (set, tuple)):
+        return [_jsonable_value(x) for x in v]
+    return v
+
+
+@dataclass(frozen=True)
+class WebuiEnvSection:
+    id: str
+    title: str
+    module_label: str
+    model_cls: type[BaseModel]
+    read_current: Any
+    field_to_env: dict[str, str]
+    skip_fields: frozenset[str]
+
+
+def _message_scrub_section() -> WebuiEnvSection:
+    msg_cfg_cls, get_msg_cfg = _message_scrub_models()
+    field_to_env = {
+        "inbound_filter_substrings": "PALLAS_INBOUND_FILTER_SUBSTRINGS",
+        "scrub_lexicon_path": "PALLAS_SCRUB_LEXICON_PATH",
+        "scrub_lexicon_extra": "PALLAS_SCRUB_LEXICON_EXTRA",
+        "scrub_review_providers": "PALLAS_SCRUB_REVIEW_PROVIDERS",
+        "scrub_api_url": "PALLAS_SCRUB_API_URL",
+        "inbound_filter_api_url": "PALLAS_INBOUND_FILTER_API_URL",
+        "inbound_filter_api_key": "PALLAS_INBOUND_FILTER_API_KEY",
+        "inbound_filter_api_timeout_sec": "PALLAS_INBOUND_FILTER_API_TIMEOUT_SEC",
+        "inbound_filter_api_fail_open": "PALLAS_INBOUND_FILTER_API_FAIL_OPEN",
+        "scrub_baidu_api_key": "PALLAS_SCRUB_BAIDU_API_KEY",
+        "scrub_baidu_secret_key": "PALLAS_SCRUB_BAIDU_SECRET_KEY",
+        "scrub_baidu_censor_url": "PALLAS_SCRUB_BAIDU_CENSOR_URL",
+        "scrub_baidu_strategy_id": "PALLAS_SCRUB_BAIDU_STRATEGY_ID",
+        "scrub_baidu_block_suspected": "PALLAS_SCRUB_BAIDU_BLOCK_SUSPECTED",
+    }
+    return WebuiEnvSection(
+        id="message_scrub",
+        title="消息审查",
+        module_label="pallas.product.message_scrub",
+        model_cls=msg_cfg_cls,
+        read_current=get_msg_cfg,
+        field_to_env=field_to_env,
+        skip_fields=frozenset({"scrub_review_providers_key_present"}),
+    )
+
+
+def clear_webui_env_sections_cache() -> None:
+    """供测试或热重载场景清空段注册缓存。"""
+    global _sections_cache
+    _sections_cache = None
+
+
+def field_to_env_uppercase_keys(model_cls: type[BaseModel]) -> dict[str, str]:
+    """与插件配置 PUT 一致：环境变量键为字段名的全大写形式。"""
+    return {name: name.upper() for name in model_cls.model_fields}
+
+
+def _plugin_env_skip_fields(section_id: str, cfg_cls: type[BaseModel]) -> frozenset[str]:
+    """WebUI 通用配置默认隐藏进阶项（仍可通过 webui.json / 环境变量设置）。"""
+    all_names = set(cfg_cls.model_fields)
+    if section_id == "pb_webui":
+        keep = {"pallas_webui_enabled", "pallas_webui_http_base", "pallas_webui_dev_mode"}
+        return frozenset(all_names - keep)
+    if section_id == "pb_protocol":
+        keep = {
+            "pallas_protocol_enabled",
+            "pallas_protocol_webui_enabled",
+            "pallas_protocol_follow_bot_lifecycle",
+            "pallas_protocol_auto_download_runtime",
+        }
+        return frozenset(all_names - keep)
+    if section_id == "help":
+        keep = {"default_style", "ignored_plugins", "side_paint_enabled"}
+        return frozenset(all_names - keep)
+    return frozenset()
+
+
+def _plugin_env_section_from_module(
+    *,
+    section_id: str,
+    title: str,
+    module_label: str,
+    config_module: str,
+) -> WebuiEnvSection | None:
+    """从 ``*.config`` 加载 ``Config``；若已 ``install_hot_reload_config`` 则走注册表。"""
+    try:
+        mod = importlib.import_module(config_module)
+    except ModuleNotFoundError:
+        from nonebot import logger
+
+        logger.warning("webui env section skipped: config module not found {}", config_module)
+        return None
+    cfg_cls = getattr(mod, "Config", None)
+    if cfg_cls is None or not isinstance(cfg_cls, type) or not issubclass(cfg_cls, BaseModel):
+        return None
+
+    plugin_module = config_module.removesuffix(".config")
+
+    def read_current() -> BaseModel:
+        from nonebot import get_plugin_config
+
+        from .registry import read_plugin_config
+
+        return read_plugin_config(
+            plugin_module,
+            cfg_cls,
+            fallback_getter=lambda: get_plugin_config(cfg_cls),
+        )
+
+    return WebuiEnvSection(
+        id=section_id,
+        title=title,
+        module_label=module_label,
+        model_cls=cfg_cls,
+        read_current=read_current,
+        field_to_env=field_to_env_uppercase_keys(cfg_cls),
+        skip_fields=_plugin_env_skip_fields(section_id, cfg_cls),
+    )
+
+
+def _control_plane_section() -> WebuiEnvSection:
+    from pallas.product.control_plane.webui_config import ControlPlaneWebuiConfig, get_control_plane_webui_config
+
+    return WebuiEnvSection(
+        id="control_plane",
+        title="多机协同",
+        module_label="pallas.product.control_plane",
+        model_cls=ControlPlaneWebuiConfig,
+        read_current=get_control_plane_webui_config,
+        field_to_env={
+            "enabled": "PALLAS_CONTROL_PLANE_ENABLED",
+            "bootstrap_url": "PALLAS_CONTROL_PLANE_BOOTSTRAP_URL",
+            "instance_secret": "PALLAS_INSTANCE_SECRET",
+            "federate_id": "PALLAS_FEDERATE_ID",
+            "federate_ingress_enabled": "PALLAS_FEDERATE_INGRESS_ENABLED",
+            "federate_redis_prefix": "PALLAS_FEDERATE_REDIS_PREFIX",
+            "coord_redis_url": "PALLAS_FEDERATE_COORD_REDIS_URL",
+        },
+        skip_fields=frozenset(),
+    )
+
+
+def _ingress_fanout_section() -> WebuiEnvSection:
+    from pallas.core.platform.ingress.config import IngressFanoutConfig, get_ingress_fanout_config
+
+    return WebuiEnvSection(
+        id="ingress_fanout",
+        title="全员同响口令",
+        module_label="pallas.core.platform.ingress",
+        model_cls=IngressFanoutConfig,
+        read_current=get_ingress_fanout_config,
+        field_to_env={"greeting_fanout_texts": "PALLAS_INGRESS_FANOUT_GREETING"},
+        skip_fields=frozenset(),
+    )
+
+
+_INGRESS_DISPATCH_SKIP = frozenset({
+    "matcher_dispatch_overload_threshold",
+    "route_index_strict",
+    "lane_acquire_timeout_sec",
+    "lane_wait_overload_ms",
+    "lane_busy_reply",
+    "lane_command",
+    "lane_chat",
+    "lane_storage",
+    "lane_remote",
+    "send_queue_workers",
+    "send_queue_max_depth",
+    "send_queue_min_interval_ms",
+    "send_queue_enqueue_timeout_sec",
+})
+
+
+def _ingress_dispatch_section() -> WebuiEnvSection:
+    from pallas.core.platform.ingress.dispatch_runtime_config import (
+        IngressDispatchRuntimeConfig,
+        get_ingress_dispatch_runtime_config,
+    )
+
+    return WebuiEnvSection(
+        id="ingress_dispatch",
+        title="消息处理与发送",
+        module_label="pallas.core.platform.ingress",
+        model_cls=IngressDispatchRuntimeConfig,
+        read_current=get_ingress_dispatch_runtime_config,
+        field_to_env={
+            "matcher_dispatch_enabled": "PALLAS_MATCHER_DISPATCH_ENABLED",
+            "matcher_dispatch_overload_threshold": "PALLAS_MATCHER_DISPATCH_OVERLOAD_THRESHOLD",
+            "route_index_enabled": "PALLAS_ROUTE_INDEX_ENABLED",
+            "route_index_strict": "PALLAS_ROUTE_INDEX_STRICT",
+            "dispatch_lanes_enabled": "PALLAS_DISPATCH_LANES_ENABLED",
+            "lane_acquire_timeout_sec": "PALLAS_LANE_ACQUIRE_TIMEOUT_SEC",
+            "lane_wait_overload_ms": "PALLAS_LANE_WAIT_OVERLOAD_MS",
+            "lane_busy_reply": "PALLAS_LANE_BUSY_REPLY",
+            "lane_command": "PALLAS_LANE_COMMAND",
+            "lane_chat": "PALLAS_LANE_CHAT",
+            "lane_storage": "PALLAS_LANE_STORAGE",
+            "lane_remote": "PALLAS_LANE_REMOTE",
+            "send_queue_enabled": "PALLAS_SEND_QUEUE_ENABLED",
+            "send_queue_workers": "PALLAS_SEND_QUEUE_WORKERS",
+            "send_queue_max_depth": "PALLAS_SEND_QUEUE_MAX_DEPTH",
+            "send_queue_min_interval_ms": "PALLAS_SEND_QUEUE_MIN_INTERVAL_MS",
+            "send_queue_enqueue_timeout_sec": "PALLAS_SEND_QUEUE_ENQUEUE_TIMEOUT_SEC",
+        },
+        skip_fields=_INGRESS_DISPATCH_SKIP,
+    )
+
+
+def _repeater_learn_section() -> WebuiEnvSection:
+    from packages.repeater.learn_runtime_config import (
+        RepeaterLearnRuntimeConfig,
+        get_repeater_learn_runtime_config,
+    )
+
+    field_to_env = {
+        "learn_concurrency": "PALLAS_REPEATER_LEARN_CONCURRENCY",
+        "learn_queue_max_size": "PALLAS_REPEATER_LEARN_QUEUE_SIZE",
+    }
+    return WebuiEnvSection(
+        id="repeater_learn",
+        title="复读后台学习",
+        module_label="packages.repeater",
+        model_cls=RepeaterLearnRuntimeConfig,
+        read_current=get_repeater_learn_runtime_config,
+        field_to_env=field_to_env,
+        skip_fields=frozenset(),
+    )
+
+
+def _cmd_perm_section() -> WebuiEnvSection:
+    from pallas.core.perm.config import CmdPermConfig, get_cmd_perm_config
+
+    return WebuiEnvSection(
+        id="cmd_perm",
+        title="命令权限",
+        module_label="pallas.core.perm",
+        model_cls=CmdPermConfig,
+        read_current=get_cmd_perm_config,
+        field_to_env={"command_permission_overrides": "PALLAS_COMMAND_PERMISSION_OVERRIDES"},
+        skip_fields=frozenset(),
+    )
+
+
+def _command_limits_section() -> WebuiEnvSection:
+    from pallas.core.limits.config import CommandLimitsConfig, get_command_limits_config
+
+    return WebuiEnvSection(
+        id="command_limits",
+        title="命令冷却",
+        module_label="pallas.core.limits",
+        model_cls=CommandLimitsConfig,
+        read_current=get_command_limits_config,
+        field_to_env={"command_limit_overrides": "PALLAS_COMMAND_LIMIT_OVERRIDES"},
+        skip_fields=frozenset(),
+    )
+
+
+def _llm_section() -> WebuiEnvSection:
+    from pallas.product.llm.webui_config import LlmWebuiConfig, get_llm_webui_config
+
+    return WebuiEnvSection(
+        id="llm",
+        title="智能对话与 AI 服务",
+        module_label="pallas.product.llm",
+        model_cls=LlmWebuiConfig,
+        read_current=get_llm_webui_config,
+        field_to_env={
+            "ai_server_host": "AI_SERVER_HOST",
+            "ai_server_port": "AI_SERVER_PORT",
+            "llm_chat_enabled": "LLM_CHAT_ENABLED",
+            "llm_repeater_mode": "LLM_REPEATER_MODE",
+            "llm_polish_lite_sample_rate": "LLM_POLISH_LITE_SAMPLE_RATE",
+            "llm_governance_enabled": "LLM_GOVERNANCE_ENABLED",
+            "llm_session_enabled": "LLM_SESSION_ENABLED",
+            "llm_tools_enabled": "LLM_TOOLS_ENABLED",
+            "llm_chat_max_concurrency": "LLM_CHAT_MAX_CONCURRENCY",
+            "llm_repeater_group_cooldown_sec": "LLM_REPEATER_GROUP_COOLDOWN_SEC",
+            "llm_repeater_max_inflight": "LLM_REPEATER_MAX_INFLIGHT",
+            "llm_repeater_global_rpm": "LLM_REPEATER_GLOBAL_RPM",
+            "llm_reply_gate_enabled": "LLM_REPLY_GATE_ENABLED",
+            "llm_chat_queue_merge": "LLM_CHAT_QUEUE_MERGE",
+            "llm_memory_rag_enabled": "LLM_MEMORY_RAG_ENABLED",
+        },
+        skip_fields=frozenset(),
+    )
+
+
+def _arknights_kb_section() -> WebuiEnvSection:
+    from pallas.product.arknights_kb.config import ArknightsKbConfig, get_arknights_kb_config
+
+    return WebuiEnvSection(
+        id="arknights_kb",
+        title="方舟知识库",
+        module_label="pallas.product.arknights_kb",
+        model_cls=ArknightsKbConfig,
+        read_current=get_arknights_kb_config,
+        field_to_env={
+            "arknights_kb_enabled": "ARKNIGHTS_KB_ENABLED",
+            "arknights_kb_auto_sync": "ARKNIGHTS_KB_AUTO_SYNC",
+        },
+        skip_fields=frozenset(),
+    )
+
+
+_sections_cache: tuple[WebuiEnvSection, ...] | None = None
+
+
+def _registered_sections() -> tuple[WebuiEnvSection, ...]:
+    global _sections_cache
+    if _sections_cache is not None:
+        return _sections_cache
+    parts: list[WebuiEnvSection] = []
+    parts.extend((_cmd_perm_section(), _command_limits_section(), _llm_section(), _arknights_kb_section()))
+    if (PACKAGE_ROOT / "product" / "control_plane" / "webui_config.py").is_file():
+        parts.append(_control_plane_section())
+    if (PACKAGE_ROOT / "core" / "platform" / "ingress" / "config.py").is_file():
+        parts.append(_ingress_fanout_section())
+    if (PACKAGE_ROOT / "core" / "platform" / "ingress" / "dispatch_runtime_config.py").is_file():
+        parts.append(_ingress_dispatch_section())
+    repeater_learn_cfg = PROJECT_ROOT / "packages" / "repeater" / "learn_runtime_config.py"
+    if repeater_learn_cfg.is_file():
+        parts.append(_repeater_learn_section())
+    from pallas.product.message_scrub.config import is_message_scrub_enabled
+
+    if (PACKAGE_ROOT / "product" / "message_scrub" / "config.py").is_file() and is_message_scrub_enabled():
+        parts.append(_message_scrub_section())
+    parts.extend(
+        s
+        for s in (
+            _plugin_env_section_from_module(
+                section_id="pb_webui",
+                title="网页控制台",
+                module_label="packages.pb_webui",
+                config_module="packages.pb_webui.config",
+            ),
+            _plugin_env_section_from_module(
+                section_id="pb_protocol",
+                title="QQ 协议端（NapCat 等）",
+                module_label="packages.pb_protocol",
+                config_module="packages.pb_protocol.config",
+            ),
+            _plugin_env_section_from_module(
+                section_id="help",
+                title="帮助菜单与样式",
+                module_label="packages.help",
+                config_module="packages.help.config",
+            ),
+        )
+        if s is not None
+    )
+    _sections_cache = tuple(parts)
+    return _sections_cache
+
+
+_COMMON_CONFIG_SECTION_ORDER: tuple[str, ...] = (
+    "cmd_perm",
+    "command_limits",
+    "llm",
+    "arknights_kb",
+    "control_plane",
+    "corpus_federation",
+    "community_stats",
+    "ingress_fanout",
+    "ingress_dispatch",
+    "repeater_learn",
+    "message_scrub",
+    "service_gateways",
+    "pb_webui",
+    "pb_protocol",
+    "help",
+)
+
+
+def list_webui_env_sections() -> list[dict[str, str]]:
+    from .community_stats_section import COMMUNITY_STATS_SECTION_ID, COMMUNITY_STATS_TITLE
+    from .control_plane_section import CONTROL_PLANE_SECTION_ID, CONTROL_PLANE_TITLE
+    from .corpus_federation_section import CORPUS_FEDERATION_SECTION_ID, CORPUS_FEDERATION_TITLE
+    from .service_gateways_section import (
+        SERVICE_GATEWAYS_SECTION_ID,
+        SERVICE_GATEWAYS_TITLE,
+    )
+
+    by_id: dict[str, dict[str, str]] = {s.id: {"id": s.id, "title": s.title} for s in _registered_sections()}
+    by_id[CORPUS_FEDERATION_SECTION_ID] = {
+        "id": CORPUS_FEDERATION_SECTION_ID,
+        "title": CORPUS_FEDERATION_TITLE,
+    }
+    by_id[COMMUNITY_STATS_SECTION_ID] = {
+        "id": COMMUNITY_STATS_SECTION_ID,
+        "title": COMMUNITY_STATS_TITLE,
+    }
+    by_id[SERVICE_GATEWAYS_SECTION_ID] = {
+        "id": SERVICE_GATEWAYS_SECTION_ID,
+        "title": SERVICE_GATEWAYS_TITLE,
+    }
+    if CONTROL_PLANE_SECTION_ID in by_id:
+        by_id[CONTROL_PLANE_SECTION_ID]["title"] = CONTROL_PLANE_TITLE
+
+    ordered: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for sid in _COMMON_CONFIG_SECTION_ORDER:
+        row = by_id.get(sid)
+        if row is None:
+            continue
+        ordered.append(row)
+        seen.add(sid)
+    for sid, row in by_id.items():
+        if sid not in seen:
+            ordered.append(row)
+    return ordered
+
+
+def get_webui_env_section(section_id: str) -> WebuiEnvSection:
+    from .community_stats_section import COMMUNITY_STATS_SECTION_ID
+    from .control_plane_section import CONTROL_PLANE_SECTION_ID
+    from .corpus_federation_section import CORPUS_FEDERATION_SECTION_ID
+
+    if section_id in (CORPUS_FEDERATION_SECTION_ID, CONTROL_PLANE_SECTION_ID, COMMUNITY_STATS_SECTION_ID):
+        raise ValueError(f"{section_id} 使用专用 payload，勿走 WebuiEnvSection")
+    from pallas.core.platform.bot_runtime.plugin_package_aliases import canonical_plugin_package
+
+    sid = canonical_plugin_package((section_id or "").strip())
+    for s in _registered_sections():
+        if s.id == sid:
+            return s
+    raise ValueError(f"未知 common-config: {section_id}")
+
+
+def webui_env_section_payload(
+    section_id: str,
+    *,
+    current_values: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """GET 默认读进程内配置；PUT 后应传 ``validated``，与刚写入 ``.env`` 的值一致。"""
+    from .community_stats_section import COMMUNITY_STATS_SECTION_ID, community_stats_payload
+    from .control_plane_section import CONTROL_PLANE_SECTION_ID, control_plane_payload
+    from .corpus_federation_section import CORPUS_FEDERATION_SECTION_ID, corpus_federation_payload
+    from .service_gateways_section import SERVICE_GATEWAYS_SECTION_ID, service_gateways_payload
+
+    if section_id == CONTROL_PLANE_SECTION_ID:
+        return control_plane_payload(current_values=current_values)
+    if section_id == CORPUS_FEDERATION_SECTION_ID:
+        return corpus_federation_payload(current_values=current_values)
+    if section_id == COMMUNITY_STATS_SECTION_ID:
+        return community_stats_payload(current_values=current_values)
+    if section_id == SERVICE_GATEWAYS_SECTION_ID:
+        return service_gateways_payload(current_values=current_values)
+    if section_id == "llm":
+        from pallas.core.foundation.config.repo_settings import purge_misplaced_ai_env_keys_from_webui
+
+        purge_misplaced_ai_env_keys_from_webui()
+    s = get_webui_env_section(section_id)
+    cfg_obj = s.read_current()
+    fields: list[dict[str, Any]] = []
+    for key, f in s.model_cls.model_fields.items():
+        if key in s.skip_fields:
+            continue
+        env_key = s.field_to_env.get(key)
+        if not env_key:
+            continue
+        if current_values is not None:
+            cur = current_values.get(key, getattr(cfg_obj, key, f.default))
+        else:
+            cur = getattr(cfg_obj, key, f.default)
+        default_value = None if f.default is PydanticUndefined else f.default
+        from .field_meta import field_meta_for_model_field
+
+        fields.append(
+            field_meta_for_model_field(
+                key=key,
+                field=f,
+                env_key=env_key,
+                cur=cur,
+                default_value=default_value,
+            )
+        )
+    base: dict[str, Any] = {
+        "plugin": s.id,
+        "module": s.module_label,
+        "fields": fields,
+    }
+    if section_id == "cmd_perm":
+        perm_src = s.model_cls.model_validate(current_values) if current_values is not None else cfg_obj
+        base.update(_cmd_perm_payload_extras(perm_src))
+    elif section_id == "command_limits":
+        limit_src = s.model_cls.model_validate(current_values) if current_values is not None else cfg_obj
+        base.update(_command_limits_payload_extras(limit_src))
+    elif section_id == "llm":
+        base.update({"llm_model_admin": True})
+    elif section_id == "pb_webui":
+        base.update(_pallas_webui_payload_extras())
+    elif section_id == "ingress_dispatch":
+        base.update(_ingress_dispatch_payload_extras())
+    return base
+
+
+def _ingress_dispatch_payload_extras() -> dict[str, Any]:
+    return {
+        "field_groups": [
+            {
+                "id": "matcher",
+                "title": "无关消息预筛",
+                "field_names": [
+                    "matcher_dispatch_enabled",
+                    "matcher_dispatch_overload_threshold",
+                ],
+            },
+            {
+                "id": "route_index",
+                "title": "口令快速定位",
+                "field_names": ["route_index_enabled", "route_index_strict"],
+            },
+            {
+                "id": "lanes",
+                "title": "同时处理上限",
+                "field_names": [
+                    "dispatch_lanes_enabled",
+                    "lane_acquire_timeout_sec",
+                    "lane_wait_overload_ms",
+                    "lane_busy_reply",
+                    "lane_command",
+                    "lane_chat",
+                    "lane_storage",
+                    "lane_remote",
+                ],
+            },
+            {
+                "id": "send_queue",
+                "title": "发送排队",
+                "field_names": [
+                    "send_queue_enabled",
+                    "send_queue_workers",
+                    "send_queue_max_depth",
+                    "send_queue_min_interval_ms",
+                    "send_queue_enqueue_timeout_sec",
+                ],
+            },
+        ],
+    }
+
+
+def _pallas_webui_payload_extras() -> dict[str, Any]:
+    return {
+        "dev_mode_hot_reload": True,
+        "field_groups": [
+            {
+                "id": "security",
+                "title": "安全与开发调试",
+                "field_names": [
+                    "pallas_webui_dev_mode",
+                    "pallas_webui_cors",
+                    "pallas_webui_allowed_origins",
+                ],
+                "plugin_config_path": "/plugins/pb_webui",
+            },
+            {
+                "id": "deploy",
+                "title": "网页挂载与前端安装包",
+                "field_names": [
+                    "pallas_webui_enabled",
+                    "pallas_webui_http_base",
+                    "pallas_webui_dist_zip_url",
+                    "pallas_webui_dist_zip_repo",
+                    "pallas_webui_dist_zip_tag",
+                    "pallas_webui_dist_zip_asset",
+                ],
+                "plugin_config_path": "/plugins/pb_webui",
+            },
+            {
+                "id": "runtime",
+                "title": "运行时",
+                "field_names": ["pallas_webui_log_lines_max"],
+                "plugin_config_path": "/plugins/pb_webui",
+            },
+        ],
+    }
+
+
+def _cmd_perm_payload_extras(cfg_obj: Any) -> dict[str, Any]:
+    from pallas.core.perm.schema import build_command_perm_ui
+
+    overrides = getattr(cfg_obj, "command_permission_overrides", None) or {}
+    if not isinstance(overrides, dict):
+        overrides = {}
+    return {"command_perm_ui": build_command_perm_ui({str(k): str(v) for k, v in overrides.items()})}
+
+
+def _command_limits_payload_extras(cfg_obj: Any) -> dict[str, Any]:
+    from pallas.core.limits.config import normalize_command_limit_overrides
+    from pallas.core.limits.schema import build_command_limits_ui
+
+    overrides = getattr(cfg_obj, "command_limit_overrides", None) or {}
+    if not isinstance(overrides, dict):
+        overrides = {}
+    return {"command_limits_ui": build_command_limits_ui(normalize_command_limit_overrides(overrides))}
+
+
+def apply_webui_env_section_patch(section_id: str, patch: dict[str, Any]) -> dict[str, Any]:
+    from .community_stats_section import COMMUNITY_STATS_SECTION_ID, apply_community_stats_patch
+    from .control_plane_section import CONTROL_PLANE_SECTION_ID, apply_control_plane_patch
+    from .corpus_federation_section import CORPUS_FEDERATION_SECTION_ID, apply_corpus_federation_patch
+    from .service_gateways_section import (
+        SERVICE_GATEWAYS_SECTION_ID,
+        apply_service_gateways_patch,
+    )
+
+    if section_id == CONTROL_PLANE_SECTION_ID:
+        return apply_control_plane_patch(patch)
+    if section_id == CORPUS_FEDERATION_SECTION_ID:
+        return apply_corpus_federation_patch(patch)
+    if section_id == COMMUNITY_STATS_SECTION_ID:
+        return apply_community_stats_patch(patch)
+    if section_id == SERVICE_GATEWAYS_SECTION_ID:
+        return apply_service_gateways_patch(patch)
+    s = get_webui_env_section(section_id)
+    current = s.read_current().model_dump(mode="python")
+    allowed = set(s.field_to_env.keys()) - set(s.skip_fields)
+    for k in patch:
+        if k not in allowed:
+            raise ValueError(f"未知配置项: {k}")
+    merged = {**current, **patch}
+    validated = s.model_cls(**merged).model_dump(mode="python")
+    items = {s.field_to_env[k]: env_value_to_str(validated[k]) for k in patch}
+    upsert_env_dotenv_items(items)
+    if section_id == "llm":
+        from pallas.core.foundation.config.repo_settings import purge_misplaced_ai_env_keys_from_webui
+
+        purge_misplaced_ai_env_keys_from_webui()
+    if section_id == "message_scrub":
+        try:
+            from pallas.product.message_scrub import reload_message_scrub_caches
+
+            reload_message_scrub_caches()
+        except Exception:
+            pass
+    if section_id == "cmd_perm":
+        try:
+            from pallas.core.perm import clear_cmd_perm_cache
+
+            clear_cmd_perm_cache()
+        except Exception:
+            pass
+    elif section_id == "command_limits":
+        try:
+            from pallas.core.limits import clear_command_limits_cache
+
+            clear_command_limits_cache()
+        except Exception:
+            pass
+    elif section_id == "ingress_fanout":
+        try:
+            from pallas.core.platform.ingress.config import clear_ingress_fanout_config_cache
+
+            clear_ingress_fanout_config_cache()
+        except Exception:
+            pass
+    elif section_id == "ingress_dispatch":
+        try:
+            from pallas.core.platform.ingress.dispatch_lanes import clear_dispatch_lanes_cache
+            from pallas.core.platform.ingress.dispatch_runtime_config import clear_ingress_dispatch_runtime_config_cache
+            from pallas.core.platform.ingress.route_index import clear_route_index_cache
+
+            clear_ingress_dispatch_runtime_config_cache()
+            clear_dispatch_lanes_cache()
+            clear_route_index_cache()
+        except Exception:
+            pass
+    elif section_id == "repeater_learn":
+        try:
+            import asyncio
+
+            from nonebot import logger
+
+            from packages.repeater.learn_queue import reload_repeater_learn_worker_runtime
+
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(reload_repeater_learn_worker_runtime())
+            except RuntimeError:
+                import asyncio as aio
+
+                aio.run(reload_repeater_learn_worker_runtime())
+            logger.info("repeater_learn: webui config saved, hot reloaded")
+        except Exception as e:
+            from nonebot import logger
+
+            logger.warning("repeater_learn hot reload failed: {}", e)
+    elif section_id == "llm":
+        try:
+            from pallas.product.llm.config import clear_llm_config_cache
+
+            clear_llm_config_cache()
+        except Exception:
+            pass
+    else:
+        plugin_module = s.module_label if s.module_label.startswith(("pallas.", "packages.")) else ""
+        if plugin_module:
+            try:
+                from .registry import reload_plugin_config
+
+                reload_plugin_config(plugin_module)
+            except Exception:
+                pass
+    return webui_env_section_payload(section_id, current_values=validated)

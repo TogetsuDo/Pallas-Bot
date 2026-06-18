@@ -26,9 +26,36 @@ WebUI「通用配置」各段通过统一 REST 暴露；段定义在 `src/consol
 
 PUT 落盘 `webui.json`；各段 `apply_webui_env_section_patch` 内触发对应 reload（如 cmd_perm 清缓存、message_scrub 热读）。
 
+## `service_gateways/connectivity-check` 返回要点
+
+该接口返回：
+
+- `lines`: 面向文本展示的探测摘要
+- `results`: 结构化探测结果数组
+
+其中 `results[*]` 目前至少可能包含以下运行时契约字段：
+
+- `runtime_state`
+- `runtime_detail`
+- `capability_id`
+- `capability_group`
+- `runtime_type`
+- `failure_class`
+- `health_state`
+- `circuit_state`
+- `consecutive_failures`
+- `recent_failure_class`
+- `queue_load_hint`
+
+说明：
+
+- `capability_*` / `runtime_type` 对齐 AI runtime capability 规格，用于稳定标识能力身份。
+- `failure_class` / `health_state` / `circuit_state` 对齐统一运行时词汇，供 WebUI、日志与后续 AI 仓契约共用。
+- 不同探测项可按能力成熟度返回字段子集；缺失字段表示当前探测源尚未提供，而非协议保留不用。
+
 ## 前端对应
 
 - `fetchCommonConfigSections`、`fetchCommonConfigSection`、`putCommonConfigSection`
 - `postServiceGatewaysConnectivityCheck`
 
-实现：`extended_api.py` + `env_sections.py`；网关探测 `src/plugins/connectivity/`、`service_gateways_section.py`。
+实现：`extended_api.py` + `env_sections.py`；网关探测 `src/features/service_gateways/`、`service_gateways_section.py`。

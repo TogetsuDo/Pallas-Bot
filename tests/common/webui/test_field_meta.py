@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from src.console.webui.field_meta import field_kind_from_annotation, field_meta_for_model_field, literal_choices
+from pallas.console.webui.field_meta import field_kind_from_annotation, field_meta_for_model_field, literal_choices
 
 
 def test_literal_choices():
@@ -49,7 +49,7 @@ def test_field_meta_normalizes_legacy_description():
 
 
 def test_field_meta_keeps_field_help_description():
-    from src.console.webui.field_help import field_help
+    from pallas.console.webui.field_help import field_help
 
     class _Help(BaseModel):
         y: bool = Field(
@@ -66,3 +66,20 @@ def test_field_meta_keeps_field_help_description():
         default_value=False,
     )
     assert row["description"] == field_help("是否启用", "选 true 或 false")
+
+
+def test_field_meta_includes_choice_labels_for_registered_enum():
+    class _Mode(BaseModel):
+        llm_repeater_mode: Literal["off", "select", "select_polish_lite"] = Field(default="select")
+
+    f = _Mode.model_fields["llm_repeater_mode"]
+    row = field_meta_for_model_field(
+        key="llm_repeater_mode",
+        field=f,
+        env_key="LLM_REPEATER_MODE",
+        cur="select",
+        default_value="select",
+    )
+    assert row["choice_labels"]["select"] == "命中语料时 AI 选句（推荐）"
+    assert row["choice_labels"]["off"] == "关闭 AI 接话"
+    assert row["choice_labels"]["select_polish_lite"] == "选句为主，偶尔轻顺口气"

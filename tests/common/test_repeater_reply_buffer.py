@@ -10,8 +10,8 @@ import pytest
 
 
 def test_should_publish_reply_record_skips_placeholders():
-    from src.plugins.repeater.model import Chat
-    from src.plugins.repeater.reply_record_sync import should_publish_reply_record
+    from packages.repeater.model import Chat
+    from packages.repeater.reply_record_sync import should_publish_reply_record
 
     assert should_publish_reply_record({"reply": "hello", "reply_keywords": "kw"}) is True
     assert should_publish_reply_record({"reply": Chat.REPLY_FLAG, "reply_keywords": Chat.REPLY_FLAG}) is False
@@ -21,22 +21,22 @@ def test_should_publish_reply_record_skips_placeholders():
 
 
 def test_publish_reply_record_skips_coord_when_placeholder():
-    from src.plugins.repeater.model import Chat
-    from src.plugins.repeater.reply_record_sync import publish_reply_record
+    from packages.repeater.model import Chat
+    from packages.repeater.reply_record_sync import publish_reply_record
 
     with patch(
-        "src.platform.shard.coord.repeater_reply_buffer.schedule_publish_repeater_reply_record",
+        "pallas.core.platform.shard.coord.repeater_reply_buffer.schedule_publish_repeater_reply_record",
         MagicMock(),
     ) as mock_schedule:
-        with patch("src.platform.shard.registry.config.is_sharding_active", return_value=True):
+        with patch("pallas.core.platform.shard.registry.config.is_sharding_active", return_value=True):
             publish_reply_record(1, 2, {"reply": Chat.REPLY_FLAG, "reply_keywords": Chat.REPLY_FLAG})
     mock_schedule.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_apply_repeater_reply_record_merges_into_chat_reply_dict():
-    from src.platform.shard.coord.repeater_reply_buffer import apply_repeater_reply_record
-    from src.plugins.repeater.model import Chat
+    from packages.repeater.model import Chat
+    from pallas.core.platform.shard.coord.repeater_reply_buffer import apply_repeater_reply_record
 
     group_id = 90001
     bot_id = 80001
@@ -60,7 +60,7 @@ async def test_apply_repeater_reply_record_merges_into_chat_reply_dict():
 
 @pytest.mark.asyncio
 async def test_ban_searches_other_bot_reply_cache():
-    from src.plugins.repeater.ban_manager import BanManager
+    from packages.repeater.ban_manager import BanManager
 
     group_id = 90002
     primary_bot = 80002
@@ -81,7 +81,7 @@ async def test_ban_searches_other_bot_reply_cache():
 
     try:
         with patch(
-            "src.plugins.repeater.ban_manager.context_repo.append_ban",
+            "packages.repeater.ban_manager.context_repo.append_ban",
             new_callable=AsyncMock,
         ) as mock_append:
             result = await BanManager.ban(group_id, primary_bot, "bad line", "test", reply_dict)
@@ -98,7 +98,7 @@ async def test_ban_searches_other_bot_reply_cache():
 
 @pytest.mark.asyncio
 async def test_schedule_publish_repeater_reply_record_does_not_drop_burst(monkeypatch):
-    from src.platform.shard.coord import repeater_reply_buffer as mod
+    from pallas.core.platform.shard.coord import repeater_reply_buffer as mod
 
     published: list[dict[str, object]] = []
 
@@ -140,7 +140,7 @@ async def test_schedule_publish_repeater_reply_record_does_not_drop_burst(monkey
 
 
 def test_publish_reply_record_sharding_without_redis_skips_publish(monkeypatch) -> None:
-    from src.platform.shard.coord import repeater_reply_buffer as mod
+    from pallas.core.platform.shard.coord import repeater_reply_buffer as mod
 
     monkeypatch.setattr(mod, "publish_repeater_reply_buffer_redis_sync", lambda env: False)
     monkeypatch.setattr(mod, "is_sharding_active", lambda: True)
@@ -150,7 +150,7 @@ def test_publish_reply_record_sharding_without_redis_skips_publish(monkeypatch) 
         lambda: type("S", (), {"role": "worker", "shard_id": 0, "enabled": True})(),
     )
     monkeypatch.setattr(
-        "src.platform.coord.redis_settings.coord_redis_enabled",
+        "pallas.core.platform.coord.redis_settings.coord_redis_enabled",
         lambda: False,
     )
 

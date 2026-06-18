@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 
-from src.plugins.duel.duel_bots import cage_pair_seed, pick_cage_duel_bot_pair
+from packages.duel.duel_bots import cage_pair_seed, pick_cage_duel_bot_pair
 
 
 def test_cage_pair_seed_same_across_message_ids() -> None:
@@ -29,7 +29,7 @@ async def test_pick_cage_uses_group_online_list(monkeypatch) -> None:
         assert group_id == 42
         return [111, 222, 333]
 
-    monkeypatch.setattr("src.plugins.duel.duel_bots.list_group_online_bot_ids", fake_online)
+    monkeypatch.setattr("packages.duel.duel_bots.list_group_online_bot_ids", fake_online)
     pair = await pick_cage_duel_bot_pair(42, 99, 1000)
     assert pair is not None
     allowed = (111, 222, 333)

@@ -1,4 +1,4 @@
-from src.features.cmd_perm.schema import build_command_perm_ui
+from pallas.core.perm.schema import build_command_perm_ui
 
 
 def test_command_perm_ui_labels_without_plugins():

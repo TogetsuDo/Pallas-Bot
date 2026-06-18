@@ -1,8 +1,8 @@
 import pytest
 
-from src.plugins.dream.dedupe_keys import dream_image_dedupe_key, dream_text_dedupe_key
-from src.plugins.dream.echo_sample import random_echo_nickname
-from src.plugins.dream.runtime import drift_at_nickname
+from packages.dream.dedupe_keys import dream_image_dedupe_key, dream_text_dedupe_key
+from packages.dream.echo_sample import random_echo_nickname
+from packages.dream.runtime import drift_at_nickname
 
 
 def test_random_echo_nickname_prefixed_with_at() -> None:
@@ -35,7 +35,7 @@ def test_dream_image_dedupe_key_stable() -> None:
 
 @pytest.mark.asyncio
 async def test_log_dream_chat_to_db_reuses_precomputed_plain_and_nick(monkeypatch) -> None:
-    from src.plugins.dream import runtime as mod
+    from packages.dream import runtime as mod
 
     captured = {}
 

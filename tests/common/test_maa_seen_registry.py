@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.platform.shard.coord import maa_seen_registry as mod
+from pallas.core.platform.shard.coord import maa_seen_registry as mod
 
 
 def test_touch_and_was_seen(fake_coord_redis) -> None:
@@ -31,10 +31,10 @@ def test_touch_updates_redis(fake_coord_redis) -> None:
 async def test_store_was_seen_reads_cluster_redis(fake_coord_redis, monkeypatch) -> None:
     mod.clear_seen_cache_for_tests()
     monkeypatch.setattr(
-        "src.platform.shard.context.is_sharding_active",
+        "pallas.core.platform.shard.context.is_sharding_active",
         lambda: True,
     )
-    from src.plugins.maa.store import MaaStore
+    from packages.maa.store import MaaStore
 
     store = MaaStore()
     user = "999"

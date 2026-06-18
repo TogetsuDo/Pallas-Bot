@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from src.console.webui.plugin_api import (
+from pallas.console.webui.plugin_api import (
     format_validation_error,
     normalize_patch_value,
     plugin_field_env_key,

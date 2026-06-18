@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.plugins.who_is_spy.models import VICTORY_CIVILIAN, VICTORY_UNDERCOVER, Game, Player
+from packages.who_is_spy.models import VICTORY_CIVILIAN, VICTORY_UNDERCOVER, Game, Player
 
 
 def test_blank_not_counted_as_civilian_for_win() -> None:

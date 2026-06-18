@@ -17,7 +17,7 @@ class _Config:
 
 @pytest.mark.asyncio
 async def test_context_find_repeat_detection():
-    from src.plugins.repeater.responder import Responder
+    from packages.repeater.responder import Responder
 
     group_id = 111
     bot_id = 222
@@ -46,9 +46,9 @@ async def test_context_find_repeat_detection():
 
     try:
         with (
-            patch("src.plugins.repeater.responder.get_bots", return_value={}),
+            patch("packages.repeater.responder.get_bots", return_value={}),
             patch(
-                "src.plugins.repeater.responder.context_repo.find_by_keywords", new_callable=AsyncMock
+                "packages.repeater.responder.context_repo.find_by_keywords", new_callable=AsyncMock
             ) as mock_find_one,
         ):
             result = await Responder._context_find(
@@ -69,7 +69,7 @@ async def test_context_find_repeat_detection():
 @pytest.mark.asyncio
 async def test_context_find_repeat_not_triggered_when_tail_is_only_bots():
     """尾部相同句来自本进程其它 Bot QQ 时不应判为复读。"""
-    from src.plugins.repeater.responder import Responder
+    from packages.repeater.responder import Responder
 
     group_id = 201
     bot_id = 202
@@ -102,9 +102,9 @@ async def test_context_find_repeat_not_triggered_when_tail_is_only_bots():
 
     try:
         with (
-            patch("src.plugins.repeater.responder.get_bots", return_value={"b1": fake_bot}),
+            patch("packages.repeater.responder.get_bots", return_value={"b1": fake_bot}),
             patch(
-                "src.plugins.repeater.responder.context_repo.find_by_keywords_for_reply",
+                "packages.repeater.responder.context_repo.find_by_keywords_for_reply",
                 new_callable=AsyncMock,
                 return_value=None,
                 create=True,
@@ -128,8 +128,8 @@ async def test_context_find_repeat_not_triggered_when_tail_is_only_bots():
 @pytest.mark.asyncio
 async def test_context_find_repeat_skips_repeat_ignore_user_ids_config():
     """配置 repeat_ignore_user_ids 中的 QQ 不计入复读条数。"""
-    from src.plugins.repeater import responder as responder_mod
-    from src.plugins.repeater.responder import Responder
+    from packages.repeater import responder as responder_mod
+    from packages.repeater.responder import Responder
 
     group_id = 301
     bot_id = 302
@@ -162,9 +162,9 @@ async def test_context_find_repeat_skips_repeat_ignore_user_ids_config():
     try:
         with (
             patch.object(responder_mod.plugin_config, "repeat_ignore_user_ids", [external_bot]),
-            patch("src.plugins.repeater.responder.get_bots", return_value={}),
+            patch("packages.repeater.responder.get_bots", return_value={}),
             patch(
-                "src.plugins.repeater.responder.context_repo.find_by_keywords_for_reply",
+                "packages.repeater.responder.context_repo.find_by_keywords_for_reply",
                 new_callable=AsyncMock,
                 return_value=None,
                 create=True,
@@ -187,7 +187,7 @@ async def test_context_find_repeat_skips_repeat_ignore_user_ids_config():
 
 @pytest.mark.asyncio
 async def test_context_find_returns_none_no_context():
-    from src.plugins.repeater.responder import Responder
+    from packages.repeater.responder import Responder
 
     group_id = 123
     bot_id = 456
@@ -207,7 +207,7 @@ async def test_context_find_returns_none_no_context():
 
     try:
         with patch(
-            "src.plugins.repeater.responder.context_repo.find_by_keywords_for_reply",
+            "packages.repeater.responder.context_repo.find_by_keywords_for_reply",
             new_callable=AsyncMock,
             return_value=None,
             create=True,
@@ -228,7 +228,7 @@ async def test_context_find_returns_none_no_context():
 
 @pytest.mark.asyncio
 async def test_context_find_skips_repo_lookup_when_keywords_empty():
-    from src.plugins.repeater.responder import Responder
+    from packages.repeater.responder import Responder
 
     group_id = 124
     bot_id = 457
@@ -248,7 +248,7 @@ async def test_context_find_skips_repo_lookup_when_keywords_empty():
 
     try:
         with patch(
-            "src.plugins.repeater.responder.context_repo.find_by_keywords_for_reply",
+            "packages.repeater.responder.context_repo.find_by_keywords_for_reply",
             new_callable=AsyncMock,
             create=True,
         ) as mock_find_reply:
@@ -269,7 +269,7 @@ async def test_context_find_skips_repo_lookup_when_keywords_empty():
 
 @pytest.mark.asyncio
 async def test_context_find_skips_repo_lookup_for_long_non_plain_raw_keywords():
-    from src.plugins.repeater.responder import Responder
+    from packages.repeater.responder import Responder
 
     group_id = 125
     bot_id = 458
@@ -291,7 +291,7 @@ async def test_context_find_skips_repo_lookup_for_long_non_plain_raw_keywords():
 
     try:
         with patch(
-            "src.plugins.repeater.responder.context_repo.find_by_keywords_for_reply",
+            "packages.repeater.responder.context_repo.find_by_keywords_for_reply",
             new_callable=AsyncMock,
             create=True,
         ) as mock_find_reply:
@@ -312,7 +312,7 @@ async def test_context_find_skips_repo_lookup_for_long_non_plain_raw_keywords():
 
 @pytest.mark.asyncio
 async def test_context_find_skips_repo_lookup_for_short_plain_text_noise():
-    from src.plugins.repeater.responder import Responder
+    from packages.repeater.responder import Responder
 
     group_id = 126
     bot_id = 459
@@ -334,7 +334,7 @@ async def test_context_find_skips_repo_lookup_for_short_plain_text_noise():
 
     try:
         with patch(
-            "src.plugins.repeater.responder.context_repo.find_by_keywords_for_reply",
+            "packages.repeater.responder.context_repo.find_by_keywords_for_reply",
             new_callable=AsyncMock,
             create=True,
         ) as mock_find_reply:
@@ -355,7 +355,7 @@ async def test_context_find_skips_repo_lookup_for_short_plain_text_noise():
 
 @pytest.mark.asyncio
 async def test_context_find_keeps_to_me_short_plain_text_lookup():
-    from src.plugins.repeater.responder import Responder
+    from packages.repeater.responder import Responder
 
     group_id = 127
     bot_id = 460
@@ -377,7 +377,7 @@ async def test_context_find_keeps_to_me_short_plain_text_lookup():
 
     try:
         with patch(
-            "src.plugins.repeater.responder.context_repo.find_by_keywords_for_reply",
+            "packages.repeater.responder.context_repo.find_by_keywords_for_reply",
             new_callable=AsyncMock,
             return_value=None,
             create=True,
@@ -399,8 +399,8 @@ async def test_context_find_keeps_to_me_short_plain_text_lookup():
 
 @pytest.mark.asyncio
 async def test_context_find_threshold_filtering():
-    from src.foundation.db import Answer, Context
-    from src.plugins.repeater.responder import Responder
+    from packages.repeater.responder import Responder
+    from pallas.core.foundation.db import Answer, Context
 
     group_id = 789
     bot_id = 321
@@ -430,19 +430,19 @@ async def test_context_find_threshold_filtering():
     try:
         with (
             patch(
-                "src.plugins.repeater.responder.context_repo.find_by_keywords_for_reply",
+                "packages.repeater.responder.context_repo.find_by_keywords_for_reply",
                 new_callable=AsyncMock,
                 return_value=context,
                 create=True,
             ),
             patch(
-                "src.plugins.repeater.responder.BanManager.find_ban_keywords",
+                "packages.repeater.responder.BanManager.find_ban_keywords",
                 new_callable=AsyncMock,
                 return_value=set(),
             ),
-            patch("src.plugins.repeater.responder.random.choices", side_effect=[[3], [high_answer]]),
-            patch("src.plugins.repeater.responder.random.choice", return_value="high_msg"),
-            patch("src.plugins.repeater.responder.random.random", return_value=1.0),
+            patch("packages.repeater.responder.random.choices", side_effect=[[3], [high_answer]]),
+            patch("packages.repeater.responder.random.choice", return_value="high_msg"),
+            patch("packages.repeater.responder.random.random", return_value=1.0),
         ):
             result = await Responder._context_find(
                 cast("Any", chat_data),
@@ -460,7 +460,7 @@ async def test_context_find_threshold_filtering():
 
 @pytest.mark.asyncio
 async def test_reply_post_proc_via_responder():
-    from src.plugins.repeater.responder import Responder
+    from packages.repeater.responder import Responder
 
     group_id = 555
     bot_id = 666

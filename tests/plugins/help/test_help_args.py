@@ -1,11 +1,11 @@
-from src.foundation.command_prefix import matches_command_prefix
-from src.plugins.help.help_args import (
+from packages.help.help_args import (
     PLUGIN_DISABLE_COMMAND,
     PLUGIN_ENABLE_COMMAND,
     extract_help_tail,
     parse_help_args,
     parse_plugin_toggle_args,
 )
+from pallas.core.foundation.command_prefix import matches_command_prefix
 
 
 def test_extract_help_tail_strips_slash_prefix() -> None:

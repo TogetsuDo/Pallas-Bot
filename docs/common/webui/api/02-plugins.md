@@ -9,6 +9,7 @@
 | PUT | `/plugins/help-menu-visibility` | 是 | 更新帮助可见性 |
 | GET | `/plugins/global-disable` | | 全局禁用插件名集合 |
 | PUT | `/plugins/global-disable` | 是 | 批量禁用/启用（保护核心插件） |
+| GET | `/plugins/capabilities` | | 插件能力聚合（命令权限/CD、LLM tools、storage keys、`reload_policy`） |
 | GET | `/plugins/group-fleet-whitelist` | | 群舰队白名单插件 |
 | PUT | `/plugins/group-fleet-whitelist` | 是 | 更新舰队白名单 |
 
@@ -49,6 +50,7 @@ PUT 成功后：
 ## 前端对应
 
 - `fetchPlugins`、`fetchPluginConfig`、`putPluginConfig`
+- `fetchPluginCapabilities`（插件页「能力总览」与卡片预览）
 - `fetchHelpMenuVisibility`、`putHelpMenuVisibility`
 - `fetchGlobalPluginDisable`、`putGlobalPluginDisable`
 - `fetchGroupFleetWhitelist`、`putGroupFleetWhitelist`
@@ -56,3 +58,12 @@ PUT 成功后：
 实现：`extended_api.py`；配置读写 `src/console/webui/plugin_api.py`。
 
 插件作者接入： [WebUI 插件配置](../README.md)。
+
+### 拟定（G-P0 / G-P1）
+
+见 [插件治理与社区生态路线 · API 分期](../../architecture/plugin-governance-community-roadmap.md#api-分期)：
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| GET | `/plugins/{plugin_name}/governance` | 单插件：指令表、capabilities、运行状态摘要（P0 可合并进 GET config） |
+| PUT | `/plugins/{plugin_name}/governance` | 本插件 perm/CD 覆盖 + 全实例禁用 + 帮助可见（P1） |

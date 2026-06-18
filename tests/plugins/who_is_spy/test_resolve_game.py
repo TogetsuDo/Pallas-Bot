@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from src.plugins.who_is_spy.logic import games
-from src.plugins.who_is_spy.models import Game, Player
-from src.plugins.who_is_spy.session import resolve_game_sync
+from packages.who_is_spy.logic import games
+from packages.who_is_spy.models import Game, Player
+from packages.who_is_spy.session import resolve_game_sync
 
 
 def test_resolve_game_sync_restores_from_memory() -> None:
@@ -18,7 +18,7 @@ def test_resolve_game_sync_restores_from_memory() -> None:
 
 
 def test_resolve_game_sync_prefers_ready_snapshot_over_prep_memory(monkeypatch) -> None:
-    from src.plugins.who_is_spy import session as session_mod
+    from packages.who_is_spy import session as session_mod
 
     games.clear()
     prep = Game(group_id=200, owner_id=1, ready=False)
@@ -42,7 +42,7 @@ def test_resolve_game_sync_prefers_ready_snapshot_over_prep_memory(monkeypatch) 
 
 
 def test_resolve_game_sync_prefers_memory_ready_over_snapshot(monkeypatch) -> None:
-    from src.plugins.who_is_spy import session as session_mod
+    from packages.who_is_spy import session as session_mod
 
     games.clear()
     live = Game(group_id=400, owner_id=1, ready=True)
@@ -69,7 +69,7 @@ def test_resolve_game_sync_prefers_memory_ready_over_snapshot(monkeypatch) -> No
 
 
 def test_resolve_game_sync_ignores_stale_prep_when_session_active(monkeypatch) -> None:
-    from src.plugins.who_is_spy import session as session_mod
+    from packages.who_is_spy import session as session_mod
 
     games.clear()
     prep = Game(group_id=300, owner_id=1, ready=False)

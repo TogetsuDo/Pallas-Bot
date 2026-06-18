@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.platform.shard import console_stats as mod
+from pallas.core.platform.shard import console_stats as mod
 
 
 def test_worker_stats_roundtrip_and_cluster_merge(tmp_path, monkeypatch):
@@ -74,7 +74,7 @@ def test_prune_stale_worker_stats_bots_sync(tmp_path, monkeypatch):
                 return ["111"]
             return []
 
-    monkeypatch.setattr("src.platform.shard.registry.store.get_shard_registry", lambda: FakeReg())
+    monkeypatch.setattr("pallas.core.platform.shard.registry.store.get_shard_registry", lambda: FakeReg())
 
     mod.write_worker_stats_sync(
         shard_id=99,
@@ -124,3 +124,20 @@ def test_preserve_matcher_hist_on_fast_flush(tmp_path, monkeypatch):
     row = mod.read_worker_stats(0)["111"]
     assert row["matcher_hist"] == hist
     assert row["by_plugin"]["duel"]["day_runs"] == 3
+
+
+def test_iter_worker_shard_ids_filters_stale(tmp_path, monkeypatch):
+    import json
+    import time
+
+    monkeypatch.setattr(mod, "plugin_data_dir", lambda name, create=True: tmp_path / name)
+    stats_dir = mod.stats_dir()
+    stats_dir.mkdir(parents=True, exist_ok=True)
+    mod.write_worker_stats_sync(shard_id=0, bots={})
+    stale_path = stats_dir / "worker-99.json"
+    stale_path.write_text(
+        json.dumps({"v": 1, "shard_id": 99, "updated_at": time.time() - 600, "bots": {}}),
+        encoding="utf-8",
+    )
+    assert mod.iter_worker_shard_ids() == [0, 99]
+    assert mod.iter_worker_shard_ids(max_stale_sec=mod.WORKER_STATS_ACTIVE_SEC) == [0]

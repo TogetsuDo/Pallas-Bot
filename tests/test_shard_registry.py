@@ -1,7 +1,7 @@
 import pytest
 
-from src.platform.shard.registry.config import get_shard_registry_settings
-from src.platform.shard.registry.store import (
+from pallas.core.platform.shard.registry.config import get_shard_registry_settings
+from pallas.core.platform.shard.registry.store import (
     ShardRegistry,
     assign_bot_to_shard,
     clear_shard_registry_cache,
@@ -21,7 +21,7 @@ def _clear_shard_caches(monkeypatch, tmp_path):
     reg_dir = tmp_path / "pallas_shard"
     reg_dir.mkdir(parents=True)
     monkeypatch.setattr(
-        "src.platform.shard.registry.store._registry_path",
+        "pallas.core.platform.shard.registry.store._registry_path",
         lambda: reg_dir / "registry.json",
     )
     clear_shard_registry_cache()

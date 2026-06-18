@@ -1,4 +1,4 @@
-from src.plugins.maa.store import DeviceRecord, match_device_ref
+from packages.maa.store import DeviceRecord, match_device_ref
 
 DEV_A = "42cfa6e9dfa147d8a7c1d9a6d658b06d"
 DEV_B = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

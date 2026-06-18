@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 
-from src.platform.multi_bot import fleet as fleet_mod
-from src.plugins.bot_status import list_mode as mod
+import pallas.core.platform.shard.context as shard_ctx
+from packages.bot_status import list_mode as mod
+from pallas.core.platform.multi_bot import fleet as fleet_mod
 
 
 class _Cfg:
@@ -55,7 +56,7 @@ def test_cluster_online_connected_uses_presence_when_sharding(monkeypatch):
     def fake_presence():
         return frozenset({100, 200})
 
-    import src.platform.shard.presence as presence_mod
+    import pallas.core.platform.shard.presence as presence_mod
 
     monkeypatch.setattr(presence_mod, "get_cluster_online_bot_ids", fake_presence)
     online = mod.cluster_online_bot_ids_for_status(list_mode="connected")
@@ -63,17 +64,13 @@ def test_cluster_online_connected_uses_presence_when_sharding(monkeypatch):
 
 
 def test_status_inventory_fleet_from_accounts(tmp_path, monkeypatch):
-    proto = tmp_path / "pallas_protocol"
+    proto = tmp_path / "pb_protocol"
     proto.mkdir()
     acc = {"300": {"qq": "300", "enabled": True}}
     (proto / "accounts.json").write_text(json.dumps(acc), encoding="utf-8")
 
-    monkeypatch.setattr(
-        fleet_mod,
-        "plugin_data_dir",
-        lambda name: proto if name == "pallas_protocol" else tmp_path,
-    )
-    monkeypatch.setattr(fleet_mod, "is_sharding_active", lambda: False)
+    monkeypatch.setattr(fleet_mod, "_accounts_path", lambda: proto / "accounts.json")
+    monkeypatch.setattr(shard_ctx, "sharding_active", lambda: False)
     fleet_mod.invalidate_fleet_bot_cache()
     patch_sharding(monkeypatch, False)
 
@@ -81,13 +78,8 @@ def test_status_inventory_fleet_from_accounts(tmp_path, monkeypatch):
     assert 300 in ids
 
 
-def test_status_inventory_session_uses_block(monkeypatch):
-    class FakeCfg:
-        bots = {111}
-
+def test_status_inventory_session_uses_connected_roster(monkeypatch):
     patch_sharding(monkeypatch, False)
-    import src.plugins.block as block_mod
-
-    monkeypatch.setattr(block_mod, "plugin_config", FakeCfg())
+    monkeypatch.setattr(mod, "connected_bot_ids", lambda: {111})
     ids = mod.status_inventory_bot_ids(list_mode="session")
     assert ids == frozenset({111})

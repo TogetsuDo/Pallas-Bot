@@ -1,4 +1,4 @@
-from src.plugins.maa.tasks import (
+from packages.maa.tasks import (
     COMMAND_TASK_MAP,
     MAA_CONTROL_COMMAND_HELPS,
     SETTINGS_TYPES,
@@ -32,7 +32,7 @@ def test_format_maa_control_help_lists_commands() -> None:
 
 
 def test_format_maa_plugin_usage_brief() -> None:
-    from src.plugins.maa.tasks import format_maa_plugin_usage_brief
+    from packages.maa.tasks import format_maa_plugin_usage_brief
 
     text = format_maa_plugin_usage_brief()
     assert "牛牛绑定MAA" in text

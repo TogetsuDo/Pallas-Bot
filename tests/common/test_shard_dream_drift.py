@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from src.platform.shard.coord.dream_drift import drift_payload_from_dict, drift_payload_to_dict
-from src.plugins.dream.payload import DriftPayload
+from packages.dream.payload import DriftPayload
+from pallas.core.platform.shard.coord.dream_drift import drift_payload_from_dict, drift_payload_to_dict
 
 
 def test_drift_payload_roundtrip_text() -> None:

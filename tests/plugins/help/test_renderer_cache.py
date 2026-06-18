@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.plugins.help import renderer
+from packages.help import renderer
 
 
 def test_save_image_to_cache_prunes_old_pngs(tmp_path, monkeypatch):

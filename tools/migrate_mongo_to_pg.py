@@ -878,7 +878,7 @@ async def migrate(
     from sqlalchemy.dialects.postgresql import insert as pg_insert
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
-    from src.foundation.db.repository_pg import (
+    from pallas.core.foundation.db.repository_pg import (
         BlackListRow,
         BotConfigRow,
         ContextAnswerMessageRow,

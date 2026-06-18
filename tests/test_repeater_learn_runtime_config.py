@@ -1,9 +1,9 @@
-from src.console.webui.env_sections import get_webui_env_section
-from src.plugins.repeater.learn_runtime_config import (
+from packages.repeater.learn_runtime_config import (
     RepeaterLearnRuntimeConfig,
     clear_repeater_learn_runtime_config_cache,
     get_repeater_learn_runtime_config,
 )
+from pallas.console.webui.env_sections import get_webui_env_section
 
 
 def test_repeater_learn_webui_section_registered():
@@ -21,7 +21,7 @@ def test_repeater_learn_from_env(monkeypatch):
         return None
 
     monkeypatch.setattr(
-        "src.plugins.repeater.learn_runtime_config.repo_env_raw_value",
+        "packages.repeater.learn_runtime_config.repo_env_raw_value",
         fake_raw,
     )
     clear_repeater_learn_runtime_config_cache()

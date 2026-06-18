@@ -1,31 +1,36 @@
 # 开发指南
 
-面向参与 **Pallas-Bot**、**Pallas-Bot-WebUI** 或站点自有插件维护的贡献者。部署与运行配置见 [快速上手](../README.md) 与 [配置存储](../architecture/settings-storage.md)。
+面向 **Pallas-Bot**、**Pallas-Bot-WebUI** 或站点插件维护者。部署见 [五分钟跑起来](../guide/quickstart.md)、**[4.0 启动说明](../guide/4.0-start.md)**、[使用指南](../user/README.md)。
 
 ## 阅读顺序
 
 | 文档 | 说明 |
 | --- | --- |
-| [本地开发环境](environment.md) | `uv`、配置、启动 Bot、分片与可选 Redis |
-| [贡献与提交流程](workflow.md) | Ruff、pre-commit、测试、PR 与 commit 约定 |
-| [插件开发入门](plugin/getting-started.md) | 新建插件、注册、最小示例 |
-| [插件结构与约定](plugin/structure.md) | 目录拆分、`data/` / `resource/`、文档与测试 |
-| [插件进阶能力](plugin/advanced.md) | cmd_perm、WebUI 热重载、消息审查、站点插件 |
-| [插件开发 Skill（Agent）](../skills/pallas-plugin-development/SKILL.md) | 分章手册，Cursor Agent 写插件时按需加载 |
-| [WebUI 前端开发](webui.md) | 独立仓库联调、窄屏与构建挂载 |
+| **[插件 Cookbook · 牛牛赞我](plugin/cookbook.md)** | **推荐首读**：跟做完整插件（配置、落盘、CD、测试、文档） |
+| [社区插件开发者指南](../guide/community-plugin-author.md) | 第三方插件收录、CLI 工具、图标约定 |
+| [本地开发环境](environment.md) | `uv`、配置、启动、分片 |
+| [贡献与提交流程](workflow.md) | Ruff、pre-commit、测试、PR |
+| [插件开发入门](plugin/getting-started.md) | 最小骨架速览 |
+| [插件结构](plugin/structure.md) | 目录、`data/` / `resource/` |
+| [插件进阶](plugin/advanced.md) | cmd_perm、热重载、审查 |
+| [插件 Skill（Agent）](../skills/pallas-plugin-development/SKILL.md) | Matcher、scrub 等分章专题 |
+| [WebUI 前端](webui.md) | 独立仓联调、窄屏 |
 
-## 架构与通用能力（延伸阅读）
+## 延伸阅读
 
 | 文档 | 说明 |
 | --- | --- |
-| [项目结构](../architecture/project-structure.md) | 顶层目录与 `src/` 内核分层 |
-| [插件目录约定](../architecture/plugin-convention.md) | `src/plugins/*` 组织规范 |
-| [站点定制](../architecture/site-customization-and-updates.md) | `local/plugins`、更新策略 |
-| [命令权限 cmd_perm](../common/cmd_perm/README.md) | 帮助「何人可用」与 WebUI 覆盖 |
-| [命令冷却 command_limits](../common/command_limits/README.md) | 统一 CD helper |
-| [WebUI 插件配置](../common/webui/README.md) | `install_hot_reload_config` |
-| [消息审查 message_scrub](../common/message_scrub/README.md) | 复读/做梦入站过滤 |
+| [项目结构](../architecture/project-structure.md) | 顶层与 `src/` 分层 |
+| [插件规范](../architecture/plugin-convention.md) | `src/plugins` 约定 |
+| [站点定制](../architecture/site-customization-and-updates.md) | `local/plugins`、官方扩展 |
+| **[AI 终态架构](../architecture/pallas-final-ai-shape.md)** · **[AI 实施与联调](../architecture/pallas-ai-implementation.md)** | 双仓、runtime、联调；local 覆盖见实施 §4 |
+| [官方扩展 PyPI 发版](extension-pypi-publish.md) | Trusted Publisher、tag 发版、主仓 lock |
+| **[Pallas 核心契约](../architecture/pallas-core-contract.md)** · [AI 终态架构](../architecture/pallas-final-ai-shape.md) | 当前总纲、品牌边界、Bot↔AI |
+| [Core 开发体验路线](../architecture/core-devx-roadmap.md) | plugin_sdk、`pb_core`、pb_webui/pb_protocol 改名 |
+| [插件治理与社区生态路线](../architecture/plugin-governance-community-roadmap.md) | 插件页指令/治理 UI、社区 L1/L2 画像、分期 API |
+| [内核插件统一化](../architecture/core-plugin-unification-design.md) | core golden 模板、`pb_stats` 升格、分期 PR |
+| [热重载分级](../architecture/hot-reload-tiers.md) | 配置 / 元数据 / 代码 |
+| [cmd_perm](../common/cmd_perm/README.md) · [command_limits](../common/command_limits/README.md) | 权限与冷却 |
+| [WebUI 配置](../common/webui/README.md) · [message_scrub](../common/message_scrub/README.md) | 热重载与审查 |
 
-## 协作约定
-
-仓库根目录 [AGENTS.md](https://github.com/PallasBot/Pallas-Bot/blob/main/AGENTS.md) 与 [CONTRIBUTING.md](https://github.com/PallasBot/Pallas-Bot/blob/main/CONTRIBUTING.md) 汇总了 Agent / 人类贡献者应遵守的约定；本文档站内容与其对齐，并以 **主仓 `docs/`** 为权威来源（同步至 [在线文档](https://PallasBot.github.io/Pallas-Bot-Docs/)）。
+约定汇总：[AGENTS.md](https://github.com/PallasBot/Pallas-Bot/blob/main/AGENTS.md)、[CONTRIBUTING.md](https://github.com/PallasBot/Pallas-Bot/blob/main/CONTRIBUTING.md)。正文以 **主仓 `docs/`** 为源，同步至 [在线文档](https://PallasBot.github.io/Pallas-Bot-Docs/)。

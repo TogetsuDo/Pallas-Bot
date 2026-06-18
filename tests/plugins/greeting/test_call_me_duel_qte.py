@@ -4,7 +4,7 @@ import asyncio
 import time
 from types import SimpleNamespace
 
-from src.plugins.duel import duel_qte as qte_mod
+from packages.duel import duel_qte as qte_mod
 
 
 def test_duel_qte_active_in_group_race() -> None:
@@ -112,24 +112,25 @@ def test_duel_qte_active_in_group_prunes_expired_session() -> None:
 
 
 def test_call_me_rule_skips_when_duel_qte_active(monkeypatch) -> None:
-    import src.plugins.greeting as greeting_mod
+    import packages.greeting.commands as greeting_commands
 
     monkeypatch.setattr(
-        greeting_mod,
+        greeting_commands,
         "duel_qte_blocks_greeting_user",
         lambda group_id, user_id: group_id == 777 and str(user_id) == "100",
     )
+    from packages.greeting import call_me_message_rule
     event = SimpleNamespace(raw_message="帕拉斯", group_id=777, user_id=100)
-    assert greeting_mod.call_me_message_rule(event) is False
+    assert call_me_message_rule(event) is False
 
     event_other = SimpleNamespace(raw_message="帕拉斯", group_id=888, user_id=100)
-    assert greeting_mod.call_me_message_rule(event_other) is True
+    assert call_me_message_rule(event_other) is True
 
     event_niu = SimpleNamespace(raw_message="牛牛", group_id=777, user_id=100)
-    assert greeting_mod.call_me_message_rule(event_niu) is False
+    assert call_me_message_rule(event_niu) is False
 
     spectator = SimpleNamespace(raw_message="帕拉斯", group_id=777, user_id=200)
-    assert greeting_mod.call_me_message_rule(spectator) is True
+    assert call_me_message_rule(spectator) is True
 
 
 def test_duel_qte_blocks_greeting_via_cluster_mirror(monkeypatch) -> None:
@@ -139,11 +140,11 @@ def test_duel_qte_blocks_greeting_via_cluster_mirror(monkeypatch) -> None:
     qte_mod._active_qte_groups.clear()
     qte_mod._active_qte_users_by_group.clear()
     monkeypatch.setattr(
-        "src.platform.shard.context.is_sharding_active",
+        "pallas.core.platform.shard.context.is_sharding_active",
         lambda: True,
     )
     monkeypatch.setattr(
-        "src.platform.shard.coord.duel_qte_redis.greeting_user_blocked_redis_sync",
+        "pallas.core.platform.shard.coord.duel_qte_redis.greeting_user_blocked_redis_sync",
         lambda group_id, user_id: False,
     )
     try:
@@ -157,7 +158,7 @@ def test_duel_qte_blocks_greeting_via_cluster_mirror(monkeypatch) -> None:
 
 def test_bot_race_qte_use_cluster_coord_when_sharding(monkeypatch) -> None:
     monkeypatch.setattr(
-        "src.plugins.duel.duel_qte.shard_ctx.sharding_active",
+        "packages.duel.duel_qte.shard_ctx.sharding_active",
         lambda: True,
     )
     monkeypatch.setattr(
@@ -168,7 +169,7 @@ def test_bot_race_qte_use_cluster_coord_when_sharding(monkeypatch) -> None:
     assert qte_mod.bot_race_qte_use_cluster_coord("2136204582", "3257801645") is True
     assert qte_mod.bot_race_qte_use_cluster_coord("2964163468", "2136204582") is True
     monkeypatch.setattr(
-        "src.plugins.duel.duel_qte.shard_ctx.sharding_active",
+        "packages.duel.duel_qte.shard_ctx.sharding_active",
         lambda: False,
     )
     assert qte_mod.bot_race_qte_use_cluster_coord("2136204582", "3257801645") is False

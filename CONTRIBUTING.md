@@ -46,6 +46,7 @@
 - [贡献与提交流程](docs/develop/workflow.md)
 - [项目结构约定](docs/architecture/project-structure.md)
 - [插件目录约定](docs/architecture/plugin-convention.md)
+- [内核插件统一化](docs/architecture/core-plugin-unification-design.md)（core golden 模板）
 - [命令权限接入说明](docs/common/cmd_perm/README.md)
 - [Agent 协作约定](AGENTS.md)
 

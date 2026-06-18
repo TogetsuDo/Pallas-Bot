@@ -4,20 +4,19 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.platform.shard.registry.config import get_shard_registry_settings
-from src.platform.shard.registry.store import (
+from pallas.core.platform.shard.registry.config import get_shard_registry_settings
+from pallas.core.platform.shard.registry.store import (
     ShardRegistry,
     assign_bot_to_shard,
     clear_shard_registry_cache,
     save_shard_registry,
 )
-from src.platform.shard.worker_scale import (
+from pallas.core.platform.shard.worker_scale import (
     auto_scale_workers_enabled,
     list_running_production_worker_shard_ids,
     production_worker_count_required,
     run_worker_scale_restart,
     schedule_worker_scale_restart,
-    shard_run_dir,
     workers_need_scale_up,
 )
 
@@ -34,12 +33,12 @@ def _shard_env(monkeypatch, tmp_path):
     reg_dir = tmp_path / "pallas_shard"
     reg_dir.mkdir(parents=True)
     monkeypatch.setattr(
-        "src.platform.shard.registry.store._registry_path",
+        "pallas.core.platform.shard.registry.store._registry_path",
         lambda: reg_dir / "registry.json",
     )
     run_dir = reg_dir / "run"
     run_dir.mkdir()
-    monkeypatch.setattr("src.platform.shard.worker_scale.shard_run_dir", lambda: run_dir)
+    monkeypatch.setattr("pallas.core.platform.shard.worker_scale.shard_run_dir", lambda: run_dir)
     yield run_dir
     clear_shard_registry_cache()
     get_shard_registry_settings.cache_clear()
@@ -54,7 +53,7 @@ def test_production_worker_count_follows_registry(monkeypatch, tmp_path):
     proto = tmp_path / "data" / "pallas_protocol"
     proto.mkdir(parents=True)
     (proto / "accounts.json").write_text("{}", encoding="utf-8")
-    monkeypatch.setattr("src.platform.shard.worker_scale.PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr("pallas.core.platform.shard.worker_scale.PROJECT_ROOT", tmp_path)
     reg = ShardRegistry(bots_per_shard=2, worker_base_port=8090, ws_host="127.0.0.1")
     save_shard_registry(reg)
     clear_shard_registry_cache()
@@ -107,7 +106,7 @@ def test_run_worker_scale_restart_spawns_script(_shard_env, monkeypatch, tmp_pat
     script = fake_repo / "scripts" / "run_sharded_bot.sh"
     script.parent.mkdir(parents=True)
     script.write_text("#!/bin/bash\n", encoding="utf-8")
-    monkeypatch.setattr("src.platform.shard.worker_scale.repo_root", lambda: fake_repo)
+    monkeypatch.setattr("pallas.core.platform.shard.worker_scale.repo_root", lambda: fake_repo)
 
     popen = MagicMock()
     proc = MagicMock()
@@ -115,8 +114,8 @@ def test_run_worker_scale_restart_spawns_script(_shard_env, monkeypatch, tmp_pat
     proc.returncode = 0
     popen.return_value = proc
     with (
-        patch("src.platform.shard.worker_scale.subprocess.Popen", popen),
-        patch("src.platform.shard.worker_scale.threading.Thread", side_effect=lambda *a, **k: MagicMock(start=MagicMock())),
+        patch("pallas.core.platform.shard.worker_scale.subprocess.Popen", popen),
+        patch("pallas.core.platform.shard.worker_scale.threading.Thread", side_effect=lambda *a, **k: MagicMock(start=MagicMock())),
     ):
         assert run_worker_scale_restart(reason="unit") is True
     popen.assert_called_once()

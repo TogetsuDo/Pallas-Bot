@@ -3,6 +3,8 @@
 _PALLAS_SHARD_CMDS_LOADED=1
 
 cmd_start_hub_only() {
+  require_coord_redis_for_shard_start || return 1
+
   local hub_url="http://127.0.0.1:${HUB_PORT}"
   local worker_counts
   worker_counts="$(count_running_production_workers)"
@@ -16,7 +18,6 @@ cmd_start_hub_only() {
   else
     echo "  worker     本次不启动（需单独 start 或 restart --workers-only）"
   fi
-  load_shard_redis_env
   echo "  $(shard_coord_backend_hint)"
   echo ""
   echo "  正在启动 hub…"
@@ -56,6 +57,8 @@ cmd_start_hub_only() {
 }
 
 cmd_start_workers_only() {
+  require_coord_redis_for_shard_start || return 1
+
   local workers="${WORKER_COUNT_OVERRIDE:-$(calc_worker_count)}"
   local running_before
   running_before="$(count_running_production_worker_ids)"
@@ -75,7 +78,6 @@ cmd_start_workers_only() {
   else
     echo "  端口策略   冷启动（评估端口并同步协议端 ws_url）"
   fi
-  load_shard_redis_env
   echo "  $(shard_coord_backend_hint)"
   echo ""
 
@@ -103,7 +105,7 @@ cmd_start_workers_only() {
   local f
   for f in "${RUN_DIR}"/worker-*.pid; do
     [[ -e "${f}" ]] || continue
-    [[ "$(basename "${f}" .pid)" == "worker-test" ]] && continue
+    case "$(basename "${f}" .pid)" in worker-test|worker-test2) continue ;; esac
     if is_running "${f}"; then
       worker_running=$((worker_running + 1))
     else
@@ -136,6 +138,8 @@ cmd_start() {
     cmd_start_workers_only
     return
   fi
+  require_coord_redis_for_shard_start || return 1
+
   local workers="${WORKER_COUNT_OVERRIDE:-$(calc_worker_count)}"
   local hub_url="http://127.0.0.1:${HUB_PORT}"
 
@@ -146,13 +150,7 @@ cmd_start() {
   else
     echo "  端口策略   严格 起点+分片号"
   fi
-  load_shard_redis_env
   echo "  $(shard_coord_backend_hint)"
-  if [[ "${PALLAS_COORD_REDIS_ENABLED:-}" == "true" ]]; then
-    if ! uv run python -c "import redis" 2>/dev/null; then
-      echo "  提示       请执行 uv sync --extra coord-redis 以安装 redis 客户端" >&2
-    fi
-  fi
   echo ""
 
   wait_worker_ports_released "${workers}" || true
@@ -187,7 +185,7 @@ cmd_start() {
   local f
   for f in "${RUN_DIR}"/worker-*.pid; do
     [[ -e "${f}" ]] || continue
-    [[ "$(basename "${f}" .pid)" == "worker-test" ]] && continue
+    case "$(basename "${f}" .pid)" in worker-test|worker-test2) continue ;; esac
     if is_running "${f}"; then
       worker_running=$((worker_running + 1))
     else
@@ -306,7 +304,7 @@ cmd_status() {
   local f
   for f in "${RUN_DIR}"/worker-*.pid; do
     [[ -e "${f}" ]] || continue
-    [[ "$(basename "${f}" .pid)" == "worker-test" ]] && continue
+    case "$(basename "${f}" .pid)" in worker-test|worker-test2) continue ;; esac
     workers=$((workers + 1))
     local name port state
     name="$(basename "${f}" .pid)"
@@ -386,6 +384,8 @@ cmd_status() {
 }
 
 cmd_restart_hub_only() {
+  require_coord_redis_for_shard_start || return 1
+
   print_title "Pallas-Bot 分片模式 · 重启 hub（保留 worker）"
   echo "  hub 端口   ${HUB_PORT}"
   local worker_counts
@@ -431,6 +431,8 @@ cmd_restart_hub_only() {
 }
 
 cmd_restart_workers_only() {
+  require_coord_redis_for_shard_start || return 1
+
   local workers="${WORKER_COUNT_OVERRIDE:-$(calc_worker_count)}"
 
   print_title "Pallas-Bot 分片模式 · 重启 worker（保留 hub）"
@@ -464,7 +466,7 @@ cmd_restart_workers_only() {
   local f
   for f in "${RUN_DIR}"/worker-*.pid; do
     [[ -e "${f}" ]] || continue
-    [[ "$(basename "${f}" .pid)" == "worker-test" ]] && continue
+    case "$(basename "${f}" .pid)" in worker-test|worker-test2) continue ;; esac
     if is_running "${f}"; then
       worker_running=$((worker_running + 1))
     else
@@ -476,7 +478,6 @@ cmd_restart_workers_only() {
   done
 
   print_title "worker 重启完成"
-  load_shard_redis_env
   echo "  汇总       worker ${worker_running}/${workers} 运行 · $(shard_coord_backend_hint)"
   if [[ "${worker_fail}" -gt 0 ]]; then
     echo "  提示       部分 worker 未保持运行，请检查端口与日志"

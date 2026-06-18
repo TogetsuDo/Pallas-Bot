@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from src.plugins.who_is_spy.handlers import is_group_speaking
-from src.plugins.who_is_spy.logic import games, render_speech_recap, truncate_speech
-from src.plugins.who_is_spy.models import Game, Player
-from src.plugins.who_is_spy.speak import extract_at_speech_text
+from packages.who_is_spy.handlers import is_group_speaking
+from packages.who_is_spy.logic import games, render_speech_recap, truncate_speech
+from packages.who_is_spy.models import Game, Player
+from packages.who_is_spy.speak import extract_at_speech_text
 
 
 def test_extract_at_speech_text_skips_at_segments() -> None:
@@ -35,11 +35,11 @@ def test_is_group_speaking_uses_memory_ready_without_coord_session(monkeypatch) 
     games[733291779] = game
 
     monkeypatch.setattr(
-        "src.platform.multi_bot.at_targets.get_fleet_bot_ids",
+        "pallas.core.platform.multi_bot.at_targets.get_fleet_bot_ids",
         lambda: frozenset({3599334092}),
     )
-    monkeypatch.setattr("src.plugins.who_is_spy.session.spy_session_active", lambda _gid: False)
-    monkeypatch.setattr("src.plugins.who_is_spy.session.read_active_game_snapshot", lambda _gid: None)
+    monkeypatch.setattr("packages.who_is_spy.session.spy_session_active", lambda _gid: False)
+    monkeypatch.setattr("packages.who_is_spy.session.read_active_game_snapshot", lambda _gid: None)
 
     event = SimpleNamespace(
         group_id=733291779,
@@ -63,7 +63,7 @@ def test_is_group_speaking_rejects_voting_phase(monkeypatch) -> None:
     games[1] = game
 
     monkeypatch.setattr(
-        "src.platform.multi_bot.at_targets.get_fleet_bot_ids",
+        "pallas.core.platform.multi_bot.at_targets.get_fleet_bot_ids",
         lambda: frozenset({3599334092}),
     )
 

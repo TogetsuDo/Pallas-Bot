@@ -29,7 +29,7 @@ def _make_group_event(
 
 @pytest.mark.asyncio
 async def test_is_dream_ban_trigger_matches_raw_at_self_when_to_me_false():
-    from src.plugins.dream.ban_handlers import is_dream_ban_trigger
+    from packages.dream.ban_handlers import is_dream_ban_trigger
 
     event = _make_group_event()
 
@@ -38,7 +38,7 @@ async def test_is_dream_ban_trigger_matches_raw_at_self_when_to_me_false():
 
 @pytest.mark.asyncio
 async def test_resolve_dream_ban_reply_raw_falls_back_to_get_msg_when_reply_missing():
-    from src.plugins.dream.ban_handlers import resolve_dream_ban_reply_raw
+    from packages.dream.ban_handlers import resolve_dream_ban_reply_raw
 
     event = _make_group_event()
 

@@ -1,4 +1,4 @@
-from src.plugins.dream.payload import DriftPayload
+from packages.dream.payload import DriftPayload
 
 
 def test_drift_payload_defaults() -> None:

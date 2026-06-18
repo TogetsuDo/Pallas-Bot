@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.foundation.db.runtime import (
+from pallas.core.foundation.db.runtime import (
     is_mongodb_backend,
     is_postgresql_backend,
     normalize_db_backend_name,

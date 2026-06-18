@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.plugins.who_is_spy.copy import game_over_tail, room_closed, word_pair_line
+from packages.who_is_spy.copy import game_over_tail, room_closed, word_pair_line
 
 
 def test_word_pair_line() -> None:

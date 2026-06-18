@@ -1,0 +1,10 @@
+from pallas.product.corpus.backfill_scheduler import bind_corpus_backfill_lifecycle
+from pallas.product.corpus.prefetch import bind_corpus_prefetch_lifecycle
+from pallas.product.persona import bind_group_style_refresh_lifecycle
+
+from .learn_queue import bind_repeater_learn_lifecycle
+
+bind_repeater_learn_lifecycle()
+bind_group_style_refresh_lifecycle()
+bind_corpus_prefetch_lifecycle()
+bind_corpus_backfill_lifecycle()

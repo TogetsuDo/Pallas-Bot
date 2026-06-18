@@ -30,6 +30,7 @@ usage() {
   test list              列出测试分片账号
   test sync-ws           同步测试账号协议端 ws_url
   test start|stop|status|restart   仅启停测试 worker 进程（worker-test）
+  test2 start|stop|status|restart  第二测试 worker（worker-test2，默认 shard 98）
 
 常用示例:
   ./scripts/run_sharded_bot.sh start
@@ -44,6 +45,7 @@ usage() {
   ./scripts/run_sharded_bot.sh test init
   ./scripts/run_sharded_bot.sh test add 123456789 --sync-ws
   ./scripts/run_sharded_bot.sh test start
+  ./scripts/run_sharded_bot.sh test2 start
 
 选项:
   --workers N          指定 worker 数量（默认按已启用牛牛账号自动计算）
@@ -86,6 +88,37 @@ shard_coord_backend_hint() {
   else
     echo "跨进程 claim：Redis 未就绪（分片 claim 不可用）"
   fi
+}
+
+require_coord_redis_for_shard_start() {
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    return 0
+  fi
+  load_redis_status_lines
+  local policy url pkg reachable
+  policy="$(redis_status_get policy)"
+  url="$(redis_status_get url)"
+  pkg="$(redis_status_get package)"
+  reachable="$(redis_status_get reachable)"
+  if [[ "${policy}" == "false" ]]; then
+    echo "  错误       分片模式依赖 Redis 协调 claim，不可禁用（PALLAS_COORD_REDIS_ENABLED=false）" >&2
+    return 1
+  fi
+  if [[ -z "${url}" ]]; then
+    echo "  错误       分片模式需要 REDIS_URL（config/pallas.toml [env] 或 webui.json）" >&2
+    return 1
+  fi
+  if [[ "${reachable}" != "yes" ]]; then
+    if [[ "${pkg}" == "no" ]]; then
+      echo "  错误       Redis 客户端未安装，请执行: uv sync --extra coord-redis" >&2
+    else
+      echo "  错误       Redis 不可达: ${url}" >&2
+      echo "  提示       请确认 Redis 服务已启动并可 ping 通" >&2
+    fi
+    return 1
+  fi
+  load_shard_redis_env
+  return 0
 }
 
 REDIS_STATUS_LINES=()
@@ -166,7 +199,7 @@ print_observability_status_block() {
     obs_env+=("${line}")
   done < <(shard_common_env)
   local out=""
-  if out="$(env "${obs_env[@]}" uv run python "${status_script}" 2>/dev/null)"; then
+  if out="$(env "${obs_env[@]}" "${START_CMD[@]}" "${status_script}" 2>/dev/null)"; then
     while IFS= read -r line; do
       [[ -n "${line}" ]] || continue
       echo "    ${line}"
@@ -226,7 +259,7 @@ calc_worker_count() {
     echo 1
     return
   fi
-  uv run python "${CALC_WORKERS_SCRIPT}" "${args[@]}" 2>/dev/null || echo 1
+  "${START_CMD[@]}" "${CALC_WORKERS_SCRIPT}" "${args[@]}" 2>/dev/null || echo 1
 }
 
 is_running() {
@@ -372,7 +405,7 @@ count_running_production_workers() {
   local running=0 total=0 f
   for f in "${RUN_DIR}"/worker-*.pid; do
     [[ -e "${f}" ]] || continue
-    [[ "$(basename "${f}" .pid)" == "worker-test" ]] && continue
+    case "$(basename "${f}" .pid)" in worker-test|worker-test2) continue ;; esac
     total=$((total + 1))
     if is_running "${f}"; then
       running=$((running + 1))
@@ -385,7 +418,7 @@ stop_production_workers() {
   local f sid
   for f in "${RUN_DIR}"/worker-*.pid; do
     [[ -e "${f}" ]] || continue
-    [[ "$(basename "${f}" .pid)" == "worker-test" ]] && continue
+    case "$(basename "${f}" .pid)" in worker-test|worker-test2) continue ;; esac
     sid=""
     if [[ "$(basename "${f}" .pid)" =~ worker-([0-9]+) ]]; then
       sid="${BASH_REMATCH[1]}"
@@ -456,7 +489,9 @@ count_running_production_worker_ids() {
   local f
   for f in "${RUN_DIR}"/worker-*.pid; do
     [[ -e "${f}" ]] || continue
-    [[ "$(basename "${f}" .pid)" == "worker-test" ]] && continue
+    case "$(basename "${f}" .pid)" in
+      worker-test|worker-test2) continue ;;
+    esac
     if is_running "${f}"; then
       running=$((running + 1))
     fi
@@ -481,7 +516,7 @@ wait_worker_ports_released() {
     return 0
   fi
   echo "  等待 worker 端口释放（登记见 registry.json，超时 ${PORT_RELEASE_TIMEOUT}s）…"
-  if uv run python "${WAIT_PORTS_SCRIPT}" \
+  if "${START_CMD[@]}" "${WAIT_PORTS_SCRIPT}" \
     --workers "${workers}" \
     --registry "${REGISTRY_JSON}" \
     --timeout "${PORT_RELEASE_TIMEOUT}" 2>&1 | sed 's/^/    /'; then
@@ -539,7 +574,7 @@ prepare_shard_ports() {
     prep_args+=(--skip-protocol-sync)
   fi
   local out rc=0
-  out="$(uv run python "${STARTUP_PORTS_SCRIPT}" "${prep_args[@]}" 2>&1)" || rc=$?
+  out="$("${START_CMD[@]}" "${STARTUP_PORTS_SCRIPT}" "${prep_args[@]}" 2>&1)" || rc=$?
   if [[ "${rc}" -ne 0 ]]; then
     echo "  · 分片端口准备失败" >&2
     [[ -n "${out}" ]] && echo "${out}" | sed 's/^/    /' >&2
@@ -563,7 +598,7 @@ allocate_worker_ports() {
     alloc_args+=(--no-skip-occupied)
   fi
   local out rc=0
-  out="$(uv run python "${ALLOC_PORTS_SCRIPT}" "${alloc_args[@]}" 2>&1)" || rc=$?
+  out="$("${START_CMD[@]}" "${ALLOC_PORTS_SCRIPT}" "${alloc_args[@]}" 2>&1)" || rc=$?
   if [[ "${rc}" -ne 0 ]]; then
     return "${rc}"
   fi
@@ -575,7 +610,7 @@ sync_shard_protocol_ports_legacy() {
   if [[ "${SKIP_PORT_SYNC}" -eq 1 || ! -f "${ACCOUNTS_JSON}" ]]; then
     return 0
   fi
-  uv run python "${SYNC_PORTS_SCRIPT}" \
+  "${START_CMD[@]}" "${SYNC_PORTS_SCRIPT}" \
     --accounts "${ACCOUNTS_JSON}" \
     --env "${REPO_ROOT}/.env" \
     --backup "${RUN_DIR}/accounts.json.pre_sync" >/dev/null 2>&1 || true
@@ -629,7 +664,7 @@ PY
 }
 
 run_shard_test_cli() {
-  uv run python "${SHARD_TEST_SCRIPT}" --env "${REPO_ROOT}/.env" --accounts "${ACCOUNTS_JSON}" "$@"
+  "${START_CMD[@]}" "${SHARD_TEST_SCRIPT}" --env "${REPO_ROOT}/.env" --accounts "${ACCOUNTS_JSON}" "$@"
 }
 
 cmd_test_start() {
@@ -637,12 +672,13 @@ cmd_test_start() {
     echo "  测试分片未启用。请先执行: ./scripts/run_sharded_bot.sh test init" >&2
     return 1
   fi
+  require_coord_redis_for_shard_start || return 1
+
   local tsid tport
   tsid="$(registry_test_shard_id)"
   tport="$(registry_test_port)"
   print_title "Pallas-Bot 测试 worker · 启动"
   echo "  测试分片 id=${tsid}，WS 端口 ${tport}"
-  load_shard_redis_env
   echo "  $(shard_coord_backend_hint)"
   echo ""
   local common=(
@@ -700,6 +736,106 @@ cmd_test_restart() {
   cmd_test_stop
   echo ""
   cmd_test_start
+}
+
+registry_test2_port() {
+  python3 - "${REGISTRY_JSON}" "${TEST2_SHARD_ID}" <<'PY' 2>/dev/null
+import json, sys
+from pathlib import Path
+raw = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+want = int(sys.argv[2])
+for row in raw.get("shards") or []:
+    if int(row.get("id", -1)) == want:
+        print(int(row.get("port") or 0))
+        break
+else:
+    print(0)
+PY
+}
+
+cmd_test2_start() {
+  require_coord_redis_for_shard_start || return 1
+
+  local tsid tport
+  tsid="${TEST2_SHARD_ID}"
+  tport="$(registry_test2_port)"
+  if [[ -z "${tport}" || "${tport}" -le 0 ]]; then
+    echo "  未找到 test2 分片（id=${tsid}）端口，请检查 registry.json" >&2
+    return 1
+  fi
+  print_title "Pallas-Bot 测试 worker2 · 启动"
+  echo "  测试分片 id=${tsid}，WS 端口 ${tport}"
+  echo "  $(shard_coord_backend_hint)"
+  echo ""
+  local common=(
+    PALLAS_SHARD_ENABLED=true
+    PALLAS_SHARD_BOTS_PER="${BOTS_PER_SHARD}"
+    PALLAS_SHARD_HUB_PORT="${HUB_PORT}"
+    PALLAS_SHARD_WORKER_BASE_PORT="${WORKER_BASE_PORT}"
+  )
+  start_one "worker-test2" "测试 worker-test2（WS 端口 ${tport}）" env \
+    "${common[@]}" \
+    PALLAS_BOT_ROLE=worker \
+    PALLAS_SHARD_ID="${tsid}" \
+    PORT="${tport}" \
+    "${START_CMD[@]}" bot_worker.py
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    return 0
+  fi
+  if is_running "${PID_WORKER_TEST2}"; then
+    echo ""
+    echo "  测试 worker2 已就绪。日志: ${LOG_DIR}/worker-test2.log"
+  else
+    echo ""
+    echo "  测试 worker2 启动后已退出，请查看: ${LOG_DIR}/worker-test2.log"
+    return 1
+  fi
+}
+
+cmd_test2_stop() {
+  print_title "Pallas-Bot 测试 worker2 · 停止"
+  stop_one "worker-test2" "测试 worker-test2"
+}
+
+cmd_test2_status() {
+  print_title "Pallas-Bot 测试 worker2 · 状态"
+  local tsid tport
+  tsid="${TEST2_SHARD_ID}"
+  tport="$(registry_test2_port)"
+  echo "  分片 id=${tsid}，WS 端口 ${tport:-?}"
+  echo ""
+  if is_running "${PID_WORKER_TEST2}"; then
+    echo "  进程：运行中（worker-test2）"
+    echo "  日志：${LOG_DIR}/worker-test2.log"
+  else
+    echo "  进程：未运行"
+    echo "  启动：./scripts/run_sharded_bot.sh test2 start"
+  fi
+}
+
+cmd_test2_restart() {
+  cmd_test2_stop
+  echo ""
+  cmd_test2_start
+}
+
+dispatch_test2_subcmd() {
+  local sub="${1:-}"
+  shift || true
+  case "${sub}" in
+    start) cmd_test2_start ;;
+    stop) cmd_test2_stop ;;
+    status) cmd_test2_status ;;
+    restart) cmd_test2_restart ;;
+    "")
+      echo "用法: test2 <start|stop|status|restart>" >&2
+      return 1
+      ;;
+    *)
+      echo "未知 test2 子命令: ${sub}" >&2
+      return 1
+      ;;
+  esac
 }
 
 dispatch_test_subcmd() {

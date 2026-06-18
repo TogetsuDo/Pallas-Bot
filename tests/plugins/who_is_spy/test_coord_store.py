@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from src.plugins.who_is_spy.coord_store import game_from_snapshot, game_to_snapshot, prep_players_from_game
-from src.plugins.who_is_spy.models import Game, Player
+from packages.who_is_spy.coord_store import game_from_snapshot, game_to_snapshot, prep_players_from_game
+from packages.who_is_spy.models import Game, Player
 
 
 def test_game_snapshot_roundtrip() -> None:

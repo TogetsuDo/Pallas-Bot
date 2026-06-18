@@ -6,9 +6,9 @@ import pytest
 from nonebot.internal.rule import Rule
 from nonebot.rule import command, to_me
 
-from src.platform.ingress import dispatch_lanes, message_load
-from src.platform.ingress import matcher_activation as activation
-from src.platform.ingress import matcher_dispatch as dispatch
+from pallas.core.platform.ingress import dispatch_lanes, message_load
+from pallas.core.platform.ingress import matcher_activation as activation
+from pallas.core.platform.ingress import matcher_dispatch as dispatch
 
 
 class _CommandMatcher:

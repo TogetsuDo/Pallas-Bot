@@ -1,5 +1,5 @@
-from src.foundation.db import repository as repo_protocols
-from src.plugins.repeater import ban_manager, learner, message_store, model, responder
+from packages.repeater import ban_manager, learner, message_store, model, responder
+from pallas.core.foundation.db import repository as repo_protocols
 
 
 def test_repository_instances_conform_to_protocols():

@@ -1,6 +1,9 @@
 from nonebot.adapters.onebot.v11 import Adapter as OneBotV11Adapter
 
-from src.shared.adapters.onebot_v11_custom_events import ProfileLikeNotifyEvent, register_onebot_v11_custom_events
+from pallas.core.shared.adapters.onebot_v11_custom_events import (
+    ProfileLikeNotifyEvent,
+    register_onebot_v11_custom_events,
+)
 
 
 def test_profile_like_notify_event_parses_napcat_payload() -> None:

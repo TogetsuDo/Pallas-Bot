@@ -17,7 +17,7 @@
 ## 站点自有插件
 
 1. 在仓库根创建 `local/plugins/<插件名>/__init__.py`（标准 NoneBot 插件结构）。
-2. 在 **`config/pallas.toml`**（非 `pyproject.toml`）启用：
+2. 在 **`config/pallas.toml`**（非 `pyproject.toml`）启用（推荐；`local/plugins` 下已有插件包时未配置也会自动加载）：
 
 ```toml
 [bootstrap]
@@ -26,9 +26,9 @@ extra_plugin_dirs = ["local/plugins"]
 
 3. 重启 Bot（分片需重启 **hub 与对应 worker**）。  
    - **hub / worker / unified** 均会加载 `extra_plugin_dirs`；与 `src/plugins/` 或 hub 内置模块**同名时优先 local**（如 `help`、`callback`）。
-4. **覆盖主仓同名插件**：若 `local/plugins/draw/` 与 `src/plugins/draw/` 同名，会**先加载 local**，再跳过 `src` 中同名项。适合「整包 fork 式定制」；只改少量核心文件见下文「改动主仓已有插件」。
+4. **覆盖同名扩展**：若 `local/plugins/draw/` 与已装的 `pallas-plugin-draw` 同名，会**先加载 local**，再跳过 pip 包。适合「整包 fork 式定制」；只改少量文件见下文「改动主仓已有插件」。
 
-也可在 `pyproject.toml` 的 `[tool.nonebot] plugin_dirs` 追加目录，但改 `pyproject.toml` 本身会被 git 跟踪；**推荐只用 `pallas.toml`**。
+4.0 起另支持 **WebUI 社区插件商店**（git 安装到 `local/plugins/`）与 **官方扩展商店**（pip）。见 [社区插件商店](../guide/community-plugin-store.md)、[4.0 本体瘦身](pallas-4.0-slim.md#扩展安装路径并存)。
 
 ## 部署形态与更新方式
 
@@ -62,8 +62,10 @@ extra_plugin_dirs = ["local/plugins"]
 
 NoneBot **不能**两个目录各加载一半同名插件；要么整包 override，要么 patch 主仓文件。
 
+整包 override 时，内核仍可能 hardcode `src.plugins.<名>`（AI callback、WebUI、probe），与 local 行为分裂；见 **[AI 终态架构 §6](pallas-final-ai-shape.md)**、**[AI 实施 §4](pallas-ai-implementation.md)**。
+
 ## 相关实现
 
-- `read_bootstrap_extra_plugin_dirs()`：`src/foundation/config/repo_settings.py`
+- `resolve_extra_plugin_dirs()` / `read_bootstrap_extra_plugin_dirs()`：`src/foundation/config/repo_settings.py`
 - 插件加载：`src/bot_runtime/plugin_loader.py`
-- 更新与部署检测：`src/plugins/pallas_webui/manager.py`（`apply_bot_repository_update` / `inspect_bot_deployment`）
+- 更新与部署检测：`src/plugins/pb_webui/manager.py`（`apply_bot_repository_update` / `inspect_bot_deployment`）

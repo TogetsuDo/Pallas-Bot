@@ -1,4 +1,4 @@
-from src.plugins.dream.dream_labels import PSEUDO_SENDER_AT, pick_pseudo_sender_at
+from packages.dream.dream_labels import PSEUDO_SENDER_AT, pick_pseudo_sender_at
 
 
 def test_pick_pseudo_sender_at_in_pool() -> None:

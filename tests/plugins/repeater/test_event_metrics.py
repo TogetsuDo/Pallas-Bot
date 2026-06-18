@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.platform.shard.repeater_ingress_metrics import (
+from pallas.core.platform.shard.repeater_ingress_metrics import (
     clear_repeater_ingress_metrics_for_tests,
     merge_repeater_ingress_metrics,
     record_repeater_ingress_claim,

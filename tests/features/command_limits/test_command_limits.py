@@ -1,24 +1,24 @@
 from nonebot.plugin import PluginMetadata
 
-from src.features.command_limits.metadata import command_limits_from_metadata
+from pallas.core.limits.metadata import command_limits_from_metadata
 
 
 def _import_command_limit_plugins() -> None:
-    import src.plugins.bot_status  # noqa: F401
-    import src.plugins.connectivity  # noqa: F401
-    import src.plugins.help  # noqa: F401
-    import src.plugins.maa  # noqa: F401
-    import src.plugins.sing  # noqa: F401
+    import packages.bot_status  # noqa: F401
+    import packages.help  # noqa: F401
+    import packages.maa  # noqa: F401
+    import packages.sing  # noqa: F401
+    import pallas.product.service_gateways.connectivity  # noqa: F401
 
 
 def _patch_loaded_plugins(monkeypatch):
     from types import SimpleNamespace
 
-    from src.plugins.bot_status import __plugin_meta__ as bot_status_meta
-    from src.plugins.connectivity import __plugin_meta__ as connectivity_meta
-    from src.plugins.help import __plugin_meta__ as help_meta
-    from src.plugins.maa import __plugin_meta__ as maa_meta
-    from src.plugins.sing import __plugin_meta__ as sing_meta
+    from packages.bot_status import __plugin_meta__ as bot_status_meta
+    from packages.help import __plugin_meta__ as help_meta
+    from packages.maa import __plugin_meta__ as maa_meta
+    from packages.sing import __plugin_meta__ as sing_meta
+    from pallas.product.service_gateways.connectivity import __plugin_meta__ as connectivity_meta
 
     plugins = [
         SimpleNamespace(name="bot_status", metadata=bot_status_meta),
@@ -27,7 +27,7 @@ def _patch_loaded_plugins(monkeypatch):
         SimpleNamespace(name="maa", metadata=maa_meta),
         SimpleNamespace(name="sing", metadata=sing_meta),
     ]
-    monkeypatch.setattr("src.features.command_limits.schema.get_loaded_plugins", lambda: plugins)
+    monkeypatch.setattr("pallas.core.limits.schema.get_loaded_plugins", lambda: plugins)
 
 
 def test_command_limits_from_metadata():
@@ -51,17 +51,17 @@ def test_command_limits_from_metadata():
 
 
 def test_command_limit_action_key():
-    from src.features.command_limits import command_limit_action_key
+    from pallas.core.limits import command_limit_action_key
 
     assert command_limit_action_key("my_plugin.demo") == "cmd_limit:my_plugin.demo"
 
 
 def test_existing_plugin_metadata_declares_command_limits():
-    from src.plugins.bot_status import __plugin_meta__ as bot_status_meta
-    from src.plugins.connectivity import __plugin_meta__ as connectivity_meta
-    from src.plugins.help import __plugin_meta__ as help_meta
-    from src.plugins.maa import __plugin_meta__ as maa_meta
-    from src.plugins.sing import __plugin_meta__ as sing_meta
+    from packages.bot_status import __plugin_meta__ as bot_status_meta
+    from packages.help import __plugin_meta__ as help_meta
+    from packages.maa import __plugin_meta__ as maa_meta
+    from packages.sing import __plugin_meta__ as sing_meta
+    from pallas.product.service_gateways.connectivity import __plugin_meta__ as connectivity_meta
 
     assert [item.id for item in command_limits_from_metadata(bot_status_meta)] == [
         "bot_status.status",
@@ -85,7 +85,7 @@ def test_existing_plugin_metadata_declares_command_limits():
 
 
 def test_command_limits_ui_groups_existing_plugins(monkeypatch):
-    from src.features.command_limits.schema import build_command_limits_ui
+    from pallas.core.limits.schema import build_command_limits_ui
 
     _import_command_limit_plugins()
     _patch_loaded_plugins(monkeypatch)
@@ -102,7 +102,7 @@ def test_command_limits_ui_groups_existing_plugins(monkeypatch):
 
 
 def test_command_limits_ui_uses_override_values(monkeypatch):
-    from src.features.command_limits.schema import build_command_limits_ui
+    from pallas.core.limits.schema import build_command_limits_ui
 
     _import_command_limit_plugins()
     _patch_loaded_plugins(monkeypatch)
@@ -114,20 +114,20 @@ def test_command_limits_ui_uses_override_values(monkeypatch):
 def test_command_limits_ui_includes_worker_plugins_from_disk_when_hub_loaded_plugins_are_partial(monkeypatch):
     from types import SimpleNamespace
 
-    from src.features.command_limits.schema import build_command_limits_ui, clear_merged_command_limits_cache
-    from src.plugins.help import __plugin_meta__ as help_meta
+    from packages.help import __plugin_meta__ as help_meta
+    from pallas.core.limits.schema import build_command_limits_ui, clear_merged_command_limits_cache
 
     clear_merged_command_limits_cache()
     monkeypatch.setattr(
-        "src.features.command_limits.schema.get_loaded_plugins",
+        "pallas.core.limits.schema.get_loaded_plugins",
         lambda: [SimpleNamespace(name="help", metadata=help_meta)],
     )
     monkeypatch.setattr(
-        "src.features.command_limits.schema.discover_plugin_packages",
+        "pallas.core.limits.schema.discover_plugin_packages",
         lambda: ["help", "maa", "sing"],
     )
     monkeypatch.setattr(
-        "src.features.command_limits.schema.discover_extra_plugin_packages",
+        "pallas.core.limits.schema.discover_extra_plugin_packages",
         dict,
     )
     ui = build_command_limits_ui({})
@@ -139,7 +139,7 @@ def test_command_limits_ui_includes_worker_plugins_from_disk_when_hub_loaded_plu
 
 
 def test_effective_command_limit_prefers_override(monkeypatch):
-    from src.features.command_limits.schema import effective_command_limit_for
+    from pallas.core.limits.schema import effective_command_limit_for
 
     _import_command_limit_plugins()
     _patch_loaded_plugins(monkeypatch)
@@ -148,24 +148,24 @@ def test_effective_command_limit_prefers_override(monkeypatch):
 
 
 def test_get_command_cooldown_sec_reads_config_override(monkeypatch):
-    from src.features.command_limits.cooldown import get_command_cooldown_sec
+    from pallas.core.limits.cooldown import get_command_cooldown_sec
 
     class DummyCfg:
         command_limit_overrides = {"help.help": 12}
 
     _import_command_limit_plugins()
     _patch_loaded_plugins(monkeypatch)
-    monkeypatch.setattr("src.features.command_limits.cooldown.get_command_limits_config", lambda: DummyCfg())
+    monkeypatch.setattr("pallas.core.limits.cooldown.get_command_limits_config", lambda: DummyCfg())
     assert get_command_cooldown_sec("help.help") == 12
 
 
 def test_zero_command_cooldown_disables_limit(monkeypatch):
-    from src.features.command_limits.cooldown import get_command_cooldown_sec
+    from pallas.core.limits.cooldown import get_command_cooldown_sec
 
     class DummyCfg:
         command_limit_overrides = {"help.help": 0}
 
     _import_command_limit_plugins()
     _patch_loaded_plugins(monkeypatch)
-    monkeypatch.setattr("src.features.command_limits.cooldown.get_command_limits_config", lambda: DummyCfg())
+    monkeypatch.setattr("pallas.core.limits.cooldown.get_command_limits_config", lambda: DummyCfg())
     assert get_command_cooldown_sec("help.help") == 0

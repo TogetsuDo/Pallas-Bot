@@ -3,9 +3,9 @@ import os
 
 from pydantic import BaseModel, Field
 
-from src.foundation.config import dotenv as ed
-from src.foundation.config import repo_settings as rs
-from src.console.webui.plugin_config import config_from_env
+from pallas.console.webui.plugin_config import config_from_env
+from pallas.core.foundation.config import dotenv as ed
+from pallas.core.foundation.config import repo_settings as rs
 
 
 def test_repo_env_raw_value_prefers_disk_over_environ(tmp_path, monkeypatch):

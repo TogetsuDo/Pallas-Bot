@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.platform.ingress import message_load
-from src.platform.ingress import send_queue
+from pallas.core.platform.ingress import message_load, send_queue
 
 
 @pytest.fixture(autouse=True)

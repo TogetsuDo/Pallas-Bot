@@ -1,12 +1,14 @@
 # 插件开发入门
 
-Pallas-Bot 基于 **NoneBot2** + **OneBot v11**。业务插件位于 `src/plugins/<包名>/`；站点定制可放在 `local/plugins/`（见 [站点定制](../../architecture/site-customization-and-updates.md)）。
+> **第一次写插件？** 请先跟做 [Cookbook · 牛牛赞我](cookbook.md)（完整闭环）；本文是速查版。
+
+Pallas-Bot 基于 **NoneBot2** + **OneBot v11**。业务插件位于 `packages/<包名>/`；站点定制可放在 `local/plugins/`（见 [站点定制](../../architecture/site-customization-and-updates.md)）。
 
 ## 两种参与方式
 
 | 方式 | 适用 | 位置 |
 | --- | --- | --- |
-| **贡献主仓** | 功能可上游合并 | `src/plugins/<name>/` + `docs/plugins/<name>/` + `tests/plugins/<name>/` |
+| **贡献主仓** | 功能可上游合并 | `packages/<name>/` + `docs/plugins/<name>/` + `tests/plugins/<name>/` |
 | **站点自有** | 私有定制、不与上游混 diff | `local/plugins/<name>/` + `extra_plugin_dirs` |
 
 ## 最小插件骨架
@@ -14,28 +16,32 @@ Pallas-Bot 基于 **NoneBot2** + **OneBot v11**。业务插件位于 `src/plugin
 每个插件至少包含：
 
 ```
-src/plugins/my_plugin/
+packages/my_plugin/
 ├── __init__.py    # PluginMetadata + Matcher 注册
 └── config.py      # 配置模型（需 WebUI 可调时接入热重载）
 ```
 
 `__init__.py` 保持轻量：声明元数据、注册 handler，业务逻辑拆到同目录其它模块。
 
+口令型命令推荐 `pallas.api.commands`（`group_command` / `PluginHandlerContext`）；见 [Cookbook](cookbook.md) 与 [core-devx-roadmap](../../architecture/core-devx-roadmap.md#p1--plugin_sdk)。
+
 ### 元数据与帮助文案
 
-使用 `src.features.cmd_perm.metadata_text` 统一 `usage` / `menu_data` 格式：
+使用 `pallas.api.metadata` 统一 `usage` / `menu_data` 格式：
 
 ```python
 from nonebot import on_command
 from nonebot.plugin import PluginMetadata
 
-from src.features.cmd_perm import group_message_permission_for_command
-from src.features.cmd_perm.metadata_defaults import (
+from pallas.api.metadata import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
+    SCENE_GROUP,
+    join_usage,
+    usage_line,
 )
-from src.features.cmd_perm.metadata_text import SCENE_GROUP, join_usage, usage_line
+from pallas.api.perm import group_message_permission_for_command
 
 __plugin_meta__ = PluginMetadata(
     name="示例插件",
@@ -92,7 +98,7 @@ async def handle_demo():
 # config.py
 from pydantic import BaseModel, Field
 
-from src.console.webui import install_hot_reload_config
+from pallas.api.config import install_hot_reload_config
 
 class Config(BaseModel, extra="ignore"):
     enable: bool = Field(default=True, description="是否启用。")
@@ -105,7 +111,7 @@ get_my_config = plugin_webui.get
 
 ## 注册与加载
 
-主仓插件由 NoneBot 自动发现 `src/plugins/`。`local/plugins` 需在 `config/pallas.toml` 配置 `extra_plugin_dirs` 后重启生效；**同名时 local 优先**。
+主仓插件由 NoneBot 自动发现 `packages/`。`local/plugins` 需在 `config/pallas.toml` 配置 `extra_plugin_dirs` 后重启生效；**同名时 local 优先**。
 
 ## 插件文档
 
@@ -113,7 +119,7 @@ get_my_config = plugin_webui.get
 
 ## 测试
 
-在 `tests/plugins/<name>/` 添加最小可验证测试，目录尽量镜像 `src/plugins/<name>/`：
+在 `tests/plugins/<name>/` 添加最小可验证测试，目录尽量镜像 `packages/<name>/`：
 
 ```bash
 uv run pytest tests/plugins/my_plugin/

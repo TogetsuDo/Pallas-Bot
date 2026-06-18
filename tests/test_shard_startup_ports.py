@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
-from src.platform.shard.registry.startup_ports import evaluate_shard_startup_ports
+from pallas.core.platform.shard.registry.startup_ports import evaluate_shard_startup_ports
 
 
 def test_evaluate_skips_when_registry_and_protocol_aligned(tmp_path, monkeypatch):
@@ -46,10 +46,10 @@ def test_evaluate_skips_when_registry_and_protocol_aligned(tmp_path, monkeypatch
     )
     monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
     monkeypatch.setattr(
-        "src.platform.shard.registry.store._registry_path",
+        "pallas.core.platform.shard.registry.store._registry_path",
         lambda: reg_dir / "registry.json",
     )
-    with patch("src.platform.shard.registry.port_alloc.is_tcp_port_in_use", return_value=False):
+    with patch("pallas.core.platform.shard.registry.port_alloc.is_tcp_port_in_use", return_value=False):
         ev = evaluate_shard_startup_ports(
             1,
             8090,

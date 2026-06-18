@@ -1,6 +1,6 @@
 import logging
 
-from src.foundation.logging.bridge import ChannelLoguruHandler
+from pallas.core.foundation.logging.bridge import ChannelLoguruHandler
 
 
 def test_channel_handler_downgrades_transient_uvicorn_errors() -> None:

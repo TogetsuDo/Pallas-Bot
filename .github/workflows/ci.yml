@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, dev ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, master, dev ]
   workflow_dispatch:
 
 jobs:
@@ -28,15 +28,31 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv sync --dev
+          # core plugin matrix 测试会加载 kernel/LLM 与分片 coord（需 sqlalchemy、redis）
+          uv sync --dev --extra pg --extra coord-redis
 
       - name: Run Ruff linting
         run: |
-          uv run ruff check --output-format=github src/
+          uv run ruff check --output-format=github pallas/ packages/
 
       - name: Run Ruff formatting check
         run: |
-          uv run ruff format --check src/
+          uv run ruff format --check pallas/ packages/
+
+      - name: Check plugin imports (packages)
+        run: |
+          uv run python tools/check_plugin_imports.py --scope packages
+
+      - name: Run core plugin matrix tests
+        run: |
+          uv run pytest \
+            tests/common/test_plugin_matrix.py \
+            tests/common/test_plugin_loader_unified.py \
+            tests/common/test_plugin_coord.py \
+            tests/common/test_plugin_registry.py \
+            tests/common/test_shard_coord_duel_group.py \
+            tests/common/test_shard_coord_spy_group.py \
+            -q
 
       - name: Type check with mypy
         run: |

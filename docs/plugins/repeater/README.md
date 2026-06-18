@@ -1,6 +1,6 @@
 # repeater（牛牛复读）
 
-学习群聊、智能回复与跟复读；定时主动发言；管理员可禁用指定内容；可选表情回应。
+学习群聊、按语境接话、跟复读；可定时主动发言；群管可禁用指定内容。
 
 ## 用户命令
 
@@ -20,15 +20,31 @@
 
 ## 配置
 
-见 [`config.py`](../../../src/plugins/repeater/config.py)（`answer_threshold`、`repeat_threshold`、`speak_threshold`、`enable_reaction` 等）。多牛同群 fanout 默认关，分片/多牛需协调接话时在 WebUI **插件 → repeater** 开 `fanout_enabled` 或设 `fanout_max_bots`。入库前清洗见 [message_scrub](../../common/message_scrub/README.md)。
+WebUI **插件 → repeater** 或 [`config.py`](../../../src/plugins/repeater/config.py)。常用项：
+
+| 键 | 说明 |
+| --- | --- |
+| `answer_threshold` | 接话积极程度（越大越少说话） |
+| `repeat_threshold` | 连续相同句几次后跟复读 |
+| `speak_threshold` | 主动插话积极程度 |
+| `fanout_enabled` | 同群多只牛时是否一起接话（多牛部署用） |
+
+### 智能对话接话（可选，默认关）
+
+在 **通用配置 → 智能对话与 AI 服务** 开启后，接话可在语料没有合适回复时用 AI 现编，或在命中语料后润色措辞。细节见 [persona-llm-roadmap](../../architecture/persona-llm-roadmap.md)（开发向）。
+
+### 群风格
+
+WebUI **实例 / Bot 配置** 中「启用群风格自动生长」：按本群最近学会的语料自动调整接话频率与句长偏好，无需手调参数。
 
 ## 排障
 
 | 现象 | 处理 |
 | --- | --- |
-| 从不说话 / 话太多 | 调阈值；确认未被「不可以」或封禁限制 |
-| 多牛同群负载高 | `PALLAS_REPEATER_FANOUT_ENABLED=false` 或设 `PALLAS_REPEATER_FANOUT_MAX_BOTS` |
-| 不复读 | 检查 `repeat_threshold` 与连续相同句次数 |
+| 从不说话 / 话太多 | 调阈值；确认未被「不可以」限制 |
+| 多牛同群只有一只接话 | 插件配置中开启「多只牛一起接话」，或检查多机协同设置 |
+| 不复读 | 看 `repeat_threshold` 与连续相同句次数 |
+| 开了智能对话仍像原句 | 确认接话模式含「润色」且智能对话服务可达 |
 
 ## 实现
 

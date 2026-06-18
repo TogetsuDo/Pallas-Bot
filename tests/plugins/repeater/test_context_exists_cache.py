@@ -5,7 +5,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_context_exists_gate_cache(beanie_fixture, monkeypatch):
-    from src.plugins.repeater import context_exists_cache as cache
+    from packages.repeater import context_exists_cache as cache
 
     await cache.reset_context_exists_cache()
     calls: list[str] = []

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.plugins.who_is_spy.models import Game, Player
+from packages.who_is_spy.models import Game, Player
 
 
 def test_all_alive_have_spoken() -> None:

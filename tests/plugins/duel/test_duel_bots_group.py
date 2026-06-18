@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.plugins.duel import duel_bots as mod
+from packages.duel import duel_bots as mod
 
 
 @pytest.mark.asyncio
@@ -23,11 +23,11 @@ async def test_list_local_fleet_bots_does_not_return_full_scope_on_probe_miss(mo
 
     monkeypatch.setattr(mod, "get_bots", lambda: {str(q): object() for q in scope})
     monkeypatch.setattr(
-        "src.platform.shard.presence.pick_local_query_bot",
+        "pallas.core.platform.shard.presence.pick_local_query_bot",
         lambda: Caller(),
     )
     monkeypatch.setattr(
-        "src.platform.multi_bot.fleet.get_catalog_bot_ids",
+        "pallas.core.platform.multi_bot.fleet.get_catalog_bot_ids",
         lambda: set(scope),
     )
     monkeypatch.setattr(mod, "probe_fleet_bots_in_group", fake_probe)

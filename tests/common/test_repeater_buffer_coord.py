@@ -4,10 +4,10 @@ import asyncio
 
 import pytest
 
-from src.foundation.db import Message as MessageModel
-from src.platform.shard.coord import repeater_buffer as mod
-from src.plugins.repeater.message_store import MessageStore
-from src.plugins.repeater.model import Chat
+from packages.repeater.message_store import MessageStore
+from packages.repeater.model import Chat
+from pallas.core.foundation.db import Message as MessageModel
+from pallas.core.platform.shard.coord import repeater_buffer as mod
 
 
 @pytest.mark.asyncio
@@ -51,7 +51,7 @@ def test_publish_skips_without_redis(monkeypatch) -> None:
         lambda: type("S", (), {"role": "worker", "shard_id": 0, "enabled": True})(),
     )
     monkeypatch.setattr(
-        "src.platform.coord.redis_settings.coord_redis_enabled",
+        "pallas.core.platform.coord.redis_settings.coord_redis_enabled",
         lambda: False,
     )
 

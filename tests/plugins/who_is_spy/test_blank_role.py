@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from src.plugins.who_is_spy.logic import assign_roles, player_role_word
-from src.plugins.who_is_spy.models import Game, Player
+from packages.who_is_spy.logic import assign_roles, player_role_word
+from packages.who_is_spy.models import Game, Player
 
 
 def test_assign_roles_can_deal_blank_card(monkeypatch) -> None:
     monkeypatch.setattr(
-        "src.plugins.who_is_spy.logic.pick_words",
+        "packages.who_is_spy.logic.pick_words",
         lambda group_id, avoid_recent=0: ("可乐", "雪碧"),
     )
     game = Game(group_id=1, owner_id=10)
