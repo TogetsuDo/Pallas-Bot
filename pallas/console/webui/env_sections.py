@@ -291,6 +291,25 @@ def _command_limits_section() -> WebuiEnvSection:
     )
 
 
+def _mail_section() -> WebuiEnvSection:
+    from pallas.core.shared.utils.mail import SmtpConfig, get_smtp_config
+
+    return WebuiEnvSection(
+        id="mail",
+        title="邮件发送（SMTP）",
+        module_label="pallas.core.shared.utils.mail",
+        model_cls=SmtpConfig,
+        read_current=get_smtp_config,
+        field_to_env={
+            "smtp_user": "PALLAS_SMTP_USER",
+            "smtp_password": "PALLAS_SMTP_PASSWORD",
+            "smtp_server": "PALLAS_SMTP_SERVER",
+            "smtp_port": "PALLAS_SMTP_PORT",
+        },
+        skip_fields=frozenset(),
+    )
+
+
 def _llm_section() -> WebuiEnvSection:
     from pallas.product.llm.webui_config import LlmWebuiConfig, get_llm_webui_config
 
@@ -347,7 +366,13 @@ def _registered_sections() -> tuple[WebuiEnvSection, ...]:
     if _sections_cache is not None:
         return _sections_cache
     parts: list[WebuiEnvSection] = []
-    parts.extend((_cmd_perm_section(), _command_limits_section(), _llm_section(), _arknights_kb_section()))
+    parts.extend((
+        _cmd_perm_section(),
+        _command_limits_section(),
+        _mail_section(),
+        _llm_section(),
+        _arknights_kb_section(),
+    ))
     if (PACKAGE_ROOT / "product" / "control_plane" / "webui_config.py").is_file():
         parts.append(_control_plane_section())
     if (PACKAGE_ROOT / "core" / "platform" / "ingress" / "config.py").is_file():
@@ -392,6 +417,7 @@ def _registered_sections() -> tuple[WebuiEnvSection, ...]:
 _COMMON_CONFIG_SECTION_ORDER: tuple[str, ...] = (
     "cmd_perm",
     "command_limits",
+    "mail",
     "llm",
     "arknights_kb",
     "control_plane",

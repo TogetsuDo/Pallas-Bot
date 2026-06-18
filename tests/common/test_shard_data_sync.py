@@ -12,12 +12,14 @@ def test_refresh_on_accounts_mtime_change(tmp_path, monkeypatch):
     shard_root.mkdir()
     (shard_root / "registry.json").write_text("{}", encoding="utf-8")
 
-    proto = tmp_path / "pb_protocol"
+    proto = tmp_path / "pallas_protocol"
     proto.mkdir()
     acc_path = proto / "accounts.json"
     acc_path.write_text(json.dumps({"1": {"qq": "1", "enabled": True}}), encoding="utf-8")
 
-    monkeypatch.setattr(sync_mod, "_accounts_data_dir", lambda: proto)
+    import pallas.core.platform.protocol_paths as proto_mod
+
+    monkeypatch.setattr(proto_mod, "protocol_accounts_path", lambda *, create=False: acc_path)
     import pallas.core.foundation.paths as paths_mod
 
     monkeypatch.setattr(paths_mod, "plugin_data_dir", lambda name, create=True: tmp_path / name)

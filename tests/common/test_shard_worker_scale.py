@@ -39,6 +39,14 @@ def _shard_env(monkeypatch, tmp_path):
     run_dir = reg_dir / "run"
     run_dir.mkdir()
     monkeypatch.setattr("pallas.core.platform.shard.worker_scale.shard_run_dir", lambda: run_dir)
+    # 隔离协议端 accounts.json：避免读到仓库真实 data/pallas_protocol/accounts.json
+    accounts_path = tmp_path / "pallas_protocol" / "accounts.json"
+    accounts_path.parent.mkdir(parents=True, exist_ok=True)
+    accounts_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        "pallas.core.platform.protocol_paths.protocol_accounts_path",
+        lambda *, create=False: accounts_path,
+    )
     yield run_dir
     clear_shard_registry_cache()
     get_shard_registry_settings.cache_clear()
@@ -52,8 +60,12 @@ def _write_worker_pid(run_dir: Path, shard_id: int) -> None:
 def test_production_worker_count_follows_registry(monkeypatch, tmp_path):
     proto = tmp_path / "data" / "pallas_protocol"
     proto.mkdir(parents=True)
-    (proto / "accounts.json").write_text("{}", encoding="utf-8")
-    monkeypatch.setattr("pallas.core.platform.shard.worker_scale.PROJECT_ROOT", tmp_path)
+    accounts_path = proto / "accounts.json"
+    accounts_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        "pallas.core.platform.protocol_paths.protocol_accounts_path",
+        lambda *, create=False: accounts_path,
+    )
     reg = ShardRegistry(bots_per_shard=2, worker_base_port=8090, ws_host="127.0.0.1")
     save_shard_registry(reg)
     clear_shard_registry_cache()

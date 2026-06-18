@@ -9,7 +9,7 @@ import time
 from typing import TYPE_CHECKING
 
 from pallas.core.foundation.config.repo_settings import repo_root
-from pallas.core.foundation.paths import PROJECT_ROOT, plugin_data_dir
+from pallas.core.foundation.paths import plugin_data_dir
 from pallas.core.platform.shard.registry.config import get_shard_registry_settings
 from pallas.core.platform.shard.registry.store import ShardRegistry, get_shard_registry
 from pallas.core.platform.shard.registry.worker_count import calc_production_worker_count
@@ -37,8 +37,10 @@ def shard_run_dir() -> Path:
 
 
 def production_worker_count_required(reg: ShardRegistry | None = None) -> int:
+    from pallas.core.platform.protocol_paths import protocol_accounts_path
+
     reg = reg or get_shard_registry()
-    accounts = PROJECT_ROOT / "data/pallas_protocol/accounts.json"
+    accounts = protocol_accounts_path()
     return calc_production_worker_count(
         bots_per_shard=reg.bots_per_shard,
         worker_base_port=reg.worker_base_port,

@@ -10,14 +10,7 @@ _lock = threading.Lock()
 _seen: tuple[float, float] | None = None
 
 _REGISTRY_PLUGIN = "pallas_shard"
-_ACCOUNTS_FILE = "accounts.json"
 _REGISTRY_FILE = "registry.json"
-
-
-def _accounts_data_dir():
-    from packages.pb_protocol.data_dir import pb_protocol_data_dir
-
-    return pb_protocol_data_dir(create=False)
 
 
 def _file_mtime(path) -> float:
@@ -29,9 +22,10 @@ def _file_mtime(path) -> float:
 
 def _current_mtuples() -> tuple[float, float]:
     from pallas.core.foundation.paths import plugin_data_dir
+    from pallas.core.platform.protocol_paths import protocol_accounts_path
 
     reg = plugin_data_dir(_REGISTRY_PLUGIN, create=False) / _REGISTRY_FILE
-    acc = _accounts_data_dir() / _ACCOUNTS_FILE
+    acc = protocol_accounts_path()
     return (_file_mtime(reg), _file_mtime(acc))
 
 

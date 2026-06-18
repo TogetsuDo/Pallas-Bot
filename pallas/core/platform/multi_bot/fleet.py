@@ -12,13 +12,11 @@ _cached: frozenset[int] | None = None
 # 本进程已连过 WS、但 accounts/registry 可能尚未刷新的 QQ
 _session_connected: set[int] = set()
 
-_ACCOUNTS_FILE = "accounts.json"
-
 
 def _accounts_path():
-    from packages.pb_protocol.data_dir import pb_protocol_data_dir
+    from pallas.core.platform.protocol_paths import protocol_accounts_path
 
-    return pb_protocol_data_dir() / _ACCOUNTS_FILE
+    return protocol_accounts_path()
 
 
 def invalidate_fleet_bot_cache() -> None:
