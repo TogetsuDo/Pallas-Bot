@@ -103,7 +103,7 @@ def _load_plugin_module(
         return False
     if importlib.util.find_spec(module_path) is None:
         logger.error(
-            "启动：{} 跳过 {}（未安装，请 uv sync）",
+            "启动：{} 跳过 {}（未发现模块）",
             role_label,
             module_path,
         )

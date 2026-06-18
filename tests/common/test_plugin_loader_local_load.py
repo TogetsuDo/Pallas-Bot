@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from pallas.core.platform.bot_runtime import plugin_loader
 
 
@@ -76,3 +78,32 @@ def test_load_discovered_plugin_modules_skips_src_bundled_when_pip_alias_loaded(
     assert count == 0
     assert calls == []
     assert loaded_short == {"duel"}
+
+
+def test_load_plugin_module_logs_neutral_message_when_module_missing(monkeypatch):
+    records: list[tuple[str, tuple[object, ...]]] = []
+
+    monkeypatch.setattr(
+        "pallas.core.platform.bot_runtime.plugin_loader.importlib.util.find_spec",
+        lambda _module_path: None,
+    )
+    monkeypatch.setattr(
+        plugin_loader,
+        "logger",
+        SimpleNamespace(error=lambda message, *args: records.append((message, args))),
+    )
+
+    loaded = plugin_loader._load_plugin_module(
+        "packages.relogin_bot",
+        role_label="hub",
+        loaded_short=set(),
+    )
+
+    assert loaded is False
+    assert records == [
+        (
+            "启动：{} 跳过 {}（未发现模块）",
+            ("hub", "packages.relogin_bot"),
+        )
+    ]
+    assert "uv sync" not in records[0][0]

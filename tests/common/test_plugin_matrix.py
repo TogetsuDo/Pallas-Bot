@@ -6,6 +6,7 @@ from pallas.core.platform.bot_runtime.plugin_matrix import (
     installed_extra_plugin_modules,
     is_core_plugin,
     is_extra_plugin,
+    resolve_hub_bundled_module_paths,
     should_load_bundled_plugin,
     uv_extra_for_plugin,
 )
@@ -119,6 +120,22 @@ def test_installed_extra_plugin_modules_maa_role_split(monkeypatch):
     assert "pallas_plugin_maa_hub" not in worker_mods
 
 
+def test_resolve_hub_bundled_module_paths_skips_missing_extra(monkeypatch):
+    monkeypatch.setattr(
+        "pallas.core.platform.bot_runtime.plugin_matrix.should_load_bundled_plugin",
+        lambda name, load_bundled_extra=None: True,
+    )
+    monkeypatch.setattr(
+        "pallas.core.platform.bot_runtime.plugin_matrix.importlib.util.find_spec",
+        lambda mod: object() if mod != "packages.relogin_bot" else None,
+    )
+
+    mods = resolve_hub_bundled_module_paths()
+
+    assert "packages.pb_webui" in mods
+    assert "packages.relogin_bot" not in mods
+
+
 def test_community_stats_canonical_alias():
     from pallas.core.platform.bot_runtime.plugin_package_aliases import canonical_plugin_package
 
@@ -143,9 +160,7 @@ def test_community_stats_canonical_alias():
         "pallas_plugin_chat": "chat",
         "pallas_plugin_bot_status": "bot_status",
     }
-    all_modules = {
-        mod for modules in EXTRA_PACKAGE_MODULES.values() for mod in modules
-    }
+    all_modules = {mod for modules in EXTRA_PACKAGE_MODULES.values() for mod in modules}
     for mod, canonical in expected_pip_aliases.items():
         assert mod in all_modules
         assert canonical_plugin_package(mod) == canonical

@@ -235,6 +235,8 @@ def resolve_hub_bundled_module_paths(*, load_bundled_extra: bool | str | None = 
         short = mod.rsplit(".", 1)[-1]
         if is_extra_plugin(short) and not should_load_bundled_plugin(short, load_bundled_extra=mode):
             continue
+        if importlib.util.find_spec(mod) is None:
+            continue
         out.append(mod)
     return out
 
