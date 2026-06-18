@@ -35,14 +35,11 @@ ALLOWED_API_PREFIX = "pallas.api."
 
 
 def _module_names_from_import(node: ast.AST) -> list[str]:
-    names: list[str] = []
     if isinstance(node, ast.Import):
-        for alias in node.names:
-            names.append(alias.name)
-    elif isinstance(node, ast.ImportFrom):
-        if node.module:
-            names.append(node.module)
-    return names
+        return [alias.name for alias in node.names]
+    if isinstance(node, ast.ImportFrom) and node.module:
+        return [node.module]
+    return []
 
 
 def _check_file_imports(path: Path) -> list[str]:
@@ -57,14 +54,10 @@ def _check_file_imports(path: Path) -> list[str]:
             continue
         for mod in _module_names_from_import(node):
             if mod.startswith(FORBIDDEN_PREFIXES_L1):
-                errors.append(
-                    f"禁止 import `{mod}`（社区插件仅允许 `pallas.api.*`）"
-                )
+                errors.append(f"禁止 import `{mod}`（社区插件仅允许 `pallas.api.*`）")
                 continue
             if mod.startswith("pallas.") and not mod.startswith(ALLOWED_API_PREFIX):
-                errors.append(
-                    f"仅允许 `pallas.api.*`，发现 `{mod}`"
-                )
+                errors.append(f"仅允许 `pallas.api.*`，发现 `{mod}`")
     return errors
 
 
@@ -75,8 +68,7 @@ def _validate_plugin_imports(plugin_dir: Path) -> list[str]:
         if not py_file.is_file():
             continue
         file_errors = _check_file_imports(py_file)
-        for err in file_errors:
-            errors.append(f"{py_file.name}: {err}")
+        errors.extend(f"{py_file.name}: {err}" for err in file_errors)
     return errors
 
 
@@ -111,6 +103,129 @@ def read_plugin_metadata_from_init(init_path: Path) -> dict[str, str]:
                     out[keyword.arg] = keyword.value.value.strip()
         break
     return out
+
+
+def _const_str(value: ast.AST) -> str | None:
+    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+        return value.value.strip()
+    return None
+
+
+def _const_int(value: ast.AST) -> int | None:
+    if isinstance(value, ast.Constant) and isinstance(value.value, int):
+        return int(value.value)
+    return None
+
+
+def _extract_call_name(node: ast.AST) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return ""
+
+
+def _extract_literal_rows(node: ast.AST) -> list[dict[str, Any]]:
+    if isinstance(node, (ast.List, ast.Tuple)):
+        return [row for item in node.elts if (row := _extract_literal_dict(item)) is not None]
+    if isinstance(node, ast.Call):
+        rows: list[dict[str, Any]] = []
+        for arg in node.args:
+            row = _extract_literal_dict(arg)
+            if row is not None:
+                rows.append(row)
+        return rows
+    return []
+
+
+def _extract_literal_dict(node: ast.AST) -> dict[str, Any] | None:
+    if not isinstance(node, ast.Dict):
+        return None
+    out: dict[str, Any] = {}
+    for key_node, value_node in zip(node.keys, node.values, strict=False):
+        key = _const_str(key_node) if key_node is not None else None
+        if not key:
+            continue
+        str_value = _const_str(value_node)
+        if str_value is not None:
+            out[key] = str_value
+            continue
+        int_value = _const_int(value_node)
+        if int_value is not None:
+            out[key] = int_value
+            continue
+    return out
+
+
+def _extract_decl_row(node: ast.AST) -> dict[str, Any] | None:
+    if not isinstance(node, ast.Call):
+        return _extract_literal_dict(node)
+    call_name = _extract_call_name(node.func)
+    if call_name == "command_perm_row":
+        if len(node.args) >= 3:
+            return {
+                "id": _const_str(node.args[0]) or "",
+                "label": _const_str(node.args[1]) or "",
+                "default": _const_str(node.args[2]) or "",
+            }
+    if call_name == "command_limit_row":
+        if len(node.args) >= 2:
+            return {
+                "id": _const_str(node.args[0]) or "",
+                "cd_sec": _const_int(node.args[1]) if _const_int(node.args[1]) is not None else -1,
+            }
+    return _extract_literal_dict(node)
+
+
+def _extract_decl_rows(node: ast.AST) -> list[dict[str, Any]]:
+    if isinstance(node, (ast.List, ast.Tuple)):
+        return [row for item in node.elts if (row := _extract_decl_row(item)) is not None]
+    if isinstance(node, ast.Call):
+        rows: list[dict[str, Any]] = []
+        for arg in node.args:
+            row = _extract_decl_row(arg)
+            if row is not None:
+                rows.append(row)
+        return rows
+    return []
+
+
+def parse_plugin_metadata_contract(init_path: Path) -> dict[str, Any]:
+    text = init_path.read_text(encoding="utf-8")
+    try:
+        tree = ast.parse(text, filename=str(init_path))
+    except SyntaxError:
+        return {}
+
+    contract: dict[str, Any] = {
+        "name": "",
+        "description": "",
+        "usage": "",
+        "command_permissions": [],
+        "command_limits": [],
+        "menu_data": [],
+    }
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if _extract_call_name(node.func) != "PluginMetadata":
+            continue
+        for keyword in node.keywords:
+            if keyword.arg in {"name", "description", "usage"}:
+                contract[keyword.arg] = _const_str(keyword.value) or ""
+                continue
+            if keyword.arg != "extra" or not isinstance(keyword.value, ast.Dict):
+                continue
+            for extra_key_node, extra_value_node in zip(keyword.value.keys, keyword.value.values, strict=False):
+                extra_key = _const_str(extra_key_node) if extra_key_node is not None else None
+                if extra_key == "command_permissions":
+                    contract["command_permissions"] = _extract_decl_rows(extra_value_node)
+                elif extra_key == "command_limits":
+                    contract["command_limits"] = _extract_decl_rows(extra_value_node)
+                elif extra_key == "menu_data":
+                    contract["menu_data"] = _extract_literal_rows(extra_value_node)
+        break
+    return contract
 
 
 def validate_community_plugin_dir(plugin_dir: Path) -> tuple[list[str], list[str]]:
@@ -155,10 +270,85 @@ def validate_community_plugin_dir(plugin_dir: Path) -> tuple[list[str], list[str
 
     # L1 import 检查（社区插件仅允许 pallas.api.*）
     import_errors = _validate_plugin_imports(plugin_dir)
-    for err in import_errors:
-        errors.append(f"L1 import 违规: {err}")
+    errors.extend(f"L1 import 违规: {err}" for err in import_errors)
 
     return errors, warnings
+
+
+def validate_community_plugin_dir_profile(
+    plugin_dir: Path,
+    *,
+    profile: str = "L1",
+) -> tuple[list[str], list[str], dict[str, Any]]:
+    level = (profile or "L1").upper()
+    errors, warnings = validate_community_plugin_dir(plugin_dir)
+    profile_data: dict[str, Any] = {
+        "level": level,
+        "missing": [],
+        "command_ids": {
+            "permissions": [],
+            "menu": [],
+            "limits": [],
+        },
+    }
+    init_path = plugin_dir / "__init__.py"
+    if not init_path.is_file():
+        return errors, warnings, profile_data
+
+    contract = parse_plugin_metadata_contract(init_path)
+    usage = str(contract.get("usage") or "").strip()
+    description = str(contract.get("description") or "").strip()
+    command_permissions = list(contract.get("command_permissions") or [])
+    command_limits = list(contract.get("command_limits") or [])
+    menu_data = list(contract.get("menu_data") or [])
+
+    permission_ids = sorted({
+        str(row.get("id") or "").strip() for row in command_permissions if str(row.get("id") or "").strip()
+    })
+    menu_ids = sorted({
+        str(row.get("command_permission") or "").strip()
+        for row in menu_data
+        if str(row.get("command_permission") or "").strip()
+    })
+    limit_ids = sorted({str(row.get("id") or "").strip() for row in command_limits if str(row.get("id") or "").strip()})
+    profile_data["command_ids"] = {
+        "permissions": permission_ids,
+        "menu": menu_ids,
+        "limits": limit_ids,
+    }
+
+    if not description:
+        errors.append(f"{level} 缺少 description")
+        profile_data["missing"].append("description")
+    if not usage:
+        errors.append(f"{level} 缺少 usage")
+        profile_data["missing"].append("usage")
+    if not command_permissions:
+        errors.append(f"{level} 缺少 command_permissions")
+        profile_data["missing"].append("command_permissions")
+    if not menu_data:
+        errors.append(f"{level} 缺少 menu_data")
+        profile_data["missing"].append("menu_data")
+
+    if command_permissions and menu_ids:
+        missing_in_permissions = sorted(set(menu_ids) - set(permission_ids))
+        if missing_in_permissions:
+            errors.append(
+                f"{level} menu_data 引用了未声明权限的命令 ID: {', '.join(missing_in_permissions)}",
+            )
+
+    if level == "L2":
+        if not command_limits:
+            errors.append("L2 缺少 command_limits")
+            profile_data["missing"].append("command_limits")
+        else:
+            missing_in_permissions = sorted(set(limit_ids) - set(permission_ids))
+            if missing_in_permissions:
+                errors.append(
+                    f"L2 command_limits 存在未声明权限的命令 ID: {', '.join(missing_in_permissions)}",
+                )
+
+    return errors, warnings, profile_data
 
 
 def suggest_plugin_id_from_repo(repository_url: str) -> str | None:

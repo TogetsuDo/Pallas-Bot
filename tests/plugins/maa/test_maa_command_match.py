@@ -16,6 +16,7 @@ def test_control_phrase_case_insensitive() -> None:
 
 def test_maa_status_command_prefix() -> None:
     from packages.maa.command_match import STATUS_COMMAND
+
     from pallas.core.foundation.command_prefix import extract_command_tail_any, matches_command_prefix
 
     assert matches_command_prefix("牛牛maa状态", STATUS_COMMAND)
@@ -24,9 +25,11 @@ def test_maa_status_command_prefix() -> None:
 
 def test_settings_prefix_case_insensitive() -> None:
     specs = parse_command_specs("牛牛设置连接 127.0.0.1:5555")
-    assert specs and specs[0].task_type == "Settings-ConnectionAddress"
+    assert specs
+    assert specs[0].task_type == "Settings-ConnectionAddress"
     specs2 = parse_command_specs("牛牛设置关卡 1-7")
-    assert specs2 and specs2[0].task_type == "Settings-Stage1"
+    assert specs2
+    assert specs2[0].task_type == "Settings-Stage1"
 
 
 def test_raw_task_type_case_insensitive() -> None:

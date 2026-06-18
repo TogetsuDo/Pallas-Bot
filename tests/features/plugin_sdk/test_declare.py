@@ -9,7 +9,7 @@ def test_command_limit_row():
 
 
 def test_command_limit_row_rejects_empty_id():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="command_id"):
         command_limit_row("", 0)
 
 

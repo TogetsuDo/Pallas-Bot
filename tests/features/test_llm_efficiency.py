@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from pallas.product.llm.chat_queue import (
     clear_chat_queue_for_tests,
     merge_queued_chat,
@@ -40,7 +38,7 @@ def test_chat_queue_merge_last_wins_on_cooldown() -> None:
     assert queue_size_for_tests() == 0
 
 
-def test_tools_blacklist_filters_schema(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_tools_blacklist_filters_schema(monkeypatch) -> None:
     monkeypatch.setattr(
         "pallas.product.llm.tools.registry.get_llm_config",
         lambda: LlmConfig(llm_tools_enabled=True, llm_tools_blacklist=["arknights.operator.get"]),

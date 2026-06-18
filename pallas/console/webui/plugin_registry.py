@@ -14,12 +14,15 @@ from pallas.core.foundation.paths import PROJECT_ROOT
 from pallas.core.platform.bot_runtime.plugin_matrix import (
     EXTRA_PACKAGE_PRIORITY,
     EXTRA_PLUGIN_PACKAGES,
+    ext_install_cli_for_package,
     extra_package_for_plugin,
+    official_extension_activation_policy,
     official_extension_description,
     official_extension_repo_url,
     official_extension_visuals,
-    uv_extra_for_package,
 )
+from pallas.core.platform.bot_runtime.plugin_package_aliases import canonical_plugin_package
+from pallas.core.plugin_reload import reload_policy_from_metadata
 
 _PLUGINS_ROOT = PROJECT_ROOT / "packages"
 
@@ -33,12 +36,35 @@ def loaded_extra_plugin_ids(plugin_ids: list[str]) -> list[str]:
     for p in get_loaded_plugins():
         nb = str(getattr(p, "name", "") or "").strip()
         if nb:
-            names.add(nb)
+            names.add(canonical_plugin_package(nb))
         mod = getattr(p, "module", None)
         mname = getattr(mod, "__name__", "") if mod is not None else ""
         if mname:
-            names.add(mname.rsplit(".", 1)[-1])
+            names.add(canonical_plugin_package(mname.rsplit(".", 1)[-1]))
     return [pid for pid in plugin_ids if pid in names]
+
+
+def loaded_extra_reload_policies(plugin_ids: list[str]) -> dict[str, str]:
+    try:
+        from nonebot import get_loaded_plugins
+    except Exception:
+        return {}
+    target_ids = {canonical_plugin_package(pid) for pid in plugin_ids}
+    policies: dict[str, str] = {}
+    for plugin in get_loaded_plugins():
+        candidates = {
+            canonical_plugin_package(str(getattr(plugin, "name", "") or "").strip()),
+        }
+        mod = getattr(plugin, "module", None)
+        mname = getattr(mod, "__name__", "") if mod is not None else ""
+        if mname:
+            candidates.add(canonical_plugin_package(mname.rsplit(".", 1)[-1]))
+        meta = getattr(plugin, "metadata", None)
+        policy = reload_policy_from_metadata(meta)
+        for candidate in candidates:
+            if candidate and candidate in target_ids:
+                policies[candidate] = policy
+    return policies
 
 
 def build_official_extension_rows() -> list[dict[str, Any]]:
@@ -50,9 +76,9 @@ def build_official_extension_rows() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for package in sorted(by_package.keys(), key=lambda p: (EXTRA_PACKAGE_PRIORITY.get(p, "P9"), p)):
         plugin_ids = sorted(by_package[package])
-        uv_extra = uv_extra_for_package(package)
         bundled = [pid for pid in plugin_ids if (_PLUGINS_ROOT / pid).is_dir()]
         loaded = loaded_extra_plugin_ids(plugin_ids)
+        reload_policies = loaded_extra_reload_policies(plugin_ids)
         pip_installed = pip_package_installed(package)
         repo_url = official_extension_repo_url(package)
         visuals = official_extension_visuals(package)
@@ -78,8 +104,12 @@ def build_official_extension_rows() -> list[dict[str, Any]]:
             "package": package,
             "plugin_ids": plugin_ids,
             "description": official_extension_description(package),
-            "uv_extra": uv_extra,
-            "install_cli": f"uv sync --extra {uv_extra}" if uv_extra else None,
+            "install_cli": ext_install_cli_for_package(package),
+            "activation_policy": official_extension_activation_policy(package),
+            "reload_policy": next(
+                (reload_policies[pid] for pid in plugin_ids if pid in reload_policies),
+                None,
+            ),
             "repository_url": repo_url,
             "icon": visuals["icon"],
             "cover": visuals["cover"],

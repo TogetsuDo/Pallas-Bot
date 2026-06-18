@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from pallas.core.storage.declare import plugin_storage_row
@@ -36,14 +38,14 @@ def test_parse_plugin_storage_decl() -> None:
 async def test_ephemeral_group_storage(monkeypatch) -> None:
     class FakePlugin:
         name = "duel"
-
-        class metadata:
-            name = "决斗"
-            extra = {
+        metadata = SimpleNamespace(
+            name="决斗",
+            extra={
                 "plugin_storage": [
                     plugin_storage_row("duel_pair", ephemeral=True),
                 ]
-            }
+            },
+        )
 
     monkeypatch.setattr("nonebot.get_loaded_plugins", lambda: [FakePlugin()])
     clear_plugin_storage_registry_cache()
@@ -63,14 +65,14 @@ async def test_persisted_group_storage(monkeypatch) -> None:
 
     class FakePlugin:
         name = "demo"
-
-        class metadata:
-            name = "演示"
-            extra = {
+        metadata = SimpleNamespace(
+            name="演示",
+            extra={
                 "plugin_storage": [
                     plugin_storage_row("counter", ephemeral=False),
                 ]
-            }
+            },
+        )
 
     async def fake_find(_self, key: str):
         if key != "plugin_storage":
@@ -95,14 +97,14 @@ async def test_persisted_group_storage(monkeypatch) -> None:
 async def test_deploy_scope_async(monkeypatch, tmp_path) -> None:
     class FakePlugin:
         name = "demo"
-
-        class metadata:
-            name = "演示"
-            extra = {
+        metadata = SimpleNamespace(
+            name="演示",
+            extra={
                 "plugin_storage": [
                     plugin_storage_row("note", scope="deploy"),
                 ]
-            }
+            },
+        )
 
     monkeypatch.setattr("nonebot.get_loaded_plugins", lambda: [FakePlugin()])
     monkeypatch.setattr(

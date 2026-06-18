@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import zipfile
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from packages.pb_webui.manager import _resolved_extract_root
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_resolved_extract_root_prefers_public_subdir(tmp_path: Path) -> None:

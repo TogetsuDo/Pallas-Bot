@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from pallas.product.llm.tools.bootstrap import reset_llm_tools_bootstrap_for_tests
@@ -58,20 +60,24 @@ def test_register_plugin_command_tool_schema(monkeypatch) -> None:
 
     class FakePlugin:
         name = "demo"
-
-        class metadata:
-            name = "演示"
-            extra = {"llm_tools": [llm_command_tool_row(
-                name="demo.echo",
-                command_id="demo.echo",
-                description="回声",
-                parameters={
-                    "type": "object",
-                    "properties": {"text": {"type": "string"}},
-                    "required": ["text"],
-                },
-                command_template="echo {text}",
-            )]}
+        metadata = SimpleNamespace(
+            name="演示",
+            extra={
+                "llm_tools": [
+                    llm_command_tool_row(
+                        name="demo.echo",
+                        command_id="demo.echo",
+                        description="回声",
+                        parameters={
+                            "type": "object",
+                            "properties": {"text": {"type": "string"}},
+                            "required": ["text"],
+                        },
+                        command_template="echo {text}",
+                    )
+                ]
+            },
+        )
 
     monkeypatch.setattr(
         "nonebot.get_loaded_plugins",

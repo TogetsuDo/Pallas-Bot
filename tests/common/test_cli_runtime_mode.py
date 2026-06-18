@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pallas.console.cli.runtime_mode import pid_alive, read_pid_file, resolve_bot_mode
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_read_pid_file_missing(tmp_path: Path):

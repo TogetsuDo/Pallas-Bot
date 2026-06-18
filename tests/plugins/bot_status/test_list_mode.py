@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
+
+from pallas_plugin_bot_status import list_mode as mod
 
 import pallas.core.platform.shard.context as shard_ctx
-from packages.bot_status import list_mode as mod
 from pallas.core.platform.multi_bot import fleet as fleet_mod
 
 
+@dataclass
 class _Cfg:
-    def __init__(self, list_mode: str = "auto"):
-        self.bot_status_list_mode = list_mode
+    bot_status_list_mode: str = "auto"
 
 
 def patch_list_mode(monkeypatch, mode: str) -> None:
@@ -56,9 +58,7 @@ def test_cluster_online_connected_uses_presence_when_sharding(monkeypatch):
     def fake_presence():
         return frozenset({100, 200})
 
-    import pallas.core.platform.shard.presence as presence_mod
-
-    monkeypatch.setattr(presence_mod, "get_cluster_online_bot_ids", fake_presence)
+    monkeypatch.setattr("pallas.api.platform.get_cluster_online_bot_ids", fake_presence)
     online = mod.cluster_online_bot_ids_for_status(list_mode="connected")
     assert online == {100, 200}
 

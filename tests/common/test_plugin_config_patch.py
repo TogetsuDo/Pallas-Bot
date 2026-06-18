@@ -1,4 +1,5 @@
-from pydantic import BaseModel, Field
+import pytest
+from pydantic import BaseModel, Field, ValidationError
 
 from pallas.console.webui.plugin_api import (
     format_validation_error,
@@ -24,11 +25,8 @@ def test_plugin_field_env_key_repeater_learn() -> None:
 
 
 def test_format_validation_error_includes_field() -> None:
-    try:
+    with pytest.raises(ValidationError) as exc:
         SampleConfig(ratio=-1)
-    except Exception as e:
-        from pydantic import ValidationError
 
-        assert isinstance(e, ValidationError)
-        msg = format_validation_error(e)
-        assert "ratio" in msg
+    msg = format_validation_error(exc.value)
+    assert "ratio" in msg

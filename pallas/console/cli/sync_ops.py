@@ -8,8 +8,8 @@ from pallas.console.webui.extension_install import ExtensionInstallError, run_uv
 
 SYNC_TIMEOUT_S = 900.0
 SYNC_ALIAS_EXTRAS: dict[str, tuple[str, ...]] = {
-    "deploy-full": ("deploy-full",),
-    "deploy-all": ("deploy-all",),
+    "deploy-full": (),
+    "deploy-all": (),
 }
 
 
@@ -36,10 +36,6 @@ def expand_sync_extras(
     deploy_all: bool = False,
 ) -> list[str]:
     out: list[str] = []
-    if deploy_full:
-        out.extend(SYNC_ALIAS_EXTRAS["deploy-full"])
-    if deploy_all:
-        out.extend(SYNC_ALIAS_EXTRAS["deploy-all"])
     for item in extras:
         key = (item or "").strip()
         if not key:
@@ -59,6 +55,26 @@ def expand_sync_extras(
     return ordered
 
 
+def sync_alias_notes(
+    *,
+    deploy_full: bool = False,
+    deploy_all: bool = False,
+    extras: list[str] | None = None,
+) -> list[str]:
+    notes: list[str] = []
+    requested = set(extras or [])
+    if deploy_full or "deploy-full" in requested:
+        notes.append(
+            "`deploy-full` 不再通过 uv sync 安装官方扩展；请改用插件商店或 `uv run pallas ext install <package>`。"
+        )
+    if deploy_all or "deploy-all" in requested:
+        notes.append(
+            "`deploy-all` 不再通过 uv sync 安装官方扩展；"
+            "请改用插件商店或逐个执行 `uv run pallas ext install <package>`。"
+        )
+    return notes
+
+
 async def run_sync_cli(
     *,
     extras: list[str],
@@ -67,6 +83,7 @@ async def run_sync_cli(
     deploy_all: bool,
 ) -> int:
     merged = expand_sync_extras(extras, deploy_full=deploy_full, deploy_all=deploy_all)
+    notes = sync_alias_notes(deploy_full=deploy_full, deploy_all=deploy_all, extras=extras)
     try:
         code, out, err = await sync_dependencies(extras=merged, no_dev=no_dev)
     except ExtensionInstallError as e:
@@ -76,6 +93,8 @@ async def run_sync_cli(
         detail = err or out or "(无输出)"
         print(f"uv sync 失败：{tail_output(detail)}", file=sys.stderr)
         return code or 1
+    for note in notes:
+        print(note)
     if out.strip():
         print(out)
     print("依赖同步完成。")

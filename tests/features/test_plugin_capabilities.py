@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -20,14 +21,14 @@ def reset_storage_registry() -> None:
 def test_deploy_storage_roundtrip(tmp_path, monkeypatch) -> None:
     class FakePlugin:
         name = "help"
-
-        class metadata:
-            name = "牛牛帮助"
-            extra = {
+        metadata = SimpleNamespace(
+            name="牛牛帮助",
+            extra={
                 "plugin_storage": [
                     plugin_storage_row("hidden_plugins", scope="deploy"),
                 ]
-            }
+            },
+        )
 
     monkeypatch.setattr("nonebot.get_loaded_plugins", lambda: [FakePlugin()])
     monkeypatch.setattr(
@@ -48,10 +49,9 @@ def test_deploy_storage_roundtrip(tmp_path, monkeypatch) -> None:
 def test_build_plugin_capabilities_ui_groups(monkeypatch) -> None:
     class FakeDraw:
         name = "draw"
-
-        class metadata:
-            name = "牛牛画画"
-            extra = {
+        metadata = SimpleNamespace(
+            name="牛牛画画",
+            extra={
                 "command_permissions": [{"id": "draw.draw", "label": "牛牛画画", "default": "everyone"}],
                 "command_limits": [{"id": "draw.draw", "cd_sec": 3}],
                 "llm_tools": [
@@ -67,7 +67,8 @@ def test_build_plugin_capabilities_ui_groups(monkeypatch) -> None:
                 "plugin_storage": [
                     plugin_storage_row("daily_usage", scope="deploy", label="日用量"),
                 ],
-            }
+            },
+        )
 
     monkeypatch.setattr("nonebot.get_loaded_plugins", lambda: [FakeDraw()])
     monkeypatch.setattr("pallas.core.perm.schema.get_loaded_plugins", lambda: [FakeDraw()])
@@ -85,3 +86,4 @@ def test_build_plugin_capabilities_ui_groups(monkeypatch) -> None:
     assert draw["llm_tools"][0]["name"] == "draw.image"
     assert draw["storage_keys"][0]["key"] == "daily_usage"
     assert draw.get("reload_policy") in (None, "config_only")
+    assert draw.get("activation_policy") == "hot-reloadable"

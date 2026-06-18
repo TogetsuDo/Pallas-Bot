@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from pallas.core.foundation.config import migrate_env_to_pallas as mig
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_inspect_no_legacy_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
