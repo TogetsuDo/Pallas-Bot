@@ -12,7 +12,15 @@ from pallas.core.platform.ai_callback.task_types import LLM_CHAT_TASK_TYPE
 from pallas.product.llm import ChatSubmitRequest, get_llm_config, is_llm_chat_service_enabled, submit_chat_task
 from pallas.product.llm.chat_queue import merge_queued_chat, stash_chat_during_cooldown
 from pallas.product.llm.governance import check_llm_chat_gate, refresh_llm_chat_cooldown
-from pallas.product.llm.memory import append_memory_context, parse_memory_teach, save_memory_entry
+from pallas.product.llm.memory import (
+    append_memory_context,
+    append_relationship_context,
+    extract_at_target,
+    parse_memory_teach,
+    parse_relationship_teach,
+    save_memory_entry,
+    save_relationship_note,
+)
 from pallas.product.llm.persona_context import build_persona_llm_context
 from pallas.product.llm.polish_lite import maybe_submit_repeater_corpus_llm
 from pallas.product.llm.reply_gate import evaluate_llm_reply_gate
@@ -25,6 +33,7 @@ from .replies import (
     LLM_CHAT_BUSY_REPLY,
     LLM_CHAT_FAILED_REPLY,
     LLM_CHAT_MEMORY_SAVED_REPLY,
+    LLM_CHAT_RELATIONSHIP_SAVED_REPLY,
     LLM_CHAT_VAGUE_REPLY,
 )
 
@@ -79,6 +88,14 @@ async def handle_llm_chat(bot: Bot, event: Event):
             await llm_chat_msg.send(LLM_CHAT_MEMORY_SAVED_REPLY)
             return
 
+    relationship_body = parse_relationship_teach(plain or msg)
+    if relationship_body is not None and llm_cfg.llm_relationship_notes_enabled:
+        target_id = extract_at_target(msg) or user_id
+        saved = await save_relationship_note(int(bot.self_id), group_id, target_id, relationship_body, cfg=llm_cfg)
+        if saved:
+            await llm_chat_msg.send(LLM_CHAT_RELATIONSHIP_SAVED_REPLY)
+            return
+
     system_prompt = ""
     bundle = None
     try:
@@ -108,6 +125,14 @@ async def handle_llm_chat(bot: Bot, event: Event):
         bot_id=int(bot.self_id),
         group_id=group_id,
         query_text=plain or msg,
+        cfg=llm_cfg,
+    )
+
+    system_prompt = await append_relationship_context(
+        system_prompt,
+        bot_id=int(bot.self_id),
+        group_id=group_id,
+        user_id=user_id,
         cfg=llm_cfg,
     )
 

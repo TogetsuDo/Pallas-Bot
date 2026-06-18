@@ -179,7 +179,7 @@ AI 仓不负责：
 | 方向 | 现状 |
 | --- | --- |
 | `multi_bot_social` 的品牌化收口 | 有 fanout / ingress / hosted activity，但缺总契约统一描述 |
-| `relationship_notes` | 仅有预设层雏形，没有稳定写入/校正/衰减规则 |
+| `relationship_notes` | 已落地按 `(bot,group,user)` 的写入/校正（upsert）/衰减（半衰期）与 prompt 注入；二级来源（审计提炼、自动观测写入）仍待补 |
 | token 可观测闭环 | 日汇总与状态文本已接入；控制台表格与更细颗粒运维展示仍未全量收口 |
 | memory infra 终态 | AI 仓侧运行时记忆基础设施仍未完成 |
 | plugin governance 收尾 | 单插件 perm/CD 已有后端闭环；前端插件页聚合治理与作者 L1/L2 校验仍在途中 |
@@ -208,7 +208,7 @@ AI 仓不负责：
 - queue merge 完整接入与验证
 - token 统计面板收口
 - `episode_notes` 从 teach-only + 明确策略，继续升级到可控提炼
-- `relationship_notes` 契约、来源、衰减规则补齐
+- `relationship_notes` 二级来源补齐：聊天观测自动写入、审计提炼通过后入库（契约/衰减规则已落地）
 
 ### 7.4 工具与知识相关
 

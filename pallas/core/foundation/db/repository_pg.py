@@ -16,6 +16,7 @@ from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -241,6 +242,31 @@ class LlmMemoryEntryRow(Base):
     keywords: Mapped[str] = mapped_column(Text, nullable=False, default="")
     content: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[str] = mapped_column(Text, nullable=False, default="teach")
+    created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    updated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+
+class LlmRelationshipNoteRow(Base):
+    """关系备注层：按 (bot, group, user) 维护稳定关系事实，带置信权重与衰减。"""
+
+    __tablename__ = "llm_relationship_note"
+    __table_args__ = (
+        Index(
+            "ix_llm_relationship_note_scope",
+            "bot_id",
+            "group_id",
+            "user_id",
+            unique=True,
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    bot_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    group_id: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False, default="teach")
+    weight: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
     updated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
 

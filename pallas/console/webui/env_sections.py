@@ -316,6 +316,7 @@ def _llm_section() -> WebuiEnvSection:
             "llm_reply_gate_enabled": "LLM_REPLY_GATE_ENABLED",
             "llm_chat_queue_merge": "LLM_CHAT_QUEUE_MERGE",
             "llm_memory_rag_enabled": "LLM_MEMORY_RAG_ENABLED",
+            "llm_relationship_notes_enabled": "LLM_RELATIONSHIP_NOTES_ENABLED",
         },
         skip_fields=frozenset(),
     )

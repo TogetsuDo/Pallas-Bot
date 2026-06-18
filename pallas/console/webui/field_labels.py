@@ -157,6 +157,7 @@ FIELD_LABELS: dict[str, str] = {
     "llm_reply_gate_enabled": "过滤无意义 @（门控）",
     "llm_chat_queue_merge": "冷却期合并多条 @",
     "llm_memory_rag_enabled": "群记忆检索（记住口令）",
+    "llm_relationship_notes_enabled": "关系备注层（记住关系口令）",
     "llm_session_enabled": "记住多轮对话上下文",
     "llm_chat_system_prompt_path": "系统提示词文件",
     "llm_chat_min_priority": "闲聊指令优先级",

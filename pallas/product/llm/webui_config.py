@@ -127,6 +127,13 @@ class LlmWebuiConfig(BaseModel):
             "开启后可将「记住：…」写入记忆，并按相关度注入对话",
         ),
     )
+    llm_relationship_notes_enabled: bool = Field(
+        default=True,
+        description=field_help(
+            "是否启用关系备注层",
+            "开启后可对 @某人 教导稳定关系（如「记住关系：xx是群主」），随时间衰减",
+        ),
+    )
 
 
 def get_llm_webui_config() -> LlmWebuiConfig:
@@ -150,4 +157,5 @@ def get_llm_webui_config() -> LlmWebuiConfig:
         llm_reply_gate_enabled=cfg.llm_reply_gate_enabled,
         llm_chat_queue_merge=cfg.llm_chat_queue_merge,
         llm_memory_rag_enabled=cfg.llm_memory_rag_enabled,
+        llm_relationship_notes_enabled=cfg.llm_relationship_notes_enabled,
     )

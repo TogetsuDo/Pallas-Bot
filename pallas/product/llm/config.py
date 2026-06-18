@@ -206,6 +206,10 @@ class LlmConfig(BaseModel):
     llm_memory_rag_top_k: int = Field(default=3, ge=1, le=8)
     llm_memory_max_per_group: int = Field(default=200, ge=1, le=2000)
     llm_memory_content_max_len: int = Field(default=500, ge=64, le=4000)
+    llm_relationship_notes_enabled: bool = Field(default=True)
+    llm_relationship_content_max_len: int = Field(default=200, ge=32, le=2000)
+    llm_relationship_half_life_days: float = Field(default=30.0, ge=0.0, le=365.0)
+    llm_relationship_min_weight: float = Field(default=0.2, ge=0.0, le=1.0)
     llm_session_summary_enabled: bool = Field(default=True)
     llm_session_summary_threshold: int = Field(default=40, ge=8, le=200)
     llm_session_summary_keep_messages: int = Field(default=16, ge=4, le=120)
@@ -284,6 +288,10 @@ def get_llm_config() -> LlmConfig:
             llm_memory_rag_top_k=_env_int("LLM_MEMORY_RAG_TOP_K", 3),
             llm_memory_max_per_group=_env_int("LLM_MEMORY_MAX_PER_GROUP", 200),
             llm_memory_content_max_len=_env_int("LLM_MEMORY_CONTENT_MAX_LEN", 500),
+            llm_relationship_notes_enabled=_env_bool("LLM_RELATIONSHIP_NOTES_ENABLED", True),
+            llm_relationship_content_max_len=_env_int("LLM_RELATIONSHIP_CONTENT_MAX_LEN", 200),
+            llm_relationship_half_life_days=_env_float("LLM_RELATIONSHIP_HALF_LIFE_DAYS", 30.0),
+            llm_relationship_min_weight=_env_float("LLM_RELATIONSHIP_MIN_WEIGHT", 0.2),
             llm_session_summary_enabled=_env_bool("LLM_SESSION_SUMMARY_ENABLED", True),
             llm_session_summary_threshold=_env_int("LLM_SESSION_SUMMARY_THRESHOLD", 40),
             llm_session_summary_keep_messages=_env_int("LLM_SESSION_SUMMARY_KEEP_MESSAGES", 16),
