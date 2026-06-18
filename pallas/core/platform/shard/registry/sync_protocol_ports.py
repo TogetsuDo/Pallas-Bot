@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 import shutil
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -111,11 +112,29 @@ def resolve_account_qq(account: dict, account_id: str = "") -> str:
     return str(account.get("qq") or account.get("id") or account_id).strip()
 
 
+def _resolve_config_manager_path() -> Path | None:
+    """在 sys.path 中定位 pip 包 pallas_plugin_protocol 的 config_manager.py。
+
+    直接 import 该模块会触发包 __init__（调用 get_driver()，启动期未就绪），
+    故按文件路径加载——既避开包初始化，又不依赖已删除的 bundled plugins/ 目录。
+    """
+    rel = Path("pallas_plugin_protocol") / "config_manager.py"
+    for entry in sys.path:
+        if not entry:
+            continue
+        cand = Path(entry) / rel
+        if cand.is_file():
+            return cand
+    return None
+
+
 def get_account_config_manager() -> Any:
     global _account_config_manager
     if _account_config_manager is not None:
         return _account_config_manager
-    path = Path(__file__).resolve().parents[3] / "plugins" / "pb_protocol" / "config_manager.py"
+    path = _resolve_config_manager_path()
+    if path is None:
+        raise ImportError("无法定位 AccountConfigManager：未找到 pallas_plugin_protocol.config_manager")
     spec = importlib.util.spec_from_file_location("_pallas_account_config_manager", path)
     if spec is None or spec.loader is None:
         raise ImportError(f"无法加载 AccountConfigManager: {path}")
