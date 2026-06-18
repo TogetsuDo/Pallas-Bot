@@ -143,7 +143,7 @@ def test_build_route_index_supports_multiple_explicit_plugin_routes(monkeypatch:
     plugins = [
         _fake_plugin(module_name="pallas_plugin_draw", menu_data=[{"trigger_condition": "牛牛画画 …"}]),
         _fake_plugin(module_name="packages.help", menu_data=[{"trigger_condition": "牛牛帮助 〈插件名〉"}]),
-        _fake_plugin(module_name="packages.bot_status", menu_data=[{"trigger_condition": "牛牛报数 / 牛牛出列"}]),
+        _fake_plugin(module_name="pallas_plugin_bot_status", menu_data=[{"trigger_condition": "牛牛报数 / 牛牛出列"}]),
         _fake_plugin(module_name="packages.roulette", menu_data=[{"trigger_condition": "牛牛轮盘"}]),
     ]
     plugins[0].metadata.extra["command_prefixes"] = ["牛牛画画"]

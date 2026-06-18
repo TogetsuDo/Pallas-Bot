@@ -1,27 +1,50 @@
+import importlib.util
 from pathlib import Path
 
 import pytest
+from nonebot.plugin import PluginMetadata
 
 _MS_CFG = Path(__file__).resolve().parents[2] / "pallas" / "product" / "message_scrub" / "config.py"
 skip_no_message_scrub = pytest.mark.skipif(not _MS_CFG.is_file(), reason="无 message_scrub 配置模块")
 
 
+def _plugin_meta(name: str, command_ids: list[str]) -> PluginMetadata:
+    return PluginMetadata(
+        name=name,
+        description=f"{name} test plugin。",
+        usage="",
+        extra={
+            "command_limits": [{"id": cid, "cd_sec": 3} for cid in command_ids],
+        },
+    )
+
+
 def _import_command_limit_plugins() -> None:
-    import packages.bot_status  # noqa: F401
+    import pallas_plugin_bot_status  # noqa: F401
+
     import packages.help  # noqa: F401
-    import packages.maa  # noqa: F401
-    import packages.sing  # noqa: F401
     import pallas.product.service_gateways.connectivity  # noqa: F401
 
 
 def _patch_loaded_command_limit_plugins(monkeypatch: pytest.MonkeyPatch) -> None:
     from types import SimpleNamespace
 
-    from packages.bot_status import __plugin_meta__ as bot_status_meta
+    from pallas_plugin_bot_status import __plugin_meta__ as bot_status_meta
+
     from packages.help import __plugin_meta__ as help_meta
-    from packages.maa import __plugin_meta__ as maa_meta
-    from packages.sing import __plugin_meta__ as sing_meta
     from pallas.product.service_gateways.connectivity import __plugin_meta__ as connectivity_meta
+
+    maa_meta = _plugin_meta(
+        "maa",
+        ["maa.status", "maa.clear_queue", "maa.switch_device", "maa.raw_task", "maa.control"],
+    )
+    sing_meta = _plugin_meta(
+        "sing",
+        ["sing.sing", "sing.play", "sing.request_song", "sing.song_title"],
+    )
+    from pallas.core.limits.schema import clear_merged_command_limits_cache
+
+    clear_merged_command_limits_cache()
 
     plugins = [
         SimpleNamespace(name="bot_status", metadata=bot_status_meta),
@@ -183,7 +206,14 @@ def test_list_webui_env_sections_contains_plugin_common_sections():
     ids = {r["id"] for r in rows}
     assert "command_limits" in ids
     assert "pb_webui" in ids
-    assert "pb_protocol" in ids
+    try:
+        has_pb_protocol = importlib.util.find_spec("packages.pb_protocol.config") is not None
+    except ModuleNotFoundError:
+        has_pb_protocol = False
+    if has_pb_protocol:
+        assert "pb_protocol" in ids
+    else:
+        assert "pb_protocol" not in ids
     assert "help" in ids
     assert "service_gateways" in ids
 

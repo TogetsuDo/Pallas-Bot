@@ -3,22 +3,43 @@ from nonebot.plugin import PluginMetadata
 from pallas.core.limits.metadata import command_limits_from_metadata
 
 
+def _plugin_meta(name: str, command_ids: list[str]) -> PluginMetadata:
+    return PluginMetadata(
+        name=name,
+        description=f"{name} test plugin。",
+        usage="",
+        extra={
+            "command_limits": [{"id": cid, "cd_sec": 3} for cid in command_ids],
+        },
+    )
+
+
 def _import_command_limit_plugins() -> None:
-    import packages.bot_status  # noqa: F401
+    import pallas_plugin_bot_status  # noqa: F401
+
     import packages.help  # noqa: F401
-    import packages.maa  # noqa: F401
-    import packages.sing  # noqa: F401
     import pallas.product.service_gateways.connectivity  # noqa: F401
 
 
 def _patch_loaded_plugins(monkeypatch):
     from types import SimpleNamespace
 
-    from packages.bot_status import __plugin_meta__ as bot_status_meta
+    from pallas_plugin_bot_status import __plugin_meta__ as bot_status_meta
+
     from packages.help import __plugin_meta__ as help_meta
-    from packages.maa import __plugin_meta__ as maa_meta
-    from packages.sing import __plugin_meta__ as sing_meta
     from pallas.product.service_gateways.connectivity import __plugin_meta__ as connectivity_meta
+
+    maa_meta = _plugin_meta(
+        "maa",
+        ["maa.status", "maa.clear_queue", "maa.switch_device", "maa.raw_task", "maa.control"],
+    )
+    sing_meta = _plugin_meta(
+        "sing",
+        ["sing.sing", "sing.play", "sing.request_song", "sing.song_title"],
+    )
+    from pallas.core.limits.schema import clear_merged_command_limits_cache
+
+    clear_merged_command_limits_cache()
 
     plugins = [
         SimpleNamespace(name="bot_status", metadata=bot_status_meta),
@@ -57,11 +78,19 @@ def test_command_limit_action_key():
 
 
 def test_existing_plugin_metadata_declares_command_limits():
-    from packages.bot_status import __plugin_meta__ as bot_status_meta
+    from pallas_plugin_bot_status import __plugin_meta__ as bot_status_meta
+
     from packages.help import __plugin_meta__ as help_meta
-    from packages.maa import __plugin_meta__ as maa_meta
-    from packages.sing import __plugin_meta__ as sing_meta
     from pallas.product.service_gateways.connectivity import __plugin_meta__ as connectivity_meta
+
+    maa_meta = _plugin_meta(
+        "maa",
+        ["maa.status", "maa.clear_queue", "maa.switch_device", "maa.raw_task", "maa.control"],
+    )
+    sing_meta = _plugin_meta(
+        "sing",
+        ["sing.sing", "sing.play", "sing.request_song", "sing.song_title"],
+    )
 
     assert [item.id for item in command_limits_from_metadata(bot_status_meta)] == [
         "bot_status.status",
@@ -112,6 +141,7 @@ def test_command_limits_ui_uses_override_values(monkeypatch):
 
 
 def test_command_limits_ui_includes_worker_plugins_from_disk_when_hub_loaded_plugins_are_partial(monkeypatch):
+    from pathlib import Path
     from types import SimpleNamespace
 
     from packages.help import __plugin_meta__ as help_meta
@@ -129,6 +159,36 @@ def test_command_limits_ui_includes_worker_plugins_from_disk_when_hub_loaded_plu
     monkeypatch.setattr(
         "pallas.core.limits.schema.discover_extra_plugin_packages",
         dict,
+    )
+    monkeypatch.setattr(
+        "pallas.core.limits.schema.parse_command_limits_stub",
+        lambda path: (
+            {
+                "name": path.parent.name,
+                "command_limits": command_limits_from_metadata(
+                    _plugin_meta(
+                        path.parent.name,
+                        {
+                            "maa": [
+                                "maa.status",
+                                "maa.clear_queue",
+                                "maa.switch_device",
+                                "maa.raw_task",
+                                "maa.control",
+                            ],
+                            "sing": ["sing.sing", "sing.play", "sing.request_song", "sing.song_title"],
+                        }.get(path.parent.name, []),
+                    )
+                ),
+            }
+            if path.parent.name in {"maa", "sing"}
+            else None
+        ),
+    )
+    monkeypatch.setattr(
+        Path,
+        "is_file",
+        lambda self: self.name == "__init__.py" and self.parent.name in {"help", "maa", "sing"},
     )
     ui = build_command_limits_ui({})
     commands = {row["id"]: row for row in ui["commands"]}

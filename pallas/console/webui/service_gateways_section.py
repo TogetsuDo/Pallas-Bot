@@ -89,9 +89,8 @@ def service_gateways_payload(
     for plugin_name, title, keys in _PLUGIN_SPECS:
         cfg_cls, cfg_obj = _read_gateway_cfg(plugin_name)
         group_names: list[str] = []
-        for key in sorted(keys, key=lambda k: list(cfg_cls.model_fields.keys()).index(k)):
-            if key not in cfg_cls.model_fields:
-                continue
+        ordered_keys = [key for key in cfg_cls.model_fields.keys() if key in keys]
+        for key in ordered_keys:
             if current_values is not None:
                 cur = current_values.get(key, getattr(cfg_obj, key))
             else:

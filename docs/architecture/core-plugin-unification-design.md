@@ -10,6 +10,8 @@ Core DevX 路线已落地 `plugin_sdk`、`pb_core`、热重载分级、`pb_webui
 
 `community_stats` 已升格为 **`pb_stats`** 并纳入 core；WebUI 段 ID 仍保留 `community_stats` 以兼容已保存配置。
 
+补充约束：目录统一不等于身份统一。当前主仓的插件身份单一真相、canonical 解析规则与迁移边界，见 [Pallas 插件身份治理与迁移设计](../superpowers/specs/2026-06-19-plugin-identity-governance-design.md)。无论 core 还是官方 extra 插件，运行层都应优先消费 `plugin_id`，而不是 `packages.*` / `pallas_plugin_*` 路径。
+
 ## 目标
 
 | 维度 | 目标 |
