@@ -46,7 +46,7 @@
 | [项目结构](architecture/project-structure.md) · [内核分层](architecture/common-layers.md) | 目录与 `src/` 分层 |
 | [配置存储](architecture/settings-storage.md) · [插件规范](architecture/plugin-convention.md) | 配置与插件组织 |
 | [多进程分片](architecture/bot_process_sharding.md) · [入站调度](architecture/central-ingress-dispatch.md) | 分片与消息路径 |
-| [多机协同与语料](architecture/control-plane-corpus-federation.md) | 联邦与社区接话库 |
+| [语料联邦](common/corpus/README.md) | 社区语料、回填与联邦读取现状 |
 | **[Pallas 核心契约](architecture/pallas-core-contract.md)** · [AI 终态架构](architecture/pallas-final-ai-shape.md) | 品牌总纲、扩展分家后形态、Bot↔AI 边界 |
 | [站点定制](architecture/site-customization-and-updates.md) | `local/plugins`、官方扩展 |
 | **[AI 终态架构](architecture/pallas-final-ai-shape.md)** · **[AI 实施与联调](architecture/pallas-ai-implementation.md)** | 双仓边界、统一 runtime、分阶段落地 |

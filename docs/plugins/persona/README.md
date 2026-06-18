@@ -1,14 +1,66 @@
-# 接话行为（自动生长）
+<p align="center">
+  <img src="../assets/brand-avatar.png" width="220" height="220" alt="接话行为">
+</p>
 
-牛格由**学习**推导，不提供号主私聊口令或手动预设。
+<h1 align="center">接话行为 persona</h1>
 
-| 层级 | 来源 | 说明 |
-| --- | --- | --- |
-| 牛级 | `derive_persona_from_bot_id` | 各牛按 QQ 号略有差异，零配置 |
-| 群级 | `group_config.style_profile` | 从本群 `message` / `answer` 统计自动推导，见 [group-style-persona](../../architecture/group-style-persona.md) |
+<p align="center">说明接话学习出来的牛格、群风格和行为差异是怎么生效的。</p>
 
-架构详见 [persona-reply-style](../../architecture/persona-reply-style.md) · LLM / 总纲：[persona-llm-roadmap](../../architecture/persona-llm-roadmap.md)、[pallas-core-contract](../../architecture/pallas-core-contract.md)。
+<p align="center">
+  <img alt="本体 core" src="https://img.shields.io/badge/%E6%9C%AC%E4%BD%93%20core-4B5563">
+  <img alt="默认提供" src="https://img.shields.io/badge/%E9%BB%98%E8%AE%A4%E6%8F%90%E4%BE%9B-4EA94B">
+</p>
+
+## 安装方式
+
+随主仓提供，无独立安装步骤。
+
+## 怎么使用
+
+这里没有单独口令。接话时的语气、长度、活跃度和群内风格会按学习结果自动生效。
+
+> 详细用法、限制条件和可用范围以帮助为主。
+
+## 命令权限
+
+无。
+
+## 配置项
+
+> 可在控制台对应插件页中修改。
+
+`persona` 本身没有独立插件页，主要受接话学习结果、群画像和相关通用配置影响。
+
+## 排障
+
+| 现象 | 处理 |
+| --- | --- |
+| 感觉每只牛说话区别不明显 | 需要先有足够学习数据，牛级差异和群风格才会逐步显现。 |
+| 某群接话风格不贴近本群 | 检查本群学习数据是否足够，以及接话相关能力是否被关闭。 |
+| 想了解为什么会这样回复 | 先看 `repeater` 帮助和相关架构文档，`persona` 负责解释行为来源，不单独处理消息。 |
 
 ## 实现
 
-内核 [`src/features/persona/`](../../../src/features/persona/) · 接入 [`src/plugins/repeater/`](../../../src/plugins/repeater/)
+源码位置：
+
+- 行为逻辑：[`pallas/product/persona/`](../../pallas/product/persona/)
+- 接入入口：[`packages/repeater/`](../../packages/repeater/)
+
+关键文件：
+
+- [`pallas/product/persona/auto.py`](../../pallas/product/persona/auto.py)：按 `bot_id` 派生基础牛格差异。
+- [`pallas/product/persona/loader.py`](../../pallas/product/persona/loader.py)：合并牛级特征与群风格画像。
+- [`pallas/product/persona/compile_group_style.py`](../../pallas/product/persona/compile_group_style.py)：把群内学习结果整理成可用画像。
+- [`packages/repeater/__init__.py`](../../packages/repeater/__init__.py)：把这些画像接到实际接话逻辑里。
+
+实现要点：
+
+- 牛级差异来自 `bot_id` 的确定性派生，不需要手工给每只牛单独配置。
+- 群级风格来自本群学习到的 `message` 和 `answer` 数据，不是写死模板。
+- `persona` 影响的是接话行为和风格，不是一个独立可调用插件。
+
+## 相关链接
+
+- [复读插件](../repeater/README.md)
+- [群风格画像](../../architecture/group-style-persona.md)
+- [接话行为与语言层路线](../../architecture/persona-llm-roadmap.md)

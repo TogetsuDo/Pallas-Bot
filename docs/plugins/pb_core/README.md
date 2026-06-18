@@ -1,18 +1,31 @@
-# pb_core（牛牛核心）
+<p align="center">
+  <img src="../assets/brand-avatar.png" width="220" height="220" alt="牛牛核心">
+</p>
 
-内置运维口令：进程摘要、控制台入口、插件概览、更新检查与优雅重启。
+<h1 align="center">牛牛核心 pb_core</h1>
 
-与扩展包 **bot_status**（牛牛在吗 / 报数）分工：`pb_core.status`（**牛牛状态**）侧重版本、分片与本进程连接；在线名册仍由 bot_status 负责。
+<p align="center">查看牛牛状态，并使用常用管理入口。</p>
 
-## 用户命令
+<p align="center">
+  <img alt="本体 core" src="https://img.shields.io/badge/%E6%9C%AC%E4%BD%93%20core-4B5563">
+  <img alt="默认加载" src="https://img.shields.io/badge/%E9%BB%98%E8%AE%A4%E5%8A%A0%E8%BD%BD-4EA94B">
+</p>
 
-| 口令 | 默认权限 | 说明 |
+## 安装方式
+
+默认加载，无需单独安装。
+
+## 怎么使用
+
+| 口令 / 触发 | 场景 | 说明 |
 | --- | --- | --- |
-| 牛牛状态 | staff | 版本、Git、分片角色、编排脚本、本进程已连接牛牛 |
-| 牛牛控制台 | staff | WebUI 地址与登录提示 |
-| 牛牛插件 | staff | 已加载 core/extra 插件概览 |
-| 牛牛更新 | superuser | 只读检查 GitHub 最新 release |
-| 牛牛重启 | superuser | 约 3 秒后调度 `run_*_bot.sh` 重启 |
+| `牛牛状态` | 群内 / 私聊 | 查看当前运行状态。 |
+| `牛牛控制台` | 群内 / 私聊 | 查看网页入口。 |
+| `牛牛插件` | 群内 / 私聊 | 查看当前插件列表。 |
+| `牛牛更新` | 群内 / 私聊 | 查看更新情况。 |
+| `牛牛重启` | 群内 / 私聊 | 重新启动牛牛。 |
+
+> 详细用法、限制条件和可用范围以帮助为主。
 
 ## 命令权限
 
@@ -24,14 +37,35 @@
 | `pb_core.update_check` | superuser |
 | `pb_core.restart` | superuser |
 
-运行中可在 WebUI **命令权限** 覆盖；帮助图「何人可用」自动展示。
+## 配置项
 
-## 与 CLI / WebUI
+> 可在控制台对应插件页中修改。
 
-- **牛牛状态** 文案与 `format_runtime_status_text()` 同源，后续可挂到 `pallas status`。
-- **牛牛更新** 只读；应用更新请用 WebUI 或 `pallas update bot`。
-- **牛牛重启** 与 WebUI 更新页「安装并重启」共用 `schedule_bot_restart()`。
+无独立用户配置；命令权限、冷却和运行环境相关行为主要由核心运行时和控制台控制。
+
+## 排障
+
+| 现象 | 处理 |
+| --- | --- |
+| 状态信息不全 | 检查当前进程角色、Git 环境和运行脚本是否可探测。 |
+| 重启无效 | 确认当前部署环境支持调度重启脚本。 |
 
 ## 实现
 
-[`src/plugins/pb_core/`](../../../src/plugins/pb_core/) · 开发 SDK 见 [`plugin_sdk`](../../architecture/core-devx-roadmap.md#p1--plugin_sdk)
+源码位置：[`packages/pb_core/`](../../packages/pb_core/)
+
+关键文件：
+
+- [`__init__.py`](../../packages/pb_core/__init__.py)：注册核心管理命令和权限。
+- [`handlers.py`](../../packages/pb_core/handlers.py)：处理状态、控制台入口、插件列表、更新和重启逻辑。
+
+实现要点：
+
+- 这组命令更偏运行管理，而不是普通用户功能。
+- `牛牛状态` 和 `牛牛插件` 主要看当前进程视角，不等于全局所有部署实例。
+- `牛牛重启` 会依赖外部脚本和当前运行环境，是否真的可用取决于部署方式。
+
+## 相关链接
+
+- [Web 控制台](../pb_webui/README.md)
+- [牛牛状态](../bot_status/README.md)

@@ -5,13 +5,13 @@
 
 ::: tip 和 core 的区别
 - **core**：复读、帮助、控制台……随 `uv run nb run` 就有  
-- **官方扩展**：单独 `uv sync --extra plugins-xxx`，**装完要重启 Bot**
+- **官方扩展**：通过插件商店或 `uv run pallas ext install pallas-plugin-xxx` 安装，**装完要重启 Bot**
 :::
 
 ::: info 3.x 升级到 4.0
 已有 **`local/plugins/`** 或 **`src/plugins/` 迁移副本** 的站点**不必立刻 pip 安装**——加载链仍以 **local 优先**。  
 默认 **`load_bundled_extra_plugins = "auto"`**：pip 包已装则用 pip，未装则用仓库/镜像内 `src/plugins/` 副本。  
-需要 WebUI 商店一键安装或统一 venv 时，再 `uv sync --extra plugins-xxx`（包来自 **PyPI**，首版可用 wheel 为 **4.0.1+**）。
+需要统一用 pip 包管理时，可在 WebUI 商店一键安装，或执行 `uv run pallas ext install pallas-plugin-xxx`（包来自 **PyPI**，首版可用 wheel 为 **4.0.1+**）。
 :::
 
 ---
@@ -38,15 +38,9 @@
 官方扩展包发布在 **PyPI**（包名 `pallas-plugin-*`，**4.0.1+** 起 wheel 含完整代码）。在仓库根目录执行（任选一个包）：
 
 ```bash
-uv sync --extra plugins-duel
-uv sync --extra plugins-maa
-uv sync --extra plugins-who-is-spy
-```
-
-或用封装命令：
-
-```bash
 uv run pallas ext install pallas-plugin-duel
+uv run pallas ext install pallas-plugin-maa
+uv run pallas ext install pallas-plugin-who-is-spy
 ```
 
 **如何确认成功**：
@@ -61,18 +55,18 @@ uv run python -c "import pallas_plugin_duel"   # 以决斗包为例，无 Import
 
 ## 扩展包对照表
 
-| pip 包 | `uv sync --extra` | 包含插件（示例） |
+| pip 包 | CLI 安装命令 | 包含插件（示例） |
 | --- | --- | --- |
-| `pallas-plugin-duel` | `plugins-duel` | 决斗 |
-| `pallas-plugin-who-is-spy` | `plugins-who-is-spy` | 谁是卧底 |
-| `pallas-plugin-maa` | `plugins-maa` | MAA 远控 |
-| `pallas-plugin-dream` | `plugins-dream` | 做梦 |
-| `pallas-plugin-draw` | `plugins-draw` | 画画 |
-| `pallas-plugin-ai-media` | `plugins-ai-media` | 唱歌、酒后聊天 |
-| `pallas-plugin-protocol` | `plugins-protocol` | 协议端管理、上号 |
-| ~~`pallas-plugin-llm-chat`~~ | ~~`plugins-llm-chat`~~ | **已内置为 `llm_chat` core，无需安装** |
-| `pallas-plugin-bot-status` | `plugins-bot-status` | 在吗、报数 |
-| ~~`pallas-plugin-community-stats`~~ | ~~`plugins-community-stats`~~ | **已内置为 `pb_stats` core，无需安装** |
+| `pallas-plugin-duel` | `uv run pallas ext install pallas-plugin-duel` | 决斗 |
+| `pallas-plugin-who-is-spy` | `uv run pallas ext install pallas-plugin-who-is-spy` | 谁是卧底 |
+| `pallas-plugin-maa` | `uv run pallas ext install pallas-plugin-maa` | MAA 远控 |
+| `pallas-plugin-dream` | `uv run pallas ext install pallas-plugin-dream` | 做梦 |
+| `pallas-plugin-draw` | `uv run pallas ext install pallas-plugin-draw` | 画画 |
+| `pallas-plugin-ai-media` | `uv run pallas ext install pallas-plugin-ai-media` | 唱歌、酒后聊天 |
+| `pallas-plugin-protocol` | `uv run pallas ext install pallas-plugin-protocol` | 协议端管理、上号 |
+| ~~`pallas-plugin-llm-chat`~~ | ~~无需安装~~ | **已内置为 `llm_chat` core，无需安装** |
+| `pallas-plugin-bot-status` | `uv run pallas ext install pallas-plugin-bot-status` | 在吗、报数 |
+| ~~`pallas-plugin-community-stats`~~ | ~~无需安装~~ | **已内置为 `pb_stats` core，无需安装** |
 
 完整说明与口令：[插件手册](../plugins/README.md)。
 
@@ -84,9 +78,9 @@ uv run python -c "import pallas_plugin_duel"   # 以决斗包为例，无 Import
 
 常见做法：
 
-1. **构建镜像时** 带上 extras，例如 `PALLAS_UV_EXTRAS=perf,pg,plugins-game`（见 [Docker 部署](../DockerDeployment.md)）  
+1. **构建镜像时** 带上主仓依赖 extras，例如 `PALLAS_UV_EXTRAS=perf,pg`（见 [Docker 部署](../DockerDeployment.md)）  
 2. **挂载** `local/plugins/` 放插件代码  
-3. 在**有源码的开发机** `uv sync --extra ...` 后整目录部署  
+3. 在**有源码的开发机** 用插件商店或 `uv run pallas ext install ...` 装好官方扩展后整目录部署  
 
 ---
 

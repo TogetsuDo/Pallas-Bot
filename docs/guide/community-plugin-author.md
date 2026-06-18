@@ -47,7 +47,7 @@ my_plugin/
 | **L1（索引默认门槛）** | `command_permissions` + `menu_data` + 规范 `usage` |
 | **L2（优选）** | L1 + `command_limits` + 鉴权 ID 一致；口令推荐 `plugin_sdk` |
 
-`check` 的 L1/L2 规则将随 **G-P2** 落地；当前仍以目录/ID/图标为主。
+`check --profile L1|L2` 现已校验 metadata 完整度与命令 ID 一致性；目录/图标/README 仍保持基础结构检查。
 
 ---
 
@@ -88,9 +88,10 @@ my_plugin/
 
 ```bash
 uv run python tools/community_plugin_author.py check path/to/my_plugin
+uv run python tools/community_plugin_author.py check path/to/my_plugin --profile L2
 ```
 
-检查 `__init__.py`、ID 规范、推荐 `assets/icon.png` 与 README。
+检查 `__init__.py`、ID 规范、推荐 `assets/icon.png` 与 README，并输出当前画像摘要 JSON。
 
 ### 生成索引条目
 

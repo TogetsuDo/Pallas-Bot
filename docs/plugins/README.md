@@ -1,13 +1,7 @@
 # 插件文档索引
 
-::: tip 群内怎么说
-**牛牛帮助** 是玩家看到的权威说明。本文档面向**部署者、群管与开发者**：怎么配、怎么排障。
-
-有 `config.py` 的插件可在 WebUI **插件** 或 **通用配置** 中修改，落盘 `data/pallas_config/webui.json`。
-:::
-
-::: info 官方扩展
-决斗、MAA、谁是卧底等玩法在 **官方扩展 pip 包** 中，默认 slim 不加载。安装见 [安装官方扩展](../guide/install-extensions.md) 或控制台 **插件商店**。
+::: info 官方插件
+决斗、MAA、谁是卧底等玩法在 **官方插件 pip 包** 中，默认 slim 不加载。安装见 [安装官方插件](../guide/install-extensions.md) 或控制台 **插件商店**。
 :::
 
 ## 本体 core（默认加载）
@@ -22,16 +16,12 @@
 <NCard title="夺舍 take_name" route="/plugins/take_name">自动改名片</NCard>
 <NCard title="拉黑 blacklist" route="/plugins/blacklist">拉黑、屏蔽</NCard>
 <NCard title="申请 request_handler" route="/plugins/request_handler">好友 / 入群审批</NCard>
-<NCard title="闲聊 llm_chat" route="/plugins/llm_chat">随时 @ 智能闲聊（4.0 core）</NCard>
-<NCard title="牛牛核心 pb_core" route="/plugins/pb_core">进程摘要、控制台、插件概览与重启</NCard>
-<NCard title="控制台 pallas_webui" route="/plugins/pb_webui">网页控制台与 API</NCard>
-<NCard title="在线统计 pb_stats" route="/plugins/pb_stats">社区主站心跳（默认开启）</NCard>
 
 </div>
 
-## 官方扩展（需安装）
+## 官方插件（需安装）
 
-安装：`uv sync --extra plugins-<名>` 或 WebUI **插件商店**。源码仍在 `src/plugins/`。
+安装：可在控制台插件商店安装，也可使用 `uv run pallas ext install pallas-plugin-<name>`。源码仍在对应扩展仓中。
 
 <div class="plugin-doc-grid">
 
@@ -44,18 +34,22 @@
 <NCard title="MAA maa" route="/plugins/maa">远控排队回图 · pallas-plugin-maa</NCard>
 <NCard title="协议端" route="/plugins/pb_protocol">NapCat / SnowLuma · pallas-plugin-protocol</NCard>
 <NCard title="上号 relogin_bot" route="/plugins/relogin_bot">重新登录 · pallas-plugin-protocol</NCard>
-<NCard title="状态 bot_status" route="/plugins/bot_status">在吗、报数 · pallas-plugin-bot-status</NCard>
 
 </div>
 
-## 已内核化（无独立插件目录）
+## 运维与控制台
 
-| 文档 | 说明 |
-| --- | --- |
-| [connectivity](./connectivity/README.md) | 牛牛连通（`features/service_gateways`） |
-| [block](./block/README.md) | 其它牛牛消息拦截（`platform/multi_bot/bot_filter`） |
-| [callback](./callback/README.md) | 异步任务结果回传（`platform/ai_callback`） |
-| [ingress_gate](./ingress_gate/README.md) | 群消息预处理（`platform/ingress/gate`） |
+这些文档通常不会出现在普通用户帮助菜单里，主要用于控制台配置、进程状态和部署排障。
+
+<div class="plugin-doc-grid">
+
+<NCard title="闲聊 llm_chat" route="/plugins/llm_chat">随时 @ 智能闲聊与 AI 开关</NCard>
+<NCard title="牛牛核心 pb_core" route="/plugins/pb_core">进程摘要、插件概览与重启</NCard>
+<NCard title="控制台 pallas_webui" route="/plugins/pb_webui">网页控制台与 API</NCard>
+<NCard title="在线统计 pb_stats" route="/plugins/pb_stats">社区主站心跳与上报</NCard>
+<NCard title="状态 bot_status" route="/plugins/bot_status">在吗、报数与邮件测试</NCard>
+
+</div>
 
 ## 通用能力（`docs/common/`）
 
@@ -66,7 +60,7 @@
 | [message_scrub](../common/message_scrub/README.md) | 消息审查 |
 | [webui](../common/webui/README.md) | 配置热重载 |
 | [社区共享接话库](../common/corpus/README.md) | 本机 + 社区语料 |
-| [在线统计](../common/community_stats.md) | 社区主站上报 |
+| [在线统计](../common/community_stats.md) | 社区主站心跳与上报 |
 
 ## 其它
 

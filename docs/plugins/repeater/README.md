@@ -1,15 +1,30 @@
-# repeater（牛牛复读）
+<p align="center">
+  <img src="../assets/brand-avatar.png" width="220" height="220" alt="牛牛复读">
+</p>
 
-学习群聊、按语境接话、跟复读；可定时主动发言；群管可禁用指定内容。
+<h1 align="center">牛牛复读 repeater</h1>
 
-## 用户命令
+<p align="center">学习群里的说话方式，接话、复读和贴表情。</p>
+
+<p align="center">
+  <img alt="本体 core" src="https://img.shields.io/badge/%E6%9C%AC%E4%BD%93%20core-4B5563">
+  <img alt="默认加载" src="https://img.shields.io/badge/%E9%BB%98%E8%AE%A4%E5%8A%A0%E8%BD%BD-4EA94B">
+</p>
+
+## 安装方式
+
+默认加载，无需单独安装。
+
+## 怎么使用
 
 | 口令 / 触发 | 场景 | 说明 |
 | --- | --- | --- |
-| 群内正常聊天 | 自动 | 学习后按相似度回复、连发跟复读 |
-| @牛牛 回复「不可以」 | 群内 | 禁止被回复的那条内容 |
-| 不可以发这个 | 群内 | 禁止自己最近一条被引用内容 |
-| 撤回牛牛消息 | 自动 | 可将内容加入禁用 |
+| 群内正常聊天 | 自动 | 学习后接话、跟复读或贴表情。 |
+| `@牛牛` 回复 `不可以` | 群内 | 禁止被回复的那条内容。 |
+| `不可以发这个` | 群内 | 禁止自己最近一条被引用内容。 |
+| 撤回牛牛消息 | 自动 | 可将内容加入禁用。 |
+
+> 详细用法、限制条件和可用范围以帮助为主。
 
 ## 命令权限
 
@@ -18,34 +33,44 @@
 | `repeater.ban` | staff |
 | `repeater.ban_latest` | staff |
 
-## 配置
+## 配置项
 
-WebUI **插件 → repeater** 或 [`config.py`](../../../src/plugins/repeater/config.py)。常用项：
+> 可在控制台对应插件页中修改。
+
+常用配置见 [`packages/repeater/config.py`](../../packages/repeater/config.py)。
 
 | 键 | 说明 |
 | --- | --- |
-| `answer_threshold` | 接话积极程度（越大越少说话） |
-| `repeat_threshold` | 连续相同句几次后跟复读 |
+| `answer_threshold` | 接话积极程度 |
+| `repeat_threshold` | 跟复读阈值 |
 | `speak_threshold` | 主动插话积极程度 |
-| `fanout_enabled` | 同群多只牛时是否一起接话（多牛部署用） |
-
-### 智能对话接话（可选，默认关）
-
-在 **通用配置 → 智能对话与 AI 服务** 开启后，接话可在语料没有合适回复时用 AI 现编，或在命中语料后润色措辞。细节见 [persona-llm-roadmap](../../architecture/persona-llm-roadmap.md)（开发向）。
-
-### 群风格
-
-WebUI **实例 / Bot 配置** 中「启用群风格自动生长」：按本群最近学会的语料自动调整接话频率与句长偏好，无需手调参数。
+| `fanout_enabled` | 多只牛是否一起接话 |
 
 ## 排障
 
 | 现象 | 处理 |
 | --- | --- |
-| 从不说话 / 话太多 | 调阈值；确认未被「不可以」限制 |
-| 多牛同群只有一只接话 | 插件配置中开启「多只牛一起接话」，或检查多机协同设置 |
-| 不复读 | 看 `repeat_threshold` 与连续相同句次数 |
-| 开了智能对话仍像原句 | 确认接话模式含「润色」且智能对话服务可达 |
+| 从不说话 / 话太多 | 调整阈值，并确认没有被禁用太多内容。 |
+| 多牛同群只有一只接话 | 检查多牛接话配置和协同设置。 |
+| 不复读 | 检查跟复读阈值和当前群聊模式。 |
 
 ## 实现
 
-[`src/plugins/repeater/`](../../../src/plugins/repeater/)
+源码位置：[`packages/repeater/`](../../packages/repeater/)
+
+关键文件：
+
+- [`__init__.py`](../../packages/repeater/__init__.py)：注册元数据、禁用命令和帮助结构。
+- [`config.py`](../../packages/repeater/config.py)：定义接话、复读和主动发言相关配置。
+- [`handlers/`](../../packages/repeater/handlers)：处理学习、接话、禁用和行为决策。
+
+实现要点：
+
+- 复读不只是“看到什么学什么”，还会根据语料、阈值和上下文决定是否接话。
+- 同一句话连续出现时，会走跟复读路径；平时则可能接近似语境的话。
+- `不可以` 系列命令会直接影响后续学习和回复范围。
+
+## 相关链接
+
+- [命令权限说明](../common/cmd_perm/README.md)
+- [接话行为说明](../persona/README.md)
