@@ -20,7 +20,7 @@ def _build_client(monkeypatch) -> TestClient:
 
 def test_plugin_governance_get_returns_commands_and_runtime(monkeypatch) -> None:
     monkeypatch.setattr(
-        "pallas.product.plugin_capabilities.build_plugin_capabilities_ui",
+        "pallas.core.plugin_capabilities.build_plugin_capabilities_ui",
         lambda: {
             "plugins": [
                 {
@@ -39,6 +39,7 @@ def test_plugin_governance_get_returns_commands_and_runtime(monkeypatch) -> None
                     "llm_tools": [],
                     "storage_keys": [],
                     "reload_policy": "config_only",
+                    "activation_policy": "workers-restart",
                 }
             ],
             "levels": [],
@@ -118,8 +119,10 @@ def test_plugin_governance_get_returns_commands_and_runtime(monkeypatch) -> None
     assert payload["data"]["menu_items"][0]["command_permission"] == "sing.play"
     assert payload["data"]["runtime"]["global_disable"] is True
     assert payload["data"]["runtime"]["help_hidden"] is True
-    assert payload["data"]["perm_ui_filtered"][0]["command_id"] == "sing.play"
-    assert payload["data"]["limits_ui_filtered"][0]["command_id"] == "sing.play"
+    assert payload["data"]["perm_ui_filtered"]["levels"] == []
+    assert payload["data"]["perm_ui_filtered"]["plugins"][0]["commands"][0]["command_id"] == "sing.play"
+    assert payload["data"]["limits_ui_filtered"]["plugins"][0]["commands"][0]["command_id"] == "sing.play"
+    assert payload["data"]["activation_policy"] == "workers-restart"
 
 
 def test_plugin_governance_put_filters_only_plugin_prefix(monkeypatch) -> None:
@@ -174,3 +177,14 @@ def test_plugin_governance_put_filters_only_plugin_prefix(monkeypatch) -> None:
     assert saved_limit == {"sing.play": 12}
     assert payload["data"]["runtime"]["global_disable"] is True
     assert payload["data"]["runtime"]["help_hidden"] is True
+
+
+def test_plugin_config_get_resolves_official_pip_plugin_short_name(monkeypatch) -> None:
+    client = _build_client(monkeypatch)
+    response = client.get("/pallas/api/plugins/draw/config")
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["data"]["module"]
+    assert payload["data"]["fields"]

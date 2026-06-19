@@ -14,6 +14,7 @@ from pallas.core.platform.bot_runtime.plugin_matrix import (
     is_core_plugin,
     is_extra_plugin,
 )
+from pallas.core.platform.plugin_runtime.plugin_identity import canonical_plugin_id
 
 _PLUGINS_ROOT = PROJECT_ROOT / "packages"
 
@@ -147,6 +148,31 @@ def _package_dir_posix(path: Path | None) -> str | None:
 
 
 def _parse_plugin_metadata_stub(init_path: Path) -> dict[str, Any] | None:
+    def literalish(node: ast.AST) -> Any:
+        if isinstance(node, ast.Constant):
+            return node.value
+        if isinstance(node, ast.List):
+            return [literalish(item) for item in node.elts]
+        if isinstance(node, ast.Tuple):
+            return [literalish(item) for item in node.elts]
+        if isinstance(node, ast.Set):
+            return [literalish(item) for item in node.elts]
+        if isinstance(node, ast.Dict):
+            out: dict[str, Any] = {}
+            for key_node, val_node in zip(node.keys, node.values, strict=False):
+                if key_node is None:
+                    continue
+                key = literalish(key_node)
+                if not isinstance(key, str):
+                    continue
+                out[key] = literalish(val_node)
+            return out
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+            value = literalish(node.operand)
+            if isinstance(value, (int, float)):
+                return -value
+        return None
+
     try:
         text = init_path.read_text(encoding="utf-8")
     except OSError:
@@ -166,12 +192,23 @@ def _parse_plugin_metadata_stub(init_path: Path) -> dict[str, Any] | None:
             meta: dict[str, Any] = {}
             for kw in node.value.keywords:
                 key = kw.arg
-                if not key or key in ("extra", "supported_adapters", "homepage"):
+                if not key or key in ("supported_adapters", "homepage"):
                     continue
-                if key in ("name", "description", "usage", "type") and isinstance(kw.value, ast.Constant):
-                    val = kw.value.value
+                if key in ("name", "description", "usage", "type"):
+                    val = literalish(kw.value)
                     if isinstance(val, str):
                         meta[key] = val
+                    continue
+                if key == "extra":
+                    extra = literalish(kw.value)
+                    if isinstance(extra, dict) and extra:
+                        menu_data = extra.get("menu_data")
+                        if isinstance(menu_data, list):
+                            extra = {"menu_data": menu_data}
+                        else:
+                            extra = {}
+                        if extra:
+                            meta["extra"] = extra
             if meta.get("name"):
                 return meta
     return None
@@ -218,6 +255,16 @@ def package_has_config_module(package: str, *, package_root: Path | None = None)
     return (root / "config.py").is_file()
 
 
+def module_has_config_module(module_name: str) -> bool:
+    if not module_name:
+        return False
+    try:
+        spec = importlib.util.find_spec(f"{module_name}.config")
+    except (ImportError, ModuleNotFoundError, ValueError):
+        return False
+    return spec is not None
+
+
 def _loaded_plugin_index() -> tuple[dict[str, Any], dict[str, Any]]:
     from nonebot import get_loaded_plugins
 
@@ -241,6 +288,14 @@ def _loaded_plugin_index() -> tuple[dict[str, Any], dict[str, Any]]:
 
 def _module_short_name(module_path: str) -> str:
     return (module_path or "").rsplit(".", 1)[-1]
+
+
+def resolved_plugin_identity(raw_name: str, module_name: str = "") -> str:
+    for candidate in (raw_name, module_name, _module_short_name(module_name)):
+        resolved = canonical_plugin_id((candidate or "").strip())
+        if resolved:
+            return resolved
+    return (raw_name or "").strip()
 
 
 def _pip_plugin_metadata_stub(module_path: str) -> dict[str, Any] | None:
@@ -355,18 +410,22 @@ def build_plugin_catalog_rows(
         plugin_source_dir: str | None,
         has_config: bool,
     ) -> None:
-        visible, ign, hid = _help_flags(nb_name, package)
-        ids = {nb_name, package, f"packages.{package}"}
+        resolved_plugin_id = resolved_plugin_identity(package, module_name or nb_name)
+        visible, ign, hid = _help_flags(nb_name, resolved_plugin_id)
+        ids = {nb_name, package, resolved_plugin_id, f"packages.{resolved_plugin_id}"}
         g_disabled = any(x in globally_disabled for x in ids if x)
         g_protected = any(x in global_disable_protected for x in ids if x)
         rows.append({
-            "name": package,
+            "name": resolved_plugin_id,
             "nb_plugin_name": nb_name,
             "module": module_name,
+            "resolved_plugin_id": resolved_plugin_id,
+            "resolved_module": module_name,
             "metadata": meta,
             "load_role": role,
             "loaded_in_process": loaded,
             "has_config": has_config,
+            "configurable": has_config,
             "help_visible": visible,
             "help_ignored": ign,
             "help_hidden": hid,
@@ -374,7 +433,7 @@ def build_plugin_catalog_rows(
             "global_disable_protected": g_protected,
             "plugin_source": plugin_source,
             "plugin_source_dir": plugin_source_dir,
-            "extra_package": extra_package_for_plugin(package) if plugin_source == "extra" else None,
+            "extra_package": extra_package_for_plugin(resolved_plugin_id),
         })
 
     all_packages = sorted(set(discover_plugin_packages()) | set(extra_pkgs.keys()))
@@ -439,7 +498,7 @@ def build_plugin_catalog_rows(
             role="infra",
             plugin_source="pip",
             plugin_source_dir=None,
-            has_config=False,
+            has_config=module_has_config_module(module_name),
         )
 
     from nonebot import get_loaded_plugins
@@ -466,7 +525,7 @@ def build_plugin_catalog_rows(
             role="infra",
             plugin_source="pip",
             plugin_source_dir=None,
-            has_config=False,
+            has_config=module_has_config_module(module_name),
         )
 
     catalog_role = resolve_catalog_process_role()

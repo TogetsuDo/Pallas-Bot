@@ -10,6 +10,7 @@ from pydantic import BaseModel, ValidationError
 from pydantic_core import PydanticUndefined
 
 from pallas.core.foundation.config.dotenv import env_value_to_str, upsert_env_dotenv_items
+from pallas.core.platform.plugin_runtime.plugin_identity import canonical_plugin_id
 from pallas.core.platform.plugin_runtime.resolve import import_plugin_submodule
 
 from .registry import read_plugin_config, reload_plugin_config
@@ -41,13 +42,16 @@ def schedule_repeater_learn_reload() -> None:
 
 
 def find_loaded_plugin(plugin_name: str):
-    target = (plugin_name or "").strip()
+    target = canonical_plugin_id((plugin_name or "").strip())
     for p in get_loaded_plugins():
         nb = str(getattr(p, "name", "") or "").strip()
-        if nb == target:
+        if canonical_plugin_id(nb) == target:
             return p
-        short = plugin_module_name(p).rsplit(".", 1)[-1]
-        if short and short == target:
+        module_name = plugin_module_name(p)
+        if module_name and canonical_plugin_id(module_name) == target:
+            return p
+        short = module_name.rsplit(".", 1)[-1]
+        if short and canonical_plugin_id(short) == target:
             return p
     return None
 

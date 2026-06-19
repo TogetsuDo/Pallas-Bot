@@ -168,3 +168,85 @@ def test_resolve_catalog_prefers_local_draw(tmp_path, monkeypatch) -> None:
     from pallas.console.webui.plugin_catalog import resolve_catalog_plugin_module
 
     assert resolve_catalog_plugin_module("draw") == "local.plugins.draw"
+
+
+def test_catalog_marks_pyproject_plugin_with_config(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog.discover_plugin_packages",
+        list,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog.discover_extra_plugin_packages",
+        dict,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog.discover_pyproject_plugin_modules",
+        lambda: ["acme_demo_plugin"],
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog._loaded_plugin_index",
+        lambda: ({}, {}),
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog._pip_plugin_metadata_stub",
+        lambda _module_path: {"name": "acme_demo_plugin"},
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog.package_has_config_module",
+        lambda package, *, package_root=None: False,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog.module_has_config_module",
+        lambda module_name: module_name == "acme_demo_plugin",
+    )
+
+    rows = build_plugin_catalog_rows()
+    by_name = {r["name"]: r for r in rows}
+
+    assert by_name["acme_demo_plugin"]["plugin_source"] == "pip"
+    assert by_name["acme_demo_plugin"]["has_config"] is True
+
+
+def test_catalog_exposes_resolved_identity_for_official_pip_plugin(monkeypatch) -> None:
+    class FakeLoadedPlugin:
+        name = "pallas_plugin_draw"
+        module = type(
+            "Mod",
+            (),
+            {"__name__": "pallas_plugin_draw", "__file__": "/tmp/site-packages/pallas_plugin_draw/__init__.py"},
+        )()
+        metadata = None
+
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog.discover_plugin_packages",
+        list,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog.discover_extra_plugin_packages",
+        dict,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog.discover_pyproject_plugin_modules",
+        lambda: ["pallas_plugin_draw"],
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog._loaded_plugin_index",
+        lambda: ({}, {"draw": FakeLoadedPlugin()}),
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog._pip_plugin_metadata_stub",
+        lambda _module_path: {"name": "牛牛画画"},
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog.module_has_config_module",
+        lambda module_name: module_name == "pallas_plugin_draw",
+    )
+
+    rows = build_plugin_catalog_rows()
+    by_name = {r["name"]: r for r in rows}
+    row = by_name["draw"]
+
+    assert row["resolved_plugin_id"] == "draw"
+    assert row["resolved_module"] == "pallas_plugin_draw"
+    assert row["configurable"] is True
+    assert row["extra_package"] == "pallas-plugin-draw"
