@@ -30,6 +30,23 @@ class LlmSessionScope(BaseModel):
     user_id: int | None = None
 
 
+class LlmHistorySessionSummary(BaseModel):
+    session_key: str
+    bot_id: int
+    group_id: int
+    user_id: int
+    turn_count: int
+    first_created_at: int
+    last_created_at: int
+    last_role: LlmChatRole
+    last_content: str
+
+
+class LlmHistorySessionDetail(BaseModel):
+    session: LlmHistorySessionSummary
+    turns: list[LlmChatTurn]
+
+
 def normalize_group_scope(group_id: int | None) -> int:
     return int(group_id) if group_id is not None else 0
 
@@ -315,6 +332,103 @@ async def list_llm_messages(
     if user_id is not None:
         return await list_user_llm_messages(bot_id, group_id, int(user_id), limit=limit)
     return await list_group_ambient_messages(bot_id, group_id, limit=limit)
+
+
+async def list_llm_history_sessions(
+    *,
+    bot_id: int | None = None,
+    group_id: int | None = None,
+    user_id: int | None = None,
+    limit: int = 50,
+) -> list[LlmHistorySessionSummary]:
+    if not is_llm_session_store_available():
+        return []
+
+    max_items = max(1, min(int(limit), 200))
+    stmt = (
+        select(
+            LlmChatMessageRow.bot_id,
+            LlmChatMessageRow.group_id,
+            LlmChatMessageRow.user_id,
+            func.count().label("turn_count"),
+            func.min(LlmChatMessageRow.created_at).label("first_created_at"),
+            func.max(LlmChatMessageRow.created_at).label("last_created_at"),
+        )
+        .group_by(
+            LlmChatMessageRow.bot_id,
+            LlmChatMessageRow.group_id,
+            LlmChatMessageRow.user_id,
+        )
+        .order_by(func.max(LlmChatMessageRow.created_at).desc())
+        .limit(max_items)
+    )
+
+    if bot_id is not None:
+        stmt = stmt.where(LlmChatMessageRow.bot_id == int(bot_id))
+    if group_id is not None:
+        stmt = stmt.where(LlmChatMessageRow.group_id == normalize_group_scope(group_id))
+    if user_id is not None:
+        stmt = stmt.where(LlmChatMessageRow.user_id == int(user_id))
+
+    async with get_session(read_only=True) as session:
+        rows = (await session.execute(stmt)).all()
+
+        out: list[LlmHistorySessionSummary] = []
+        for row in rows:
+            latest_stmt = (
+                select(LlmChatMessageRow)
+                .where(
+                    LlmChatMessageRow.bot_id == int(row.bot_id),
+                    LlmChatMessageRow.group_id == int(row.group_id),
+                    LlmChatMessageRow.user_id == int(row.user_id),
+                )
+                .order_by(LlmChatMessageRow.created_at.desc(), LlmChatMessageRow.id.desc())
+                .limit(1)
+            )
+            latest = (await session.execute(latest_stmt)).scalars().first()
+            if latest is None:
+                continue
+            role = latest.role if latest.role in _ALLOWED_ROLES else "user"
+            out.append(
+                LlmHistorySessionSummary(
+                    session_key=f"{int(row.bot_id)}:{int(row.group_id)}:{int(row.user_id)}",
+                    bot_id=int(row.bot_id),
+                    group_id=int(row.group_id),
+                    user_id=int(row.user_id),
+                    turn_count=int(row.turn_count or 0),
+                    first_created_at=int(row.first_created_at or 0),
+                    last_created_at=int(row.last_created_at or 0),
+                    last_role=role,
+                    last_content=str(latest.content or ""),
+                )
+            )
+    return out
+
+
+async def get_llm_history_session_detail(
+    *,
+    bot_id: int,
+    group_id: int | None,
+    user_id: int,
+    limit: int = 100,
+) -> LlmHistorySessionDetail | None:
+    turns = await list_user_llm_messages(
+        int(bot_id),
+        normalize_group_scope(group_id),
+        int(user_id),
+        limit=max(1, min(int(limit), 200)),
+    )
+    if not turns:
+        return None
+    summary_rows = await list_llm_history_sessions(
+        bot_id=int(bot_id),
+        group_id=normalize_group_scope(group_id),
+        user_id=int(user_id),
+        limit=1,
+    )
+    if not summary_rows:
+        return None
+    return LlmHistorySessionDetail(session=summary_rows[0], turns=turns)
 
 
 def turn_to_completion_message(turn: LlmChatTurn, *, max_len: int) -> ChatCompletionMessage | None:

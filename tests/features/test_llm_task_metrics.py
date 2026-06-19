@@ -3,6 +3,7 @@ from pallas.product.llm.task_metrics import (
     cluster_llm_task_metrics_snapshot,
     llm_task_metrics_snapshot,
     merge_llm_task_snapshots,
+    record_bot_llm_route,
     record_bot_llm_task,
 )
 
@@ -13,11 +14,17 @@ def test_record_bot_llm_task_snapshot() -> None:
     record_bot_llm_task("repeater_polish", "callback_ok")
     record_bot_llm_task("repeater_fallback", "submit_skip")
     record_bot_llm_task("llm_chat", "callback_fail")
+    record_bot_llm_route("llm_chat", "plain_llm_chat")
+    record_bot_llm_route("llm_chat", "corpus_select")
     snap = llm_task_metrics_snapshot()
     assert snap["by_task"]["repeater_polish"]["submit_ok"] == 1
     assert snap["by_task"]["repeater_polish"]["callback_ok"] == 1
     assert snap["by_task"]["repeater_fallback"]["submit_skip"] == 1
     assert snap["by_task"]["llm_chat"]["callback_fail"] == 1
+    assert snap["by_task"]["llm_chat"]["route_counts"] == {
+        "plain_llm_chat": 1,
+        "corpus_select": 1,
+    }
     clear_llm_task_metrics_for_tests()
 
 
@@ -34,6 +41,9 @@ def test_merge_llm_task_snapshots() -> None:
                     "callback_fail": 0,
                     "reply_gate_skip": 0,
                     "reply_gate_defer": 0,
+                    "route_counts": {
+                        "plain_llm_chat": 2,
+                    },
                 }
             },
             "totals": {
@@ -56,6 +66,9 @@ def test_merge_llm_task_snapshots() -> None:
                     "callback_fail": 0,
                     "reply_gate_skip": 0,
                     "reply_gate_defer": 0,
+                    "route_counts": {
+                        "corpus_polish": 1,
+                    },
                 }
             },
             "totals": {
@@ -71,6 +84,8 @@ def test_merge_llm_task_snapshots() -> None:
     assert merged["source"] == "bot_cluster"
     assert merged["by_task"]["llm_chat"]["submit_ok"] == 2
     assert merged["by_task"]["repeater_polish"]["submit_ok"] == 1
+    assert merged["by_task"]["llm_chat"]["route_counts"] == {"plain_llm_chat": 2}
+    assert merged["by_task"]["repeater_polish"]["route_counts"] == {"corpus_polish": 1}
     assert merged["totals"]["submit_ok"] == 3
     assert merged["updated_at"] == 200.0
 
@@ -79,7 +94,9 @@ def test_cluster_llm_task_metrics_snapshot_from_workers(tmp_path, monkeypatch) -
     clear_llm_task_metrics_for_tests()
     monkeypatch.setattr("pallas.core.platform.shard.context.sharding_active", lambda: True)
     monkeypatch.setattr("pallas.core.platform.shard.context.is_hub", lambda: True)
-    monkeypatch.setattr("pallas.core.platform.shard.console_stats.plugin_data_dir", lambda name, create=True: tmp_path / name)
+    monkeypatch.setattr(
+        "pallas.core.platform.shard.console_stats.plugin_data_dir", lambda name, create=True: tmp_path / name
+    )
     from pallas.core.platform.shard import console_stats as stats_mod
 
     stats_mod.write_worker_stats_sync(

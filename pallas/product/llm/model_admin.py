@@ -24,6 +24,50 @@ def _ai_snapshot_collecting(snapshot: dict[str, Any] | None) -> bool:
     return False
 
 
+def _normalize_ai_task_stats_snapshot(snapshot: dict[str, Any] | None) -> dict[str, Any]:
+    raw = snapshot if isinstance(snapshot, dict) else {}
+    by_task = raw.get("by_task") if isinstance(raw.get("by_task"), dict) else {}
+    totals = raw.get("totals") if isinstance(raw.get("totals"), dict) else {}
+    tokens_raw = raw.get("tokens") if isinstance(raw.get("tokens"), dict) else {}
+    task_ok = int(totals.get("task_ok") or 0)
+    task_fail = int(totals.get("task_fail") or 0)
+    if task_ok == 0 and task_fail == 0:
+        for row in by_task.values():
+            if not isinstance(row, dict):
+                continue
+            task_ok += int(row.get("task_ok") or 0)
+            task_fail += int(row.get("task_fail") or 0)
+    state_counts = raw.get("state_counts") if isinstance(raw.get("state_counts"), dict) else {}
+    failure_counts = raw.get("failure_counts") if isinstance(raw.get("failure_counts"), dict) else {}
+    provider_stats = raw.get("provider_stats") if isinstance(raw.get("provider_stats"), dict) else {}
+    model_stats = raw.get("model_stats") if isinstance(raw.get("model_stats"), dict) else {}
+    return {
+        **raw,
+        "by_task": by_task,
+        "totals": totals,
+        "state_counts": {
+            "queued": int(state_counts.get("queued") or 0),
+            "running": int(state_counts.get("running") or 0),
+            "succeeded": int(state_counts.get("succeeded") or task_ok),
+            "failed": int(state_counts.get("failed") or task_fail),
+        },
+        "failure_counts": dict(failure_counts),
+        "provider_stats": dict(provider_stats),
+        "model_stats": dict(model_stats),
+        "tokens": {
+            "source": str(tokens_raw.get("source") or raw.get("source") or "ai"),
+            "day_key": str(tokens_raw.get("day_key") or raw.get("day_key") or ""),
+            "updated_at": tokens_raw.get("updated_at"),
+            "prompt_tokens": int(tokens_raw.get("prompt_tokens") or 0),
+            "completion_tokens": int(tokens_raw.get("completion_tokens") or 0),
+            "total_tokens": int(tokens_raw.get("total_tokens") or 0),
+            "by_task": tokens_raw.get("by_task") if isinstance(tokens_raw.get("by_task"), dict) else {},
+            "by_provider": tokens_raw.get("by_provider") if isinstance(tokens_raw.get("by_provider"), dict) else {},
+            "by_model": tokens_raw.get("by_model") if isinstance(tokens_raw.get("by_model"), dict) else {},
+        },
+    }
+
+
 def ai_llm_api_base(cfg: LlmConfig | None = None) -> str:
     return f"{llm_server_base_url(cfg or get_llm_config()).rstrip('/')}/api/llm"
 
@@ -287,11 +331,11 @@ async def fetch_llm_task_stats(
                 payload["error"] = "AI 统计响应无效"
             else:
                 if isinstance(body, dict):
-                    payload["ai"] = body
+                    payload["ai"] = _normalize_ai_task_stats_snapshot(body)
                     payload["ai_reachable"] = True
                     try:
-                        ai_day = str(body.get("day_key") or bot_snap.get("day_key") or today_key())
-                        write_day_side(ai_day, "ai", {**body, "reachable": True})
+                        ai_day = str(payload["ai"].get("day_key") or bot_snap.get("day_key") or today_key())
+                        write_day_side(ai_day, "ai", {**payload["ai"], "reachable": True})
                     except Exception:
                         pass
     payload["persistence"]["ai_collecting"] = _ai_snapshot_collecting(

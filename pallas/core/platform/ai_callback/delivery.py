@@ -11,6 +11,12 @@ _CALLBACK_SEND_ERRORS = (ActionFailed, NetworkError)
 
 
 async def send_group_message(bot, group_id: int, message: str) -> bool:
+    logger.info(
+        "AI callback sending group text task=unknown bot_id={} group={} length={}",
+        getattr(bot, "self_id", "<unknown>"),
+        group_id,
+        len(message or ""),
+    )
     try:
         await bot.call_api(
             "send_group_msg",
@@ -18,6 +24,12 @@ async def send_group_message(bot, group_id: int, message: str) -> bool:
                 "message": message,
                 "group_id": group_id,
             },
+        )
+        logger.info(
+            "AI callback sent group text task=unknown bot_id={} group={} length={}",
+            getattr(bot, "self_id", "<unknown>"),
+            group_id,
+            len(message or ""),
         )
         return True
     except _CALLBACK_SEND_ERRORS as e:
@@ -39,6 +51,13 @@ async def send_group_image(bot, group_id: int, image_bytes: bytes, *, at_user_id
         )
         return False
     message = image_api.optional_message_at_user(at_user_id, MessageSegment.image(image_bytes))
+    logger.info(
+        "AI callback sending group image task=unknown bot_id={} group={} bytes={} at_user_id={}",
+        getattr(bot, "self_id", "<unknown>"),
+        group_id,
+        len(image_bytes),
+        at_user_id,
+    )
     try:
         await bot.call_api(
             "send_group_msg",
@@ -46,6 +65,13 @@ async def send_group_image(bot, group_id: int, image_bytes: bytes, *, at_user_id
                 "message": message,
                 "group_id": group_id,
             },
+        )
+        logger.info(
+            "AI callback sent group image task=unknown bot_id={} group={} bytes={} at_user_id={}",
+            getattr(bot, "self_id", "<unknown>"),
+            group_id,
+            len(image_bytes),
+            at_user_id,
         )
         return True
     except _CALLBACK_SEND_ERRORS as e:
@@ -56,6 +82,12 @@ async def send_group_image(bot, group_id: int, image_bytes: bytes, *, at_user_id
 async def send_group_voice(bot, group_id: int, audio_bytes: bytes) -> bool:
     if not audio_bytes:
         return False
+    logger.info(
+        "AI callback sending group voice task=unknown bot_id={} group={} bytes={}",
+        getattr(bot, "self_id", "<unknown>"),
+        group_id,
+        len(audio_bytes),
+    )
     try:
         await bot.call_api(
             "send_group_msg",
@@ -63,6 +95,12 @@ async def send_group_voice(bot, group_id: int, audio_bytes: bytes) -> bool:
                 "message": MessageSegment.record(file=audio_bytes),
                 "group_id": group_id,
             },
+        )
+        logger.info(
+            "AI callback sent group voice task=unknown bot_id={} group={} bytes={}",
+            getattr(bot, "self_id", "<unknown>"),
+            group_id,
+            len(audio_bytes),
         )
         return True
     except _CALLBACK_SEND_ERRORS as e:

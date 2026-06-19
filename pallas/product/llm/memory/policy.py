@@ -42,4 +42,4 @@ def classify_memory_candidate(text: str) -> str | None:
 
 def normalize_episode_note(text: str, *, max_len: int) -> str:
     body = sanitize_prompt_block(strip_teach_prefix(text), max_len=max_len).strip()
-    return body
+    return body.rstrip("。！？!?；;，,、").strip()

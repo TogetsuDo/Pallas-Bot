@@ -24,6 +24,7 @@ from pallas.product.llm.memory import (
 from pallas.product.llm.persona_context import build_persona_llm_context
 from pallas.product.llm.polish_lite import maybe_submit_repeater_corpus_llm
 from pallas.product.llm.reply_gate import evaluate_llm_reply_gate
+from pallas.product.llm.session_store import list_user_llm_messages
 from pallas.product.llm.task_metrics import record_bot_llm_task
 
 from . import startup as _startup  # noqa: F401
@@ -58,6 +59,27 @@ def user_reply_for_submit_failure(status: str) -> str | None:
     if status in {"request_failed", "empty_response", "invalid_response"}:
         return LLM_CHAT_FAILED_REPLY
     return None
+
+
+def resolve_corpus_llm_route(llm_cfg, pool: list[str], candidate: str) -> str:
+    if llm_cfg.llm_polish_lite_enabled and candidate and pool:
+        return "corpus_polish_lite"
+    if len(pool) >= 2 and llm_cfg.llm_select_enabled:
+        return "corpus_select"
+    if candidate and llm_cfg.llm_polish_enabled:
+        return "corpus_polish"
+    return "corpus_fallback"
+
+
+async def latest_llm_assistant_reply(bot_id: int, group_id: int | None, user_id: int) -> str:
+    try:
+        turns = await list_user_llm_messages(bot_id, group_id, user_id, limit=6)
+    except Exception:
+        return ""
+    for turn in reversed(turns):
+        if str(getattr(turn, "role", "")).strip() == "assistant":
+            return str(getattr(turn, "content", "") or "").strip()
+    return ""
 
 
 @llm_chat_msg.handle()
@@ -174,6 +196,14 @@ async def handle_llm_chat(bot: Bot, event: Event):
                 if gate is None:
                     await refresh_llm_chat_cooldown(event, default_cd_sec=llm_cfg.llm_chat_cooldown_sec)
                 return
+            corpus_fallback = candidate or (pool[0] if pool else "")
+            llm_route = resolve_corpus_llm_route(llm_cfg, pool, candidate)
+        else:
+            corpus_fallback = ""
+            llm_route = "plain_llm_chat"
+    else:
+        corpus_fallback = ""
+        llm_route = "plain_llm_chat"
 
     gate = await check_llm_chat_gate(event, group_id, cfg=llm_cfg)
     if gate is not None:
@@ -193,6 +223,7 @@ async def handle_llm_chat(bot: Bot, event: Event):
         logger.debug("llm chat merged queued message group={} user={}", group_id, user_id)
 
     request_id = str(ULID())
+    last_reply_text = await latest_llm_assistant_reply(int(bot.self_id), group_id, user_id)
     await TaskManager.add_task(
         request_id,
         {
@@ -201,6 +232,9 @@ async def handle_llm_chat(bot: Bot, event: Event):
             "user_id": user_id,
             "task_type": LLM_CHAT_TASK_TYPE,
             "user_text": msg,
+            "fallback_text": corpus_fallback,
+            "llm_route": llm_route,
+            "last_reply_text": last_reply_text,
             "start_time": time.time(),
         },
     )

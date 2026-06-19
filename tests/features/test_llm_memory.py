@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import pytest
+
+from pallas.product.llm.config import LlmConfig
 from pallas.product.llm.memory.retrieve import memory_relevance_score, tokenize_for_memory
 from pallas.product.llm.memory.teach import parse_memory_teach
-from pallas.product.llm.status import gate_defer_total, gate_skip_total
+from pallas.product.llm.status import build_llm_status_text, gate_defer_total, gate_skip_total
 from pallas.product.llm.tools.overrides import clear_tool_description_overrides_cache, load_tool_description_overrides
 
 
@@ -35,3 +38,23 @@ def test_tool_description_overrides_empty_without_file(tmp_path, monkeypatch) ->
         lambda *_args, **_kwargs: tmp_path,
     )
     assert load_tool_description_overrides() == {}
+
+
+@pytest.mark.asyncio
+async def test_build_llm_status_text_mentions_episode_notes_strategy(monkeypatch) -> None:
+    async def fake_admin_status(*, cfg=None):
+        return {"model": "test-model", "ai_reachable": True}
+
+    async def fake_task_stats(*, cfg=None):
+        return {"ai": {"tokens": {}, "totals": {}}, "ai_reachable": True}
+
+    monkeypatch.setattr("pallas.product.llm.status.fetch_model_admin_status", fake_admin_status)
+    monkeypatch.setattr("pallas.product.llm.status.fetch_llm_task_stats", fake_task_stats)
+    monkeypatch.setattr(
+        "pallas.product.llm.status.llm_task_metrics_snapshot",
+        lambda: {"totals": {"submit_ok": 0}, "by_task": {}},
+    )
+
+    text = await build_llm_status_text(cfg=LlmConfig(llm_memory_rag_enabled=True))
+
+    assert "群内旧事=teach+群环境提炼" in text

@@ -109,6 +109,36 @@ async def test_run_ai_callback_records_llm_task_metrics(monkeypatch: pytest.Monk
 
 
 @pytest.mark.asyncio
+async def test_run_ai_callback_records_llm_route_metrics(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pallas.product.llm.task_metrics import clear_llm_task_metrics_for_tests, llm_task_metrics_snapshot
+
+    clear_llm_task_metrics_for_tests()
+    bot = MagicMock()
+    bot.call_api = AsyncMock(return_value=None)
+    monkeypatch.setattr(ai_callback_runner, "get_bot", lambda _bot_id: bot)
+    monkeypatch.setattr(
+        ai_callback_runner.TaskManager,
+        "get_task",
+        AsyncMock(
+            return_value={
+                "bot_id": "111",
+                "group_id": 222,
+                "user_id": 333,
+                "task_type": LLM_CHAT_TASK_TYPE,
+                "llm_route": "corpus_select",
+            }
+        ),
+    )
+    monkeypatch.setattr(ai_callback_runner.TaskManager, "remove_task", AsyncMock())
+    monkeypatch.setattr(ai_callback_runner, "remove_ai_task", lambda _task_id: None)
+
+    await ai_callback_runner.run_ai_callback("task-route-1", status="success", text="选句结果")
+    snap = llm_task_metrics_snapshot()
+    assert snap["by_task"]["llm_chat"]["route_counts"] == {"corpus_select": 1}
+    clear_llm_task_metrics_for_tests()
+
+
+@pytest.mark.asyncio
 async def test_run_ai_callback_send_timeout_returns_failed(monkeypatch: pytest.MonkeyPatch) -> None:
     bot = MagicMock()
     bot.call_api = AsyncMock(side_effect=NetworkError("WebSocket call api send_group_msg timeout"))
@@ -126,6 +156,43 @@ async def test_run_ai_callback_send_timeout_returns_failed(monkeypatch: pytest.M
 
     assert result == {"message": "failed"}
     remove_task.assert_awaited_once_with("task-1")
+
+
+@pytest.mark.asyncio
+async def test_run_ai_callback_llm_chat_duplicate_reply_uses_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    bot = MagicMock()
+    bot.call_api = AsyncMock(return_value=None)
+    monkeypatch.setattr(ai_callback_runner, "get_bot", lambda _bot_id: bot)
+    monkeypatch.setattr(
+        ai_callback_runner.TaskManager,
+        "get_task",
+        AsyncMock(
+            return_value={
+                "bot_id": "111",
+                "group_id": 222,
+                "user_id": 333,
+                "task_type": LLM_CHAT_TASK_TYPE,
+                "fallback_text": "语料候选",
+            }
+        ),
+    )
+    remove_task = AsyncMock()
+    monkeypatch.setattr(ai_callback_runner.TaskManager, "remove_task", remove_task)
+    monkeypatch.setattr(ai_callback_runner, "remove_ai_task", lambda _task_id: None)
+    monkeypatch.setattr(
+        ai_callback_runner,
+        "should_suppress_llm_duplicate_reply",
+        lambda task, reply_text: True,
+    )
+
+    result = await ai_callback_runner.run_ai_callback("task-dup-1", status="success", text="重复句")
+
+    assert result == {"message": "ok"}
+    bot.call_api.assert_awaited_once()
+    call_kwargs = bot.call_api.await_args.kwargs
+    assert call_kwargs["group_id"] == 222
+    assert call_kwargs["message"] == "语料候选"
+    remove_task.assert_awaited_once_with("task-dup-1")
 
 
 @pytest.mark.asyncio
@@ -339,6 +406,50 @@ async def test_run_ai_callback_sing_sends_voice_without_progress_metadata(
     bot.call_api.assert_awaited_once()
     call_kwargs = bot.call_api.await_args.kwargs
     assert call_kwargs["group_id"] == 222
+    message = call_kwargs["message"]
+    assert isinstance(message, MessageSegment)
+    assert message.type == "record"
+
+
+@pytest.mark.asyncio
+async def test_run_ai_callback_sing_registry_fallback_uses_registered_bot(monkeypatch: pytest.MonkeyPatch) -> None:
+    from io import BytesIO
+
+    from fastapi import UploadFile
+    from nonebot.adapters.onebot.v11 import MessageSegment
+
+    bot = MagicMock()
+    bot.self_id = "2927116873"
+    bot.call_api = AsyncMock(return_value=None)
+
+    def fake_get_bot(bot_id: str):
+        assert bot_id == "2927116873"
+        return bot
+
+    monkeypatch.setattr(ai_callback_runner, "get_bot", fake_get_bot)
+    monkeypatch.setattr(ai_callback_runner.TaskManager, "get_task", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        ai_callback_runner,
+        "get_ai_task_record",
+        lambda _task_id: {
+            "bot_id": "2927116873",
+            "group_id": 626266902,
+            "user_id": 123456789,
+            "task_type": "sing",
+        },
+    )
+    monkeypatch.setattr(ai_callback_runner.TaskManager, "remove_task", AsyncMock())
+    monkeypatch.setattr(ai_callback_runner, "remove_ai_task", lambda _task_id: None)
+
+    mp3 = b"ID3" + (b"x" * 64)
+    upload = UploadFile(filename="sing.mp3", file=BytesIO(mp3))
+
+    result = await ai_callback_runner.run_ai_callback("sing-task-registry", status="success", file=upload)
+
+    assert result == {"message": "ok"}
+    bot.call_api.assert_awaited_once()
+    call_kwargs = bot.call_api.await_args.kwargs
+    assert call_kwargs["group_id"] == 626266902
     message = call_kwargs["message"]
     assert isinstance(message, MessageSegment)
     assert message.type == "record"

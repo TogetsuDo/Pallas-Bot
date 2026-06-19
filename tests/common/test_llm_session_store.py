@@ -8,7 +8,9 @@ from pallas.product.llm.session_store import (
     build_llm_chat_messages,
     clear_llm_messages,
     clear_user_llm_messages,
+    get_llm_history_session_detail,
     is_llm_session_store_available,
+    list_llm_history_sessions,
     list_group_ambient_messages,
     list_user_llm_messages,
     sanitize_stored_content,
@@ -112,3 +114,32 @@ async def test_clear_user_llm_messages(pg_engine, monkeypatch) -> None:
     assert len(await list_user_llm_messages(1, 100, 300)) == 1
 
     assert await clear_llm_messages(1, 100) == 1
+
+
+@pytest.mark.asyncio
+async def test_list_llm_history_sessions_and_detail(pg_engine, monkeypatch) -> None:
+    clear_llm_config_cache()
+    cfg = LlmConfig(
+        llm_session_enabled=True,
+        llm_session_user_window=20,
+        llm_session_group_window=20,
+        llm_session_user_ttl_sec=0,
+    )
+    monkeypatch.setattr("pallas.product.llm.session_store.get_llm_config", lambda: cfg)
+    monkeypatch.setattr("pallas.product.llm.session_store.is_postgresql_backend", lambda: True)
+
+    await append_llm_message(10, 100, 200, "user", "u200-1")
+    await append_llm_message(10, 100, 200, "assistant", "a200-1")
+    await append_llm_message(10, 100, 300, "user", "u300-1")
+    await append_llm_message(10, 100, 300, "assistant", "a300-1")
+    await append_llm_message(10, 0, 400, "user", "private-1")
+
+    sessions = await list_llm_history_sessions(bot_id=10, group_id=100, limit=10)
+    assert [row.user_id for row in sessions] == [300, 200]
+    assert sessions[0].last_content == "a300-1"
+    assert sessions[0].turn_count == 2
+
+    detail = await get_llm_history_session_detail(bot_id=10, group_id=100, user_id=200, limit=10)
+    assert detail is not None
+    assert detail.session.user_id == 200
+    assert [turn.content for turn in detail.turns] == ["u200-1", "a200-1"]

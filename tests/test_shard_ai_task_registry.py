@@ -16,20 +16,18 @@ def test_register_and_resolve_worker_port(tmp_path, monkeypatch):
     shard_root = tmp_path / "pallas_shard"
     shard_root.mkdir(parents=True)
     (shard_root / "registry.json").write_text(
-        json.dumps(
-            {
-                "bots_per_shard": 5,
-                "hub_port": 8088,
-                "worker_base_port": 7970,
-                "ws_path": "/onebot/v11/ws",
-                "ws_host": "127.0.0.1",
-                "assignments": {"10001": 1},
-                "shards": [
-                    {"id": 0, "port": 7970, "bot_ids": []},
-                    {"id": 1, "port": 7971, "bot_ids": ["10001"]},
-                ],
-            }
-        ),
+        json.dumps({
+            "bots_per_shard": 5,
+            "hub_port": 8088,
+            "worker_base_port": 7970,
+            "ws_path": "/onebot/v11/ws",
+            "ws_host": "127.0.0.1",
+            "assignments": {"10001": 1},
+            "shards": [
+                {"id": 0, "port": 7970, "bot_ids": []},
+                {"id": 1, "port": 7971, "bot_ids": ["10001"]},
+            ],
+        }),
         encoding="utf-8",
     )
     monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")

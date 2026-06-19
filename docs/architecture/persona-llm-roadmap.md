@@ -150,7 +150,7 @@ flowchart TB
 | --- | --- | --- |
 | P1 | `compile_persona_prompt(bot_id, group_id)`：合并牛格 + `compile_group_style_prompt` + 帕拉斯基础 system | — |
 | P2 | `src/features/llm/`：调用 **AI 仓统一 LLM API**（见 [AI 终态架构](pallas-final-ai-shape.md)）；主仓不直连 Ollama | 关 |
-| P3 | PG 会话：群窗口 N 条 + 可选用户 TTL；分片 worker 共享读 | — |
+| P3 | PG 会话：群窗口 N 条 + 可选用户 TTL；分片 worker 共享读；`episode_notes` 支持 teach 入库与群环境规则提炼补位 | — |
 | P4 | 每 bot/群开关、CD、异步队列、token 预算 | 关 |
 | P5 | `_context_find` miss 且开关开 → LLM 生成 | **关** · 骨架 |
 | P6′ | scorer 缩 Top-K → LLM 按情绪选编号；callback 映射为语料原句 | **select** · 骨架 |
@@ -221,7 +221,7 @@ flowchart TB
 - [persona-reply-style.md](persona-reply-style.md) — 行为层总览
 - [group-style-persona.md](group-style-persona.md) — 群统计与刷新
 - [common-layers.md](common-layers.md) — `features/` 分层
-- [control-plane-corpus-federation.md](control-plane-corpus-federation.md) — 共享语料读写
+- [../common/corpus/README.md](../common/corpus/README.md) — 社区语料与联邦读取现状
 - [arknights-knowledge-mcp.md](arknights-knowledge-mcp.md) — 明日方舟 KB 与 MCP 工具
 - [pallas-final-ai-shape.md](pallas-final-ai-shape.md) — AI 终态架构与 Bot↔AI 契约
 - [llm-efficiency-roadmap.md](llm-efficiency-roadmap.md) — 省 Token 与 nyaturing / moellmchats 借鉴路线

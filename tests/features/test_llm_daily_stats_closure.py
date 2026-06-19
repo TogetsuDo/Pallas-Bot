@@ -70,3 +70,68 @@ async def test_fetch_llm_task_stats_treats_token_only_ai_snapshot_as_collecting(
     assert written[0][0] == "2026-06-18"
     assert written[0][1] == "ai"
     assert written[0][2]["reachable"] is True
+
+
+@pytest.mark.asyncio
+async def test_fetch_llm_task_stats_normalizes_ai_runtime_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot_snapshot = {
+        "source": "bot",
+        "day_key": "2026-06-18",
+        "updated_at": 1.0,
+        "by_task": {},
+        "totals": {},
+    }
+    ai_snapshot = {
+        "source": "ai",
+        "day_key": "2026-06-18",
+        "by_task": {"llm_chat": {"task_ok": 2}},
+        "totals": {"task_ok": 2},
+        "tokens": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+    }
+    response = MagicMock()
+    response.status_code = 200
+    response.json.return_value = ai_snapshot
+
+    monkeypatch.setattr(
+        "pallas.product.llm.model_admin.llm_task_metrics_snapshot",
+        lambda: bot_snapshot,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "pallas.product.llm.model_admin.cluster_llm_task_metrics_snapshot",
+        lambda: bot_snapshot,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "pallas.product.llm.model_admin.today_key",
+        lambda: "2026-06-18",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "pallas.product.llm.model_admin.HTTPXClient.get",
+        AsyncMock(return_value=response),
+    )
+    monkeypatch.setattr(
+        "pallas.product.llm.llm_daily_stats_store.write_day_side",
+        lambda day, side, snapshot: None,
+    )
+    monkeypatch.setattr(
+        "pallas.product.llm.llm_daily_stats_store.load_range",
+        lambda *, start_day, end_day: ([], start_day, end_day),
+    )
+
+    payload = await fetch_llm_task_stats(start="2026-06-18", end="2026-06-18")
+
+    assert payload["ai"]["state_counts"] == {
+        "queued": 0,
+        "running": 0,
+        "succeeded": 2,
+        "failed": 0,
+    }
+    assert payload["ai"]["failure_counts"] == {}
+    assert payload["ai"]["provider_stats"] == {}
+    assert payload["ai"]["model_stats"] == {}
+    assert payload["ai"]["tokens"]["by_provider"] == {}
+    assert payload["ai"]["tokens"]["by_model"] == {}

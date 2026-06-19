@@ -2735,6 +2735,17 @@ async def _scheduled_cleanup_matcher_error_logs() -> None:
     )
 
 
+async def _scheduled_refresh_plugin_update_snapshot() -> None:
+    """每日 4:00 比对插件版本，刷新「有无新版本」快照。"""
+    from pallas.console.webui.plugin_update_snapshot import refresh_plugin_update_snapshot
+
+    try:
+        await refresh_plugin_update_snapshot()
+        drop_read_cache(("plugins-community-store", "plugins-official-extensions"))
+    except Exception:  # noqa: BLE001
+        logger.exception("Pallas-Bot 控制台: 定时刷新插件更新快照失败")
+
+
 def _matcher_hist_bump(sid: str, plugin: str, had_error: bool, *, duration_ms: int | float = 0) -> None:
     """Matcher 执行按时间桶、按插件名记录。"""
     pname = str(plugin).strip() or "_"
@@ -4555,8 +4566,9 @@ def register_extended_api(
         if plugin_row is None:
             raise HTTPException(status_code=404, detail=f"unknown plugin: {target}")
 
-        plugin_meta = next((row for row in _list_plugins_dict() if str(row.get("package") or "") == target), {})
-        extra = plugin_meta.get("extra") if isinstance(plugin_meta, dict) else {}
+        plugin_meta = next((row for row in _list_plugins_dict() if str(row.get("name") or "") == target), {})
+        metadata = plugin_meta.get("metadata") if isinstance(plugin_meta, dict) else {}
+        extra = metadata.get("extra") if isinstance(metadata, dict) else {}
         menu_items = list(extra.get("menu_data") or []) if isinstance(extra, dict) else []
 
         perm_cfg = get_cmd_perm_config()
@@ -4587,9 +4599,15 @@ def register_extended_api(
                     "global_disable": target in disabled,
                     "help_hidden": target in hidden,
                 },
-                "perm_ui_filtered": list(perm_row.get("commands") or []),
-                "limits_ui_filtered": list(limits_row.get("commands") or []),
+                "perm_ui_filtered": {
+                    "levels": list(perm_ui.get("levels") or []),
+                    "plugins": [perm_row] if perm_row else [],
+                },
+                "limits_ui_filtered": {
+                    "plugins": [limits_row] if limits_row else [],
+                },
                 "reload_policy": plugin_row.get("reload_policy"),
+                "activation_policy": plugin_row.get("activation_policy"),
             },
         })
 
@@ -4768,6 +4786,31 @@ def register_extended_api(
 
         data = await cached_read(key="plugins-community-store", loader=_load, ttl_sec=30.0, stale_sec=120.0)
         return JSONResponse({"ok": True, "data": data})
+
+    @router.post(f"{x}/plugins/update-snapshot/refresh", include_in_schema=True)
+    async def _plugins_update_snapshot_refresh(
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        """手动比对全部插件版本，刷新「有无新版本」快照。"""
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        from pallas.console.webui.plugin_update_snapshot import refresh_plugin_update_snapshot
+        from pallas.core.shared.utils.format_exception import format_exception_for_log
+
+        try:
+            snapshot = await refresh_plugin_update_snapshot()
+            drop_read_cache(("plugins-community-store", "plugins-official-extensions"))
+            return JSONResponse({
+                "ok": True,
+                "data": {
+                    "checked_at": snapshot.get("checked_at"),
+                    "community_count": len(snapshot.get("community") or {}),
+                    "official_count": len(snapshot.get("official") or {}),
+                },
+            })
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Pallas-Bot 控制台: 刷新插件更新快照失败")
+            raise HTTPException(status_code=500, detail=format_exception_for_log(e)) from e
 
     @router.post(f"{x}/plugins/community-plugins/install", include_in_schema=True)
     async def _plugins_community_plugins_install(
@@ -5235,6 +5278,54 @@ def register_extended_api(
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": data})
+
+    @router.get(f"{x}/common-config/llm/history/sessions", include_in_schema=True)
+    async def _llm_history_sessions_get(
+        bot_id: int | None = Query(default=None, ge=1, description="Bot QQ；省略则不过滤"),
+        group_id: int | None = Query(default=None, ge=0, description="群号；0 表示私聊"),
+        user_id: int | None = Query(default=None, ge=1, description="用户 QQ；省略则返回最近会话列表"),
+        limit: int = Query(default=50, ge=1, le=200),
+    ) -> JSONResponse:
+        from pallas.product.llm.session_store import list_llm_history_sessions
+
+        try:
+            rows = await list_llm_history_sessions(
+                bot_id=bot_id,
+                group_id=group_id,
+                user_id=user_id,
+                limit=limit,
+            )
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({
+            "ok": True,
+            "data": {
+                "items": [row.model_dump() if hasattr(row, "model_dump") else row for row in rows],
+                "limit": limit,
+            },
+        })
+
+    @router.get(f"{x}/common-config/llm/history/session", include_in_schema=True)
+    async def _llm_history_session_get(
+        bot_id: int = Query(..., ge=1, description="Bot QQ"),
+        group_id: int | None = Query(default=None, ge=0, description="群号；0 表示私聊"),
+        user_id: int = Query(..., ge=1, description="用户 QQ"),
+        limit: int = Query(default=100, ge=1, le=200),
+    ) -> JSONResponse:
+        from pallas.product.llm.session_store import get_llm_history_session_detail
+
+        try:
+            data = await get_llm_history_session_detail(
+                bot_id=bot_id,
+                group_id=group_id,
+                user_id=user_id,
+                limit=limit,
+            )
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        if data is None:
+            raise HTTPException(status_code=404, detail="未找到该 AI 会话")
+        return JSONResponse({"ok": True, "data": data.model_dump() if hasattr(data, "model_dump") else data})
 
     @router.get(f"{x}/common-config/llm/persona-observe", include_in_schema=True)
     async def _llm_persona_observe_get(
@@ -6753,4 +6844,18 @@ def register_extended_api(
             replace_existing=True,
             coalesce=True,
             max_instances=1,
+        )
+        _plugin_update_snapshot_id = "pallas_webui_plugin_update_snapshot"
+        if scheduler.get_job(_plugin_update_snapshot_id):
+            scheduler.remove_job(_plugin_update_snapshot_id)
+        scheduler.add_job(
+            _scheduled_refresh_plugin_update_snapshot,
+            trigger="cron",
+            hour=4,
+            minute=0,
+            id=_plugin_update_snapshot_id,
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=3600,
         )

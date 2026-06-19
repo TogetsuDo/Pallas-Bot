@@ -56,7 +56,8 @@ async def build_llm_status_text(*, cfg: LlmConfig | None = None) -> str:
             "开关："
             f"门控={'开' if c.llm_reply_gate_enabled else '关'}，"
             f"CD合并={'开' if c.llm_chat_queue_merge else '关'}，"
-            f"记忆RAG={'开' if c.llm_memory_rag_enabled else '关'}"
+            f"记忆RAG={'开' if c.llm_memory_rag_enabled else '关'}，"
+            "群内旧事=teach+群环境提炼"
         ),
     ])
 

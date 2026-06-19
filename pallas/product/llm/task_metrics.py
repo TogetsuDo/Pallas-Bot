@@ -19,6 +19,13 @@ _EVENTS = frozenset({
     "reply_gate_skip",
     "reply_gate_defer",
 })
+_ROUTE_BUCKETS = frozenset({
+    "plain_llm_chat",
+    "corpus_select",
+    "corpus_polish_lite",
+    "corpus_polish",
+    "corpus_fallback",
+})
 
 _lock = threading.Lock()
 _day_key = ""
@@ -47,6 +54,12 @@ def snapshot_locked(*, day_override: str | None = None) -> dict[str, Any]:
     by_task: dict[str, dict[str, int]] = {}
     totals = dict.fromkeys(_EVENTS, 0)
     for compound, value in _counters.items():
+        if compound.startswith("route:"):
+            _, task, route = compound.split(":", 2)
+            row = by_task.setdefault(task, dict.fromkeys(_EVENTS, 0))
+            route_counts = row.setdefault("route_counts", {})
+            route_counts[route] = int(value)
+            continue
         if ":" not in compound:
             continue
         task, metric = compound.split(":", 1)
@@ -94,6 +107,25 @@ def record_bot_llm_task(task: str | None, event: str) -> None:
         pass
 
 
+def normalize_llm_route_name(raw: str | None) -> str:
+    route = str(raw or "").strip().lower()
+    if route in _ROUTE_BUCKETS:
+        return route
+    return "plain_llm_chat"
+
+
+def record_bot_llm_route(task: str | None, route: str | None) -> None:
+    key = normalize_llm_task_name(task)
+    route_key = normalize_llm_route_name(route)
+    try:
+        with _lock:
+            rollover_if_needed()
+            compound = f"route:{key}:{route_key}"
+            _counters[compound] = int(_counters.get(compound, 0)) + 1
+    except Exception:
+        pass
+
+
 def merge_llm_task_snapshots(rows: list[dict[str, Any]]) -> dict[str, Any]:
     by_task: dict[str, dict[str, int]] = {}
     totals = dict.fromkeys(_EVENTS, 0)
@@ -116,6 +148,12 @@ def merge_llm_task_snapshots(rows: list[dict[str, Any]]) -> dict[str, Any]:
                     continue
                 for metric in _EVENTS:
                     dst[metric] += int(metrics.get(metric) or 0)
+                route_counts = metrics.get("route_counts")
+                if isinstance(route_counts, dict):
+                    dst_route_counts = dst.setdefault("route_counts", {})
+                    for route, count in route_counts.items():
+                        route_key = normalize_llm_route_name(str(route))
+                        dst_route_counts[route_key] = int(dst_route_counts.get(route_key, 0)) + int(count or 0)
         src_totals = row.get("totals")
         if isinstance(src_totals, dict):
             for metric in _EVENTS:

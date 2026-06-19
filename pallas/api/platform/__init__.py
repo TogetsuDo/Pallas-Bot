@@ -86,6 +86,11 @@ from pallas.core.platform.shard.coord.bot_action import (
     send_private_msg_as_bot,
     set_group_card_as_bot,
 )
+from pallas.core.platform.shard.coord.bot_count import (
+    STAGGER_SEC,
+    run_shard_coordinated_bot_count,
+    update_shard_bot_count_registration,
+)
 
 # ── 分片在线态 ──
 from pallas.core.platform.shard.presence import (
@@ -163,6 +168,9 @@ __all__ = [
     "send_group_message_as_bot",
     "send_private_msg_as_bot",
     "set_group_card_as_bot",
+    "STAGGER_SEC",
+    "run_shard_coordinated_bot_count",
+    "update_shard_bot_count_registration",
     # 插件子模块
     "import_plugin_submodule",
     # LLM

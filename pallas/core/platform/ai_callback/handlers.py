@@ -14,6 +14,18 @@ from pallas.core.platform.ai_callback.task_types import (
 )
 
 
+def should_suppress_llm_duplicate_reply(task: dict, reply_text: str) -> bool:
+    if task.get("task_type") not in LEGACY_LLM_CHAT_TASK_TYPES:
+        return False
+    text = str(reply_text or "").strip()
+    if not text:
+        return False
+    last = str(task.get("last_reply_text") or "").strip()
+    if not last:
+        return False
+    return text == last
+
+
 def failure_reply_for_task(task: dict) -> str | None:
     """失败时发往群的消息；None 表示静默失败。"""
     task_type = task.get("task_type")

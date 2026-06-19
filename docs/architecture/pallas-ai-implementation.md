@@ -49,7 +49,7 @@
 | 7.3 | **LLM legacy 收口** | Bot→AI 全面 capability 信封；弃用或隔离 `/ollama/*` 等 path-only 路径（见 persona-llm-roadmap） | 未开始 |
 | 7.4 | **sing 统一 media task** | 默认 `media_task`；legacy  singing HTTP 仅兼容期 | 已落地（bundled 默认） |
 | 7.5 | **插件侧熔断去重** | draw/sing 以 AI `/health` + probe 为事实源；削减插件内 parallel circuit 状态机 | 未开始 |
-| 7.6 | **memory infra** | 运行时 session / task state 在 AI 仓；产品记忆策略仍在 Bot（final §2.4） | 未开始 |
+| 7.6 | **memory infra** | 运行时 session / task state 在 AI 仓；产品记忆策略仍在 Bot（final §2.4） | 进行中（session backend、超长摘要与 health 可观测已落；task state / 更深层 runtime memory 仍待收口） |
 | 7.7 | **strict 门禁（可选）** | `PALLAS_DUPLICATE_PREFIX_STRICT=true` 等硬失败策略 | 未开始 |
 
 **L2 完成标志**（摘自 final 意图）：
@@ -67,7 +67,7 @@
 
 **明确不做**：在 draw 插件内继续堆供应商细节；为每种媒体各自发明 task 状态机；把 persona 最终解释权放进 AI 仓。
 
-> **bundled `src/plugins/draw`**：4.0 起已迁出；slim 通过 `uv sync --extra plugins-draw` 或 `local/plugins/draw` 加载。**L2 draw 形态收敛在扩展仓维护**。
+> **bundled `src/plugins/draw`**：4.0 起已迁出；slim 通过插件商店、`uv run pallas ext install pallas-plugin-draw` 或 `local/plugins/draw` 加载。**L2 draw 形态收敛在扩展仓维护**。
 
 ## 4. 内核槽位 API（`src/`，与 local 无关）
 
