@@ -238,6 +238,10 @@ test.py
 
 # AI orchestration internal data
 .sisyphus/
+.superpowers/
+.claude/skills/
+docs/superpowers/
+tmp/
 
 # 站点自有插件（保留目录骨架；见 local/README.md）
 local/plugins/*
