@@ -1447,11 +1447,16 @@ def flush_unified_console_live_stats_sync(*, include_hist: bool = False) -> None
     if not _unified_console_live_stats_enabled():
         return
     from packages.pb_webui import console_live_stats
+    from pallas.core.platform.shard.repeater_ingress_metrics import repeater_ingress_metrics_snapshot
+
+    from .repeater_metrics_history import append_repeater_metrics_history
 
     console_live_stats.write_bots_sync(
         _collect_worker_console_stats_snapshot(include_hist=include_hist),
         preserve_matcher_hist=not include_hist,
     )
+    snap = repeater_ingress_metrics_snapshot()
+    append_repeater_metrics_history(cluster=snap, process=snap, sharded=False)
 
 
 async def flush_unified_console_live_stats_async(*, include_hist: bool = False) -> None:
@@ -1472,6 +1477,8 @@ def flush_worker_shard_console_stats_sync(*, include_hist: bool = False) -> None
     from pallas.core.platform.shard.registry.config import get_shard_registry_settings
     from pallas.core.platform.shard.repeater_ingress_metrics import repeater_ingress_metrics_snapshot
     from pallas.product.llm.task_metrics import llm_task_metrics_snapshot
+
+    from .repeater_metrics_history import append_repeater_metrics_history
 
     if not _shard_worker_console():
         return
@@ -1496,6 +1503,11 @@ def flush_worker_shard_console_stats_sync(*, include_hist: bool = False) -> None
             "process_memory": process_memory_snapshot(),
             "llm_task": llm_task_metrics_snapshot(),
         },
+    )
+    append_repeater_metrics_history(
+        cluster=repeater_ingress_metrics_snapshot(),
+        process=repeater_ingress_metrics_snapshot(),
+        sharded=True,
     )
 
 
@@ -4378,6 +4390,21 @@ def register_extended_api(
         data = await cached_read(key="shard-observability", loader=_load, ttl_sec=2.0, stale_sec=8.0)
         return JSONResponse({"ok": True, "data": data})
 
+    @router.get(f"{x}/repeater-metrics/history", include_in_schema=True)
+    async def _repeater_metrics_history(limit: int = Query(default=168, ge=1, le=24 * 30)) -> JSONResponse:
+        from .repeater_metrics_history import read_recent_repeater_metrics_history
+
+        async def _load() -> list[dict[str, Any]]:
+            return read_recent_repeater_metrics_history(limit=limit)
+
+        data = await cached_read(
+            key=f"repeater-metrics-history:{int(limit)}",
+            loader=_load,
+            ttl_sec=2.0,
+            stale_sec=8.0,
+        )
+        return JSONResponse({"ok": True, "data": data})
+
     @router.get(f"{x}/ingress-dispatch", include_in_schema=True)
     async def _ingress_dispatch_metrics() -> JSONResponse:
         from pallas.core.platform.shard.dispatch_observability import aggregate_ingress_dispatch
@@ -5262,6 +5289,31 @@ def register_extended_api(
 
         try:
             data = await save_providers_config(body.model_dump())
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": data})
+
+    @router.get(f"{x}/common-config/llm/providers/{{provider_id}}/models", include_in_schema=True)
+    async def _llm_provider_models_get(provider_id: str) -> JSONResponse:
+        from pallas.product.llm.model_admin import fetch_provider_models
+
+        try:
+            data = await fetch_provider_models(provider_id)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": data})
+
+    @router.post(f"{x}/common-config/llm/providers/{{provider_id}}/test", include_in_schema=True)
+    async def _llm_provider_test_post(
+        provider_id: str,
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        from pallas.product.llm.model_admin import test_provider
+
+        try:
+            data = await test_provider(provider_id)
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": data})

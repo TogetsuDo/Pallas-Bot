@@ -6,6 +6,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from pallas.core.platform.shard.repeater_ingress_metrics import (
+    clear_repeater_ingress_metrics_for_tests,
+    repeater_ingress_metrics_snapshot,
+)
+
 
 class _Config:
     def __init__(self, value: int):
@@ -438,6 +443,28 @@ async def test_context_find_threshold_filtering():
                 new_callable=AsyncMock,
                 return_value=set(),
             ),
+            patch(
+                "pallas.product.persona.resolve_persona_for_message",
+                new_callable=AsyncMock,
+                return_value=SimpleNamespace(
+                    reply_bias=1.0,
+                    speak_bias=1.0,
+                    chaos_bias=0.0,
+                    warmth=0.0,
+                    assertiveness=0.0,
+                    bluntness=0.0,
+                    harsh_msg_ratio=0.0,
+                    polite_msg_ratio=0.0,
+                    tone="neutral",
+                    length_pref="any",
+                ),
+            ),
+            patch(
+                "pallas.product.persona.loader.load_affect_triggers",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch("packages.repeater.activity_gate.group_has_hosted_activity", return_value=False),
             patch("packages.repeater.responder.random.choices", side_effect=[[3], [high_answer]]),
             patch("packages.repeater.responder.random.choice", return_value="high_msg"),
             patch("packages.repeater.responder.random.random", return_value=1.0),
@@ -480,3 +507,242 @@ async def test_reply_post_proc_via_responder():
         assert reply_dict[group_id][bot_id][0]["reply"] == "new"
     finally:
         reply_dict.clear()
+
+
+def test_choose_reply_mode_prefers_ghost_when_chaos_bias_is_high():
+    from packages.repeater.responder import Responder
+    from pallas.product.persona.model import ResolvedPersona
+
+    persona = ResolvedPersona(chaos_bias=0.85)
+    assert Responder._choose_reply_mode(persona, group_activity=0.95, to_me=False) == "ghost"
+
+
+def test_choose_reply_mode_prefers_god_for_low_chaos_active_group():
+    from packages.repeater.responder import Responder
+    from pallas.product.persona.model import ResolvedPersona
+
+    persona = ResolvedPersona(chaos_bias=0.05, reply_bias=1.15, warmth=0.1)
+    assert Responder._choose_reply_mode(persona, group_activity=0.9, to_me=False) == "god"
+
+
+def test_choose_reply_mode_keeps_normal_when_called_to_me():
+    from packages.repeater.responder import Responder
+    from pallas.product.persona.model import ResolvedPersona
+
+    persona = ResolvedPersona(chaos_bias=0.9, reply_bias=1.2)
+    assert Responder._choose_reply_mode(persona, group_activity=1.0, to_me=True) == "normal"
+
+
+def test_answer_weight_prefers_god_style_for_popular_recent_human_reply():
+    from packages.repeater.responder import Responder
+    from pallas.core.foundation.db import Answer
+    from pallas.product.persona.model import ResolvedPersona
+
+    persona = ResolvedPersona(chaos_bias=0.05, warmth=0.15, assertiveness=0.1)
+    answer = Answer(
+        keywords="kw",
+        group_id=1,
+        count=6,
+        time=1,
+        messages=["懂了这波真行", "也不是不行"],
+    )
+    recent_sent = ["别的句子"]
+    recent_message = ["懂了这波真行", "路过"]
+
+    god_weight = Responder._answer_weight_for_mode(
+        answer,
+        persona,
+        recent_sent=recent_sent,
+        recent_message=recent_message,
+        affect_triggers=[],
+        mode="god",
+    )
+    normal_weight = Responder._answer_weight_for_mode(
+        answer,
+        persona,
+        recent_sent=recent_sent,
+        recent_message=recent_message,
+        affect_triggers=[],
+        mode="normal",
+    )
+
+    assert god_weight > normal_weight
+
+
+def test_answer_weight_prefers_ghost_style_for_short_odd_reply():
+    from packages.repeater.responder import Responder
+    from pallas.core.foundation.db import Answer
+    from pallas.product.persona.model import ResolvedPersona
+
+    persona = ResolvedPersona(chaos_bias=0.8, bluntness=0.3, length_pref="short", tone="terse")
+    answer = Answer(
+        keywords="kw",
+        group_id=1,
+        count=2,
+        time=1,
+        messages=["寄", "有点那个"],
+    )
+
+    ghost_weight = Responder._answer_weight_for_mode(
+        answer,
+        persona,
+        recent_sent=[],
+        recent_message=["路过"],
+        affect_triggers=[],
+        mode="ghost",
+    )
+    normal_weight = Responder._answer_weight_for_mode(
+        answer,
+        persona,
+        recent_sent=[],
+        recent_message=["路过"],
+        affect_triggers=[],
+        mode="normal",
+    )
+
+    assert ghost_weight > normal_weight
+
+
+def test_collect_god_candidate_pool_prefers_recent_live_same_group_texts():
+    from packages.repeater.responder import Responder
+    from pallas.core.foundation.db import Answer
+
+    answer = Answer(
+        keywords="kw",
+        group_id=1,
+        count=5,
+        time=1,
+        messages=["存量句子", "也不是不行"],
+    )
+    recent_message = ["懂了这波真行", "路过", "懂了这波真行", "来个补刀"]
+
+    pool = Responder._collect_mode_candidate_pool(
+        answer,
+        mode="god",
+        recent_message=recent_message,
+    )
+
+    assert pool[:2] == ["懂了这波真行", "来个补刀"]
+    assert "存量句子" in pool
+
+
+def test_collect_ghost_candidate_pool_prefers_short_odd_texts():
+    from packages.repeater.responder import Responder
+    from pallas.core.foundation.db import Answer
+
+    answer = Answer(
+        keywords="kw",
+        group_id=1,
+        count=4,
+        time=1,
+        messages=["这也太正常了吧", "寄", "有点那个"],
+    )
+
+    pool = Responder._collect_mode_candidate_pool(
+        answer,
+        mode="ghost",
+        recent_message=["路过"],
+    )
+
+    assert pool[0] == "寄"
+    assert "有点那个" in pool
+
+
+@pytest.mark.asyncio
+async def test_context_find_records_reply_mode_metrics():
+    from packages.repeater.responder import Responder
+    from pallas.core.foundation.db import Answer, Context
+
+    clear_repeater_ingress_metrics_for_tests()
+    group_id = 901
+    bot_id = 902
+    chat_data = SimpleNamespace(
+        group_id=group_id,
+        raw_message="来点接话",
+        plain_text="来点接话",
+        keywords="接话",
+        bot_id=bot_id,
+        keywords_len=1,
+        to_me=False,
+        is_image=False,
+        is_plain_text=True,
+    )
+    config = _Config(0)
+    god_answer = Answer(keywords="ans_god", group_id=group_id, count=6, time=1, messages=["懂了这波真行"])
+    context = Context.model_construct(
+        keywords="接话", time=1, trigger_count=1, answers=[god_answer], ban=[], clear_time=0
+    )
+    reply_dict = defaultdict(lambda: defaultdict(list))
+    message_dict = defaultdict(list)
+    message_dict[group_id] = [
+        SimpleNamespace(raw_message="懂了这波真行", user_id=10001),
+        SimpleNamespace(raw_message="路过", user_id=10002),
+        SimpleNamespace(raw_message="懂了这波真行", user_id=10003),
+        SimpleNamespace(raw_message="确实", user_id=10005),
+        SimpleNamespace(raw_message="这下对了", user_id=10006),
+        SimpleNamespace(raw_message="继续", user_id=10007),
+        SimpleNamespace(raw_message="有道理", user_id=10008),
+        SimpleNamespace(raw_message="笑死", user_id=10009),
+        SimpleNamespace(raw_message="来点接话", user_id=10004),
+    ]
+    recent_topics = defaultdict(lambda: deque(maxlen=16))
+    recent_topics[group_id] = deque(maxlen=16)
+
+    try:
+        with (
+            patch(
+                "packages.repeater.responder.context_repo.find_by_keywords_for_reply",
+                new_callable=AsyncMock,
+                return_value=context,
+                create=True,
+            ),
+            patch(
+                "packages.repeater.responder.BanManager.find_ban_keywords",
+                new_callable=AsyncMock,
+                return_value=set(),
+            ),
+            patch(
+                "pallas.product.persona.resolve_persona_for_message",
+                new_callable=AsyncMock,
+                return_value=SimpleNamespace(
+                    reply_bias=1.1,
+                    speak_bias=1.0,
+                    chaos_bias=0.05,
+                    warmth=0.1,
+                    assertiveness=0.1,
+                    bluntness=0.0,
+                    harsh_msg_ratio=0.0,
+                    polite_msg_ratio=0.0,
+                    tone="neutral",
+                    length_pref="any",
+                ),
+            ),
+            patch(
+                "pallas.product.persona.loader.load_affect_triggers",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch("packages.repeater.activity_gate.group_has_hosted_activity", return_value=False),
+            patch("packages.repeater.responder.random.choices", side_effect=[[3], [god_answer]]),
+            patch("packages.repeater.responder.random.choice", return_value="懂了这波真行"),
+            patch("packages.repeater.responder.random.random", return_value=1.0),
+        ):
+            bundle = await Responder.find_reply_bundle(
+                cast("Any", chat_data),
+                cast("Any", config),
+                reply_dict,
+                message_dict,
+                recent_topics,
+            )
+            assert bundle is not None
+            assert bundle.reply_mode == "god"
+            assert bundle.reply_source == "same_group_recent_live"
+            snap = repeater_ingress_metrics_snapshot()
+            assert snap["reply_total"] == 1
+            assert snap["reply_mode_god"] == 1
+            assert snap["reply_source_same_group_recent_live"] == 1
+            assert snap["reply_recent_hit"] == 1
+    finally:
+        reply_dict.clear()
+        message_dict.clear()
+        recent_topics.clear()

@@ -6,7 +6,7 @@ from pallas.core.platform.shard.observability import aggregate_shard_observabili
 
 def test_aggregate_shard_observability_includes_repeater_ingress(tmp_path, monkeypatch):
     monkeypatch.setattr(stats_mod, "plugin_data_dir", lambda name, create=True: tmp_path / name)
-    monkeypatch.setattr("pallas.core.platform.shard.observability.is_sharding_active", lambda: True)
+    monkeypatch.setattr("pallas.core.platform.shard.context.sharding_active", lambda: True)
     monkeypatch.setattr(
         "pallas.core.platform.shard.observability.get_shard_registry",
         lambda: type("R", (), {"shards": [type("S", (), {"id": 0})()]})(),

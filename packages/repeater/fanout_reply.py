@@ -99,6 +99,11 @@ def fanout_payload_from_event(event: GroupMessageEvent, bundle: ReplyBundle) -> 
             "answer_list": list(bundle.answer_list),
             "answer_keywords": bundle.answer_keywords,
             "message_pool": list(bundle.message_pool),
+            "reply_mode": bundle.reply_mode,
+            "reply_source": bundle.reply_source,
+            "recent_hit": bundle.recent_hit,
+            "repeat_hit": bundle.repeat_hit,
+            "pick_path": bundle.pick_path,
         },
     }
 
@@ -126,6 +131,11 @@ def bundle_from_payload(payload: dict[str, Any]) -> ReplyBundle | None:
         answer_list=[str(x) for x in answer_list],
         answer_keywords=keywords,
         message_pool=[str(x) for x in pool],
+        reply_mode=str(raw.get("reply_mode") or "normal"),
+        reply_source=str(raw.get("reply_source") or "same_group"),
+        recent_hit=bool(raw.get("recent_hit")),
+        repeat_hit=bool(raw.get("repeat_hit")),
+        pick_path=str(raw.get("pick_path") or "default"),
     )
 
 

@@ -13,6 +13,7 @@ from pallas.core.foundation.db import Answer
 from pallas.core.foundation.db.context_repo_access import context_repo
 from pallas.core.foundation.db.pool_budget import is_pg_pool_timeout_error, pg_pool_under_pressure
 from pallas.core.platform.shard import context as shard_ctx
+from pallas.core.platform.shard.repeater_ingress_metrics import record_repeater_reply_selection
 
 from .ban_manager import BanManager
 from .config import get_repeater_config
@@ -32,6 +33,11 @@ class ReplyBundle:
     answer_list: list[str]
     answer_keywords: str
     message_pool: list[str]
+    reply_mode: str = "normal"
+    reply_source: str = "same_group"
+    recent_hit: bool = False
+    repeat_hit: bool = False
+    pick_path: str = "default"
 
 
 class Responder:
@@ -51,6 +57,9 @@ class Responder:
     SPLIT_PROBABILITY = plugin_config.split_probability
 
     SAVE_RESERVED_SIZE = plugin_config.save_reserved_size
+    GOD_ACTIVITY_THRESHOLD = 0.6
+    GHOST_ACTIVITY_THRESHOLD = 0.45
+    GHOST_PICK_ACTIVITY_THRESHOLD = 0.72
 
     ANSWER_THRESHOLD_CHOICE_LIST = list(
         range(ANSWER_THRESHOLD - len(ANSWER_THRESHOLD_WEIGHTS) + 1, ANSWER_THRESHOLD + 1)
@@ -68,6 +77,174 @@ class Responder:
             ids = {int(b.self_id) for b in get_bots().values()}
         ids.update(plugin_config.repeat_ignore_user_ids)
         return ids
+
+    @staticmethod
+    def _group_activity_score(group_msgs: list) -> float:
+        if not group_msgs:
+            return 0.0
+        human_msgs = Responder._human_messages_for_repeat(group_msgs)
+        if not human_msgs:
+            return 0.0
+        recent = human_msgs[-12:]
+        unique_users = {int(uid) for msg in recent if (uid := getattr(msg, "user_id", None)) is not None}
+        activity = min(len(recent), 12) / 12.0
+        diversity = min(len(unique_users), 5) / 5.0
+        return round(activity * 0.7 + diversity * 0.3, 3)
+
+    @staticmethod
+    def _choose_reply_mode(persona, *, group_activity: float, to_me: bool) -> str:
+        if to_me:
+            return "normal"
+        chaos = float(getattr(persona, "chaos_bias", 0.0) or 0.0)
+        reply_bias = float(getattr(persona, "reply_bias", 1.0) or 1.0)
+        warmth = float(getattr(persona, "warmth", 0.0) or 0.0)
+        assertiveness = float(getattr(persona, "assertiveness", 0.0) or 0.0)
+        if chaos >= 0.72 and group_activity >= Responder.GHOST_ACTIVITY_THRESHOLD:
+            return "ghost"
+        if (
+            chaos <= 0.18
+            and group_activity >= Responder.GOD_ACTIVITY_THRESHOLD
+            and (reply_bias >= 1.0 or warmth >= 0.08 or assertiveness >= 0.08)
+        ):
+            return "god"
+        return "normal"
+
+    @staticmethod
+    def _sample_mode_multiplier(text: str, *, mode: str, recent_message: list[str], persona) -> float:
+        plain = (text or "").strip()
+        if not plain:
+            return 0.05
+        length = len(plain)
+        chaos = float(getattr(persona, "chaos_bias", 0.0) or 0.0)
+        bluntness = float(getattr(persona, "bluntness", 0.0) or 0.0)
+        warmth = float(getattr(persona, "warmth", 0.0) or 0.0)
+        assertiveness = float(getattr(persona, "assertiveness", 0.0) or 0.0)
+        recent_hits = recent_message.count(plain)
+        if mode == "god":
+            multiplier = 1.0
+            if recent_hits:
+                multiplier *= 1.25 + min(recent_hits, 3) * 0.18
+            if length <= 18:
+                multiplier *= 1.08
+            if warmth > 0:
+                multiplier *= 1.0 + min(warmth, 0.4) * 0.18
+            if assertiveness > 0:
+                multiplier *= 1.0 + min(assertiveness, 0.4) * 0.12
+            return max(0.05, multiplier)
+        if mode == "ghost":
+            multiplier = 1.0 + chaos * 0.35
+            if length <= 8:
+                multiplier *= 1.35 + chaos * 0.35
+            elif length >= 20:
+                multiplier *= max(0.7, 1.0 - chaos * 0.3)
+            if recent_hits == 0:
+                multiplier *= 1.08
+            if bluntness > 0:
+                multiplier *= 1.0 + min(bluntness, 0.5) * 0.2
+            return max(0.05, multiplier)
+        return 1.0
+
+    @staticmethod
+    def _ghost_candidate_rank(text: str) -> tuple[int, int, int]:
+        plain = (text or "").strip()
+        if not plain:
+            return (-1, -99, -99)
+        short_bonus = 2 if len(plain) <= 8 else (1 if len(plain) <= 14 else 0)
+        odd_markers = ("寄", "草", "笑死", "有点", "这什么", "怎么个事", "什么鬼")
+        odd_bonus = sum(1 for token in odd_markers if token in plain)
+        punct_bonus = sum(1 for token in ("?", "？", "!", "！", "~", "…") if token in plain)
+        return (short_bonus + odd_bonus + punct_bonus, -len(plain), odd_bonus)
+
+    @staticmethod
+    def _collect_mode_candidate_pool(
+        answer: Answer,
+        *,
+        mode: str,
+        recent_message: list[str],
+    ) -> list[str]:
+        base_pool: list[str] = []
+        for sample in answer.messages:
+            text = sample.removeprefix("牛牛").strip()
+            if text and text not in base_pool:
+                base_pool.append(text)
+        if mode == "god":
+            recent_live: list[str] = []
+            for text in recent_message:
+                plain = str(text or "").strip()
+                if plain and plain not in recent_live:
+                    recent_live.append(plain)
+            favored = [text for text in recent_live if recent_message.count(text) >= 2 or 4 <= len(text) <= 16]
+            return favored + [text for text in base_pool if text not in favored]
+        if mode == "ghost":
+            return sorted(base_pool, key=Responder._ghost_candidate_rank, reverse=True)
+        return base_pool
+
+    @staticmethod
+    def _answer_weight_for_mode(
+        answer: Answer,
+        persona,
+        *,
+        recent_sent: list[str],
+        recent_message: list[str],
+        affect_triggers,
+        mode: str,
+    ) -> float:
+        from pallas.product.persona.scorer import (
+            answer_popularity_multiplier,
+            freshness_multiplier,
+            message_weight_multiplier,
+        )
+
+        base = min(answer.count, 10) + answer._topical * Responder.TOPICS_IMPORTANCE
+        if mode != "ghost":
+            base *= answer_popularity_multiplier(answer.count, persona)
+        elif answer.count >= 4:
+            base *= max(0.75, 1.0 - min(answer.count, 10) * 0.04)
+        mults = []
+        for sample in answer.messages:
+            text = sample.removeprefix("牛牛")
+            sample_weight = (
+                message_weight_multiplier(text, persona, affect_triggers=affect_triggers)
+                * freshness_multiplier(text, recent_sent, persona=persona)
+                * Responder._sample_mode_multiplier(
+                    text,
+                    mode=mode,
+                    recent_message=recent_message,
+                    persona=persona,
+                )
+            )
+            mults.append(sample_weight)
+        factor = max(mults) if mults else 1.0
+        if mode == "god":
+            factor *= 1.18
+        elif mode == "ghost":
+            factor *= 1.12
+        return max(0.05, base * factor)
+
+    @staticmethod
+    def _pick_answer_text(
+        answer: Answer,
+        *,
+        mode: str,
+        recent_message: list[str],
+        group_activity: float,
+        persona,
+    ) -> tuple[str, str]:
+        pool = Responder._collect_mode_candidate_pool(answer, mode=mode, recent_message=recent_message)
+        if not pool:
+            pool = [sample.removeprefix("牛牛").strip() for sample in answer.messages if sample.strip()]
+        if not pool:
+            return "", "default"
+        if mode == "god":
+            favored = [text for text in pool if text in recent_message]
+            if favored:
+                return favored[0], "god_recent_live"
+            return pool[0], "god_pool"
+        if mode == "ghost":
+            chaos = float(getattr(persona, "chaos_bias", 0.0) or 0.0)
+            if group_activity >= Responder.GHOST_PICK_ACTIVITY_THRESHOLD and chaos >= 0.72:
+                return pool[0], "ghost_pool"
+        return random.choice(pool), "default"
 
     @staticmethod
     def _human_messages_for_repeat(group_msgs: list) -> list:
@@ -201,13 +378,7 @@ class Responder:
         found = await Responder._context_find_with_pool(chat_data, config, reply_dict, message_dict, recent_topics)
         if not found:
             return None
-        plan, message_pool = found
-        answer_list, answer_keywords = plan
-        return ReplyBundle(
-            answer_list=answer_list,
-            answer_keywords=answer_keywords,
-            message_pool=message_pool or list(answer_list),
-        )
+        return found
 
     @staticmethod
     async def _context_find(
@@ -220,8 +391,7 @@ class Responder:
         found = await Responder._context_find_with_pool(chat_data, config, reply_dict, message_dict, recent_topics)
         if not found:
             return None
-        plan, _ = found
-        return plan
+        return found.answer_list, found.answer_keywords
 
     @staticmethod
     async def reply_post_proc(
@@ -252,15 +422,15 @@ class Responder:
         reply_dict,
         message_dict,
         recent_topics,
-    ) -> tuple[tuple[list[str], str], list[str]] | None:
+    ) -> ReplyBundle | None:
         group_id = chat_data.group_id
         raw_message = chat_data.raw_message
         bot_id = chat_data.bot_id
+        group_msgs = message_dict.get(group_id, [])
 
         # 复读！
         rt = Responder.REPEAT_THRESHOLD
         if rt >= 2 and group_id in message_dict:
-            group_msgs = message_dict[group_id]
             human_msgs = Responder._human_messages_for_repeat(group_msgs)
             tail = rt - 1
             if len(human_msgs) >= tail and all(item.raw_message == raw_message for item in human_msgs[-tail:]):
@@ -268,8 +438,16 @@ class Responder:
                 group_bot_replies = reply_dict[group_id][bot_id]
                 if len(group_bot_replies) and group_bot_replies[-1]["reply"] != raw_message:
                     keywords = chat_data.keywords
-                    repeat_plan = ([raw_message], keywords)
-                    return repeat_plan, list(repeat_plan[0])
+                    return ReplyBundle(
+                        answer_list=[raw_message],
+                        answer_keywords=keywords,
+                        message_pool=[raw_message],
+                        reply_mode="normal",
+                        reply_source="same_group",
+                        recent_hit=True,
+                        repeat_hit=True,
+                        pick_path="default",
+                    )
                 else:
                     # 复读过一次就不再回复这句话了
                     return None
@@ -322,12 +500,7 @@ class Responder:
 
         from pallas.product.persona import resolve_persona_for_message
         from pallas.product.persona.loader import load_affect_triggers
-        from pallas.product.persona.scorer import (
-            answer_popularity_multiplier,
-            freshness_multiplier,
-            message_weight_multiplier,
-            scaled_answer_threshold,
-        )
+        from pallas.product.persona.scorer import scaled_answer_threshold
 
         from .activity_gate import group_has_hosted_activity
 
@@ -338,6 +511,12 @@ class Responder:
         )
         affect_triggers = await load_affect_triggers(group_id)
         in_hosted_activity = group_has_hosted_activity(group_id) and not chat_data.to_me
+        group_activity = Responder._group_activity_score(group_msgs)
+        reply_mode = Responder._choose_reply_mode(
+            persona,
+            group_activity=group_activity,
+            to_me=chat_data.to_me,
+        )
 
         is_drunk = await config.drunkenness() > 0
 
@@ -448,30 +627,57 @@ class Responder:
                 if text and text not in message_pool:
                     message_pool.append(text)
 
-        weights = []
-        for answer in candidate_answers.values():
-            base = min(answer.count, 10) + answer._topical * Responder.TOPICS_IMPORTANCE
-            base *= answer_popularity_multiplier(answer.count, persona)
-            mults = []
-            for sample in answer.messages:
-                text = sample.removeprefix("牛牛")
-                mults.append(
-                    message_weight_multiplier(text, persona, affect_triggers=affect_triggers)
-                    * freshness_multiplier(text, recent_sent, persona=persona)
-                )
-            factor = max(mults) if mults else 1.0
-            weights.append(max(0.05, base * factor))
+        weights = [
+            Responder._answer_weight_for_mode(
+                answer,
+                persona,
+                recent_sent=recent_sent,
+                recent_message=recent_message,
+                affect_triggers=affect_triggers,
+                mode=reply_mode,
+            )
+            for answer in candidate_answers.values()
+        ]
         final_answer = random.choices(list(candidate_answers.values()), weights=weights)[0]
-        answer_str = random.choice(final_answer.messages)
+        answer_str, pick_path = Responder._pick_answer_text(
+            final_answer,
+            mode=reply_mode,
+            recent_message=recent_message,
+            group_activity=group_activity,
+            persona=persona,
+        )
+        if not answer_str:
+            return None
         answer_keywords = final_answer.keywords
-        answer_str = answer_str.removeprefix("牛牛")
+        if pick_path == "god_recent_live":
+            reply_source = "same_group_recent_live"
+        else:
+            reply_source = "same_group" if int(final_answer.group_id) == int(group_id) else "cross_group"
+        recent_hit = answer_str in recent_message
+        repeat_hit = answer_str in recent_sent
 
         plan = Responder._plan_from_answer_text(answer_str, answer_keywords)
         if plan is None:
             return None
         if not message_pool:
             message_pool = list(plan[0])
-        return plan, message_pool
+        record_repeater_reply_selection(
+            mode=reply_mode,
+            source=reply_source,
+            recent_hit=recent_hit,
+            repeat_hit=repeat_hit,
+            pick_path=pick_path,
+        )
+        return ReplyBundle(
+            answer_list=plan[0],
+            answer_keywords=plan[1],
+            message_pool=message_pool,
+            reply_mode=reply_mode,
+            reply_source=reply_source,
+            recent_hit=recent_hit,
+            repeat_hit=repeat_hit,
+            pick_path=pick_path,
+        )
 
     @staticmethod
     def _plan_from_answer_text(answer_str: str, answer_keywords: str) -> tuple[list[str], str] | None:
