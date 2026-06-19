@@ -4,19 +4,18 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from pallas.console.cli.extension_ops import append_restart_note
-
-
-def test_append_restart_note_scheduled():
-    assert "已安排" in append_restart_note("安装完成", scheduled=True)
-
-
 @pytest.mark.asyncio
-async def test_install_with_restart_schedules(monkeypatch):
+async def test_install_with_restart_schedules_workers_only(monkeypatch):
     from pallas.console.cli import extension_ops
 
-    monkeypatch.setattr(extension_ops, "bot_lifecycle_available", lambda: True)
-    monkeypatch.setattr(extension_ops, "schedule_bot_restart", lambda **_: True)
+    calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr("pallas.console.cli.extension_activation.bot_lifecycle_available", lambda: True)
+    monkeypatch.setattr("pallas.console.cli.extension_activation.resolve_bot_mode", lambda _mode: "shard")
+    monkeypatch.setattr(
+        "pallas.console.cli.extension_activation.schedule_bot_restart",
+        lambda **kwargs: calls.append(kwargs) or True,
+    )
     monkeypatch.setattr(
         extension_ops,
         "install_official_extension",
@@ -33,4 +32,67 @@ async def test_install_with_restart_schedules(monkeypatch):
         restart=True,
     )
     assert out["restart_scheduled"] is True
-    assert "已安排" in str(out.get("message"))
+    assert out["activation_action"] == "workers-restart"
+    assert calls == [{"mode": "shard", "workers_only": True}]
+    assert "worker" in str(out.get("message"))
+
+
+@pytest.mark.asyncio
+async def test_install_with_restart_schedules_full_restart(monkeypatch):
+    from pallas.console.cli import extension_ops
+
+    calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr("pallas.console.cli.extension_activation.bot_lifecycle_available", lambda: True)
+    monkeypatch.setattr("pallas.console.cli.extension_activation.resolve_bot_mode", lambda _mode: "shard")
+    monkeypatch.setattr(
+        "pallas.console.cli.extension_activation.schedule_bot_restart",
+        lambda **kwargs: calls.append(kwargs) or True,
+    )
+    monkeypatch.setattr(
+        extension_ops,
+        "install_official_extension",
+        AsyncMock(
+            return_value={
+                "package": "pallas-plugin-maa",
+                "needs_restart": True,
+                "message": "安装完成",
+            },
+        ),
+    )
+    out = await extension_ops.install_official_extension_with_options(
+        "pallas-plugin-maa",
+        restart=True,
+    )
+    assert out["restart_scheduled"] is True
+    assert out["activation_action"] == "full-restart"
+    assert calls == [{"mode": "shard", "workers_only": False}]
+    assert "重启" in str(out.get("message"))
+
+
+@pytest.mark.asyncio
+async def test_install_with_restart_hot_loads_in_unified(monkeypatch):
+    from pallas.console.cli import extension_ops
+
+    monkeypatch.setattr("pallas.console.cli.extension_activation.bot_lifecycle_available", lambda: True)
+    monkeypatch.setattr("pallas.console.cli.extension_activation.resolve_bot_mode", lambda _mode: "unified")
+    monkeypatch.setattr("pallas.console.cli.extension_activation._hot_load_package_modules", lambda _package: True)
+    monkeypatch.setattr(
+        extension_ops,
+        "install_official_extension",
+        AsyncMock(
+            return_value={
+                "package": "pallas-plugin-draw",
+                "needs_restart": True,
+                "message": "安装完成",
+            },
+        ),
+    )
+    out = await extension_ops.install_official_extension_with_options(
+        "pallas-plugin-draw",
+        restart=True,
+    )
+    assert out["restart_scheduled"] is False
+    assert out["activation_action"] == "hot-reload"
+    assert out["needs_restart"] is False
+    assert "直接加载" in str(out.get("message"))

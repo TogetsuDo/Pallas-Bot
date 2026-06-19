@@ -3,6 +3,12 @@
 from __future__ import annotations
 
 import importlib.util
+import re
+from typing import Literal
+
+from pallas.core.foundation.paths import PROJECT_ROOT
+
+ActivationPolicy = Literal["hot-reloadable", "workers-restart", "full-restart"]
 
 CORE_PLUGIN_NAMES: frozenset[str] = frozenset({
     "pb_core",
@@ -78,6 +84,17 @@ OFFICIAL_EXTENSION_REPOS: dict[str, str] = {
     "pallas-plugin-bot-status": "https://github.com/TogetsuDo/pallas-plugin-bot-status",
 }
 
+OFFICIAL_EXTENSION_ACTIVATION_POLICY: dict[str, ActivationPolicy] = {
+    "pallas-plugin-protocol": "full-restart",
+    "pallas-plugin-duel": "workers-restart",
+    "pallas-plugin-maa": "full-restart",
+    "pallas-plugin-who-is-spy": "workers-restart",
+    "pallas-plugin-dream": "workers-restart",
+    "pallas-plugin-draw": "hot-reloadable",
+    "pallas-plugin-ai-media": "workers-restart",
+    "pallas-plugin-bot-status": "hot-reloadable",
+}
+
 # 与扩展仓 README 首段说明一致（插件商店卡片单行描述）
 OFFICIAL_EXTENSION_DESCRIPTIONS: dict[str, str] = {
     "pallas-plugin-duel": "牛牛决斗。",
@@ -90,15 +107,47 @@ OFFICIAL_EXTENSION_DESCRIPTIONS: dict[str, str] = {
     "pallas-plugin-bot-status": "牛牛状态（在吗、报数、离线邮件）。",
 }
 
+OFFICIAL_EXTENSION_README_PATHS: dict[str, str] = {
+    "pallas-plugin-protocol": "docs/plugins/pb_protocol/README.md",
+    "pallas-plugin-duel": "docs/plugins/duel/README.md",
+    "pallas-plugin-maa": "docs/plugins/maa/README.md",
+    "pallas-plugin-who-is-spy": "docs/plugins/who_is_spy/README.md",
+    "pallas-plugin-dream": "docs/plugins/dream/README.md",
+    "pallas-plugin-draw": "docs/plugins/draw/README.md",
+    "pallas-plugin-bot-status": "docs/plugins/bot_status/README.md",
+}
+
 _PROTOCOL_MODULE_NAMES: frozenset[str] = frozenset({
     "packages.pb_protocol",
     "pallas_plugin_protocol",
 })
 
+PLUGIN_BUNDLED_MODULE_PREFIXES: dict[str, str] = {
+    **{name: f"packages.{name}" for name in CORE_PLUGIN_NAMES},
+    "pb_protocol": "packages.pb_protocol",
+    "relogin_bot": "packages.relogin_bot",
+    "relogin_forward": "packages.relogin_forward",
+    "maa_hub": "packages.maa_hub",
+}
+
+PLUGIN_LEGACY_ALIASES: dict[str, tuple[str, ...]] = {
+    "pb_webui": ("pallas_webui",),
+    "pb_protocol": ("pallas_protocol",),
+    "pb_stats": ("community_stats", "pallas_plugin_community_stats"),
+    "llm_chat": ("ollama", "pallas_plugin_llm_chat"),
+}
+
 
 def uv_extra_for_package(package: str) -> str:
     short = (package or "").strip().removeprefix("pallas-plugin-")
     return f"plugins-{short}" if short else ""
+
+
+def ext_install_cli_for_package(package: str) -> str | None:
+    pkg = (package or "").strip()
+    if not pkg:
+        return None
+    return f"uv run pallas ext install {pkg}"
 
 
 def uv_extra_for_plugin(name: str) -> str | None:
@@ -122,7 +171,9 @@ def is_extra_plugin(name: str) -> bool:
 
 
 def is_shard_internal_plugin(name: str) -> bool:
-    return (name or "").strip() in SHARD_INTERNAL_PLUGIN_NAMES
+    from pallas.core.platform.bot_runtime.plugin_package_aliases import canonical_plugin_package
+
+    return canonical_plugin_package((name or "").strip()) in SHARD_INTERNAL_PLUGIN_NAMES
 
 
 def extra_package_for_plugin(name: str) -> str | None:
@@ -138,6 +189,20 @@ def official_extension_repo_url(package: str) -> str | None:
 _OFFICIAL_EXTENSION_REPO_OWNER = "TogetsuDo"
 _PALLAS_BOT_README_COVER = "/pallas/official-extensions/covers/pallas-readme-cover.webp"
 _PALLAS_AI_README_COVER = "/pallas/official-extensions/covers/pallas-ai-readme-cover.webp"
+_README_CENTERED_PARAGRAPH_RE = re.compile(r"<p\s+align=[\"']center[\"']>(.*?)</p>", flags=re.IGNORECASE | re.DOTALL)
+_README_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_README_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def github_repo_owner(repository_url: str | None) -> str | None:
+    raw = (repository_url or "").strip()
+    if not raw:
+        return None
+    match = re.match(r"(?:https?://|git@)github\.com[/:]([^/]+)/", raw, flags=re.IGNORECASE)
+    if not match:
+        return None
+    owner = match.group(1).strip()
+    return owner or None
 
 
 def official_extension_cover(package: str) -> str | None:
@@ -149,8 +214,39 @@ def official_extension_cover(package: str) -> str | None:
     return _PALLAS_BOT_README_COVER
 
 
+def official_extension_readme_summary(package: str) -> str:
+    path_str = OFFICIAL_EXTENSION_README_PATHS.get((package or "").strip())
+    if not path_str:
+        return ""
+    path = PROJECT_ROOT / path_str
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    title_index = text.find("<h1")
+    search_start = max(title_index, 0)
+    for match in _README_CENTERED_PARAGRAPH_RE.finditer(text, search_start):
+        raw = _README_HTML_TAG_RE.sub("", match.group(1))
+        summary = _README_WHITESPACE_RE.sub(" ", raw).strip()
+        if summary:
+            return summary
+    return ""
+
+
 def official_extension_description(package: str) -> str:
-    return OFFICIAL_EXTENSION_DESCRIPTIONS.get((package or "").strip(), "")
+    pkg = (package or "").strip()
+    return official_extension_readme_summary(pkg) or OFFICIAL_EXTENSION_DESCRIPTIONS.get(pkg, "")
+
+
+def official_extension_activation_policy(package: str) -> ActivationPolicy | None:
+    return OFFICIAL_EXTENSION_ACTIVATION_POLICY.get((package or "").strip())
+
+
+def activation_policy_for_plugin(name: str) -> ActivationPolicy | None:
+    pkg = extra_package_for_plugin(name)
+    if not pkg:
+        return None
+    return official_extension_activation_policy(pkg)
 
 
 def official_extension_visuals(package: str) -> dict[str, str | None]:
@@ -158,7 +254,8 @@ def official_extension_visuals(package: str) -> dict[str, str | None]:
     if pkg not in OFFICIAL_EXTENSION_REPOS:
         return {"icon": None, "cover": None, "avatar": None}
     icon = f"/pallas/official-extensions/{pkg}.svg"
-    avatar = f"https://avatars.githubusercontent.com/{_OFFICIAL_EXTENSION_REPO_OWNER}?s=64"
+    owner = github_repo_owner(official_extension_repo_url(pkg)) or _OFFICIAL_EXTENSION_REPO_OWNER
+    avatar = f"https://avatars.githubusercontent.com/{owner}?s=64"
     return {"icon": icon, "cover": official_extension_cover(pkg), "avatar": avatar}
 
 
@@ -259,6 +356,7 @@ def protocol_extension_status() -> dict[str, str | bool | None]:
         "installed": protocol_plugin_loaded(),
         "package": pkg,
         "uv_extra": uv_extra,
-        "install_cli": f"uv sync --extra {uv_extra}" if uv_extra else None,
+        "install_cli": ext_install_cli_for_package(pkg),
+        "activation_policy": official_extension_activation_policy(pkg),
         "repository_url": official_extension_repo_url(pkg),
     }

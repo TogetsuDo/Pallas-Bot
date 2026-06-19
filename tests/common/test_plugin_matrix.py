@@ -6,6 +6,7 @@ from pallas.core.platform.bot_runtime.plugin_matrix import (
     installed_extra_plugin_modules,
     is_core_plugin,
     is_extra_plugin,
+    official_extension_description,
     resolve_hub_bundled_module_paths,
     should_load_bundled_plugin,
     uv_extra_for_plugin,
@@ -95,7 +96,8 @@ def test_protocol_extension_status_not_installed():
 
     row = protocol_extension_status()
     assert row["package"] == "pallas-plugin-protocol"
-    assert row["install_cli"] == "uv sync --extra plugins-protocol"
+    assert row["install_cli"] == "uv run pallas ext install pallas-plugin-protocol"
+    assert row["activation_policy"] == "full-restart"
 
 
 def test_is_core_and_extra_helpers():
@@ -164,3 +166,12 @@ def test_community_stats_canonical_alias():
     for mod, canonical in expected_pip_aliases.items():
         assert mod in all_modules
         assert canonical_plugin_package(mod) == canonical
+
+
+def test_official_extension_description_prefers_readme_summary():
+    assert official_extension_description("pallas-plugin-draw") == "按文字描述生图，或带参考图改图。"
+    assert official_extension_description("pallas-plugin-protocol") == "管理 NapCat 和 SnowLuma 协议端实例与连接配置。"
+
+
+def test_official_extension_description_falls_back_for_multi_plugin_package():
+    assert official_extension_description("pallas-plugin-ai-media") == "唱歌（sing）与 酒后聊天（chat）。"

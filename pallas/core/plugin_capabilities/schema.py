@@ -11,6 +11,7 @@ from pallas.core.limits.config import get_command_limits_config, normalize_comma
 from pallas.core.limits.schema import build_command_limits_ui
 from pallas.core.perm.config import get_cmd_perm_config
 from pallas.core.perm.schema import build_command_perm_ui
+from pallas.core.platform.bot_runtime.plugin_matrix import activation_policy_for_plugin
 from pallas.core.plugin_reload import reload_policy_from_metadata
 from pallas.core.storage.schema import build_plugin_storage_ui
 from pallas.product.llm.tools.metadata import iter_loaded_plugin_llm_tools
@@ -39,6 +40,7 @@ def build_plugin_capabilities_ui() -> dict[str, Any]:
                 "llm_tools": [],
                 "storage_keys": [],
                 "reload_policy": None,
+                "activation_policy": None,
             }
             plugins[plugin] = bucket
         elif title and bucket["title"] == bucket["plugin"]:
@@ -96,6 +98,7 @@ def build_plugin_capabilities_ui() -> dict[str, Any]:
             title = str(getattr(meta, "name", "") or name).strip() if meta else name
             bucket = ensure_plugin(name, title)
             bucket["reload_policy"] = reload_policy_from_metadata(meta)
+            bucket["activation_policy"] = activation_policy_for_plugin(name)
     except ImportError:
         pass
     except Exception:
@@ -116,6 +119,7 @@ def build_plugin_capabilities_ui() -> dict[str, Any]:
             "llm_tools": llm_tools,
             "storage_keys": storage_keys,
             "reload_policy": bucket.get("reload_policy"),
+            "activation_policy": bucket.get("activation_policy"),
         })
     rows_out.sort(key=itemgetter("plugin"))
     return {"plugins": rows_out, "levels": perm_ui.get("levels", [])}

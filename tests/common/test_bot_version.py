@@ -29,8 +29,12 @@ def test_get_pallas_bot_version_for_reporting_prefers_exact_tag():
 
 def test_get_pallas_bot_version_for_reporting_falls_back_to_health():
     with (
-        patch("pallas.core.foundation.bot_version.get_bot_current_version", return_value={"tag": "", "commit": "abc1234"}),
-        patch("pallas.core.foundation.bot_version.get_pallas_bot_version_for_health", return_value="v3.0.0-12-gdeadbeef"),
+        patch(
+            "pallas.core.foundation.bot_version.get_bot_current_version", return_value={"tag": "", "commit": "abc1234"}
+        ),
+        patch(
+            "pallas.core.foundation.bot_version.get_pallas_bot_version_for_health", return_value="v3.0.0-12-gdeadbeef"
+        ),
     ):
         assert get_pallas_bot_version_for_reporting() == "v3.0.0-12-gdeadbeef"
 

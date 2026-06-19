@@ -23,10 +23,12 @@ def test_build_official_extension_rows_excludes_core_social_party():
 def test_build_official_extension_rows_marks_bundled_duel():
     rows = build_official_extension_rows()
     duel = next(r for r in rows if r["package"] == "pallas-plugin-duel")
-    assert "duel" in duel["bundled_plugin_ids"]
-    assert duel["status"] in ("bundled", "bundled_active", "installed", "pip_installed")
+    assert isinstance(duel["bundled_plugin_ids"], list)
+    assert duel["status"] in ("bundled", "bundled_active", "installed", "pip_installed", "external")
     assert isinstance(duel["installed"], bool)
     assert duel["repository_url"] == "https://github.com/TogetsuDo/pallas-plugin-duel"
+    assert duel["install_cli"] == "uv run pallas ext install pallas-plugin-duel"
+    assert duel["activation_policy"] == "workers-restart"
 
 
 def test_build_official_extension_rows_include_visuals():
@@ -34,7 +36,7 @@ def test_build_official_extension_rows_include_visuals():
     duel = next(r for r in rows if r["package"] == "pallas-plugin-duel")
     assert duel["icon"] == "/pallas/official-extensions/pallas-plugin-duel.svg"
     assert duel["cover"] == "/pallas/official-extensions/covers/pallas-readme-cover.webp"
-    assert duel["description"] == "牛牛决斗。"
+    assert duel["description"] == "泰拉风味多幕决斗，带剧情事件、抢答和八角笼玩法。"
     assert "avatars.githubusercontent.com" in (duel["avatar"] or "")
 
 
@@ -59,3 +61,40 @@ def test_official_extension_for_plugin():
     row = official_extension_for_plugin("draw")
     assert row is not None
     assert row["package"] == "pallas-plugin-draw"
+    assert row["activation_policy"] == "hot-reloadable"
+
+
+def test_build_official_extension_rows_marks_loaded_pip_module_as_installed(monkeypatch):
+    class FakeLoadedPlugin:
+        name = "pallas_plugin_duel"
+        module = type("Mod", (), {"__name__": "pallas_plugin_duel"})()
+        metadata = None
+
+    monkeypatch.setattr("nonebot.get_loaded_plugins", lambda: [FakeLoadedPlugin()])
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_registry.pip_package_installed",
+        lambda package: package == "pallas-plugin-duel",
+    )
+
+    rows = build_official_extension_rows()
+    duel = next(r for r in rows if r["package"] == "pallas-plugin-duel")
+    assert duel["installed"] is True
+    assert duel["status"] == "installed"
+    assert "duel" in duel["loaded_plugin_ids"]
+
+
+def test_build_official_extension_rows_includes_reload_policy_from_loaded_metadata(monkeypatch):
+    class FakeLoadedPlugin:
+        name = "draw"
+        module = type("Mod", (), {"__name__": "pallas_plugin_draw"})()
+        metadata = type("Meta", (), {"extra": {"reload_policy": "metadata"}})()
+
+    monkeypatch.setattr("nonebot.get_loaded_plugins", lambda: [FakeLoadedPlugin()])
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_registry.pip_package_installed",
+        lambda package: package == "pallas-plugin-draw",
+    )
+
+    rows = build_official_extension_rows()
+    draw = next(r for r in rows if r["package"] == "pallas-plugin-draw")
+    assert draw["reload_policy"] == "metadata"

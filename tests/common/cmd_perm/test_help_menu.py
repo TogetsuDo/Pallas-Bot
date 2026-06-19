@@ -23,14 +23,18 @@ def test_maintainer_filtered_from_user_menu() -> None:
     menu = [
         {"func": "用户功能", "trigger_condition": "牛牛帮助"},
         {"func": "HTTP", "help_audience": "maintainer", "trigger_condition": "/api"},
+        {"func": "超管功能", "help_audience": "superuser", "trigger_condition": "牛牛状态"},
     ]
     assert len(list(iter_user_help_menu(menu))) == 1
     assert is_user_help_menu_item(menu[1]) is False
+    assert is_user_help_menu_item(menu[2]) is False
 
 
 def test_maintainer_plugin_extra_excluded_from_user_help() -> None:
     user_plugin = SimpleNamespace(metadata=SimpleNamespace(extra={"help_audience": "user"}))
     maintainer_plugin = SimpleNamespace(metadata=SimpleNamespace(extra={"help_audience": "maintainer"}))
+    superuser_plugin = SimpleNamespace(metadata=SimpleNamespace(extra={"help_audience": "superuser"}))
     assert is_user_help_plugin(user_plugin) is True
     assert is_user_help_plugin(maintainer_plugin) is False
+    assert is_user_help_plugin(superuser_plugin) is False
     assert is_user_help_plugin(SimpleNamespace(metadata=None)) is True

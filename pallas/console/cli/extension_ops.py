@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pallas.console.cli.bot_process import bot_lifecycle_available, schedule_bot_restart
+from pallas.console.cli.extension_activation import append_activation_note, append_activation_result
 from pallas.console.webui.extension_install import (
     ExtensionInstallError,
     install_official_extension,
@@ -11,29 +11,15 @@ from pallas.console.webui.extension_install import (
 )
 
 
-def append_restart_note(message: str, *, scheduled: bool) -> str:
-    base = (message or "").strip()
-    if scheduled:
-        suffix = "已安排 Bot 重启。"
-        return f"{base} {suffix}".strip() if base else suffix
-    if base:
-        return base
-    return "请重启 Bot 后生效。"
-
-
 async def install_official_extension_with_options(
     package: str,
     *,
     restart: bool = False,
 ) -> dict[str, str | bool]:
     result = await install_official_extension(package)
-    scheduled = False
-    if restart and bot_lifecycle_available():
-        scheduled = schedule_bot_restart()
-    result = dict(result)
-    result["restart_scheduled"] = scheduled
+    result = append_activation_result(result, restart=restart)
     if restart or result.get("needs_restart"):
-        result["message"] = append_restart_note(str(result.get("message") or ""), scheduled=scheduled)
+        result["message"] = append_activation_note(str(result.get("message") or ""), result)
     return result
 
 
@@ -43,13 +29,9 @@ async def update_official_extension_with_options(
     restart: bool = False,
 ) -> dict[str, str | bool]:
     result = await update_official_extension(package)
-    scheduled = False
-    if restart and bot_lifecycle_available():
-        scheduled = schedule_bot_restart()
-    result = dict(result)
-    result["restart_scheduled"] = scheduled
+    result = append_activation_result(result, restart=restart)
     if restart or result.get("needs_restart"):
-        result["message"] = append_restart_note(str(result.get("message") or ""), scheduled=scheduled)
+        result["message"] = append_activation_note(str(result.get("message") or ""), result)
     return result
 
 
@@ -59,13 +41,9 @@ async def uninstall_official_extension_with_options(
     restart: bool = False,
 ) -> dict[str, str | bool]:
     result = await uninstall_official_extension(package)
-    scheduled = False
-    if restart and bot_lifecycle_available():
-        scheduled = schedule_bot_restart()
-    result = dict(result)
-    result["restart_scheduled"] = scheduled
+    result = append_activation_result(result, restart=restart)
     if restart or result.get("needs_restart"):
-        result["message"] = append_restart_note(str(result.get("message") or ""), scheduled=scheduled)
+        result["message"] = append_activation_note(str(result.get("message") or ""), result)
     return result
 
 

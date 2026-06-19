@@ -56,31 +56,6 @@ deploy-shard-pg = [
     "asyncpg>=0.29",
     "redis>=5.2,<6",
 ]
-plugins-duel = ["pallas-plugin-duel>=4.0.1,<5.0.0"]
-plugins-who-is-spy = ["pallas-plugin-who-is-spy>=4.0.1,<5.0.0"]
-plugins-maa = ["pallas-plugin-maa>=4.0.1,<5.0.0"]
-plugins-protocol = ["pallas-plugin-protocol>=4.0.1,<5.0.0"]
-plugins-game = ["pallas-plugin-duel>=4.0.1,<5.0.0", "pallas-plugin-who-is-spy>=4.0.1,<5.0.0"]
-deploy-full = [
-    "pallas-plugin-protocol>=4.0.1,<5.0.0",
-    "pallas-plugin-duel>=4.0.1,<5.0.0",
-    "pallas-plugin-maa>=4.0.1,<5.0.0",
-    "pallas-plugin-who-is-spy>=4.0.1,<5.0.0",
-]
-plugins-dream = ["pallas-plugin-dream>=4.0.1,<5.0.0"]
-plugins-draw = ["pallas-plugin-draw>=4.0.1,<5.0.0"]
-plugins-ai-media = ["pallas-plugin-ai-media>=4.0.1,<5.0.0"]
-plugins-bot-status = ["pallas-plugin-bot-status>=4.0.1,<5.0.0"]
-deploy-all = [
-    "pallas-plugin-protocol>=4.0.1,<5.0.0",
-    "pallas-plugin-duel>=4.0.1,<5.0.0",
-    "pallas-plugin-maa>=4.0.1,<5.0.0",
-    "pallas-plugin-who-is-spy>=4.0.1,<5.0.0",
-    "pallas-plugin-dream>=4.0.1,<5.0.0",
-    "pallas-plugin-draw>=4.0.1,<5.0.0",
-    "pallas-plugin-ai-media>=4.0.1,<5.0.0",
-    "pallas-plugin-bot-status>=4.0.1,<5.0.0",
-]
 
 [dependency-groups]
 dev = [
@@ -117,6 +92,9 @@ nonebot-adapter-onebot = [{name = "OneBot V11", module_name = "nonebot.adapters.
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["pallas"]
 
@@ -126,4 +104,3 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-

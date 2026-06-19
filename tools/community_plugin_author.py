@@ -19,6 +19,7 @@ from pallas.console.webui.community_plugin_author import (  # noqa: E402
     suggest_plugin_id_from_repo,
     today_index_updated_at,
     validate_community_plugin_dir,
+    validate_community_plugin_dir_profile,
     validate_index_file,
 )
 
@@ -26,7 +27,7 @@ from pallas.console.webui.community_plugin_author import (  # noqa: E402
 def cmd_check(args: argparse.Namespace) -> int:
     plugin_dir = Path(args.path).resolve()
     profile = (args.profile or "").upper()
-    errors, warnings = validate_community_plugin_dir(plugin_dir)
+    errors, warnings, profile_data = validate_community_plugin_dir_profile(plugin_dir, profile=profile)
     if errors:
         print("校验未通过：", file=sys.stderr)
         for item in errors:
@@ -34,6 +35,13 @@ def cmd_check(args: argparse.Namespace) -> int:
     else:
         tag = f"（{profile}）" if profile else ""
         print(f"✓ {plugin_dir} 符合社区插件基本结构{tag}")
+        print(
+            json.dumps(
+                profile_data,
+                ensure_ascii=False,
+                indent=2,
+            ),
+        )
     if warnings:
         print("建议：")
         for item in warnings:

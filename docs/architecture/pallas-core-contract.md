@@ -171,7 +171,7 @@ AI 仓不负责：
 | --- | --- |
 | LLM 接话 | `select` 已成默认推荐路径，`polish` 进入遗留态 |
 | 会话记忆 | PG 会话与 TTL 已有，但多 worker / 高并发签收仍未完全收口 |
-| 群内记忆 | teach + `episode_notes` 策略、注入上限、群内旧事文案已收口一轮，但仍是关键词检索级，不是完整记忆系统 |
+| 群内记忆 | teach + `episode_notes` 策略、注入上限、群内旧事文案已收口一轮；现已补到「teach 入库 + 群环境规则提炼补位 + query 相关性排序」，但仍是关键词检索级，不是完整记忆系统 |
 | 插件治理页 | 单插件治理 API 已落地；插件页 UI 与作者画像校验闭环仍未完全收口 |
 
 ### 6.3 明确还未完成
@@ -186,15 +186,7 @@ AI 仓不负责：
 
 ## 7. 仍需推进的建设项
 
-### 7.1 语料底盘相关
-
-- 控制面联邦语料剩余项：
-  - `corpus_fed` 第二 PG
-  - fleet 远程快照合并
-  - heartbeat `actions` / write_fanout 增强
-  - bootstrap 下发项从只读快照进入更多运行面，而不只是状态展示
-
-### 7.2 牛格与群味相关
+### 7.1 牛格与群味相关
 
 - `A6.4–A6.7` 继续收口：
   - archetype 分化可观测
@@ -202,20 +194,20 @@ AI 仓不负责：
   - scorer 内容加权验证
   - `compile_persona_prompt` 中段位文案补齐
 
-### 7.3 LLM 与记忆相关
+### 7.2 LLM 与记忆相关
 
 - reply gate 可观测与文档口径统一
 - queue merge 完整接入与验证
 - token 统计面板收口
-- `episode_notes` 从 teach-only + 明确策略，继续升级到可控提炼
+- `episode_notes` 在 teach 入库之外，已支持从最近群环境做规则型候选提炼与按 query 排序补位；后续继续升级到更强的可控提炼
 - `relationship_notes` 二级来源补齐：聊天观测自动写入、审计提炼通过后入库（契约/衰减规则已落地）
 
-### 7.4 工具与知识相关
+### 7.3 工具与知识相关
 
 - 方舟 KB 已有统一 query / tool 主路径；MCP 暴露与口令查询统一仍待验收
 - tool 黑名单、schema 瘦身、按需注入策略继续收口
 
-### 7.5 插件与 WebUI 治理相关
+### 7.4 插件与 WebUI 治理相关
 
 - 单插件治理页：
   - 指令表可见性
@@ -242,4 +234,4 @@ AI 仓不负责：
 - [persona-llm-roadmap.md](persona-llm-roadmap.md)：语言层与接话 LLM
 - [llm-efficiency-roadmap.md](llm-efficiency-roadmap.md)：门控、记忆、tool、牛格增强
 - [plugin-governance-community-roadmap.md](plugin-governance-community-roadmap.md)：插件治理与社区生态
-- [control-plane-corpus-federation.md](control-plane-corpus-federation.md)：语料联邦与控制面
+- [../common/corpus/README.md](../common/corpus/README.md)：社区语料与联邦读取现状

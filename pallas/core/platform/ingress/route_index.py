@@ -64,17 +64,21 @@ def clear_route_index_cache() -> None:
 
 
 def plugin_module_key_from_plugin(plugin: object) -> str:
+    from pallas.core.platform.bot_runtime.plugin_package_aliases import canonical_plugin_package
+
     mod = getattr(plugin, "module", None)
     module_name = getattr(mod, "__name__", "") if mod is not None else ""
     if not module_name:
         module_name = str(getattr(plugin, "module_name", "") or "")
     if not module_name:
         return "unknown"
-    return module_name.rsplit(".", 1)[-1]
+    return canonical_plugin_package(module_name.rsplit(".", 1)[-1])
 
 
 @lru_cache(maxsize=512)
 def matcher_module_key(matcher: type[Matcher]) -> str:
+    from pallas.core.platform.bot_runtime.plugin_package_aliases import canonical_plugin_package
+
     module_name = getattr(matcher, "plugin_name", None)
     if not module_name:
         return "unknown"
@@ -82,8 +86,8 @@ def matcher_module_key(matcher: type[Matcher]) -> str:
     parts = text.split(".")
     for part in reversed(parts):
         if part != "__init__":
-            return part
-    return text.rsplit(".", 1)[-1]
+            return canonical_plugin_package(part)
+    return canonical_plugin_package(text.rsplit(".", 1)[-1])
 
 
 def extract_exact_plaintexts_from_menu_data(menu_data: list[dict[str, Any]] | None) -> tuple[str, ...]:

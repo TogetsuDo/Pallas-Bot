@@ -13,7 +13,6 @@ from pallas.core.platform.bot_runtime.plugin_matrix import (
     EXTRA_PACKAGE_MODULES,
     OFFICIAL_EXTENSION_REPOS,
     pip_module_installed,
-    uv_extra_for_package,
 )
 
 INSTALL_TIMEOUT_S = 600.0
@@ -92,37 +91,32 @@ def tail_output(text: str, *, limit: int = 2000) -> str:
 
 async def install_official_extension(package: str) -> dict[str, str | bool]:
     pkg = resolve_official_extension_package(package)
-    uv_extra = uv_extra_for_package(pkg)
-    if not uv_extra:
-        raise ExtensionInstallError(f"扩展包 {pkg} 缺少 uv extra 映射")
     if pip_package_installed(pkg):
         return {
             "package": pkg,
-            "uv_extra": uv_extra,
             "pip_installed": True,
             "needs_restart": True,
             "already_installed": True,
             "message": "扩展包已在当前环境中，重启 Bot 后生效。",
         }
-    logger.info("Pallas-Bot 控制台: 安装官方扩展 package={} extra={}", pkg, uv_extra)
+    logger.info("Pallas-Bot 控制台: 安装官方扩展 package={}", pkg)
     code, out, err = await run_uv_command(
         INSTALL_TIMEOUT_S,
-        "sync",
-        "--extra",
-        uv_extra,
-        "--no-dev",
+        "pip",
+        "install",
+        "--upgrade",
+        pkg,
     )
     if code != 0:
         detail = err or out or "(无输出)"
-        raise ExtensionInstallError(f"uv sync 失败：{tail_output(detail)}", status_code=502)
+        raise ExtensionInstallError(f"uv pip install 失败：{tail_output(detail)}", status_code=502)
     if not pip_package_installed(pkg):
         raise ExtensionInstallError(
-            "uv sync 已完成但未检测到扩展模块，请查看日志或手动执行安装命令。",
+            "uv pip install 已完成但未检测到扩展模块，请查看日志或手动执行安装命令。",
             status_code=502,
         )
     return {
         "package": pkg,
-        "uv_extra": uv_extra,
         "pip_installed": True,
         "needs_restart": True,
         "already_installed": False,
@@ -133,30 +127,26 @@ async def install_official_extension(package: str) -> dict[str, str | bool]:
 
 async def update_official_extension(package: str) -> dict[str, str | bool]:
     pkg = resolve_official_extension_package(package)
-    uv_extra = uv_extra_for_package(pkg)
-    if not uv_extra:
-        raise ExtensionInstallError(f"扩展包 {pkg} 缺少 uv extra 映射")
     if not pip_package_installed(pkg):
         raise ExtensionInstallError("扩展未安装，请先安装后再更新")
-    logger.info("Pallas-Bot 控制台: 更新官方扩展 package={} extra={}", pkg, uv_extra)
+    logger.info("Pallas-Bot 控制台: 更新官方扩展 package={}", pkg)
     code, out, err = await run_uv_command(
         INSTALL_TIMEOUT_S,
-        "sync",
-        "--extra",
-        uv_extra,
-        "--no-dev",
+        "pip",
+        "install",
+        "--upgrade",
+        pkg,
     )
     if code != 0:
         detail = err or out or "(无输出)"
-        raise ExtensionInstallError(f"uv sync 失败：{tail_output(detail)}", status_code=502)
+        raise ExtensionInstallError(f"uv pip install 失败：{tail_output(detail)}", status_code=502)
     if not pip_package_installed(pkg):
         raise ExtensionInstallError(
-            "uv sync 已完成但未检测到扩展模块，请查看日志或手动执行安装命令。",
+            "uv pip install 已完成但未检测到扩展模块，请查看日志或手动执行安装命令。",
             status_code=502,
         )
     return {
         "package": pkg,
-        "uv_extra": uv_extra,
         "pip_installed": True,
         "needs_restart": True,
         "message": "更新完成，请重启 Bot 进程后加载扩展。",

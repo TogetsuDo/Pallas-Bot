@@ -16,6 +16,29 @@
 - NoneBot matcher 级热卸载/重载**不作为默认运维路径**（见 [pallas-cli.md](pallas-cli.md)）。
 - 扩展 pip 包安装：`extension_install` 仍返回 `needs_restart`；与 **牛牛重启**（`pb_core`）共用调度 API。
 
+## 官方扩展激活策略（activation_policy）
+
+这是站点运维视角的“安装后如何生效”分级，独立于作者在 metadata 中声明的 `reload_policy`：
+
+| 值 | 含义 | 典型场景 |
+| --- | --- | --- |
+| `hot-reloadable` | 优先尝试运行时热加载 | 纯命令型、无 hub 路由 / 后台任务的扩展 |
+| `workers-restart` | 分片优先 `workers-only`；单进程整进程重启 | 主要影响 worker 命令处理、共享协调状态但不改 hub 挂载 |
+| `full-restart` | 需要全栈重启 | hub 路由、协议端管理、跨角色挂载、副作用较重 |
+
+当前建议分级：
+
+| 官方扩展 | activation_policy |
+| --- | --- |
+| `pallas-plugin-draw` | `hot-reloadable` |
+| `pallas-plugin-bot-status` | `hot-reloadable` |
+| `pallas-plugin-duel` | `workers-restart` |
+| `pallas-plugin-who-is-spy` | `workers-restart` |
+| `pallas-plugin-dream` | `workers-restart` |
+| `pallas-plugin-ai-media` | `workers-restart` |
+| `pallas-plugin-protocol` | `full-restart` |
+| `pallas-plugin-maa` | `full-restart` |
+
 ## `reload_policy`（extra 可选键）
 
 在 `PluginMetadata.extra` 声明插件作者期望的重载粒度（供能力总览与未来 CLI 读取）：

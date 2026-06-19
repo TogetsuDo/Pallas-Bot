@@ -410,7 +410,7 @@ uv run pytest tests/plugins/praise_me/
 | 全服榜 | 用 `pallas.core.foundation.db` 做持久化，或 deploy 级 `plugin_storage` |
 | 帮助图样式 | 保持 `menu_data` 与 metadata 同步即可 |
 | 贡献主仓 | 挪到 `packages/praise_me/`，PR 附测试与插件文档 |
-| 官方扩展包 | 4.0 玩法类可走扩展仓 + `uv sync --extra plugins-*` |
+| 官方扩展包 | 4.0 玩法类可走扩展仓，站点侧通过插件商店或 `uv run pallas ext install pallas-plugin-*` 安装 |
 
 ---
 

@@ -142,6 +142,16 @@
 
 首版实现可只文档化三级；CLI `pallas plugin reload` 与 WebUI 按钮在热重载章节落地。
 
+### activation_policy（运维生效策略）
+
+| 值 | 含义 |
+| --- | --- |
+| `hot-reloadable` | 插件商店可优先尝试运行时热加载 |
+| `workers-restart` | 分片优先 `workers-only`；单进程整进程重启 |
+| `full-restart` | 需全栈重启 |
+
+首版挂在 `plugin_matrix` / `plugin_capabilities`，供插件商店、治理页与未来 `pallas ext install --restart` 决策复用。
+
 ### pb_core 命令 ID（已敲定）
 
 | 命令 ID | 默认权限 | 口令 | 后端 API |

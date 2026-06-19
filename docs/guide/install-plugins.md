@@ -43,9 +43,6 @@
 
 ```bash
 # 决斗
-uv sync --extra plugins-duel
-
-# 或 CLI
 uv run pallas ext install pallas-plugin-duel
 ```
 
@@ -59,7 +56,7 @@ uv run nb run
 ./scripts/pallas restart
 ```
 
-扩展包与 `uv sync --extra` 对照表见 [安装官方扩展 · 包列表](install-extensions.md#扩展包对照表)。
+扩展包与 CLI 命令对照表见 [安装官方扩展 · 包列表](install-extensions.md#扩展包对照表)。
 
 ---
 

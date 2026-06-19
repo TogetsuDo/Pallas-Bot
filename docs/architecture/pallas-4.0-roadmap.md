@@ -21,7 +21,7 @@
 - [接话行为 · LLM 接入路线图](persona-llm-roadmap.md)
 - [LLM 省 Token 与拟人能力路线图](llm-efficiency-roadmap.md)
 - [插件治理与社区生态路线](plugin-governance-community-roadmap.md)
-- [控制面、联邦语料与外接语料](control-plane-corpus-federation.md)
+- [语料联邦](../common/corpus/README.md)
 - [明日方舟 · 内置知识库与 MCP 工具](arknights-knowledge-mcp.md)
 
 ## 保留说明

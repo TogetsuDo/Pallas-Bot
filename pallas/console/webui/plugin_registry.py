@@ -69,6 +69,10 @@ def loaded_extra_reload_policies(plugin_ids: list[str]) -> dict[str, str]:
 
 def build_official_extension_rows() -> list[dict[str, Any]]:
     """按 pip 包聚合 extra 插件。"""
+    from pallas.console.webui.plugin_update_snapshot import load_snapshot
+
+    update_snapshot = load_snapshot()
+    official_updates = update_snapshot.get("official") or {}
     by_package: dict[str, list[str]] = {}
     for plugin_id, package in sorted(EXTRA_PLUGIN_PACKAGES.items()):
         by_package.setdefault(package, []).append(plugin_id)
@@ -100,6 +104,10 @@ def build_official_extension_rows() -> list[dict[str, Any]]:
         bundled_load = bundled_load_mode == "true" or (
             bundled_load_mode == "auto" and bool(bundled) and not pip_installed
         )
+        snap_entry = official_updates.get(package) if pip_installed else None
+        has_update = snap_entry.get("has_update") if isinstance(snap_entry, dict) else None
+        installed_ref = snap_entry.get("installed_ref") if isinstance(snap_entry, dict) else None
+        latest_ref = snap_entry.get("latest_ref") if isinstance(snap_entry, dict) else None
         rows.append({
             "package": package,
             "plugin_ids": plugin_ids,
@@ -127,6 +135,9 @@ def build_official_extension_rows() -> list[dict[str, Any]]:
             "can_install": webui_install and not pip_installed and not loaded,
             "can_uninstall": webui_install and pip_installed,
             "can_update": webui_install and pip_installed,
+            "has_update": has_update,
+            "installed_ref": installed_ref,
+            "latest_ref": latest_ref,
             "status": status,
         })
     return rows

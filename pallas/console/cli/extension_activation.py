@@ -1,0 +1,79 @@
+"""官方扩展安装后的生效策略。"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from nonebot import logger
+
+from pallas.console.cli.bot_process import bot_lifecycle_available, schedule_bot_restart
+from pallas.console.cli.runtime_mode import resolve_bot_mode
+from pallas.core.platform.bot_runtime.plugin_loader import _load_plugin_module
+from pallas.core.platform.bot_runtime.plugin_matrix import (
+    EXTRA_PACKAGE_MODULES,
+    official_extension_activation_policy,
+)
+from pallas.core.plugin_reload.metadata_index import reload_plugin_metadata_index
+
+
+def _hot_load_package_modules(package: str) -> bool:
+    modules = EXTRA_PACKAGE_MODULES.get((package or "").strip(), ())
+    if not modules:
+        return False
+    loaded_short: set[str] = set()
+    loaded = False
+    for module_path in modules:
+        loaded = _load_plugin_module(module_path, role_label="runtime", loaded_short=loaded_short) or loaded
+    if loaded:
+        reload_plugin_metadata_index()
+    return loaded
+
+
+def append_activation_result(
+    result: dict[str, Any],
+    *,
+    restart: bool,
+) -> dict[str, Any]:
+    out = dict(result)
+    package = str(out.get("package") or "").strip()
+    policy = official_extension_activation_policy(package)
+    out["activation_policy"] = policy
+    out["activation_action"] = "none"
+    out["restart_scheduled"] = False
+
+    if not restart or not bot_lifecycle_available() or not package or policy is None:
+        return out
+
+    mode = resolve_bot_mode("auto")
+
+    if policy == "hot-reloadable" and mode == "unified":
+        if _hot_load_package_modules(package):
+            out["activation_action"] = "hot-reload"
+            out["needs_restart"] = False
+            logger.info("official extension {} activated by runtime hot load", package)
+            return out
+        logger.warning("official extension {} hot load failed, fallback to process restart", package)
+
+    workers_only = policy == "workers-restart" and mode == "shard"
+    scheduled = schedule_bot_restart(mode=mode, workers_only=workers_only)
+    out["restart_scheduled"] = scheduled
+    if scheduled:
+        out["activation_action"] = "workers-restart" if workers_only else "full-restart"
+    return out
+
+
+def append_activation_note(message: str, result: dict[str, Any]) -> str:
+    base = (message or "").strip()
+    action = str(result.get("activation_action") or "none")
+    scheduled = bool(result.get("restart_scheduled"))
+    if action == "hot-reload":
+        suffix = "已在当前进程直接加载。"
+    elif scheduled and action == "workers-restart":
+        suffix = "已安排仅重启 worker。"
+    elif scheduled and action == "full-restart":
+        suffix = "已安排 Bot 重启。"
+    elif scheduled:
+        suffix = "已安排生效操作。"
+    else:
+        suffix = ""
+    return f"{base} {suffix}".strip() if suffix else base

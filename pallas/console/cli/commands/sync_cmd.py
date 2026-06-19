@@ -13,11 +13,11 @@ def register(sub: argparse._SubParsersAction) -> None:
         action="append",
         default=[],
         metavar="NAME",
-        help="pyproject optional-extra，可重复；支持 deploy-full / deploy-all 别名",
+        help="pyproject optional-extra，可重复；deploy-full / deploy-all 仅保留迁移提示",
     )
     parser.add_argument("--dev", action="store_true", help="包含 dev 依赖组（默认 --no-dev）")
-    parser.add_argument("--deploy-full", action="store_true", help="等价 --extra deploy-full")
-    parser.add_argument("--deploy-all", action="store_true", help="等价 --extra deploy-all")
+    parser.add_argument("--deploy-full", action="store_true", help="提示改用 pallas ext 安装官方扩展")
+    parser.add_argument("--deploy-all", action="store_true", help="提示改用 pallas ext 安装官方扩展")
     parser.set_defaults(handler=run)
 
 

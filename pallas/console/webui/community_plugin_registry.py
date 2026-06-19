@@ -74,7 +74,11 @@ def local_community_plugin_can_update(plugin_id: str) -> bool:
     return path.is_dir() and (path / ".git").exists()
 
 
-def build_community_plugin_row(entry: dict[str, Any]) -> dict[str, Any]:
+def build_community_plugin_row(
+    entry: dict[str, Any],
+    *,
+    update_snapshot: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     plugin_id = str(entry["plugin_id"])
     local = local_plugin_installed(plugin_id)
     loaded = plugin_id in loaded_extra_plugin_ids([plugin_id])
@@ -85,6 +89,10 @@ def build_community_plugin_row(entry: dict[str, Any]) -> dict[str, Any]:
     icon = resolve_community_plugin_icon(entry)
     has_repo = bool(str(entry.get("repository_url") or "").strip())
     can_update = local and webui_install and (has_repo or local_community_plugin_can_update(plugin_id))
+    snap_entry = ((update_snapshot or {}).get("community") or {}).get(plugin_id) if local else None
+    has_update = snap_entry.get("has_update") if isinstance(snap_entry, dict) else None
+    installed_ref = snap_entry.get("installed_ref") if isinstance(snap_entry, dict) else None
+    latest_ref = snap_entry.get("latest_ref") if isinstance(snap_entry, dict) else None
     return {
         "plugin_id": plugin_id,
         "name": entry.get("name") or plugin_id,
@@ -109,32 +117,22 @@ def build_community_plugin_row(entry: dict[str, Any]) -> dict[str, Any]:
         "can_install": webui_install and not local and has_repo,
         "can_uninstall": local,
         "can_update": can_update,
+        "has_update": has_update,
+        "installed_ref": installed_ref,
+        "latest_ref": latest_ref,
         "status": status,
     }
 
 
 async def build_community_plugin_store() -> dict[str, Any]:
+    from pallas.console.webui.plugin_update_snapshot import load_snapshot, snapshot_checked_at
+
     index = await load_community_plugin_index_safe()
-    indexed_ids: set[str] = set()
-    rows: list[dict[str, Any]] = []
-    for entry in index.get("plugins") or []:
-        pid = str(entry.get("plugin_id") or "")
-        if pid:
-            indexed_ids.add(pid)
-        rows.append(build_community_plugin_row(entry))
-    for pid in list_local_community_plugin_ids():
-        if pid in indexed_ids:
-            continue
-        rows.append(
-            build_community_plugin_row(
-                {
-                    "plugin_id": pid,
-                    "name": pid,
-                    "description": "本地安装（未收录于社区索引）",
-                    "local_only": True,
-                },
-            ),
-        )
+    update_snapshot = load_snapshot()
+    rows = [
+        build_community_plugin_row(entry, update_snapshot=update_snapshot)
+        for entry in index.get("plugins") or []
+    ]
     return {
         "source": index.get("source"),
         "meta": index.get("meta") or {},
@@ -142,5 +140,6 @@ async def build_community_plugin_store() -> dict[str, Any]:
         "extra_plugin_dirs_ready": extra_plugin_dirs_ready(),
         "webui_install": webui_community_install_enabled(),
         "restart_available": bot_lifecycle_available(),
+        "update_checked_at": snapshot_checked_at(),
         "plugins": rows,
     }
