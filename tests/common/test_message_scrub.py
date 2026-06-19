@@ -108,7 +108,9 @@ def test_config_repo_dotenv_layer_overrides_stale_driver(tmp_path: Path, monkeyp
     )
     fake_driver = SimpleNamespace(config=fake_cfg)
     with patch("pallas.core.foundation.config.repo_settings.repo_env_path", return_value=p):
-        with patch("pallas.core.foundation.config.repo_settings.repo_config_path", return_value=tmp_path / "missing.toml"):
+        with patch(
+            "pallas.core.foundation.config.repo_settings.repo_config_path", return_value=tmp_path / "missing.toml"
+        ):
             with patch(
                 "pallas.core.foundation.config.repo_settings.repo_webui_settings_path",
                 return_value=tmp_path / "missing.json",
@@ -130,7 +132,9 @@ def test_config_repo_dotenv_file_value_used_when_os_absent(tmp_path: Path, monke
     )
     fake_driver = SimpleNamespace(config=fake_cfg)
     with patch("pallas.core.foundation.config.repo_settings.repo_env_path", return_value=p):
-        with patch("pallas.core.foundation.config.repo_settings.repo_config_path", return_value=tmp_path / "missing.toml"):
+        with patch(
+            "pallas.core.foundation.config.repo_settings.repo_config_path", return_value=tmp_path / "missing.toml"
+        ):
             with patch(
                 "pallas.core.foundation.config.repo_settings.repo_webui_settings_path",
                 return_value=tmp_path / "missing.json",

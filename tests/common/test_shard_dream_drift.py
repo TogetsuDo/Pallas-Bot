@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from packages.dream.payload import DriftPayload
+
 from pallas.core.platform.shard.coord.dream_drift import drift_payload_from_dict, drift_payload_to_dict
 
 

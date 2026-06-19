@@ -5,7 +5,11 @@ from pallas.product.llm.config import (
     resolve_llm_repeater_flags,
     resolve_llm_repeater_mode,
 )
-from pallas.product.llm.polish_lite import build_polish_lite_user_text, should_polish_lite_sample
+from pallas.product.llm.polish_lite import (
+    build_polish_lite_user_text,
+    build_polish_lite_user_text_with_suffix,
+    should_polish_lite_sample,
+)
 
 
 def test_build_polish_lite_user_text() -> None:
@@ -13,6 +17,16 @@ def test_build_polish_lite_user_text() -> None:
     assert "【用户消息】夜宵吃什么" in text
     assert "【候选回复】小炒黄牛肉" in text
     assert "勿加设定词" in text
+
+
+def test_build_polish_lite_user_text_with_expression_habits() -> None:
+    text = build_polish_lite_user_text_with_suffix(
+        "夜宵吃什么",
+        "小炒黄牛肉",
+        style_suffix="【表达习惯参考】群里常接这些说法/梗：牛牛税。",
+    )
+    assert "表达习惯参考" in text
+    assert "牛牛税" in text
 
 
 def test_should_polish_lite_sample_deterministic() -> None:

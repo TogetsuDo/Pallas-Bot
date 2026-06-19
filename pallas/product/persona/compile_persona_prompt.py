@@ -16,6 +16,7 @@ from .affect_axes import (
 )
 from .compile_group_style import compile_group_style_prompt, compile_group_style_snapshot
 from .config import persona_preset_layers_enabled
+from .group_expression import compile_group_expression_prompt
 from .loader import resolve_persona, resolve_persona_for_message
 from .preset_layers import compile_preset_layers_prompt, extract_preset_layers
 from .prompt_guard import (
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
 
 _PROMPT_VERSION = 1
 _DEFAULT_BASE_PROMPT_PATH = Path(__file__).resolve().parent / "base_system_prompt.txt"
+_AT_CHAT_BASE_PROMPT_PATH = Path(__file__).resolve().parent / "at_chat_system_prompt.txt"
 _REPEATER_BASE_PROMPT_PATH = Path(__file__).resolve().parent / "repeater_system_prompt.txt"
 _SELECT_BASE_PROMPT_PATH = Path(__file__).resolve().parent / "select_system_prompt.txt"
 _POLISH_LITE_PROMPT_PATH = Path(__file__).resolve().parent / "polish_lite_system_prompt.txt"
@@ -70,6 +72,7 @@ class PersonaPromptSections(BaseModel):
     preset_layers: str = ""
     bot_behavior: str
     group_style: str
+    group_expression: str = ""
 
 
 class PersonaPromptMetadata(BaseModel):
@@ -90,6 +93,10 @@ class PersonaPromptBundle(BaseModel):
 
 def resolve_repeater_system_prompt_path() -> Path:
     return _REPEATER_BASE_PROMPT_PATH
+
+
+def resolve_at_chat_system_prompt_path() -> Path:
+    return _AT_CHAT_BASE_PROMPT_PATH
 
 
 def resolve_select_system_prompt_path() -> Path:
@@ -142,6 +149,10 @@ def load_base_system_prompt(*, custom_path: str | None = None) -> str:
         return _base_cached_text
 
 
+def load_at_chat_system_prompt() -> str:
+    return load_base_system_prompt(custom_path=str(resolve_at_chat_system_prompt_path()))
+
+
 def clear_base_system_prompt_cache() -> None:
     global _base_cached_path, _base_cached_mtime, _base_cached_text
     with _base_lock:
@@ -162,7 +173,10 @@ def build_bot_behavior_prompt(persona: ResolvedPersona) -> str:
         f"- 长度：{length_hint}",
     ]
     if persona.chaos_bias >= 0.12:
-        lines.append("- 本群/本牛接话偏复读链与短句，回复宜更口语、更短促。")
+        lines.extend([
+            "- 本群/本牛接话偏复读链与短句，回复宜更口语、更短促。",
+            "- 少写客服式完整解释，像被点到名后顺手接一句。",
+        ])
     elif persona.chaos_bias > 0 and persona.chaos_bias < 0.08:
         lines.append("- 接话句型较分散，避免机械复读同一模板。")
 
@@ -193,6 +207,7 @@ def assemble_persona_system(sections: PersonaPromptSections, *, mode: str = "nor
         sections.preset_layers,
         sections.bot_behavior,
         sections.group_style,
+        sections.group_expression,
     )
     parts = [section.strip() for section in section_values if section.strip()]
     core = "\n\n".join(parts)
@@ -219,6 +234,7 @@ def compile_persona_prompt(
     )
     bot_behavior = build_bot_behavior_prompt(persona)
     group_style = compile_group_style_prompt(style_profile)
+    group_expression = compile_group_expression_prompt(style_profile)
     preset_layers = ""
     if persona_preset_layers_enabled():
         sample = style_profile.get("sample") if isinstance(style_profile, dict) else None
@@ -229,6 +245,7 @@ def compile_persona_prompt(
         preset_layers=preset_layers,
         bot_behavior=bot_behavior,
         group_style=group_style,
+        group_expression=group_expression,
     )
     metadata = PersonaPromptMetadata(
         bot_id=int(bot_id),

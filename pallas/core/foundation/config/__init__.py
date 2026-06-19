@@ -1,11 +1,7 @@
 # type: ignore
 import asyncio
-import contextlib
 import time
 from typing import Any
-
-from nonebot.matcher import current_bot as nb_current_bot
-from nonebot.matcher import current_event as nb_current_event
 
 from pallas.core.foundation.db import (
     SingProgress,
@@ -408,43 +404,6 @@ class TaskManager:
     _tasks: dict[str, dict] = {}
     _lock: asyncio.Lock = asyncio.Lock()
 
-    @staticmethod
-    def _coerce_bound_int(raw: Any) -> int | None:
-        try:
-            text = str(raw).strip()
-        except Exception:
-            return None
-        return int(text) if text.isdigit() else None
-
-    @classmethod
-    def _normalize_ai_task_binding(cls, task_status: dict) -> dict:
-        payload = dict(task_status)
-        task_type = str(payload.get("task_type") or "").strip()
-        if task_type not in {"draw", "sing", "play", "request"}:
-            return payload
-
-        bound_bot_id: int | None = None
-        bound_group_id: int | None = None
-        bound_user_id: int | None = None
-
-        with contextlib.suppress(LookupError):
-            bot = nb_current_bot.get()
-            bound_bot_id = cls._coerce_bound_int(getattr(bot, "self_id", None))
-
-        with contextlib.suppress(LookupError):
-            event = nb_current_event.get()
-            bound_bot_id = bound_bot_id or cls._coerce_bound_int(getattr(event, "self_id", None))
-            bound_group_id = cls._coerce_bound_int(getattr(event, "group_id", None))
-            bound_user_id = cls._coerce_bound_int(getattr(event, "user_id", None))
-
-        if bound_bot_id is not None:
-            payload["bot_id"] = bound_bot_id
-        if bound_group_id is not None and payload.get("group_id") in (None, "", 0, "0"):
-            payload["group_id"] = bound_group_id
-        if bound_user_id is not None and payload.get("user_id") in (None, "", 0, "0"):
-            payload["user_id"] = bound_user_id
-        return payload
-
     @classmethod
     async def refresh(cls):
         from pallas.core.platform.shard.coord.ai_task_registry import ai_task_ttl_sec
@@ -461,38 +420,17 @@ class TaskManager:
     @classmethod
     async def add_task(cls, task_id: str, task_status: dict):
         await cls.refresh()
-        normalized = cls._normalize_ai_task_binding(task_status)
         async with cls._lock:
-            cls._tasks[task_id] = normalized
+            cls._tasks[task_id] = task_status
         from pallas.core.platform.shard.coord.ai_task_registry import register_ai_task
 
-        await asyncio.to_thread(register_ai_task, task_id, normalized)
+        await asyncio.to_thread(register_ai_task, task_id, task_status)
 
     @classmethod
     async def get_task(cls, task_id: str) -> dict | None:
         await cls.refresh()
         async with cls._lock:
             return cls._tasks.get(task_id)
-
-    @classmethod
-    async def rekey_task(cls, old_task_id: str, new_task_id: str) -> bool:
-        await cls.refresh()
-        old_key = str(old_task_id).strip()
-        new_key = str(new_task_id).strip()
-        if not old_key or not new_key:
-            return False
-        if old_key == new_key:
-            return True
-        async with cls._lock:
-            task_status = cls._tasks.pop(old_key, None)
-            if task_status is None:
-                return False
-            cls._tasks[new_key] = task_status
-        from pallas.core.platform.shard.coord.ai_task_registry import register_ai_task, remove_ai_task
-
-        await asyncio.to_thread(remove_ai_task, old_key)
-        await asyncio.to_thread(register_ai_task, new_key, task_status)
-        return True
 
     @classmethod
     async def remove_task(cls, task_id: str):

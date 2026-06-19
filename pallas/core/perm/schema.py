@@ -7,6 +7,10 @@ from typing import Any
 
 from nonebot import get_loaded_plugins
 
+from pallas.console.webui.plugin_catalog import discover_extra_plugin_packages, discover_plugin_packages
+from pallas.core.foundation.paths import PROJECT_ROOT
+
+from .metadata import command_permissions_from_metadata, parse_command_permissions_stub
 from .registry import DEFAULT_COMMAND_PERMISSIONS, VALID_LEVELS, canonical_command_id
 
 _merged_defaults_cache: dict[str, str] | None = None
@@ -44,20 +48,59 @@ def _parse_command_permission_rows(raw: Any) -> list[dict[str, str]]:
     return out
 
 
+def _loaded_plugin_rows() -> list[tuple[str, str, list[Any]]]:
+    rows: list[tuple[str, str, list[Any]]] = []
+    for plugin in get_loaded_plugins():
+        if not plugin.name:
+            continue
+        meta = getattr(plugin, "metadata", None)
+        title = (getattr(meta, "name", None) or plugin.name or "").strip() or plugin.name
+        decls = command_permissions_from_metadata(meta)
+        if decls:
+            rows.append((plugin.name, title, decls))
+    return rows
+
+
+def _disk_plugin_rows() -> list[tuple[str, str, list[Any]]]:
+    loaded_names = {name for name, _title, _decls in _loaded_plugin_rows()}
+    extra_pkgs = discover_extra_plugin_packages()
+    roots = [(package, PROJECT_ROOT / "packages" / package) for package in discover_plugin_packages()]
+    roots.extend(extra_pkgs.items())
+
+    rows: list[tuple[str, str, list[Any]]] = []
+    seen: set[str] = set()
+    for package, root in roots:
+        if package in loaded_names or package in seen:
+            continue
+        init_path = root / "__init__.py"
+        if not init_path.is_file():
+            continue
+        stub = parse_command_permissions_stub(init_path)
+        if not stub:
+            continue
+        decls = stub.get("command_permissions") or []
+        if not decls:
+            continue
+        title = str(stub.get("name") or package).strip() or package
+        rows.append((package, title, decls))
+        seen.add(package)
+    return rows
+
+
+def _all_command_permission_rows() -> list[tuple[str, str, list[Any]]]:
+    return _loaded_plugin_rows() + _disk_plugin_rows()
+
+
 def merged_default_levels() -> dict[str, str]:
     """命令 ID -> 默认等级。"""
     global _merged_defaults_cache
     if _merged_defaults_cache is not None:
         return _merged_defaults_cache
-    m = {str(k): str(v) for k, v in DEFAULT_COMMAND_PERMISSIONS.items()}
-    for p in get_loaded_plugins():
-        if not p.name:
-            continue
-        meta = getattr(p, "metadata", None)
-        extra = (getattr(meta, "extra", None) or {}) if meta else {}
-        for row in _parse_command_permission_rows(extra.get("command_permissions")):
-            m[row["id"]] = row["default"]
-    _merged_defaults_cache = m
+    merged = {str(k): str(v) for k, v in DEFAULT_COMMAND_PERMISSIONS.items()}
+    for _plugin_name, _title, decls in _all_command_permission_rows():
+        for row in decls:
+            merged[row.id] = row.default
+    _merged_defaults_cache = merged
     return _merged_defaults_cache
 
 
@@ -70,15 +113,9 @@ def build_command_perm_ui(overrides: dict[str, str]) -> dict[str, Any]:
     """供 WebUI 渲染：按插件分组 + 每命令当前生效等级。"""
     defaults = merged_default_levels()
     meta_rows: dict[str, tuple[str, str, str]] = {}
-    for p in get_loaded_plugins():
-        if not p.name:
-            continue
-        meta = getattr(p, "metadata", None)
-        title = (getattr(meta, "name", None) or p.name or "").strip() or p.name
-        extra = (getattr(meta, "extra", None) or {}) if meta else {}
-        for row in _parse_command_permission_rows(extra.get("command_permissions")):
-            cid = row["id"]
-            meta_rows[cid] = (p.name, title, row["label"])
+    for plugin_name, title, decls in _all_command_permission_rows():
+        for row in decls:
+            meta_rows[row.id] = (plugin_name, title, row.label)
 
     groups: dict[str, dict[str, Any]] = {}
     for cid, default in sorted(defaults.items(), key=itemgetter(0)):

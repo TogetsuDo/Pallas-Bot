@@ -7,6 +7,7 @@ from pallas.product.persona.compile_persona_prompt import (
     assemble_persona_system,
     build_bot_behavior_prompt,
     compile_persona_prompt,
+    load_at_chat_system_prompt,
     load_base_system_prompt,
     resolve_repeater_system_prompt_path,
 )
@@ -44,6 +45,15 @@ def test_load_repeater_system_prompt_shorter_than_full() -> None:
     assert len(repeater) < len(full)
 
 
+def test_load_at_chat_system_prompt_avoids_assistant_style() -> None:
+    text = load_at_chat_system_prompt()
+    assert "帕拉斯" in text
+    assert "群聊里有人明确 @ 你" in text
+    assert "默认 1-2 句" in text
+    assert "不要默认称呼对方为博士" in text
+    assert "1-3 段" not in text
+
+
 def test_compile_persona_prompt_uses_repeater_base() -> None:
     persona = derive_persona_from_bot_id(1)
     bundle = compile_persona_prompt(
@@ -63,6 +73,7 @@ def test_build_bot_behavior_prompt_includes_tone_and_length() -> None:
     assert "戏剧感" in prompt
     assert "tone=dramatic" not in prompt
     assert "短句" in prompt or "短促" in prompt
+    assert "客服式完整解释" in prompt
 
 
 def test_compile_persona_prompt_merges_sections() -> None:
@@ -91,6 +102,7 @@ def test_compile_persona_prompt_merges_sections() -> None:
     assert bundle.sections.base == "【测试基础人设】"
     assert "<<STATS:bot_behavior>>" in bundle.sections.bot_behavior
     assert "<<STATS:group_style>>" in bundle.sections.group_style
+    assert "<<STATS:group_expression>>" in bundle.sections.group_expression
     assert "【测试基础人设】" in bundle.system
     assert "【安全约束" in bundle.system
 
@@ -164,3 +176,46 @@ async def test_compile_persona_prompt_for_without_db(monkeypatch: pytest.MonkeyP
     assert bundle.metadata.group_id == 99999
     assert "基础" in bundle.system
     assert "【安全约束" in bundle.system
+
+
+@pytest.mark.asyncio
+async def test_build_persona_llm_context_chat_uses_at_chat_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    from pallas.product.llm.persona_context import build_persona_llm_context
+    from pallas.product.persona.auto import derive_persona_from_bot_id
+
+    async def fake_compile_persona_prompt_for(
+        bot_id: int,
+        group_id: int | None = None,
+        *,
+        plain_text: str | None = None,
+        base_system: str | None = None,
+        base_system_path: str | None = None,
+        mode: str = "normal",
+    ):
+        assert base_system_path is not None
+        text = load_base_system_prompt(custom_path=base_system_path)
+        assert "群聊 @ 任务" in text
+        return compile_persona_prompt(
+            derive_persona_from_bot_id(bot_id),
+            None,
+            bot_id=bot_id,
+            group_id=group_id,
+            base_system=text,
+            mode=mode,
+        )
+
+    monkeypatch.setattr(
+        "pallas.product.llm.persona_context.compile_persona_prompt_for",
+        fake_compile_persona_prompt_for,
+    )
+
+    bundle, temperature, token_count = await build_persona_llm_context(
+        10001,
+        20002,
+        "你好",
+        purpose="chat",
+    )
+
+    assert "群聊 @ 任务" in bundle.sections.base
+    assert temperature is not None
+    assert token_count is not None

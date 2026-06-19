@@ -76,7 +76,14 @@ def test_llm_health_summary() -> None:
             "circuit_state": "half_open",
             "recent_failure_class": "provider_unavailable",
             "provider_status": [
-                {"id": "local", "kind": "local", "enabled": True, "configured": True, "reachable": False, "health_state": "degraded"},
+                {
+                    "id": "local",
+                    "kind": "local",
+                    "enabled": True,
+                    "configured": True,
+                    "reachable": False,
+                    "health_state": "degraded",
+                },
             ],
         },
     }

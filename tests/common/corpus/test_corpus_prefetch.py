@@ -145,7 +145,9 @@ async def test_schedule_prefetch_skips_when_pg_under_light_pressure(monkeypatch:
 
     mod.clear_corpus_prefetch_runtime_state()
     monkeypatch.setattr(mod, "remote_corpus_find_mode", lambda: "prefetch")
-    monkeypatch.setattr("pallas.core.foundation.db.pool_budget.pg_pool_under_pressure", lambda threshold=0.75: threshold <= 0.15)
+    monkeypatch.setattr(
+        "pallas.core.foundation.db.pool_budget.pg_pool_under_pressure", lambda threshold=0.75: threshold <= 0.15
+    )
 
     schedule_corpus_prefetch("kw")
 
@@ -265,6 +267,8 @@ async def test_import_remote_context_inserts_when_missing() -> None:
 
 def test_prefetch_concurrency_keeps_background_single_worker_on_small_budget(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("pallas.core.foundation.db.pool_budget.remote_corpus_concurrency_limit", lambda: 3)
-    monkeypatch.setattr("pallas.core.foundation.db.pool_budget.cap_by_pg_pool", lambda requested, workload_fraction=0.3: 1)
+    monkeypatch.setattr(
+        "pallas.core.foundation.db.pool_budget.cap_by_pg_pool", lambda requested, workload_fraction=0.3: 1
+    )
 
     assert prefetch_concurrency() == 1

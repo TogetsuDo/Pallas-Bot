@@ -64,9 +64,12 @@
 - 这是常驻的 `@牛牛` 对话能力，不依赖醉酒状态。
 - 会话记忆和工具注入都由统一的 LLM 能力层协调，不是单纯一问一答。
 - `clear` 既可由用户手动触发，也可由 LLM 作为工具命令派发。
+- 它和 `repeater` 不是对立关系：`@牛牛` 负责明确叫牛来聊，平时群内接话仍以语料底盘为主。
+- 若开启 `LLM_REPEATER_MODE`，接话路径也可能让 LLM 做补位或轻润色，但不取代语料学习本身。
 
 ## 相关链接
 
 - [Pallas-Bot-AI](https://github.com/PallasBot/Pallas-Bot-AI)
 - [酒后聊天](../chat/README.md)
 - [牛牛复读](../repeater/README.md)
+- [`@牛牛`、复读接话与 LLM 的关系](../../guide/llm-and-repeater.md)

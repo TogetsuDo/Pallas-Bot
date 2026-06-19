@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import packages.help  # noqa: F401
 import pytest
 
+import packages.help  # noqa: F401
 from pallas.core.platform.shard.coord.listeners import (
     coord_listener_should_start,
     coord_listener_starters,

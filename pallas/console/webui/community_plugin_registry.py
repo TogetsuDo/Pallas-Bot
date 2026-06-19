@@ -6,7 +6,7 @@ import re
 from typing import Any
 
 from pallas.console.cli.bot_process import bot_lifecycle_available
-from pallas.console.webui.community_plugin_assets import resolve_community_plugin_icon
+from pallas.console.webui.community_plugin_assets import resolve_community_plugin_cover, resolve_community_plugin_icon
 from pallas.console.webui.community_plugin_index import load_community_plugin_index_safe
 from pallas.console.webui.community_plugin_install import (
     COMMUNITY_PLUGINS_DIR,
@@ -31,9 +31,6 @@ def github_repo_owner(repository_url: str) -> str | None:
 
 
 def resolve_community_plugin_avatar(entry: dict[str, Any]) -> str | None:
-    explicit = str(entry.get("avatar") or "").strip()
-    if explicit:
-        return explicit
     author = str(entry.get("author") or "").strip().lstrip("@")
     if author and "/" not in author:
         return f"https://avatars.githubusercontent.com/{author}?s=64"
@@ -102,7 +99,7 @@ def build_community_plugin_row(
         "author": entry.get("author") or "",
         "homepage": entry.get("homepage"),
         "icon": icon,
-        "cover": entry.get("cover"),
+        "cover": resolve_community_plugin_cover(entry),
         "avatar": resolve_community_plugin_avatar(entry),
         "tags": list(entry.get("tags") or []),
         "min_pallas_version": entry.get("min_pallas_version"),

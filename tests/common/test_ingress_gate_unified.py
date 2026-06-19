@@ -123,7 +123,9 @@ async def test_unified_ingress_bypass_skips_federate_claim(monkeypatch: pytest.M
     monkeypatch.setattr("pallas.core.platform.federate.ingress.federate_ingress_bypass_unified", lambda: True)
     federate = AsyncMock(return_value=True)
     monkeypatch.setattr("pallas.core.platform.federate.ingress.try_claim_cross_federate_message", federate)
-    monkeypatch.setattr("pallas.core.platform.ingress.claim_gate.try_claim_group_message_once", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        "pallas.core.platform.ingress.claim_gate.try_claim_group_message_once", AsyncMock(return_value=True)
+    )
     from pallas.core.platform.ingress.gate import ingress_group_message_gate
 
     class FakeBot:
@@ -252,7 +254,9 @@ async def test_unified_ingress_reuses_precomputed_plain_for_federate_claim(
     monkeypatch.setattr("pallas.core.platform.ingress.gate.ingress_gate_active", lambda: True)
     monkeypatch.setattr("pallas.core.platform.ingress.gate.fleet_bot_ids_contains", lambda _uid: False)
     monkeypatch.setattr("pallas.core.platform.ingress.gate.ingress_fanout_bypasses_claim", lambda _plain: False)
-    monkeypatch.setattr("pallas.core.platform.ingress.claim_gate.try_claim_group_message_once", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        "pallas.core.platform.ingress.claim_gate.try_claim_group_message_once", AsyncMock(return_value=True)
+    )
 
     async def fake_federate(event, **kwargs) -> bool:
         assert kwargs["plain"] == "测试 ingress"
@@ -289,7 +293,9 @@ async def test_unified_ingress_only_allows_at_target_bot(monkeypatch: pytest.Mon
     monkeypatch.setattr("pallas.core.platform.ingress.gate.fleet_bot_ids_contains", lambda _uid: False)
     monkeypatch.setattr("pallas.core.platform.ingress.gate.get_fleet_bot_ids", lambda: frozenset({111, 222}))
     monkeypatch.setattr("pallas.core.platform.ingress.gate.ingress_fanout_bypasses_claim", lambda _plain: False)
-    monkeypatch.setattr("pallas.core.platform.ingress.claim_gate.try_claim_group_message_once", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        "pallas.core.platform.ingress.claim_gate.try_claim_group_message_once", AsyncMock(return_value=True)
+    )
     monkeypatch.setattr(
         "pallas.core.platform.ingress.gate.claim_federate_group_message_ingress",
         AsyncMock(return_value=True),

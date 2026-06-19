@@ -38,12 +38,6 @@ async def test_cross_shard_claim_one_file_claim_per_worker(monkeypatch) -> None:
 
     plugin = "test_ingress_shard_rep"
     gid, uid, body, t = 1, 2, "hello", 100
-    assert await mod.try_claim_cross_shard_message(
-        plugin, gid, uid, body, t, shard_id=0, bot_id=100
-    )
-    assert await mod.try_claim_cross_shard_message(
-        plugin, gid, uid, body, t, shard_id=0, bot_id=200
-    )
-    assert not await mod.try_claim_cross_shard_message(
-        plugin, gid, uid, body, t, shard_id=1, bot_id=100
-    )
+    assert await mod.try_claim_cross_shard_message(plugin, gid, uid, body, t, shard_id=0, bot_id=100)
+    assert await mod.try_claim_cross_shard_message(plugin, gid, uid, body, t, shard_id=0, bot_id=200)
+    assert not await mod.try_claim_cross_shard_message(plugin, gid, uid, body, t, shard_id=1, bot_id=100)

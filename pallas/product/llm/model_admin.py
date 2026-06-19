@@ -283,6 +283,54 @@ async def save_providers_config(
     return payload
 
 
+async def fetch_provider_models(
+    provider_id: str,
+    *,
+    cfg: LlmConfig | None = None,
+    timeout_sec: float = 15.0,
+) -> dict[str, Any]:
+    from urllib.parse import quote
+
+    c = cfg or get_llm_config()
+    pid = quote(str(provider_id), safe="")
+    response = await HTTPXClient.get(
+        f"{ai_llm_api_base(c)}/providers/{pid}/models", timeout=timeout_sec
+    )
+    if response is None:
+        raise RuntimeError("拉取模型列表失败")
+    if response.status_code != 200:
+        detail = (response.text or "")[:300]
+        raise RuntimeError(f"拉取模型列表失败 HTTP {response.status_code}: {detail}")
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise RuntimeError("模型列表响应无效")
+    return payload
+
+
+async def test_provider(
+    provider_id: str,
+    *,
+    cfg: LlmConfig | None = None,
+    timeout_sec: float = 15.0,
+) -> dict[str, Any]:
+    from urllib.parse import quote
+
+    c = cfg or get_llm_config()
+    pid = quote(str(provider_id), safe="")
+    response = await HTTPXClient.post(
+        f"{ai_llm_api_base(c)}/providers/{pid}/test", json={}, timeout=timeout_sec
+    )
+    if response is None:
+        raise RuntimeError("连通性测试失败")
+    if response.status_code != 200:
+        detail = (response.text or "")[:300]
+        raise RuntimeError(f"连通性测试失败 HTTP {response.status_code}: {detail}")
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise RuntimeError("连通性测试响应无效")
+    return payload
+
+
 async def fetch_llm_task_stats(
     *,
     cfg: LlmConfig | None = None,

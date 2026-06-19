@@ -59,6 +59,7 @@ COMMAND_LABEL_FALLBACKS: dict[str, str] = {
     "maa.status": "牛牛MAA状态",
     "llm_chat.chat": "随时闲聊",
     "llm_chat.clear": "清空会话",
+    "llm_chat.status": "LLM 状态",
     "llm_chat.switch_model": "换模型",
     "llm_chat.unload_model": "卸模型",
     "ollama.chat": "随时闲聊（已弃用）",

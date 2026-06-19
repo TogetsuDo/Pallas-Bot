@@ -7,6 +7,7 @@ from pallas.core.platform.bot_runtime.plugin_matrix import (
     is_core_plugin,
     is_extra_plugin,
     official_extension_description,
+    official_extension_visuals,
     resolve_hub_bundled_module_paths,
     should_load_bundled_plugin,
     uv_extra_for_plugin,
@@ -175,3 +176,10 @@ def test_official_extension_description_prefers_readme_summary():
 
 def test_official_extension_description_falls_back_for_multi_plugin_package():
     assert official_extension_description("pallas-plugin-ai-media") == "唱歌（sing）与 酒后聊天（chat）。"
+
+
+def test_official_extension_visuals_use_official_repo_assets() -> None:
+    visuals = official_extension_visuals("pallas-plugin-draw")
+    assert visuals["avatar"] is None
+    assert visuals["icon"] == "/pallas/official-extensions/pallas-plugin-draw.svg"
+    assert visuals["cover"] == "https://raw.githubusercontent.com/TogetsuDo/pallas-plugin-draw/main/assets/brand-avatar.png"

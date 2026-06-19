@@ -1,4 +1,5 @@
 import time
+from collections import Counter
 
 from nonebot import logger, on_message
 from nonebot.adapters import Bot, Event
@@ -7,6 +8,7 @@ from nonebot.rule import Rule
 from ulid import ULID
 
 from pallas.core.foundation.config import TaskManager
+from pallas.core.foundation.db import make_message_repository
 from pallas.core.perm import group_message_permission_for_command
 from pallas.core.platform.ai_callback.task_types import LLM_CHAT_TASK_TYPE
 from pallas.product.llm import ChatSubmitRequest, get_llm_config, is_llm_chat_service_enabled, submit_chat_task
@@ -24,11 +26,21 @@ from pallas.product.llm.memory import (
 from pallas.product.llm.persona_context import build_persona_llm_context
 from pallas.product.llm.polish_lite import maybe_submit_repeater_corpus_llm
 from pallas.product.llm.reply_gate import evaluate_llm_reply_gate
+from pallas.product.llm.reply_variation import (
+    build_recent_reply_ending_hint,
+    build_recent_reply_variation_hint,
+    should_wait_for_more,
+)
 from pallas.product.llm.session_store import list_user_llm_messages
 from pallas.product.llm.task_metrics import record_bot_llm_task
+from pallas.product.persona.corpus_expression_habits import infer_expression_affect_stance
 
 from . import startup as _startup  # noqa: F401
 from .config import get_llm_chat_config
+from .near_field_scorer import ANSWER_SOURCE as _ANSWER_SOURCE
+from .near_field_scorer import RECENT_LIVE_SOURCE as _RECENT_LIVE_SOURCE
+from .near_field_scorer import REPEATER_SOURCE as _REPEATER_SOURCE
+from .near_field_scorer import recent_hint_source_label, select_scored_expression_candidates
 from .prompts import get_system_prompt
 from .replies import (
     LLM_CHAT_BUSY_REPLY,
@@ -69,6 +81,224 @@ def resolve_corpus_llm_route(llm_cfg, pool: list[str], candidate: str) -> str:
     if candidate and llm_cfg.llm_polish_enabled:
         return "corpus_polish"
     return "corpus_fallback"
+
+
+async def build_llm_chat_expression_suffix(group_id: int | None) -> str:
+    if group_id is None:
+        return ""
+    from pallas.core.foundation.db import make_group_config_repository
+    from pallas.product.persona.expression_habits import build_expression_habits_suffix
+
+    try:
+        group_config = await make_group_config_repository().get(int(group_id))
+    except Exception:
+        return ""
+    profile = getattr(group_config, "style_profile", None) if group_config is not None else None
+    return build_expression_habits_suffix(profile if isinstance(profile, dict) else None)
+
+
+def build_llm_chat_ending_hint(turns) -> str:
+    return build_recent_reply_ending_hint(turns)
+
+
+def extract_chat_trigger_keywords(text: str) -> list[str]:
+    plain = str(text or "").strip()
+    if not plain:
+        return []
+    try:
+        from packages.repeater.model import ChatData
+    except Exception:
+        return []
+
+    try:
+        data = ChatData(
+            group_id=0,
+            user_id=0,
+            raw_message=plain,
+            plain_text=plain,
+            time=0,
+            bot_id=0,
+        )
+    except Exception:
+        return []
+    return [item for item in getattr(data, "_keywords_list", []) if item]
+
+
+async def load_repeater_near_field_rows(group_id: int, text: str) -> list[dict[str, object]]:
+    try:
+        from packages.repeater.model import ChatData
+        from packages.repeater.responder import Responder
+    except Exception:
+        return []
+
+    plain = str(text or "").strip()
+    if not plain:
+        return []
+    try:
+        chat_data = ChatData(
+            group_id=int(group_id),
+            user_id=0,
+            raw_message=plain,
+            plain_text=plain,
+            time=int(time.time()),
+            bot_id=0,
+        )
+    except Exception:
+        return []
+
+    try:
+        bundle = await Responder.find_reply_bundle(
+            chat_data,
+            None,
+            reply_dict={},
+            message_dict={},
+            recent_topics={},
+        )
+    except Exception:
+        return []
+    if bundle is None:
+        return []
+
+    now_ts = int(time.time())
+    rows: list[dict[str, object]] = []
+    for idx, item in enumerate(list(getattr(bundle, "answer_list", []) or [])):
+        text_item = str(item or "").strip()
+        if not text_item or "[CQ:" in text_item:
+            continue
+        rows.append({
+            "text": text_item,
+            "count": max(1, 3 - idx),
+            "keywords": str(getattr(bundle, "answer_keywords", "") or chat_data.keywords or "").strip(),
+            "time": now_ts - idx,
+            "topic_hits": 2,
+            "source": _REPEATER_SOURCE,
+        })
+    return rows
+
+
+async def load_recent_live_expression_rows(
+    group_id: int,
+    text: str,
+    *,
+    bot_id: int | None = None,
+    current_user_id: int | None = None,
+) -> list[dict[str, object]]:
+    trigger_keywords = extract_chat_trigger_keywords(text)
+    repo = make_message_repository()
+    try:
+        messages = await repo.find_recent_in_group(int(group_id), before_time=int(time.time()) + 1, limit=32)
+    except Exception:
+        return []
+
+    user_weights = Counter(int(getattr(msg, "user_id", 0) or 0) for msg in messages)
+    user_topic_hits = Counter()
+    for msg in messages:
+        plain = str(getattr(msg, "plain_text", "") or "").strip()
+        if not plain or "[CQ:" in plain:
+            continue
+        keywords = str(getattr(msg, "keywords", "") or "").strip()
+        if trigger_keywords and keywords and not any(keyword in keywords for keyword in trigger_keywords):
+            continue
+        user_id = int(getattr(msg, "user_id", 0) or 0)
+        user_topic_hits[user_id] += 1
+
+    rows: list[dict[str, object]] = []
+    for msg in messages:
+        plain = str(getattr(msg, "plain_text", "") or "").strip()
+        if not plain or "[CQ:" in plain:
+            continue
+        user_id = int(getattr(msg, "user_id", 0) or 0)
+        if current_user_id is not None and user_id == int(current_user_id):
+            continue
+        bot_msg_id = int(getattr(msg, "bot_id", 0) or 0)
+        if bot_id is not None and user_id == int(bot_id):
+            continue
+        if bot_id is not None and bot_msg_id != 0 and bot_msg_id != int(bot_id):
+            continue
+        if trigger_keywords:
+            keywords = str(getattr(msg, "keywords", "") or "").strip()
+            if keywords and not any(keyword in keywords for keyword in trigger_keywords):
+                continue
+        rows.append({
+            "text": plain,
+            "count": int(user_weights.get(user_id, 0) or 0),
+            "topic_hits": int(user_topic_hits.get(user_id, 0) or 0),
+            "keywords": str(getattr(msg, "keywords", "") or "").strip(),
+            "time": int(getattr(msg, "time", 0) or 0),
+            "user_id": user_id,
+            "source": _RECENT_LIVE_SOURCE,
+        })
+    rows.sort(
+        key=lambda item: (
+            -int(item.get("topic_hits") or 0),
+            -int(item.get("count") or 0),
+            -int(item.get("time") or 0),
+        )
+    )
+    return rows
+
+
+async def build_llm_chat_corpus_ending_hint(
+    group_id: int | None,
+    text: str = "",
+    *,
+    bot_id: int | None = None,
+    current_user_id: int | None = None,
+) -> str:
+    if group_id is None:
+        return ""
+    recent_rows = await load_recent_live_expression_rows(
+        int(group_id),
+        text,
+        bot_id=bot_id,
+        current_user_id=current_user_id,
+    )
+    repeater_rows = await load_repeater_near_field_rows(int(group_id), text)
+    for row in repeater_rows:
+        if not str(row.get("source") or "").strip():
+            row["source"] = _REPEATER_SOURCE
+    near_field_rows = list(recent_rows) + list(repeater_rows)
+
+    try:
+        from pallas.core.foundation.db.context_repo_access import get_shared_context_repository
+    except Exception:
+        repo = None
+    else:
+        repo = get_shared_context_repository()
+
+    answer_rows: list[dict[str, object]] = []
+    list_answers = getattr(repo, "list_answers_for_group_since", None) if repo is not None else None
+    if callable(list_answers):
+        try:
+            answers = await list_answers(int(group_id), 0)
+        except Exception:
+            answers = []
+        for ans in answers:
+            messages = getattr(ans, "messages", None) or []
+            sample = str(messages[0] if messages else getattr(ans, "keywords", "") or "").strip()
+            answer_rows.append({
+                "text": sample,
+                "count": int(getattr(ans, "count", 0) or 0),
+                "keywords": str(getattr(ans, "keywords", "") or "").strip(),
+                "source": _ANSWER_SOURCE,
+                "time": int(getattr(ans, "time", 0) or 0),
+                "topic_hits": 0,
+            })
+
+    trigger_keywords = extract_chat_trigger_keywords(text)
+    target_stance = infer_expression_affect_stance(text)
+    merged_rows = near_field_rows + answer_rows
+    candidates = select_scored_expression_candidates(
+        merged_rows,
+        target_stance=target_stance,
+        trigger_keywords=trigger_keywords,
+        query_text=text,
+        limit=3,
+    )
+    if not candidates:
+        return ""
+    label = recent_hint_source_label(merged_rows, trigger_keywords)
+    return "\n【语料收尾参考】" + label + "：" + "、".join(candidates) + "。"
 
 
 async def latest_llm_assistant_reply(bot_id: int, group_id: int | None, user_id: int) -> str:
@@ -157,6 +387,9 @@ async def handle_llm_chat(bot: Bot, event: Event):
         user_id=user_id,
         cfg=llm_cfg,
     )
+    expression_suffix = await build_llm_chat_expression_suffix(group_id)
+    if expression_suffix:
+        system_prompt = f"{system_prompt.rstrip()}\n{expression_suffix}"
 
     persona_for_gate = None
     if bundle is not None:
@@ -173,6 +406,10 @@ async def handle_llm_chat(bot: Bot, event: Event):
     if gate_decision == "skip":
         record_bot_llm_task(LLM_CHAT_TASK_TYPE, "reply_gate_skip")
         logger.debug("llm chat reply gate skip group={} user={}", group_id, user_id)
+        return
+    if should_wait_for_more(plain or msg):
+        record_bot_llm_task(LLM_CHAT_TASK_TYPE, "reply_gate_defer")
+        logger.debug("llm chat wait-for-more group={} user={}", group_id, user_id)
         return
 
     if llm_cfg.llm_select_enabled and group_id is not None and isinstance(event, GroupMessageEvent):
@@ -223,6 +460,21 @@ async def handle_llm_chat(bot: Bot, event: Event):
         logger.debug("llm chat merged queued message group={} user={}", group_id, user_id)
 
     request_id = str(ULID())
+    recent_turns = await list_user_llm_messages(int(bot.self_id), group_id, user_id, limit=6)
+    variation_hint = build_recent_reply_variation_hint(recent_turns)
+    if variation_hint:
+        system_prompt = f"{system_prompt.rstrip()}\n\n{variation_hint}"
+    ending_hint = build_llm_chat_ending_hint(recent_turns)
+    if ending_hint:
+        system_prompt = f"{system_prompt.rstrip()}{ending_hint}"
+    corpus_ending_hint = await build_llm_chat_corpus_ending_hint(
+        group_id,
+        plain or msg,
+        bot_id=int(bot.self_id),
+        current_user_id=user_id,
+    )
+    if corpus_ending_hint:
+        system_prompt = f"{system_prompt.rstrip()}{corpus_ending_hint}"
     last_reply_text = await latest_llm_assistant_reply(int(bot.self_id), group_id, user_id)
     await TaskManager.add_task(
         request_id,
@@ -235,6 +487,8 @@ async def handle_llm_chat(bot: Bot, event: Event):
             "fallback_text": corpus_fallback,
             "llm_route": llm_route,
             "last_reply_text": last_reply_text,
+            "variation_hint": variation_hint,
+            "variation_applied": bool(variation_hint),
             "start_time": time.time(),
         },
     )

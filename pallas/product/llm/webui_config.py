@@ -38,6 +38,7 @@ class LlmWebuiConfig(BaseModel):
             "接话时如何使用智能对话",
             "推荐「命中语料时 AI 选句」；需要时可开启语料缺失现编或偶尔轻顺口气",
             "遗留项「完整润色」易注入过多人设，日常接话不建议使用",
+            "用户视角：off=只用语料；fallback=语料不够时 AI 补位；polish=命中语料时 AI 轻顺口气；both=两者都开",
         ),
     )
     llm_polish_lite_sample_rate: float = Field(

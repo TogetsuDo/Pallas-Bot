@@ -36,9 +36,7 @@ def test_upsert_writes_sections_and_export_toml(tmp_path: Path, monkeypatch: pyt
     assert "ANSWER_THRESHOLD" in text
 
 
-def test_export_toml_tolerates_malformed_sections_bucket(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_export_toml_tolerates_malformed_sections_bucket(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     webui = tmp_path / "webui.json"
     export_path = tmp_path / "export.toml"
     webui.write_text(

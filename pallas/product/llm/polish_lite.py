@@ -39,15 +39,31 @@ def should_polish_lite_sample(
 
 
 def build_polish_lite_user_text(user_text: str, candidate_text: str) -> str:
+    return build_polish_lite_user_text_with_suffix(user_text, candidate_text, style_suffix="")
+
+
+def build_polish_lite_user_text_with_suffix(user_text: str, candidate_text: str, *, style_suffix: str = "") -> str:
     message = str(user_text or "").strip()
     candidate = str(candidate_text or "").strip()
     if not message or not candidate or "[CQ:" in message or "[CQ:" in candidate:
         return ""
+    suffix = str(style_suffix or "").strip()
+    suffix_block = f"\n{suffix}" if suffix else ""
     return (
         f"【用户消息】{message}\n"
         f"【候选回复】{candidate}\n"
+        f"{suffix_block}\n"
         "请在不改变原意的前提下轻顺口气；勿扩写、勿加设定词。只输出一句。"
     )
+
+
+async def build_polish_lite_style_suffix(group_id: int) -> str:
+    from pallas.core.foundation.db import make_group_config_repository
+    from pallas.product.persona.expression_habits import build_expression_habits_suffix
+
+    group_config = await make_group_config_repository().get(int(group_id))
+    profile = getattr(group_config, "style_profile", None) if group_config is not None else None
+    return build_expression_habits_suffix(profile if isinstance(profile, dict) else None)
 
 
 async def maybe_submit_repeater_llm_polish_lite(
@@ -68,7 +84,11 @@ async def maybe_submit_repeater_llm_polish_lite(
     group_id = int(event.group_id)
     user_id = int(event.user_id)
     bot_id = int(event.self_id)
-    prompt_user = build_polish_lite_user_text(plain, candidate)
+    prompt_user = build_polish_lite_user_text_with_suffix(
+        plain,
+        candidate,
+        style_suffix=await build_polish_lite_style_suffix(group_id),
+    )
     if not prompt_user:
         return False
 

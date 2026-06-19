@@ -58,10 +58,13 @@
 
 - 牛级差异来自 `bot_id` 的确定性派生，不需要手工给每只牛单独配置。
 - 群级风格来自本群学习到的 `message` 和 `answer` 数据，不是写死模板。
+- 群聊表达习惯不只看长短和活跃度；高频触发词、群梗和接梗倾向也会参与塑形。
 - `persona` 影响的是接话行为和风格，不是一个独立可调用插件。
+- `persona` 不只影响平时接话；当你 `@牛牛` 闲聊时，统一 LLM 路径也会继续吃到牛格与群味。
 
 ## 相关链接
 
 - [复读插件](../repeater/README.md)
+- [`@牛牛`、复读接话与 LLM 的关系](../../guide/llm-and-repeater.md)
 - [Pallas 核心契约](../../architecture/internal/pallas-core-contract.md)
 - [AI 终态架构](../../architecture/internal/pallas-final-ai-shape.md)

@@ -3,7 +3,6 @@ from __future__ import annotations
 import sys
 
 import pytest
-
 from packages.pb_protocol.linux_docker import apply_docker_runtime_toggle_to_ws_url
 
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from packages.pb_protocol.linux_docker import is_plain_ws_url, ws_url_host_should_rewrite_for_docker_bridge
 
 

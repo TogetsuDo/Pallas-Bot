@@ -8,8 +8,17 @@ import importlib.util
 from pathlib import Path  # noqa: TC003
 from typing import Any
 
+from pallas.console.webui.community_plugin_assets import resolve_community_plugin_icon
+from pallas.console.webui.community_plugin_index import (
+    DEFAULT_INDEX_REL,
+    LOCAL_INDEX_REL,
+    load_index_from_path,
+)
+from pallas.console.webui.community_plugin_registry import resolve_community_plugin_avatar
+from pallas.console.webui.plugin_registry import official_extension_for_plugin
 from pallas.core.foundation.paths import PROJECT_ROOT
 from pallas.core.platform.bot_runtime.plugin_matrix import (
+    EXTRA_PACKAGE_MODULES,
     extra_package_for_plugin,
     is_core_plugin,
     is_extra_plugin,
@@ -34,6 +43,7 @@ _INFRA_EXACT = frozenset({
     "nonebot-plugin-alconna",
     "nonebot_plugin_alconna",
 })
+_BRAND_AVATAR_PATH = "/pallas/assets/brand-avatar-hd.png"
 
 
 def discover_plugin_packages() -> list[str]:
@@ -121,6 +131,10 @@ def infer_plugin_source(
         if src in ("core", "extra"):
             return src, module_dir_rel(file_path) or f"packages/{package}"
         if src == "pip":
+            if is_extra_plugin(package):
+                bundled_root = _PLUGINS_ROOT / package
+                bundled_dir = f"packages/{package}" if (bundled_root / "__init__.py").is_file() else None
+                return "extra", bundled_dir
             return "pip", None
         if module_name.startswith("packages."):
             if is_extra_plugin(package):
@@ -281,8 +295,14 @@ def _loaded_plugin_index() -> tuple[dict[str, Any], dict[str, Any]]:
         short = module_name.rsplit(".", 1)[-1] if module_name else ""
         if short:
             by_package[short] = p
+            resolved = canonical_plugin_id(short)
+            if resolved:
+                by_package.setdefault(resolved, p)
         if nb:
             by_package.setdefault(nb, p)
+            resolved = canonical_plugin_id(nb)
+            if resolved:
+                by_package.setdefault(resolved, p)
     return by_nb_name, by_package
 
 
@@ -374,6 +394,54 @@ def metadata_to_dict(meta: object | None) -> dict[str, Any] | None:
     return d
 
 
+def community_plugin_row_for_plugin(plugin_id: str) -> dict[str, Any] | None:
+    from pallas.console.webui.community_plugin_install import community_plugins_root
+
+    pid = (plugin_id or "").strip()
+    if not pid:
+        return None
+    root = community_plugins_root()
+    plugin_dir = root / pid
+    if not plugin_dir.is_dir():
+        return None
+    for rel in (LOCAL_INDEX_REL, DEFAULT_INDEX_REL):
+        try:
+            _source, _meta, plugins = load_index_from_path(rel)
+        except Exception:
+            continue
+        for entry in plugins:
+            if str(entry.get("plugin_id") or "").strip() == pid:
+                return entry
+    return None
+
+
+def resolve_catalog_visuals(
+    *,
+    plugin_id: str,
+    plugin_source: PluginSourceKind,
+) -> dict[str, str | None]:
+    community = community_plugin_row_for_plugin(plugin_id)
+    if community is not None:
+        return {
+            "avatar": resolve_community_plugin_avatar(community),
+            "icon": resolve_community_plugin_icon(community),
+            "cover": community.get("cover"),
+        }
+
+    official = official_extension_for_plugin(plugin_id)
+    if official is not None:
+        return {
+            "avatar": official.get("avatar"),
+            "icon": official.get("icon"),
+            "cover": official.get("cover"),
+        }
+
+    if is_core_plugin(plugin_id) or plugin_source == "core":
+        return {"avatar": _BRAND_AVATAR_PATH, "icon": None, "cover": None}
+
+    return {"avatar": None, "icon": None, "cover": None}
+
+
 def build_plugin_catalog_rows(
     *,
     ignored: set[str] | None = None,
@@ -415,6 +483,7 @@ def build_plugin_catalog_rows(
         ids = {nb_name, package, resolved_plugin_id, f"packages.{resolved_plugin_id}"}
         g_disabled = any(x in globally_disabled for x in ids if x)
         g_protected = any(x in global_disable_protected for x in ids if x)
+        visuals = resolve_catalog_visuals(plugin_id=resolved_plugin_id, plugin_source=plugin_source)
         rows.append({
             "name": resolved_plugin_id,
             "nb_plugin_name": nb_name,
@@ -434,6 +503,9 @@ def build_plugin_catalog_rows(
             "plugin_source": plugin_source,
             "plugin_source_dir": plugin_source_dir,
             "extra_package": extra_package_for_plugin(resolved_plugin_id),
+            "avatar": visuals["avatar"],
+            "icon": visuals["icon"],
+            "cover": visuals["cover"],
         })
 
     all_packages = sorted(set(discover_plugin_packages()) | set(extra_pkgs.keys()))
@@ -500,6 +572,39 @@ def build_plugin_catalog_rows(
             plugin_source_dir=None,
             has_config=module_has_config_module(module_name),
         )
+
+    for module_paths in EXTRA_PACKAGE_MODULES.values():
+        for module_path in module_paths:
+            package = _module_short_name(module_path)
+            resolved_plugin_id = canonical_plugin_id(package)
+            if not resolved_plugin_id or resolved_plugin_id in seen_packages:
+                continue
+            if not should_show_in_plugin_catalog(resolved_plugin_id):
+                continue
+            seen_packages.add(resolved_plugin_id)
+            p = by_package.get(resolved_plugin_id) or by_package.get(package)
+            loaded = p is not None
+            nb_name = str(getattr(p, "name", "") or "") if p is not None else resolved_plugin_id
+            module_name = module_path
+            if p is not None:
+                mod = getattr(p, "module", None)
+                module_name = getattr(mod, "__name__", "") or module_name
+            meta = metadata_to_dict(getattr(p, "metadata", None)) if p is not None else None
+            if meta is None:
+                meta = _pip_plugin_metadata_stub(module_path)
+            if meta is None:
+                continue
+            _append_row(
+                package=resolved_plugin_id,
+                module_name=module_name,
+                nb_name=nb_name,
+                meta=meta,
+                loaded=loaded,
+                role=package_load_role(resolved_plugin_id),
+                plugin_source="extra" if len(module_paths) == 1 else "pip",
+                plugin_source_dir=None,
+                has_config=module_has_config_module(module_name),
+            )
 
     from nonebot import get_loaded_plugins
 

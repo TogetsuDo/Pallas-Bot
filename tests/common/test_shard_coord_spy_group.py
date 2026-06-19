@@ -92,9 +92,13 @@ def test_spy_prep_players_and_snapshot(fake_coord_redis, monkeypatch) -> None:
     )
     lock = ga_mod.get_group_activity_lock(
         "spy_group",
-        session_extra_keys=frozenset(
-            {"session_active", "prep_owner_id", "prep_host_bot_id", "prep_players", "game_snapshot"}
-        ),
+        session_extra_keys=frozenset({
+            "session_active",
+            "prep_owner_id",
+            "prep_host_bot_id",
+            "prep_players",
+            "game_snapshot",
+        }),
         is_live_session=lambda data: ga_mod.session_live_by_flag(data, flag_key="session_active"),
     )
     assert lock.try_begin(9002) is True

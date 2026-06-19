@@ -187,8 +187,8 @@ def official_extension_repo_url(package: str) -> str | None:
 
 
 _OFFICIAL_EXTENSION_REPO_OWNER = "TogetsuDo"
-_PALLAS_BOT_README_COVER = "/pallas/official-extensions/covers/pallas-readme-cover.webp"
-_PALLAS_AI_README_COVER = "/pallas/official-extensions/covers/pallas-ai-readme-cover.webp"
+_OFFICIAL_EXTENSION_DEFAULT_REF = "main"
+_OFFICIAL_EXTENSION_BRAND_AVATAR_PATH = "assets/brand-avatar.png"
 _README_CENTERED_PARAGRAPH_RE = re.compile(r"<p\s+align=[\"']center[\"']>(.*?)</p>", flags=re.IGNORECASE | re.DOTALL)
 _README_HTML_TAG_RE = re.compile(r"<[^>]+>")
 _README_WHITESPACE_RE = re.compile(r"\s+")
@@ -207,11 +207,7 @@ def github_repo_owner(repository_url: str | None) -> str | None:
 
 def official_extension_cover(package: str) -> str | None:
     pkg = (package or "").strip()
-    if pkg not in OFFICIAL_EXTENSION_REPOS:
-        return None
-    if pkg == "pallas-plugin-ai-media":
-        return _PALLAS_AI_README_COVER
-    return _PALLAS_BOT_README_COVER
+    return official_extension_asset_url(pkg, _OFFICIAL_EXTENSION_BRAND_AVATAR_PATH)
 
 
 def official_extension_readme_summary(package: str) -> str:
@@ -231,6 +227,20 @@ def official_extension_readme_summary(package: str) -> str:
         if summary:
             return summary
     return ""
+
+
+def official_extension_asset_url(package: str, asset_path: str) -> str | None:
+    repo_url = official_extension_repo_url(package)
+    if not repo_url:
+        return None
+    match = re.match(r"https://github\.com/([^/]+)/([^/]+?)/?$", repo_url, flags=re.IGNORECASE)
+    if not match:
+        return None
+    owner = match.group(1).strip()
+    repo = match.group(2).strip()
+    if not owner or not repo:
+        return None
+    return f"https://raw.githubusercontent.com/{owner}/{repo}/{_OFFICIAL_EXTENSION_DEFAULT_REF}/{asset_path}"
 
 
 def official_extension_description(package: str) -> str:
@@ -254,9 +264,11 @@ def official_extension_visuals(package: str) -> dict[str, str | None]:
     if pkg not in OFFICIAL_EXTENSION_REPOS:
         return {"icon": None, "cover": None, "avatar": None}
     icon = f"/pallas/official-extensions/{pkg}.svg"
-    owner = github_repo_owner(official_extension_repo_url(pkg)) or _OFFICIAL_EXTENSION_REPO_OWNER
-    avatar = f"https://avatars.githubusercontent.com/{owner}?s=64"
-    return {"icon": icon, "cover": official_extension_cover(pkg), "avatar": avatar}
+    return {
+        "icon": icon,
+        "cover": official_extension_cover(pkg),
+        "avatar": None,
+    }
 
 
 def pip_extra_installed_for_plugin(name: str) -> bool:

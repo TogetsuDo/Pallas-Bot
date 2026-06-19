@@ -6,6 +6,7 @@ from pallas.product.persona.compile_persona_prompt import (
     REPEATER_PROMPT_PURPOSES,
     PersonaPromptBundle,
     compile_persona_prompt_for,
+    resolve_at_chat_system_prompt_path,
     resolve_repeater_system_prompt_path,
 )
 from pallas.product.persona.model import ResolvedPersona
@@ -26,6 +27,8 @@ async def build_persona_llm_context(
     resolved_base_path = base_system_path
     if not resolved_base_path and purpose in REPEATER_PROMPT_PURPOSES:
         resolved_base_path = str(resolve_repeater_system_prompt_path())
+    if not resolved_base_path and purpose == "chat":
+        resolved_base_path = str(resolve_at_chat_system_prompt_path())
     bundle = await compile_persona_prompt_for(
         bot_id,
         group_id,

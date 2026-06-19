@@ -38,11 +38,6 @@ def test_register_and_resolve_worker_port(tmp_path, monkeypatch):
         "pallas.core.platform.shard.registry.store._registry_path",
         lambda: shard_root / "registry.json",
     )
-    monkeypatch.setattr(
-        "pallas.core.platform.shard.coord.ai_task_registry.plugin_data_dir",
-        lambda *_a, **_k: shard_root,
-    )
-
     task_id = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
     register_ai_task(
         task_id,

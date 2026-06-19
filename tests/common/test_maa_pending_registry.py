@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import pytest
-
 from packages.maa.store import NotifyTarget, PendingTask, pending_task_to_dict
+
 from pallas.core.platform.shard.coord import maa_pending_registry as mod
 
 

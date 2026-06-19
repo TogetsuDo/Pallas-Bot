@@ -103,15 +103,19 @@ def build_ai_task_record(task_id: str, task_status: dict[str, Any]) -> dict[str,
     if not bot_id.isdigit():
         return None
     reg = get_shard_registry()
-    local_port = current_worker_port()
-    if local_port is not None:
-        sid = int(get_shard_registry_settings().shard_id)
-        port = int(local_port)
-    else:
-        sid = reg.shard_for_bot(bot_id)
-        if sid is None:
-            sid = assign_bot_to_shard(bot_id, registry=reg)
+    sid = reg.shard_for_bot(bot_id)
+    if sid is not None:
         port = worker_port_for_shard(int(sid), registry=reg)
+    else:
+        local_port = current_worker_port()
+        if local_port is not None:
+            sid = int(get_shard_registry_settings().shard_id)
+            port = int(local_port)
+        else:
+            sid = assign_bot_to_shard(bot_id, registry=reg)
+            if sid is None:
+                return None
+            port = worker_port_for_shard(int(sid), registry=reg)
     return {
         "task_id": task_id,
         "bot_id": bot_id,

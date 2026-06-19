@@ -103,15 +103,9 @@ async def test_group_message_once_same_sig_only_first() -> None:
 @pytest.mark.asyncio
 async def test_roulette_start_once_same_user_different_message_time() -> None:
     gid, uid, body = 733291779, 3385897861, "牛牛轮盘"
-    assert await try_claim_group_message_once(
-        "roulette_start", gid, uid, body, 100, include_message_time=True
-    ) is True
-    assert await try_claim_group_message_once(
-        "roulette_start", gid, uid, body, 100, include_message_time=True
-    ) is False
-    assert await try_claim_group_message_once(
-        "roulette_start", gid, uid, body, 101, include_message_time=True
-    ) is True
+    assert await try_claim_group_message_once("roulette_start", gid, uid, body, 100, include_message_time=True) is True
+    assert await try_claim_group_message_once("roulette_start", gid, uid, body, 100, include_message_time=True) is False
+    assert await try_claim_group_message_once("roulette_start", gid, uid, body, 101, include_message_time=True) is True
 
 
 @pytest.mark.asyncio
@@ -132,15 +126,9 @@ async def test_cross_bot_memory_claim_same_body_different_time() -> None:
 @pytest.mark.asyncio
 async def test_duel_memory_claim_scoped_by_message_time() -> None:
     gid, uid, body = 733291779, 1, "八角笼牛"
-    assert await try_claim_cross_bot_message_memory(
-        "duel", gid, uid, body, 100, 111, include_message_time=True
-    )
-    assert await try_claim_cross_bot_message_memory(
-        "duel", gid, uid, body, 101, 222, include_message_time=True
-    )
-    assert not await try_claim_cross_bot_message_memory(
-        "duel", gid, uid, body, 101, 111, include_message_time=True
-    )
+    assert await try_claim_cross_bot_message_memory("duel", gid, uid, body, 100, 111, include_message_time=True)
+    assert await try_claim_cross_bot_message_memory("duel", gid, uid, body, 101, 222, include_message_time=True)
+    assert not await try_claim_cross_bot_message_memory("duel", gid, uid, body, 101, 111, include_message_time=True)
 
 
 @pytest.mark.asyncio

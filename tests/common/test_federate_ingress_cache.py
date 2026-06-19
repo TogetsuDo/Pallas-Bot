@@ -116,7 +116,9 @@ def test_federate_ingress_cached_win_reuses_precomputed_body(monkeypatch: pytest
         "pallas.core.platform.federate.ingress.load_or_create_deployment_id",
         lambda: "deploy-test",
     )
-    monkeypatch.setattr("pallas.core.platform.federate.ingress.cross_bot_message_signature", lambda *_args, **_kwargs: "sig")
+    monkeypatch.setattr(
+        "pallas.core.platform.federate.ingress.cross_bot_message_signature", lambda *_args, **_kwargs: "sig"
+    )
 
     cache_key = (
         fed_ingress.FEDERATE_INGRESS_CLAIM_PLUGIN,

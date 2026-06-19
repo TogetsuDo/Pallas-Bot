@@ -78,9 +78,7 @@ async def test_cage_session_resets_after_completed_round(fake_coord_redis, monke
     )
     path_new = mod._session_path(
         group_id,
-        cross_bot_group_message_key(
-            group_id, user_id, "八角笼牛", 2000, use_plaintext=True, include_message_time=True
-        ),
+        cross_bot_group_message_key(group_id, user_id, "八角笼牛", 2000, use_plaintext=True, include_message_time=True),
     )
     data = mod._read_session(path_new)
     assert data is not None

@@ -34,6 +34,11 @@ UNIFIED_SKIP_PLUGIN_NAMES: frozenset[str] = frozenset({
 })
 
 UNIFIED_CATALOG_HIDDEN_PLUGIN_NAMES: frozenset[str] = UNIFIED_SKIP_PLUGIN_NAMES
+UNIFIED_CATALOG_HIDDEN_PLUGIN_NAMES = frozenset({
+    *UNIFIED_CATALOG_HIDDEN_PLUGIN_NAMES,
+    "ingress_gate",
+    "pallas_console_metrics",
+})
 
 
 def bot_role() -> BotRole:

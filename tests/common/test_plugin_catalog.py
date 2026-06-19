@@ -250,3 +250,180 @@ def test_catalog_exposes_resolved_identity_for_official_pip_plugin(monkeypatch) 
     assert row["resolved_module"] == "pallas_plugin_draw"
     assert row["configurable"] is True
     assert row["extra_package"] == "pallas-plugin-draw"
+
+
+def test_catalog_lists_unloaded_official_subplugins_from_package_modules(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog.discover_plugin_packages",
+        list,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog.discover_extra_plugin_packages",
+        dict,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog.discover_pyproject_plugin_modules",
+        list,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog._loaded_plugin_index",
+        lambda: ({}, {}),
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog._pip_plugin_metadata_stub",
+        lambda module_path: {
+            "pallas_plugin_chat": {"name": "酒后聊天"},
+            "pallas_plugin_sing": {"name": "牛牛唱歌"},
+        }.get(module_path),
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog.module_has_config_module",
+        lambda module_name: module_name == "pallas_plugin_chat",
+    )
+
+    rows = build_plugin_catalog_rows()
+    by_name = {r["name"]: r for r in rows}
+
+    assert "chat" in by_name
+    assert "sing" in by_name
+    assert by_name["chat"]["module"] == "pallas_plugin_chat"
+    assert by_name["chat"]["extra_package"] == "pallas-plugin-ai-media"
+    assert by_name["chat"]["plugin_source"] == "pip"
+    assert by_name["chat"]["configurable"] is True
+    assert by_name["chat"]["loaded_in_process"] is False
+    assert by_name["sing"]["module"] == "pallas_plugin_sing"
+    assert by_name["sing"]["extra_package"] == "pallas-plugin-ai-media"
+
+
+def test_catalog_row_reuses_official_extension_visuals(monkeypatch) -> None:
+    class FakeLoadedPlugin:
+        name = "draw"
+        module = type(
+            "Mod",
+            (),
+            {"__name__": "pallas_plugin_draw", "__file__": "/tmp/site-packages/pallas_plugin_draw/__init__.py"},
+        )()
+        metadata = None
+
+    monkeypatch.setattr("pallas.console.webui.plugin_catalog.discover_plugin_packages", list)
+    monkeypatch.setattr("pallas.console.webui.plugin_catalog.discover_extra_plugin_packages", dict)
+    monkeypatch.setattr("pallas.console.webui.plugin_catalog.discover_pyproject_plugin_modules", list)
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog._loaded_plugin_index",
+        lambda: ({}, {"draw": FakeLoadedPlugin()}),
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog.official_extension_for_plugin",
+        lambda plugin_id: {
+            "package": "pallas-plugin-draw",
+            "avatar": None,
+            "icon": "/pallas/official-extensions/pallas-plugin-draw.svg",
+            "cover": "https://raw.githubusercontent.com/TogetsuDo/pallas-plugin-draw/main/assets/brand-avatar.png",
+        }
+        if plugin_id == "draw"
+        else None,
+    )
+
+    rows = build_plugin_catalog_rows()
+    row = next(r for r in rows if r["name"] == "draw")
+
+    assert row["avatar"] in (None, "")
+    assert row["icon"] == "/pallas/official-extensions/pallas-plugin-draw.svg"
+    assert row["cover"] == "https://raw.githubusercontent.com/TogetsuDo/pallas-plugin-draw/main/assets/brand-avatar.png"
+
+
+def test_catalog_row_reuses_community_plugin_visuals(monkeypatch) -> None:
+    from pathlib import Path
+
+    monkeypatch.setattr("pallas.console.webui.plugin_catalog.discover_plugin_packages", lambda: ["demo_local"])
+    monkeypatch.setattr("pallas.console.webui.plugin_catalog.discover_extra_plugin_packages", dict)
+    monkeypatch.setattr("pallas.console.webui.plugin_catalog.discover_pyproject_plugin_modules", list)
+    monkeypatch.setattr("pallas.console.webui.plugin_catalog._loaded_plugin_index", lambda: ({}, {}))
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog._parse_plugin_metadata_stub",
+        lambda _path: {"name": "本地社区插件"},
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.community_plugin_install.community_plugins_root",
+        lambda: Path("/tmp/local/plugins"),
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog.load_index_from_path",
+        lambda _rel: (
+            "file:data/pallas_config/community_plugin_index.json",
+            {},
+            [
+                {
+                    "plugin_id": "demo_local",
+                    "avatar": "https://avatars.githubusercontent.com/acme?s=64",
+                    "icon": "https://raw.githubusercontent.com/acme/demo/main/assets/icon.png",
+                    "cover": "https://raw.githubusercontent.com/acme/demo/main/assets/cover.webp",
+                }
+            ],
+        ),
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog.resolve_community_plugin_icon",
+        lambda entry: str(entry.get("icon") or "").strip() or None,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog.resolve_community_plugin_avatar",
+        lambda entry: str(entry.get("avatar") or "").strip() or None,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog.Path.is_file",
+        lambda self: (
+            self.name == "__init__.py" and self.parent.name == "demo_local"
+        )
+        or self.as_posix().endswith("community_plugin_index.json"),
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog.Path.is_dir",
+        lambda self: self.as_posix().endswith("/tmp/local/plugins/demo_local"),
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog.package_has_config_module",
+        lambda package, *, package_root=None: False,
+    )
+
+    rows = build_plugin_catalog_rows()
+    row = next(r for r in rows if r["name"] == "demo_local")
+
+    assert row["avatar"] == "https://avatars.githubusercontent.com/acme?s=64"
+    assert row["icon"] == "https://raw.githubusercontent.com/acme/demo/main/assets/icon.png"
+    assert row["cover"] == "https://raw.githubusercontent.com/acme/demo/main/assets/cover.webp"
+
+
+def test_catalog_row_core_plugin_uses_brand_avatar(monkeypatch) -> None:
+    class FakeLoadedPlugin:
+        name = "help"
+        module = type(
+            "Mod",
+            (),
+            {"__name__": "packages.help", "__file__": "/repo/packages/help/__init__.py"},
+        )()
+        metadata = None
+
+    monkeypatch.setattr("pallas.console.webui.plugin_catalog.discover_plugin_packages", lambda: ["help"])
+    monkeypatch.setattr("pallas.console.webui.plugin_catalog.discover_extra_plugin_packages", dict)
+    monkeypatch.setattr("pallas.console.webui.plugin_catalog.discover_pyproject_plugin_modules", list)
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog._loaded_plugin_index",
+        lambda: ({}, {"help": FakeLoadedPlugin()}),
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog._parse_plugin_metadata_stub",
+        lambda _path: {"name": "牛牛帮助"},
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog.Path.is_file",
+        lambda self: self.name == "__init__.py" and self.parent.name == "help",
+    )
+
+    rows = build_plugin_catalog_rows()
+    row = next(r for r in rows if r["name"] == "help")
+
+    assert row["avatar"]
+    assert "brand-avatar" in row["avatar"]
+    assert row["icon"] is None
+    assert row["cover"] is None

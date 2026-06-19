@@ -45,6 +45,15 @@ async def build_fallback_system_prompt(
     return system_prompt, temperature, token_count
 
 
+async def build_fallback_expression_suffix(group_id: int) -> str:
+    from pallas.core.foundation.db import make_group_config_repository
+    from pallas.product.persona.expression_habits import build_expression_habits_suffix
+
+    group_config = await make_group_config_repository().get(int(group_id))
+    profile = getattr(group_config, "style_profile", None) if group_config is not None else None
+    return build_expression_habits_suffix(profile if isinstance(profile, dict) else None)
+
+
 async def maybe_submit_repeater_llm_fallback(event: GroupMessageEvent, *, user_text: str) -> bool:
     if event.is_tome():
         return False
@@ -73,6 +82,9 @@ async def maybe_submit_repeater_llm_fallback(event: GroupMessageEvent, *, user_t
         return False
     if not system_prompt:
         return False
+    expression_suffix = await build_fallback_expression_suffix(group_id)
+    if expression_suffix:
+        system_prompt = f"{system_prompt.rstrip()}\n{expression_suffix}"
 
     request_id = str(ULID())
     await TaskManager.add_task(

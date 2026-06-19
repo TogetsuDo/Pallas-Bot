@@ -4,8 +4,8 @@ import asyncio
 import time
 
 import pytest
-
 from packages.duel import duel_qte as qte_mod
+
 from pallas.core.platform.shard.coord import duel_qte_redis as mod
 
 
