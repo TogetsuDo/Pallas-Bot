@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import HTTPException, UploadFile
 from nonebot import get_bot, logger
 
+from packages.repeater.responder import Responder
 from pallas.core.foundation.config import GroupConfig, TaskManager
 from pallas.core.foundation.db import SingProgress
 from pallas.core.platform.ai_callback.delivery import send_group_image, send_group_message, send_group_voice
@@ -38,6 +39,13 @@ _TRACKED_LLM_TASKS = frozenset({
     REPEATER_SELECT_TASK_TYPE,
 })
 
+_REPEATER_CALLBACK_TASKS = frozenset({
+    REPEATER_FALLBACK_TASK_TYPE,
+    REPEATER_POLISH_TASK_TYPE,
+    REPEATER_POLISH_LITE_TASK_TYPE,
+    REPEATER_SELECT_TASK_TYPE,
+})
+
 
 def track_llm_callback(task: dict, event: str) -> None:
     task_type = str(task.get("task_type") or "").strip()
@@ -45,6 +53,45 @@ def track_llm_callback(task: dict, event: str) -> None:
         record_bot_llm_task(task_type, event)
         if event == "callback_ok":
             record_bot_llm_route(task_type, str(task.get("llm_route") or ""))
+
+
+async def evaluate_repeater_callback_text(task: dict, reply_text: str) -> bool:
+    task_type = str(task.get("task_type") or "").strip()
+    if task_type not in _REPEATER_CALLBACK_TASKS:
+        return True
+    text = str(reply_text or "").strip()
+    if not text:
+        return False
+    fallback = str(task.get("fallback_text") or "").strip()
+    if fallback and text == fallback:
+        return True
+    bot_id = int(task.get("bot_id") or 0)
+    group_id = int(task.get("group_id") or 0)
+    user_text = str(task.get("user_text") or "").strip()
+    reply_mode = str(task.get("reply_mode") or "normal").strip().lower() or "normal"
+    recent_sent = []
+    persona = None
+    affect_triggers = None
+    if bot_id and group_id:
+        try:
+            from pallas.product.persona import resolve_persona_for_message
+            from pallas.product.persona.loader import load_affect_triggers
+
+            persona = await resolve_persona_for_message(bot_id, group_id, user_text or text)
+            affect_triggers = await load_affect_triggers(group_id)
+        except Exception:
+            persona = None
+            affect_triggers = None
+    accepted, _score = Responder.evaluate_llm_candidate_text(
+        text,
+        base_score=0.8,
+        min_score=0.55,
+        recent_sent=recent_sent,
+        persona=persona,
+        affect_triggers=affect_triggers,
+        reply_mode=reply_mode,
+    )
+    return accepted
 
 
 async def resolve_callback_task(task_id: str) -> dict | None:
@@ -147,6 +194,14 @@ async def run_ai_callback(
         elif should_suppress_llm_duplicate_reply(task, reply_text):
             fallback = str(task.get("fallback_text") or "").strip()
             reply_text = fallback if fallback and fallback != reply_text else ""
+        if task_type in _REPEATER_CALLBACK_TASKS and reply_text:
+            accepted = await evaluate_repeater_callback_text(task, reply_text)
+            if not accepted:
+                fallback = str(task.get("fallback_text") or "").strip()
+                if fallback and fallback != reply_text and await evaluate_repeater_callback_text(task, fallback):
+                    reply_text = fallback
+                else:
+                    reply_text = ""
         if reply_text and group_id and bot is not None:
             logger.info(
                 "AI callback delivering text task={} bot_id={} group_id={} length={} task_type={}",

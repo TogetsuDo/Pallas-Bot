@@ -273,6 +273,73 @@ async def test_run_ai_callback_repeater_polish_failed_uses_fallback_text(
 
 
 @pytest.mark.asyncio
+async def test_run_ai_callback_repeater_fallback_success_rejected_is_silent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = MagicMock()
+    bot.call_api = AsyncMock(return_value=None)
+    monkeypatch.setattr(ai_callback_runner, "get_bot", lambda _bot_id: bot)
+    monkeypatch.setattr(
+        ai_callback_runner.TaskManager,
+        "get_task",
+        AsyncMock(
+            return_value={
+                "bot_id": "111",
+                "group_id": 222,
+                "task_type": REPEATER_FALLBACK_TASK_TYPE,
+            }
+        ),
+    )
+    monkeypatch.setattr(ai_callback_runner.TaskManager, "remove_task", AsyncMock())
+    monkeypatch.setattr(ai_callback_runner, "remove_ai_task", lambda _task_id: None)
+    monkeypatch.setattr(
+        ai_callback_runner,
+        "evaluate_repeater_callback_text",
+        AsyncMock(return_value=False),
+    )
+
+    result = await ai_callback_runner.run_ai_callback("task-reject-fallback", status="success", text="AI 生成句")
+
+    assert result == {"message": "ok"}
+    bot.call_api.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_ai_callback_repeater_polish_success_rejected_uses_fallback_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = MagicMock()
+    bot.call_api = AsyncMock(return_value=None)
+    monkeypatch.setattr(ai_callback_runner, "get_bot", lambda _bot_id: bot)
+    monkeypatch.setattr(
+        ai_callback_runner.TaskManager,
+        "get_task",
+        AsyncMock(
+            return_value={
+                "bot_id": "111",
+                "group_id": 222,
+                "task_type": REPEATER_POLISH_TASK_TYPE,
+                "fallback_text": "语料原文",
+            }
+        ),
+    )
+    monkeypatch.setattr(ai_callback_runner.TaskManager, "remove_task", AsyncMock())
+    monkeypatch.setattr(ai_callback_runner, "remove_ai_task", lambda _task_id: None)
+    monkeypatch.setattr(
+        ai_callback_runner,
+        "evaluate_repeater_callback_text",
+        AsyncMock(side_effect=[False, True]),
+    )
+
+    result = await ai_callback_runner.run_ai_callback("task-reject-polish", status="success", text="润色后")
+
+    assert result == {"message": "ok"}
+    bot.call_api.assert_awaited_once()
+    call_kwargs = bot.call_api.await_args.kwargs
+    assert call_kwargs["message"] == "语料原文"
+
+
+@pytest.mark.asyncio
 async def test_run_ai_callback_draw_image_failed_records_runtime_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     import importlib
 

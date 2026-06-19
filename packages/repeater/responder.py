@@ -14,9 +14,12 @@ from pallas.core.foundation.db.context_repo_access import context_repo
 from pallas.core.foundation.db.pool_budget import is_pg_pool_timeout_error, pg_pool_under_pressure
 from pallas.core.platform.shard import context as shard_ctx
 from pallas.core.platform.shard.repeater_ingress_metrics import record_repeater_reply_selection
+from pallas.product.persona.model import ResolvedPersona
+from pallas.product.persona.scorer import freshness_multiplier, message_weight_multiplier
 
 from .ban_manager import BanManager
 from .config import get_repeater_config
+from .opportunity_trace import append_repeater_opportunity_trace
 from .topic_utils import filtered_recent_topics
 
 if TYPE_CHECKING:
@@ -250,6 +253,39 @@ class Responder:
     def _human_messages_for_repeat(group_msgs: list) -> list:
         ignore = Responder._repeat_ignore_user_ids()
         return [m for m in group_msgs if (uid := getattr(m, "user_id", None)) is None or uid not in ignore]
+
+    @staticmethod
+    def evaluate_llm_candidate_text(
+        text: str,
+        *,
+        base_score: float,
+        min_score: float,
+        recent_sent: list[str] | None = None,
+        persona: ResolvedPersona | None = None,
+        affect_triggers: list[dict] | None = None,
+        reply_mode: str = "normal",
+    ) -> tuple[bool, float]:
+        plain = str(text or "").strip()
+        if not plain:
+            return False, 0.0
+        score = max(0.0, float(base_score))
+        if persona is not None:
+            score *= message_weight_multiplier(plain, persona, affect_triggers=affect_triggers)
+            score *= freshness_multiplier(plain, recent_sent or [], persona=persona)
+        mode = str(reply_mode or "normal").strip().lower()
+        if mode == "ghost":
+            if len(plain) <= 8:
+                score *= 1.12
+            if "？" in plain or "!" in plain or "！" in plain or "?" in plain:
+                score *= 1.08
+        elif mode == "god":
+            if len(plain) > 18:
+                score *= 0.92
+            if recent_sent and plain in recent_sent:
+                score *= 0.85
+        if recent_sent and plain in recent_sent:
+            score *= 0.3
+        return score >= float(min_score), score
 
     @staticmethod
     def should_skip_context_lookup(chat_data: "ChatData", keywords: str) -> bool:
@@ -668,6 +704,21 @@ class Responder:
             repeat_hit=repeat_hit,
             pick_path=pick_path,
         )
+        append_repeater_opportunity_trace({
+            "kind": "repeater_reply_bundle",
+            "group_id": int(group_id),
+            "bot_id": int(bot_id),
+            "reply_mode": str(reply_mode or "normal"),
+            "reply_source": str(reply_source or "same_group"),
+            "pick_path": str(pick_path or "default"),
+            "group_activity": float(group_activity),
+            "candidate_answer_count": len(candidate_answers),
+            "message_pool_size": len(message_pool),
+            "recent_hit": bool(recent_hit),
+            "repeat_hit": bool(repeat_hit),
+            "keywords": str(answer_keywords or "")[:120],
+            "answer_preview": str(answer_str or "")[:80],
+        })
         return ReplyBundle(
             answer_list=plan[0],
             answer_keywords=plan[1],

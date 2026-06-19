@@ -25,6 +25,10 @@ _ROUTE_BUCKETS = frozenset({
     "corpus_polish_lite",
     "corpus_polish",
     "corpus_fallback",
+    "pipeline_select",
+    "pipeline_rewrite",
+    "pipeline_stitch",
+    "pipeline_generate",
 })
 
 _lock = threading.Lock()

@@ -303,6 +303,9 @@ async def test_context_find_passes_group_id_to_resolve_persona(monkeypatch) -> N
         seen.append((bot_id, group_id, plain_text))
         return ResolvedPersona()
 
+    async def fake_load_affect_triggers(_group_id: int):
+        return []
+
     async def fake_find(_keywords: str):
         return Context.model_construct(
             keywords="hello world",
@@ -315,6 +318,7 @@ async def test_context_find_passes_group_id_to_resolve_persona(monkeypatch) -> N
 
     monkeypatch.setattr("packages.repeater.responder.pg_pool_under_pressure", lambda threshold=0.55: False)
     monkeypatch.setattr("pallas.product.persona.resolve_persona_for_message", fake_resolve_persona_for_message)
+    monkeypatch.setattr("pallas.product.persona.loader.load_affect_triggers", fake_load_affect_triggers)
 
     class _Repo:
         async def find_by_keywords_for_reply(self, keywords: str):

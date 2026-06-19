@@ -67,6 +67,7 @@ async def maybe_submit_repeater_llm_polish(
     event: GroupMessageEvent,
     *,
     candidate_text: str,
+    reply_mode: str = "normal",
 ) -> bool:
     if event.is_tome():
         return False
@@ -113,6 +114,7 @@ async def maybe_submit_repeater_llm_polish(
             "user_id": user_id,
             "task_type": REPEATER_POLISH_TASK_TYPE,
             "fallback_text": candidate,
+            "reply_mode": str(reply_mode or "normal"),
             "start_time": time.time(),
         },
     )

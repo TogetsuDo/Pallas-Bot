@@ -687,6 +687,7 @@ async def test_context_find_records_reply_mode_metrics():
     ]
     recent_topics = defaultdict(lambda: deque(maxlen=16))
     recent_topics[group_id] = deque(maxlen=16)
+    trace_rows: list[dict[str, object]] = []
 
     try:
         with (
@@ -726,6 +727,10 @@ async def test_context_find_records_reply_mode_metrics():
             patch("packages.repeater.responder.random.choices", side_effect=[[3], [god_answer]]),
             patch("packages.repeater.responder.random.choice", return_value="懂了这波真行"),
             patch("packages.repeater.responder.random.random", return_value=1.0),
+            patch(
+                "packages.repeater.responder.append_repeater_opportunity_trace",
+                side_effect=lambda row: trace_rows.append(dict(row)) or True,
+            ),
         ):
             bundle = await Responder.find_reply_bundle(
                 cast("Any", chat_data),
@@ -742,6 +747,10 @@ async def test_context_find_records_reply_mode_metrics():
             assert snap["reply_mode_god"] == 1
             assert snap["reply_source_same_group_recent_live"] == 1
             assert snap["reply_recent_hit"] == 1
+            assert trace_rows
+            assert trace_rows[0]["kind"] == "repeater_reply_bundle"
+            assert trace_rows[0]["reply_mode"] == "god"
+            assert trace_rows[0]["pick_path"] == "god_recent_live"
     finally:
         reply_dict.clear()
         message_dict.clear()

@@ -74,6 +74,16 @@ Pallas 的默认顺序是：
 - `polish`：语料是底盘，但出口更顺、更像牛
 - `both`：语料优先，AI 既能补位也能轻润色
 
+## Repeater LLM pipeline
+
+当前 `repeater` 的 LLM 增强按阶段顺序尝试：
+
+1. grounded candidate `select`
+2. grounded `rewrite` / `polish`
+3. fallback `generate`
+
+也就是说，Pallas 会先尽量在已有群语料上做选择和轻改写，只有前面的 grounded 路径都没走通时，才让 fallback 生成补位。
+
 ## 为什么优化后可能“不总是回”
 
 这通常不是坏事。

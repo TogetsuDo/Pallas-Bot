@@ -54,7 +54,12 @@ async def build_fallback_expression_suffix(group_id: int) -> str:
     return build_expression_habits_suffix(profile if isinstance(profile, dict) else None)
 
 
-async def maybe_submit_repeater_llm_fallback(event: GroupMessageEvent, *, user_text: str) -> bool:
+async def maybe_submit_repeater_llm_fallback(
+    event: GroupMessageEvent,
+    *,
+    user_text: str,
+    reply_mode: str = "normal",
+) -> bool:
     if event.is_tome():
         return False
 
@@ -94,6 +99,7 @@ async def maybe_submit_repeater_llm_fallback(event: GroupMessageEvent, *, user_t
             "group_id": group_id,
             "user_id": user_id,
             "task_type": REPEATER_FALLBACK_TASK_TYPE,
+            "reply_mode": str(reply_mode or "normal"),
             "start_time": time.time(),
         },
     )

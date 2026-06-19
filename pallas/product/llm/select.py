@@ -156,6 +156,7 @@ async def maybe_submit_repeater_llm_select(
     candidates: list[str],
     fallback_text: str,
     source: str = "repeater",
+    reply_mode: str = "normal",
 ) -> bool:
     cfg = get_llm_config()
     if not cfg.llm_select_enabled or not cfg.llm_chat_enabled:
@@ -211,6 +212,7 @@ async def maybe_submit_repeater_llm_select(
             "fallback_text": fallback,
             "candidate_pool": list(ranked),
             "select_source": source,
+            "reply_mode": str(reply_mode or "normal"),
             "start_time": time.time(),
         },
     )

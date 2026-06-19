@@ -28,6 +28,18 @@ def test_record_bot_llm_task_snapshot() -> None:
     clear_llm_task_metrics_for_tests()
 
 
+def test_record_repeater_stage_routes() -> None:
+    clear_llm_task_metrics_for_tests()
+    record_bot_llm_route("repeater_select", "pipeline_select")
+    record_bot_llm_route("repeater_polish", "pipeline_stitch")
+    record_bot_llm_route("repeater_fallback", "pipeline_generate")
+    snap = llm_task_metrics_snapshot()
+    assert snap["by_task"]["repeater_select"]["route_counts"] == {"pipeline_select": 1}
+    assert snap["by_task"]["repeater_polish"]["route_counts"] == {"pipeline_stitch": 1}
+    assert snap["by_task"]["repeater_fallback"]["route_counts"] == {"pipeline_generate": 1}
+    clear_llm_task_metrics_for_tests()
+
+
 def test_merge_llm_task_snapshots() -> None:
     merged = merge_llm_task_snapshots([
         {

@@ -14,13 +14,22 @@ from pallas.core.platform.observability import SlowPathTimer, slow_path_threshol
 from pallas.core.shared.utils.media_cache import insert_image
 from pallas.product.llm.fallback import maybe_submit_repeater_llm_fallback
 from pallas.product.llm.polish_lite import maybe_submit_repeater_corpus_llm
+from pallas.product.llm.task_metrics import record_bot_llm_route
 from pallas.product.message_scrub import is_message_scrub_blocked_async
 from pallas.product.message_scrub.log_preview import scrub_intercept_log_preview
 
 from ..event_gate import build_repeater_event_context
 from ..learn_queue import enqueue_repeater_learn
+from ..llm_pipeline import build_repeater_llm_plan, build_stitch_candidate, run_repeater_llm_plan
 from ..model import Chat
+from ..opportunity_gate import (
+    build_opportunity_trace_payload,
+    estimate_candidate_style_score,
+    should_attempt_repeater_opportunity,
+)
+from ..opportunity_trace import append_repeater_opportunity_trace
 from ..reply_gate import should_prepare_repeater_reply
+from ..responder import Responder
 
 any_msg = on_message(
     priority=15,
@@ -101,7 +110,8 @@ async def handle_group_message(bot: Bot, event: GroupMessageEvent):
 
     if bundle is None:
         if can_reply:
-            await maybe_submit_repeater_llm_fallback(event, user_text=ctx.plain_body)
+            record_bot_llm_route("repeater_fallback", "pipeline_generate")
+            await maybe_submit_repeater_llm_fallback(event, user_text=ctx.plain_body, reply_mode="normal")
         return
 
     if fanout_gate is not None and fanout_gate.won:
@@ -110,16 +120,127 @@ async def handle_group_message(bot: Bot, event: GroupMessageEvent):
         await dispatch_repeater_fanout(event, fanout_gate.bot_ids, bundle)
         return
 
-    candidate = next((item for item in bundle.answer_list if item and "[CQ:" not in item), "")
-    pool = [item for item in bundle.message_pool if item and "[CQ:" not in item]
-    if pool or candidate:
-        if await maybe_submit_repeater_corpus_llm(
-            event,
-            user_text=ctx.plain_body,
-            candidates=pool,
-            candidate_text=candidate,
-        ):
-            return
+    from pallas.product.llm.config import get_llm_config
+
+    from ..message_store import MessageStore
+
+    llm_cfg = get_llm_config()
+    recent_group_messages = list(MessageStore._message_dict.get(int(event.group_id), []))
+    has_candidate_pool = bool(bundle.message_pool or bundle.answer_list)
+    recent_human_user_ids = [
+        int(getattr(msg, "user_id", 0) or 0)
+        for msg in recent_group_messages
+        if getattr(msg, "user_id", None) is not None
+    ]
+    bot_recently_replied = any(
+        int(getattr(reply, "user_id", 0) or 0) == int(event.self_id)
+        for reply in recent_group_messages[-2:]
+    )
+    has_recent_back_and_forth = len({
+        user_id for user_id in recent_human_user_ids[-4:] if user_id and user_id != int(event.self_id)
+    }) >= 2
+    plan = build_repeater_llm_plan(
+        bundle,
+        llm_enabled=llm_cfg.llm_chat_enabled,
+        select_enabled=llm_cfg.llm_select_enabled,
+        polish_enabled=llm_cfg.llm_polish_enabled,
+        polish_lite_enabled=llm_cfg.llm_polish_lite_enabled,
+    )
+    candidate_style_score = estimate_candidate_style_score(
+        plan.candidate_pool or ([plan.candidate_text] if plan.candidate_text else []),
+        reply_mode=bundle.reply_mode,
+    )
+    should_try_llm_opportunity = should_attempt_repeater_opportunity(
+        ctx.plain_body,
+        unique_users=len({user_id for user_id in recent_human_user_ids if user_id}),
+        recent_message_count=len(recent_group_messages),
+        has_candidate_pool=has_candidate_pool,
+        candidate_pool_size=len(plan.candidate_pool),
+        candidate_style_score=candidate_style_score,
+        has_recent_back_and_forth=has_recent_back_and_forth,
+        bot_recently_replied=bot_recently_replied,
+        reply_mode=bundle.reply_mode,
+        is_to_me=bool(event.is_tome()),
+    )
+    append_repeater_opportunity_trace({
+        "group_id": int(event.group_id),
+        "bot_id": int(event.self_id),
+        **build_opportunity_trace_payload(
+            ctx.plain_body,
+            unique_users=len({user_id for user_id in recent_human_user_ids if user_id}),
+            recent_message_count=len(recent_group_messages),
+            has_candidate_pool=has_candidate_pool,
+            candidate_pool_size=len(plan.candidate_pool),
+            candidate_style_score=candidate_style_score,
+            has_recent_back_and_forth=has_recent_back_and_forth,
+            bot_recently_replied=bot_recently_replied,
+            reply_mode=bundle.reply_mode,
+            is_to_me=bool(event.is_tome()),
+            accepted=should_try_llm_opportunity,
+        ),
+    })
+
+    async def stage_runner(stage_name: str) -> bool:
+        if stage_name in {"select", "rewrite"}:
+            if stage_name == "select":
+                record_bot_llm_route("repeater_select", "pipeline_select")
+            else:
+                task_name = "repeater_polish_lite" if llm_cfg.llm_polish_lite_enabled else "repeater_polish"
+                record_bot_llm_route(task_name, "pipeline_rewrite")
+            return await maybe_submit_repeater_corpus_llm(
+                event,
+                user_text=ctx.plain_body,
+                candidates=plan.candidate_pool,
+                candidate_text=plan.candidate_text,
+                reply_mode=bundle.reply_mode,
+            )
+        if stage_name == "stitch":
+            from pallas.product.persona import resolve_persona_for_message
+            from pallas.product.persona.loader import load_affect_triggers
+
+            stitched = build_stitch_candidate(plan.candidate_pool)
+            recent_sent = [
+                str(r.get("reply") or "")
+                for r in Chat._reply_dict[int(event.group_id)][int(event.self_id)][-Responder.DUPLICATE_REPLY :]
+                if r.get("reply") and r["reply"] != Responder.REPLY_FLAG
+            ]
+            persona = await resolve_persona_for_message(
+                int(event.self_id),
+                int(event.group_id),
+                ctx.plain_body,
+            )
+            affect_triggers = await load_affect_triggers(int(event.group_id))
+            accepted, _score = Responder.evaluate_llm_candidate_text(
+                stitched,
+                base_score=0.7,
+                min_score=0.55,
+                recent_sent=recent_sent,
+                persona=persona,
+                affect_triggers=affect_triggers,
+                reply_mode=bundle.reply_mode,
+            )
+            if not accepted:
+                return False
+            answers = await chat.answer_from_bundle(bundle, plan=([stitched], bundle.answer_keywords))
+            if answers is None:
+                return False
+            await config.refresh_cooldown("repeat")
+            from ..fanout_reply import dispatch_repeater_reply
+
+            record_bot_llm_route("repeater_polish", "pipeline_stitch")
+            dispatch_repeater_reply(int(event.self_id), int(event.group_id), answers)
+            return True
+        if stage_name == "generate":
+            record_bot_llm_route("repeater_fallback", "pipeline_generate")
+            return await maybe_submit_repeater_llm_fallback(
+                event,
+                user_text=ctx.plain_body,
+                reply_mode=bundle.reply_mode,
+            )
+        return False
+
+    if should_try_llm_opportunity and await run_repeater_llm_plan(plan, stage_runner=stage_runner):
+        return
 
     answers = await chat.answer_from_bundle(bundle)
     if answers is None:

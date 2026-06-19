@@ -71,6 +71,7 @@ async def maybe_submit_repeater_llm_polish_lite(
     *,
     user_text: str,
     candidate_text: str,
+    reply_mode: str = "normal",
 ) -> bool:
     cfg = get_llm_config()
     if not cfg.llm_polish_lite_enabled or not cfg.llm_chat_enabled:
@@ -112,6 +113,7 @@ async def maybe_submit_repeater_llm_polish_lite(
             "user_id": user_id,
             "task_type": REPEATER_POLISH_LITE_TASK_TYPE,
             "fallback_text": candidate,
+            "reply_mode": str(reply_mode or "normal"),
             "start_time": time.time(),
         },
     )
@@ -159,6 +161,7 @@ async def maybe_submit_repeater_corpus_llm(
     user_text: str,
     candidates: list[str],
     candidate_text: str,
+    reply_mode: str = "normal",
 ) -> bool:
     """语料 hit：select 主路径；select_polish_lite 模式下按采样偶尔走 polish_lite。"""
     cfg = get_llm_config()
@@ -176,6 +179,7 @@ async def maybe_submit_repeater_corpus_llm(
                 event,
                 user_text=user_text,
                 candidate_text=candidate,
+                reply_mode=reply_mode,
             ):
                 return True
 
@@ -187,13 +191,14 @@ async def maybe_submit_repeater_corpus_llm(
             user_text=user_text,
             candidates=pool,
             fallback_text=candidate,
+            reply_mode=reply_mode,
         ):
             return True
 
     if candidate and cfg.llm_polish_enabled:
         from pallas.product.llm.polish import maybe_submit_repeater_llm_polish
 
-        if await maybe_submit_repeater_llm_polish(event, candidate_text=candidate):
+        if await maybe_submit_repeater_llm_polish(event, candidate_text=candidate, reply_mode=reply_mode):
             return True
 
     return False
