@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 
 import pytest
-
 from packages.who_is_spy import store
 
 

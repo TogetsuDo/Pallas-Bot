@@ -120,6 +120,7 @@ def test_call_me_rule_skips_when_duel_qte_active(monkeypatch) -> None:
         lambda group_id, user_id: group_id == 777 and str(user_id) == "100",
     )
     from packages.greeting import call_me_message_rule
+
     event = SimpleNamespace(raw_message="帕拉斯", group_id=777, user_id=100)
     assert call_me_message_rule(event) is False
 

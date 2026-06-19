@@ -20,9 +20,7 @@ def test_strip_vision_segments_for_history() -> None:
 def test_extract_vision_message_payload_urls() -> None:
     from pallas.product.llm.vision_content import extract_vision_message_payload
 
-    payload = extract_vision_message_payload(
-        "[CQ:image,file=1.jpg,url=https://example.com/a.png] 这是什么"
-    )
+    payload = extract_vision_message_payload("[CQ:image,file=1.jpg,url=https://example.com/a.png] 这是什么")
     assert payload.has_image is True
     assert payload.image_urls == ("https://example.com/a.png",)
     assert payload.plain_text == "这是什么"

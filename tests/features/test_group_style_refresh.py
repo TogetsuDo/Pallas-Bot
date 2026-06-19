@@ -100,7 +100,9 @@ async def test_refresh_group_style_profile_writes_profile_and_invalidates_cache(
     monkeypatch.setattr(
         "pallas.product.persona.group_style_refresh.make_group_config_repository", lambda: DummyGroupRepo()
     )
-    monkeypatch.setattr("pallas.product.persona.group_style_refresh.make_message_repository", lambda: DummyMessageRepo())
+    monkeypatch.setattr(
+        "pallas.product.persona.group_style_refresh.make_message_repository", lambda: DummyMessageRepo()
+    )
     monkeypatch.setattr(
         "pallas.product.persona.group_style_refresh.make_local_context_repository", lambda: DummyContextRepo()
     )
@@ -128,7 +130,9 @@ async def test_refresh_dirty_group_style_batch_isolates_failures(monkeypatch: py
 
     seen: list[int] = []
 
-    async def fake_refresh(group_id: int, *, window_hours: int = 168, allow_llm_refine: bool = True) -> tuple[bool, bool]:  # noqa: ARG001
+    async def fake_refresh(
+        group_id: int, *, window_hours: int = 168, allow_llm_refine: bool = True
+    ) -> tuple[bool, bool]:  # noqa: ARG001
         seen.append(group_id)
         if group_id == 2:
             raise RuntimeError("boom")

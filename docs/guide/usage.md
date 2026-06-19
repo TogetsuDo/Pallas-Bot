@@ -29,10 +29,10 @@
 
 | 你发 | 要先装 |
 | --- | --- |
-| 决斗、八角笼 | `plugins-duel` → [决斗](../plugins/duel/README.md) |
-| 谁是卧底 | `plugins-who-is-spy` |
-| `牛牛做梦` | `plugins-dream` |
-| MAA 远控口令 | `plugins-maa` → [maa](../plugins/maa/README.md) |
+| 决斗、八角笼 | `pallas-plugin-duel` → [决斗](../plugins/duel/README.md) |
+| 谁是卧底 | `pallas-plugin-who-is-spy` |
+| `牛牛做梦` | `pallas-plugin-dream` |
+| MAA 远控口令 | `pallas-plugin-maa` → [maa](../plugins/maa/README.md) |
 
 安装步骤：[安装插件](install-plugins.md)。
 

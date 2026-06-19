@@ -125,9 +125,7 @@ def test_build_group_style_profile_tracks_affect_tone() -> None:
     from pallas.product.persona.group_profiler import build_group_style_profile
 
     now = 1_700_000_000
-    messages = [
-        _msg(group_id=400, plain_text="谢谢辛苦收到", ts=now - 60 * i, user_id=(i % 4) + 1) for i in range(30)
-    ]
+    messages = [_msg(group_id=400, plain_text="谢谢辛苦收到", ts=now - 60 * i, user_id=(i % 4) + 1) for i in range(30)]
     answers = [_answer(group_id=400, keywords=f"k{i}", message="好的", count=1, ts=now - 45 * i) for i in range(8)]
 
     profile = build_group_style_profile(

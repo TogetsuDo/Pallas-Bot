@@ -201,7 +201,9 @@ async def test_speaker_uses_group_aware_persona(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr("packages.repeater.speaker.resolve_persona", fake_resolve_persona)
     monkeypatch.setattr("packages.repeater.speaker.blocks_proactive_speak", lambda _gid: False)
     monkeypatch.setattr("pallas.core.platform.shard.registry.config.is_sharding_active", lambda: False)
-    monkeypatch.setattr("pallas.core.platform.multi_bot.platform_utils.pick_connected_bot_id", lambda ids, log_tag=None: 1001)  # noqa: ARG005
+    monkeypatch.setattr(
+        "pallas.core.platform.multi_bot.platform_utils.pick_connected_bot_id", lambda ids, log_tag=None: 1001
+    )  # noqa: ARG005
 
     async def fake_find_ban_keywords(**_kwargs):
         return set()
@@ -258,9 +260,7 @@ def test_pick_speak_message_prefers_popular_keywords() -> None:
     from packages.repeater.speaker import Speaker
     from pallas.product.persona.model import ResolvedPersona
 
-    hot_msgs = [
-        SimpleNamespace(keywords="hot", plain_text="草", raw_message="草", user_id=1) for _ in range(8)
-    ]
+    hot_msgs = [SimpleNamespace(keywords="hot", plain_text="草", raw_message="草", user_id=1) for _ in range(8)]
     cold_msgs = [
         SimpleNamespace(keywords="cold", plain_text="偏长的冷门话题句", raw_message="偏长的冷门话题句", user_id=2)
     ]

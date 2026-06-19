@@ -10,8 +10,8 @@ from . import startup as _startup  # noqa: F401
 
 __plugin_meta__ = PluginMetadata(
     name="在线统计",
-    description="向社区统计中心上报部署心跳；配置见 WebUI 通用配置。",
-    usage="（维护者）WebUI「通用配置 → 在线统计与社区主站」；默认开启。",
+    description="把本实例的在线统计信息同步到社区页面。",
+    usage="（维护者）在 WebUI 的通用配置里查看和调整在线统计。",
     type="application",
     homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
@@ -25,8 +25,8 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_method": "http",
                 "help_audience": "maintainer",
                 "trigger_condition": "WebUI 通用配置 → 在线统计与社区主站",
-                "brief_des": "社区主站心跳",
-                "detail_des": "周期上报部署与牛牛聚合信息；无群内口令。",
+                "brief_des": "在线统计同步",
+                "detail_des": "在后台持续同步在线统计信息；没有群内口令。",
             },
         ],
     },

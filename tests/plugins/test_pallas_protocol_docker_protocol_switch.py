@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import pytest
-
 from packages.pb_protocol.config import Config
 from packages.pb_protocol.service import PallasProtocolService
 
 
 @pytest.mark.asyncio
 async def test_remove_linux_docker_containers_for_protocol_switch_calls_both_names(
-    monkeypatch: pytest.MonkeyPatch, tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
 ) -> None:
     removed: list[str] = []
 

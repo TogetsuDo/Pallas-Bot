@@ -30,7 +30,8 @@ _METHOD_SCENE_FALLBACK: dict[str, str] = {
 
 
 def is_user_help_menu_item(item: dict[str, Any]) -> bool:
-    return str(item.get("help_audience", "user") or "user").strip().lower() != "maintainer"
+    audience = str(item.get("help_audience", "user") or "user").strip().lower()
+    return audience not in {"maintainer", "superuser"}
 
 
 def plugin_help_audience(plugin: Any) -> str:
@@ -45,8 +46,8 @@ def plugin_help_audience(plugin: Any) -> str:
 
 
 def is_user_help_plugin(plugin: Any) -> bool:
-    """插件级 help_audience 为 maintainer 时不进入用户帮助总览。"""
-    return plugin_help_audience(plugin) != "maintainer"
+    """插件级 help_audience 为 maintainer/superuser 时不进入用户帮助总览。"""
+    return plugin_help_audience(plugin) not in {"maintainer", "superuser"}
 
 
 def iter_user_help_menu(menu_data: list[dict[str, Any]]) -> Iterator[dict[str, Any]]:

@@ -14,7 +14,7 @@ from .commands import call_me_message_rule, greeting_plugin_disabled, handle_not
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛欢迎",
-    description="入群/好友欢迎与自定义欢迎图文。",
+    description="为新好友和新成员发送欢迎内容，并支持自定义。",
     usage=join_usage(
         usage_line("设置好友欢迎 / 清除好友欢迎", "私聊维护新好友欢迎"),
         usage_line("设置群欢迎 / 清除群欢迎", "群内维护入群欢迎"),
@@ -39,7 +39,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_scene": SCENE_AUTO,
                 "trigger_condition": "新人入群",
                 "brief_des": "发送入群欢迎",
-                "detail_des": "若本群已「设置群欢迎」则优先发自定义内容，否则发默认欢迎。",
+                "detail_des": "有人进群时自动欢迎；如果你设置过本群欢迎，就优先使用你自己的内容。",
             },
             {
                 "func": "好友欢迎",
@@ -47,7 +47,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_scene": SCENE_AUTO,
                 "trigger_condition": "新好友添加",
                 "brief_des": "发送好友欢迎",
-                "detail_des": "若已「设置好友欢迎」则发送你保存的图文内容。",
+                "detail_des": "有人加好友时自动欢迎；如果你设置过好友欢迎，就优先使用你自己的内容。",
             },
             {
                 "func": "设置好友欢迎",
@@ -56,7 +56,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_condition": "设置好友欢迎",
                 "command_permission": "greeting.set_friend_welcome",
                 "brief_des": "自定义新好友欢迎",
-                "detail_des": "私聊按提示发送文本、图片或图文混合。",
+                "detail_des": "按提示发送文字、图片，或图文一起发，保存成好友欢迎内容。",
             },
             {
                 "func": "清除好友欢迎",
@@ -65,7 +65,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_condition": "清除好友欢迎",
                 "command_permission": "greeting.clear_friend_welcome",
                 "brief_des": "恢复默认好友欢迎",
-                "detail_des": "清除已保存的好友欢迎素材。",
+                "detail_des": "删掉你保存的好友欢迎内容，恢复成默认欢迎。",
             },
             {
                 "func": "设置群欢迎",
@@ -74,7 +74,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_condition": "设置群欢迎",
                 "command_permission": "greeting.set_group_welcome",
                 "brief_des": "自定义本群入群欢迎",
-                "detail_des": "群内按提示发送文本、图片或图文混合。",
+                "detail_des": "按提示发送文字、图片，或图文一起发，保存成当前群的欢迎内容。",
             },
             {
                 "func": "清除群欢迎",
@@ -83,7 +83,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_condition": "清除群欢迎",
                 "command_permission": "greeting.clear_group_welcome",
                 "brief_des": "恢复默认入群欢迎",
-                "detail_des": "清除本群已保存的入群欢迎素材。",
+                "detail_des": "删掉当前群保存的欢迎内容，恢复成默认欢迎。",
             },
         ],
     },

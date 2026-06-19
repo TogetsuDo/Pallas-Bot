@@ -13,7 +13,7 @@ from .game import parse_roulette_start_command
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛轮盘",
-    description="群内踢人/禁言轮盘，含救援与补枪（须牛牛为群管）。",
+    description="在群里玩踢人或禁言轮盘，也能救人和补一枪。",
     usage=join_usage(
         usage_line("牛牛轮盘 / 牛牛轮盘踢人 / 牛牛轮盘禁言", "启动轮盘（默认禁言模式）"),
         usage_line("牛牛开枪", "参与当前局"),
@@ -58,7 +58,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛轮盘 / 牛牛轮盘踢人 / 牛牛轮盘禁言",
                 "brief_des": "启动轮盘",
-                "detail_des": "须牛牛为群管；可选踢人或禁言模式。六槽一枪，中弹者按模式被踢或禁言。",
+                "detail_des": "可选踢人或禁言模式；轮到谁中弹，就按当前模式执行结果。",
             },
             {
                 "func": "参与轮盘",
@@ -66,7 +66,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛开枪",
                 "brief_des": "参与轮盘",
-                "detail_des": "局进行中发送「牛牛开枪」；中弹者按当前模式被踢或禁言。",
+                "detail_des": "轮盘开始后，发「牛牛开枪」参与本局，结果按当前模式决定。",
             },
             {
                 "func": "牛牛救一下",
@@ -74,7 +74,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛救一下 [@用户]",
                 "brief_des": "解除被禁言的用户",
-                "detail_des": "「牛牛救一下」解禁全员；@ 用户则只解该人。有概率炸膛，醉酒时更易触发。",
+                "detail_des": "不带 @ 时帮大家解禁，带 @ 时只救那个人；有时会翻车。",
             },
             {
                 "func": "牛牛补一枪",
@@ -82,7 +82,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛补一枪 [@用户]",
                 "brief_des": "对已禁言玩家追加惩罚",
-                "detail_des": "对已被禁言者追加时长；可 @ 指定用户。有概率炸膛，醉酒时更高。",
+                "detail_des": "给已经中招的人再补一轮惩罚；可 @ 指定对象，也有翻车概率。",
             },
         ],
     },

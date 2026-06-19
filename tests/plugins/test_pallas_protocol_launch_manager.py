@@ -125,9 +125,12 @@ def test_apply_defaults_linux_prefers_appimage_then_xvfb(tmp_path: Path) -> None
         platform=PosixNapcatPlatform(),
     )
     account = {"id": "10003", "qq": "10003"}
-    with patch("packages.pb_protocol.launch_manager.sys.platform", "linux"), patch(
-        "packages.pb_protocol.launch_manager.os.geteuid",
-        return_value=1000,
+    with (
+        patch("packages.pb_protocol.launch_manager.sys.platform", "linux"),
+        patch(
+            "packages.pb_protocol.launch_manager.os.geteuid",
+            return_value=1000,
+        ),
     ):
         mgr.apply_defaults(account, lambda a: str(a.get("qq", "")))
     assert account["command"] == "xvfb-run"

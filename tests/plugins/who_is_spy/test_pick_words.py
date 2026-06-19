@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from packages.who_is_spy import store
 from packages.who_is_spy.logic import pick_words
 

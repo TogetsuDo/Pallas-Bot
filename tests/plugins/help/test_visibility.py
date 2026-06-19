@@ -41,3 +41,26 @@ def test_get_help_menu_plugins_always_excludes_hidden(monkeypatch):
     names = {p.name for p in menu}
     assert "ingress_gate" not in names
     assert "draw" in names
+
+
+def test_superuser_only_plugins_hidden_from_user_help_but_visible_in_superuser_help(monkeypatch):
+    from packages.help import plugin_manager as pm
+
+    pb_core = SimpleNamespace(
+        name="pb_core",
+        metadata=SimpleNamespace(name="牛牛核心", extra={"help_audience": "superuser"}),
+    )
+    llm_chat = SimpleNamespace(
+        name="llm_chat",
+        metadata=SimpleNamespace(name="随时闲聊", extra={"help_audience": "superuser"}),
+    )
+    draw = SimpleNamespace(name="draw", metadata=SimpleNamespace(name="牛牛画画", extra={}))
+
+    monkeypatch.setattr(pm, "get_loaded_plugins", lambda: [pb_core, llm_chat, draw])
+    monkeypatch.setattr(pm, "is_plugin_help_available", lambda _name: True)
+
+    user_menu = pm.get_help_menu_plugins(show_ignored=False, ignored_plugins=[])
+    superuser_menu = pm.get_help_menu_plugins(show_ignored=True)
+
+    assert {p.name for p in user_menu} == {"draw"}
+    assert {p.name for p in superuser_menu} == {"pb_core", "llm_chat", "draw"}

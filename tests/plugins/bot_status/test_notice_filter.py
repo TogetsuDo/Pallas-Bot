@@ -7,7 +7,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_bot_status_ignores_group_msg_emoji_like(monkeypatch) -> None:
-    import packages.bot_status as mod
+    import pallas_plugin_bot_status as mod
 
     called = False
 

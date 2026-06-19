@@ -47,9 +47,7 @@ async def test_context_find_repeat_detection():
     try:
         with (
             patch("packages.repeater.responder.get_bots", return_value={}),
-            patch(
-                "packages.repeater.responder.context_repo.find_by_keywords", new_callable=AsyncMock
-            ) as mock_find_one,
+            patch("packages.repeater.responder.context_repo.find_by_keywords", new_callable=AsyncMock) as mock_find_one,
         ):
             result = await Responder._context_find(
                 cast("Any", chat_data),

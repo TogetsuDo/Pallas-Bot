@@ -52,5 +52,5 @@ def format_plugins_summary_text(*, loaded_names: set[str]) -> str:
         packs = sorted({extra_package_for_plugin(name) for name in extra if extra_package_for_plugin(name)})
         if packs:
             lines.append(f"对应扩展包：{', '.join(packs)}")
-    lines.append("安装扩展：WebUI 插件页，或 uv sync --extra <name>。")
+    lines.append("安装扩展：WebUI 插件页，或 uv run pallas ext install <package>。")
     return "\n".join(lines)

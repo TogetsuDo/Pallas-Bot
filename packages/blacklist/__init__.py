@@ -43,7 +43,7 @@ from .helpers import (
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛黑名单",
-    description="私聊全局拉黑用户/群，群内维护本群屏蔽用户。",
+    description="屏蔽指定用户或群，不再响应他们的消息。",
     usage=join_usage(
         usage_line("牛牛拉黑 / 牛牛屏蔽 + QQ 或 @", "私聊为全局用户，群内仅本群"),
         usage_line("牛牛拉黑群 / 牛牛屏蔽群 + 群号", "私聊须写群号；群内可省略为本群"),
@@ -71,7 +71,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_condition": "牛牛黑名单 / 牛牛查看黑名单",
                 "command_permission": "blacklist.list",
                 "brief_des": "查看拉黑名单",
-                "detail_des": "私聊列出全局用户/群拉黑；群内列出本群屏蔽用户与群封禁状态。",
+                "detail_des": "私聊看全局名单，群里看本群已经屏蔽了谁。",
             },
             {
                 "func": "拉黑与解禁",
@@ -80,7 +80,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_condition": "牛牛拉黑 / 牛牛屏蔽 / 牛牛解禁 + QQ 或 @",
                 "command_permissions": ["blacklist.add", "blacklist.remove"],
                 "brief_des": "屏蔽用户消息",
-                "detail_des": "私聊为全局用户拉黑；群内仅屏蔽本群。可写多个 QQ 或 @。",
+                "detail_des": "可写 QQ 或 @ 用户；私聊时作用更广，群里时只影响当前群。",
             },
             {
                 "func": "群拉黑与解禁",
@@ -89,7 +89,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_condition": "牛牛拉黑群 / 牛牛屏蔽群 / 牛牛解禁群 + 群号",
                 "command_permissions": ["blacklist.add", "blacklist.remove"],
                 "brief_des": "屏蔽整群消息",
-                "detail_des": "写入 GroupConfig.banned；群内省略群号时作用于当前群。",
+                "detail_des": "可按群号屏蔽或恢复某个群；在群里可直接作用当前群。",
             },
             {
                 "func": "事件门禁",

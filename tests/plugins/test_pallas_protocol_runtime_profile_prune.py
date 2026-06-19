@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 
 import pytest
-
 from packages.pb_protocol.config import Config
 from packages.pb_protocol.service import PallasProtocolService
 

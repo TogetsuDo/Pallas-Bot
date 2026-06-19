@@ -61,9 +61,7 @@ def test_parse_empty_is_home() -> None:
 
 def test_parse_toggle_compact_plugin_index() -> None:
     assert parse_plugin_toggle_args("牛牛开启1", PLUGIN_ENABLE_COMMAND, plugin_count=10) == ["1"]
-    assert parse_plugin_toggle_args("牛牛关闭MAA远控", PLUGIN_DISABLE_COMMAND, plugin_count=10) == [
-        "MAA远控"
-    ]
+    assert parse_plugin_toggle_args("牛牛关闭MAA远控", PLUGIN_DISABLE_COMMAND, plugin_count=10) == ["MAA远控"]
 
 
 def test_parse_toggle_does_not_split_plugin_and_function_digits() -> None:

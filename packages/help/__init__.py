@@ -14,7 +14,7 @@ from .style_cache import refresh_style_cache
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛帮助",
-    description="三级帮助图与群内插件开关。",
+    description="查看功能说明，并管理本群常用插件开关。",
     usage=join_usage(
         usage_line("牛牛帮助", "插件总览与开关状态"),
         usage_line("牛牛帮助 〈插件名或序号〉", "单插件功能表"),
@@ -63,8 +63,8 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_scene": SCENE_BOTH,
                 "trigger_condition": "牛牛帮助",
                 "command_permission": "help.help",
-                "brief_des": "全部插件、状态与简介",
-                "detail_des": "看图可知本群各插件是否启用；用序号或中文名继续打开下级。",
+                "brief_des": "查看功能总览",
+                "detail_des": "先看本群有哪些功能，再按序号或名字继续查看。",
             },
             {
                 "func": "插件详情",
@@ -72,8 +72,8 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_scene": SCENE_BOTH,
                 "trigger_condition": "牛牛帮助 〈插件名或序号〉",
                 "command_permission": "help.help",
-                "brief_des": "单插件说明与功能表",
-                "detail_des": "含用法与「怎么说 / 场景 / 何人可用」；可再跟功能序号或名称看详情。",
+                "brief_des": "查看单个功能页",
+                "detail_des": "打开某个功能的用法列表，再继续看具体条目。",
             },
             {
                 "func": "功能详情",
@@ -81,8 +81,8 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_scene": SCENE_BOTH,
                 "trigger_condition": "牛牛帮助 〈插件〉 〈功能序号或名称〉",
                 "command_permission": "help.help",
-                "brief_des": "单条功能的口令与说明",
-                "detail_des": "展示完整口令、场景与「何人可用」。",
+                "brief_des": "查看单条说明",
+                "detail_des": "查看某一条功能该怎么用、在哪用、谁能用。",
             },
             {
                 "func": "插件开关",
@@ -90,8 +90,8 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛开启 / 牛牛关闭 〈插件名或序号〉",
                 "command_permissions": ["help.plugin_enable", "help.plugin_disable"],
-                "brief_des": "本群启用或停用某插件",
-                "detail_des": "例：牛牛开启 牛牛复读、牛牛关闭 1；命名规则同打开插件详情。",
+                "brief_des": "开关本群功能",
+                "detail_des": "按插件名或序号打开、关闭本群里的某个功能。",
             },
             {
                 "func": "批量开关",
@@ -99,8 +99,8 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛开启全部功能 / 牛牛关闭全部功能",
                 "command_permissions": ["help.plugin_enable_all", "help.plugin_disable_all"],
-                "brief_des": "本群一键全开或全关",
-                "detail_des": "仅切换帮助总览中列出的插件，与总览数量一致。",
+                "brief_des": "本群一键开关",
+                "detail_des": "把帮助总览里能看到的功能一次性全部开启或关闭。",
             },
         ],
         "plugin_storage": plugin_storage_list(

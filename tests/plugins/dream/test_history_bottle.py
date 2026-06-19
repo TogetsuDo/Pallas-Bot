@@ -5,7 +5,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from packages.dream.history_bottle import (
     DREAM_KEY_PREFIX,
     DREAM_RECORD_SEP,

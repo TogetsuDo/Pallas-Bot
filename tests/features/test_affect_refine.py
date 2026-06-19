@@ -37,9 +37,12 @@ def test_build_affect_refine_payload_includes_hints() -> None:
 
 
 def test_affect_refine_from_ai_response_low_confidence_zeros_delta() -> None:
-    refine = affect_refine_from_ai_response(
-        {"warmth_delta": 0.2, "assertiveness_delta": 0.15, "confidence": 0.2, "summary": "x"}
-    )
+    refine = affect_refine_from_ai_response({
+        "warmth_delta": 0.2,
+        "assertiveness_delta": 0.15,
+        "confidence": 0.2,
+        "summary": "x",
+    })
     assert refine["warmth_delta"] == 0.0
     assert refine["assertiveness_delta"] == 0.0
     assert refine["source"] == "llm"

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from packages.duel import duel_bots as mod
 
 

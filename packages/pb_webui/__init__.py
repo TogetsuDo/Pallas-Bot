@@ -12,7 +12,7 @@ from . import startup as _startup  # noqa: F401
 
 __plugin_meta__ = PluginMetadata(
     name="Web 控制台",
-    description="浏览器运维控制台与扩展 API。",
+    description="用浏览器查看和管理牛牛。",
     usage=join_usage(
         usage_line("/pallas/", "控制台页面"),
         usage_line("/pallas/api/*", "实例、日志、数据库与插件统计等接口"),
@@ -31,16 +31,16 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_method": "http",
                 "help_audience": "maintainer",
                 "trigger_condition": "/pallas/",
-                "brief_des": "提供控制台界面",
-                "detail_des": "展示实例状态、日志、数据库与插件信息。",
+                "brief_des": "打开管理页面",
+                "detail_des": "在浏览器里查看运行情况、日志和常用管理页面。",
             },
             {
                 "func": "扩展状态接口",
                 "trigger_method": "http",
                 "help_audience": "maintainer",
                 "trigger_condition": "/pallas/api/*",
-                "brief_des": "提供控制台数据接口",
-                "detail_des": "提供 health、system、instances、logs、message-stats 等接口。",
+                "brief_des": "控制台数据入口",
+                "detail_des": "给控制台页面提供它需要的状态与管理数据。",
             },
         ],
     },

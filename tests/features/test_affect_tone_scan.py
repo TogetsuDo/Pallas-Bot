@@ -18,9 +18,7 @@ def test_baseline_lexicon_path_under_resource() -> None:
 def test_resolve_lexicon_path_relative_to_repo_root() -> None:
     resolved = resolve_lexicon_path("resource/persona/affect_lexicon_baseline.txt")
     assert resolved.is_file()
-    sections = parse_lexicon_sections(
-        "# comment\n[polite]\n谢谢\n辛苦\n[harsh]\n离谱\n\n# tail\n"
-    )
+    sections = parse_lexicon_sections("# comment\n[polite]\n谢谢\n辛苦\n[harsh]\n离谱\n\n# tail\n")
     assert sections["polite"] == ["谢谢", "辛苦"]
     assert sections["harsh"] == ["离谱"]
 

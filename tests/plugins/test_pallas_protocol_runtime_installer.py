@@ -16,6 +16,7 @@ from packages.pb_protocol.runtime.installer import (
     find_onekey_post_install_program_dir,
     resolve_program_dir_under_extract,
 )
+
 from pallas.core.shared.utils.github_release import github_release_asset_url
 
 

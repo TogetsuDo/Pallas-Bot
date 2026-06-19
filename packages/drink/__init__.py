@@ -12,7 +12,7 @@ from . import startup as _startup  # noqa: F401
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛喝酒",
-    description="群内饮酒与醒酒，影响醉酒度及关联玩法。",
+    description="让牛牛喝酒、醒酒，并影响它接下来的表现。",
     usage=join_usage(
         usage_line("牛牛喝酒 / 牛牛干杯 / 牛牛继续喝", "增加醉酒度，可能睡着"),
         usage_line("牛牛醒一醒 / 牛牛别喝了", "立即醒酒；本群在做梦时一并醒梦"),
@@ -40,7 +40,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛喝酒 / 牛牛干杯 / 牛牛继续喝",
                 "brief_des": "饮酒并进入醉酒",
-                "detail_des": "醉酒会影响聊天、轮盘、夺舍等；程度过高可能睡着，之后会自动清醒。",
+                "detail_des": "喝得越多越容易醉，醉酒后说话和行为都会变得不一样，太过头还会睡着。",
             },
             {
                 "func": "牛牛醒一醒",
@@ -48,7 +48,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛醒一醒 / 牛牛别喝了",
                 "brief_des": "立即醒酒",
-                "detail_des": "清除醉酒；若本群正在「牛牛做梦」则同时结束做梦。",
+                "detail_des": "让牛牛立刻清醒；如果它正在做梦，也会一起停下来。",
             },
         ],
     },

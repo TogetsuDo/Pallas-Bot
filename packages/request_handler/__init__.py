@@ -15,7 +15,7 @@ from .texts import REQUEST_HANDLER_USAGE_LINES
 
 __plugin_meta__ = PluginMetadata(
     name="申请管理",
-    description="好友/入群申请提醒与审批，支持自动同意开关。",
+    description="查看并处理好友申请和入群申请。",
     usage=join_usage(
         *(usage_line(*line.split(" — ", 1)) for line in REQUEST_HANDLER_USAGE_LINES),
     ),
@@ -55,7 +55,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_condition": "查看好友申请 / 查看入群申请",
                 "command_permissions": ["request.list_friends", "request.list_groups"],
                 "brief_des": "列出待处理好友与入群申请",
-                "detail_des": "好友列表含被拦截、需单独处理的可疑申请；入群列表兼容旧口令“查看入群邀请”",
+                "detail_des": "看看现在还有哪些好友申请和入群申请没有处理。",
             },
             {
                 "func": "快捷同意最近申请",
@@ -64,7 +64,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_condition": "同意",
                 "command_permission": "request.approve_latest",
                 "brief_des": "快捷同意一条申请",
-                "detail_des": "私聊「同意」对应牛牛最新一条提醒；引用某条审批提醒则只处理该条",
+                "detail_des": "私聊直接发「同意」可处理最近一条提醒；引用提醒时只处理那一条。",
             },
             {
                 "func": "快捷拒绝最近申请",
@@ -73,7 +73,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_condition": "拒绝",
                 "command_permission": "request.reject_latest",
                 "brief_des": "快捷拒绝一条申请",
-                "detail_des": "私聊「拒绝」对应牛牛最新一条提醒；引用某条审批提醒则只处理该条",
+                "detail_des": "私聊直接发「拒绝」可处理最近一条提醒；引用提醒时只处理那一条。",
             },
             {
                 "func": "引用审批消息快捷操作",
@@ -86,7 +86,7 @@ __plugin_meta__ = PluginMetadata(
                     "request.reject_group",
                 ],
                 "brief_des": "按引用对应单一申请同意或拒绝",
-                "detail_des": "须引用仍有效的审批消息；同意与拒绝分别校验对应命令权限",
+                "detail_des": "引用一条审批提醒后，直接回复同意或拒绝，只处理这一条申请。",
             },
             {
                 "func": "好友申请审批",
@@ -95,7 +95,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_condition": "同意好友 <QQ号>",
                 "command_permission": "request.approve_friend",
                 "brief_des": "按 QQ 同意好友",
-                "detail_des": "同意指定 QQ 的好友申请（含普通与可疑申请）",
+                "detail_des": "按 QQ 号同意指定好友申请。",
             },
             {
                 "func": "好友申请拒绝",
@@ -104,7 +104,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_condition": "拒绝好友 <QQ号>",
                 "command_permission": "request.reject_friend",
                 "brief_des": "按 QQ 拒绝好友",
-                "detail_des": "拒绝指定 QQ 的好友申请（含普通与可疑申请）",
+                "detail_des": "按 QQ 号拒绝指定好友申请。",
             },
             {
                 "func": "批量审批",
@@ -118,7 +118,7 @@ __plugin_meta__ = PluginMetadata(
                     "request.reject_all_groups",
                 ],
                 "brief_des": "好友或入群批量同意/拒绝",
-                "detail_des": "一次性同意或拒绝当前全部待处理好友申请或入群申请",
+                "detail_des": "一次把当前待处理的好友申请或入群申请全部同意或全部拒绝。",
             },
             {
                 "func": "入群申请审批",
@@ -127,7 +127,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_condition": "同意入群 / 拒绝入群 <群号>",
                 "command_permissions": ["request.approve_group", "request.reject_group"],
                 "brief_des": "按群号同意或拒绝",
-                "detail_des": "同意或拒绝指定群的入群申请",
+                "detail_des": "按群号处理指定群的入群申请。",
             },
             {
                 "func": "通知开关",
@@ -136,7 +136,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_condition": "牛牛开启 / 牛牛关闭 申请管理",
                 "command_permissions": ["help.plugin_enable", "help.plugin_disable"],
                 "brief_des": "是否推送申请提醒",
-                "detail_des": "私聊切换本牛是否推送好友/入群申请提醒（单牛全局；审批口令亦在私聊使用）",
+                "detail_des": "决定这只牛牛还要不要继续推送申请提醒消息。",
             },
             {
                 "func": "自动同意开关",
@@ -151,7 +151,7 @@ __plugin_meta__ = PluginMetadata(
                     "request.disable_auto_group",
                 ],
                 "brief_des": "自动同意策略",
-                "detail_des": "查看或切换好友申请、入群申请的自动同意开关",
+                "detail_des": "查看或切换好友申请、入群申请的自动同意状态。",
             },
         ],
     },

@@ -15,3 +15,13 @@ def test_pb_core_metadata_declares_all_commands():
 
 def test_pb_core_help_name():
     assert __plugin_meta__.name == "牛牛核心"
+
+
+def test_pb_core_status_menu_is_superuser_only_help():
+    menu = __plugin_meta__.extra.get("menu_data") or []
+    status_item = next(item for item in menu if item.get("command_permission") == "pb_core.status")
+    assert status_item.get("help_audience") == "superuser"
+
+
+def test_pb_core_plugin_is_superuser_only_help():
+    assert __plugin_meta__.extra.get("help_audience") == "superuser"
