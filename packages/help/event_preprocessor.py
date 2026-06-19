@@ -9,7 +9,7 @@ from nonebot.message import event_preprocessor, run_preprocessor
 
 from pallas.core.platform.ingress.plugin_command_plaintext import is_plugin_command_plaintext
 from pallas.core.platform.ingress.policy_registry import text_matches_plugin_fanout
-from pallas.core.platform.multi_bot.dedup import try_claim_cross_bot_message_memory
+from pallas.core.platform.multi_bot.dedup import try_claim_cross_bot_message
 from pallas.core.platform.shard import context as shard_ctx
 
 from .plugin_legacy_names import is_plugin_name_in_set
@@ -58,9 +58,7 @@ async def command_cross_bot_claim_won(
 
         if unified_ingress_once_won_for_text(group_id, user_id, text, message_time):
             return True
-    if shard_ctx.sharding_active():
-        return True
-    return await try_claim_cross_bot_message_memory(
+    return await try_claim_cross_bot_message(
         _COMMAND_INGRESS_PLUGIN,
         group_id,
         user_id,
