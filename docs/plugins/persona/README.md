@@ -63,5 +63,5 @@
 ## 相关链接
 
 - [复读插件](../repeater/README.md)
-- [群风格画像](../../architecture/group-style-persona.md)
-- [接话行为与语言层路线](../../architecture/persona-llm-roadmap.md)
+- [Pallas 核心契约](../../architecture/internal/pallas-core-contract.md)
+- [AI 终态架构](../../architecture/internal/pallas-final-ai-shape.md)

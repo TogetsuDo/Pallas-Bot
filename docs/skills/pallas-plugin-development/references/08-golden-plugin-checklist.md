@@ -48,4 +48,4 @@
 ## 可选增强
 
 - [ ] 需 CD 时已用 `pallas.api.limits`（或 `GroupConfig` / `BotConfig`），key 与 `command_id` 一致
-- [ ] 多牛 / 分片部署已读 [central-ingress-dispatch](../../architecture/central-ingress-dispatch.md)、[bot_process_sharding](../../architecture/bot_process_sharding.md)
+- [ ] 多牛 / 分片部署已读 [central-ingress-dispatch](../../architecture/internal/central-ingress-dispatch.md)、[bot_process_sharding](../../architecture/bot_process_sharding.md)

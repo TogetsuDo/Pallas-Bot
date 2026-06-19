@@ -2,7 +2,7 @@
 
 面向 **第三方 NoneBot 插件**作者：如何让站点管理员能发现、安装你的插件，以及如何自检与提交索引。
 
-站点管理员安装说明见 [社区插件商店](community-plugin-store.md)；插件结构见 [插件结构](../develop/plugin/structure.md)。
+站点管理员安装说明见 [社区插件商店](community-plugin-store.md)；插件结构见 [Golden Plugin](../developer/plugin-development/golden-plugin.md)。
 
 ---
 
@@ -40,7 +40,7 @@ my_plugin/
 
 ### 社区插件画像（L1 / L2）
 
-公开收录与 WebUI 插件页「指令与能力」依赖 **metadata 声明完整度**，分档见 [插件治理与社区生态路线 · 社区插件画像](../architecture/plugin-governance-community-roadmap.md#社区插件画像l0l3)：
+公开收录与 WebUI 插件页「指令与能力」依赖 **metadata 声明完整度**：
 
 | 档位 | 要点 |
 | --- | --- |
@@ -175,4 +175,3 @@ COMMUNITY_PLUGIN_INDEX_URL = "https://example.com/my-guild-index.json"
 | 索引加载 | `src/console/webui/community_plugin_index.py` |
 | Git 安装 | `src/console/webui/community_plugin_install.py` |
 | 作者工具 | `tools/community_plugin_author.py` |
-| 治理与生态路线 | [plugin-governance-community-roadmap.md](../architecture/plugin-governance-community-roadmap.md) |

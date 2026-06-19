@@ -1,68 +1,66 @@
-# Pallas-Bot 文档
+# Pallas-Bot 4.0 文档
 
-> **在线阅读**：[Pallas-Bot-Docs](https://PallasBot.github.io/Pallas-Bot-Docs/)（侧栏编排更完整）
+牛牛的文档分两条线：**维护者**怎么把它跑起来、管起来；**插件开发者**怎么给它加能力。
 
-运行配置以 **`config/pallas.toml`** + **`data/pallas_config/webui.json`** 为主，见 [配置存储](architecture/settings-storage.md)。
+> 在线阅读：[Pallas-Bot-Docs](https://PallasBot.github.io/Pallas-Bot-Docs/)
 
-## 认识牛牛
+## 选一条路
 
-| 文档 | 说明 |
-| --- | --- |
-| [选一条路](guide/welcome.md) | 按身份选入口 |
-| [理解架构（可跳过）](guide/concepts.md) | 协议端、Bot、库、控制台 |
+| 你是谁 | 去哪 | 能解决什么 |
+| --- | --- | --- |
+| 号主、运维、部署维护者 | [Maintainer](maintainer/quickstart.md) | 安装、部署、协议端、AI、扩展、排障 |
+| 本体维护者、扩展 / 插件作者 | [Developer](developer/index.md) | 架构、插件开发、治理、发布、接口 |
+| 普通用户 | [用户手册](user/README.md) | 后续单独建设，这轮先不重写 |
 
-## 快速开始
+## 4.0 长什么样
 
-| 文档 | 说明 |
-| --- | --- |
-| **[4.0 启动说明](guide/4.0-start.md)** | 扩展安装、AI 仓、配置键与验收 |
-| **[五分钟跑起来](guide/quickstart.md)** | 最少步骤：克隆 → 配置 → 启动 → 连 QQ |
-| [使用指南](user/README.md) | 控制台入口、常用口令 |
-| [配置要点](Config.md) | `pallas.toml` 与 WebUI |
-| [标准部署](Deployment.md) | 生产 / VPS 分步部署 |
-| [Docker 部署](DockerDeployment.md) | Compose 与卷 |
-| [3.0 迁移](Migration-v3.md) | 旧版升级 |
+```mermaid
+flowchart LR
+    User[QQ / Web User]
+    Core[Pallas-Bot Core]
+    WebUI[Pallas-Bot-WebUI]
+    Protocol[Protocol Runtime]
+    AI[Pallas-Bot-AI]
+    Official[Official Extensions]
+    Community[Community Extensions]
 
-## 查阅
-
-| 文档 | 说明 |
-| --- | --- |
-| [常见问题 FAQ](FAQ.md) | 学习机制、号主、排障 |
-| [插件索引](plugins/README.md) | 各功能说明与配置 |
-| [社区中心](https://stats.pallasbot.top/) · [上报说明](common/community_stats.md) | 在线统计（默认开启） |
-
-## 开发（维护者）
-
-| 文档 | 说明 |
-| --- | --- |
-| [开发指南](develop/README.md) | 环境、流程、插件、WebUI |
-| **[插件 Cookbook · 牛牛赞我](develop/plugin/cookbook.md)** | 跟做完整插件（推荐开发者首读） |
-| [插件开发 Skill](skills/pallas-plugin-development/SKILL.md) | Agent 分章手册 |
-
-## 架构（进阶）
-
-| 文档 | 说明 |
-| --- | --- |
-| [项目结构](architecture/project-structure.md) · [内核分层](architecture/common-layers.md) | 目录与 `src/` 分层 |
-| [配置存储](architecture/settings-storage.md) · [插件规范](architecture/plugin-convention.md) | 配置与插件组织 |
-| [多进程分片](architecture/bot_process_sharding.md) · [入站调度](architecture/central-ingress-dispatch.md) | 分片与消息路径 |
-| [语料联邦](common/corpus/README.md) | 社区语料、回填与联邦读取现状 |
-| **[Pallas 核心契约](architecture/pallas-core-contract.md)** · [AI 终态架构](architecture/pallas-final-ai-shape.md) | 品牌总纲、扩展分家后形态、Bot↔AI 边界 |
-| [站点定制](architecture/site-customization-and-updates.md) | `local/plugins`、官方扩展 |
-| **[AI 终态架构](architecture/pallas-final-ai-shape.md)** · **[AI 实施与联调](architecture/pallas-ai-implementation.md)** | 双仓边界、统一 runtime、分阶段落地 |
-
-## 通用能力
-
-[cmd_perm](common/cmd_perm/README.md) · [command_limits](common/command_limits/README.md) · [WebUI 热重载](common/webui/README.md) · [WebUI API](common/webui/api/README.md) · [message_scrub](common/message_scrub/README.md) · [语料联邦](common/corpus/README.md)
-
-## 同步在线文档站
-
-主仓 `docs/` 为**同步源**（见 `tools/scripts/sync_docs_to_web.py`）。合并到 `main` / `docs` 且变更 `docs/**` 时，CI 会推送到 [Pallas-Bot-Docs](https://github.com/PallasBot/Pallas-Bot-Docs)。
-
-本地同步：
-
-```bash
-uv run python tools/scripts/sync_docs_to_web.py
+    User --> Core
+    User --> WebUI
+    WebUI --> Core
+    Protocol --> Core
+    Core --> AI
+    Core --> Official
+    Core --> Community
 ```
 
-需配置 Actions Secret `DOCS_SYNC_TOKEN` 方可自动同步，见 [sync-docs-to-web.yml](../.github/workflows/sync-docs-to-web.yml)。
+一句话各管一摊：
+
+- **Core** — 主运行时、消息入口、插件加载、治理与基础存储。
+- **WebUI** — 控制台界面，源码独立仓，构建产物同步回主仓。
+- **Protocol Runtime** — QQ 协议接入，单进程和分片都支持。
+- **AI Runtime** — 媒体与 AI 任务，通过 callback 回到 Bot。
+- **Official / Community Extensions** — 4.0 后从本体拆出去的玩法与能力。
+
+## 维护者常去的几页
+
+| 页面 | 干什么 |
+| --- | --- |
+| [快速开始](maintainer/quickstart.md) | 从零跑起一套 4.0 环境 |
+| [安装官方扩展](maintainer/install/official-extensions.md) | 装 / 卸 / 重启扩展，Docker 预装 |
+| [分片部署](maintainer/deploy/sharded.md) | hub / worker / Redis / 协议端 / 分片日志 |
+| [WebUI](maintainer/install/webui.md) | 前端仓边界、构建产物、线上资源同步 |
+| [排障](maintainer/operate/troubleshooting.md) | 配置、角色、日志、聚合状态的排查顺序 |
+
+## 开发者常去的几页
+
+| 页面 | 干什么 |
+| --- | --- |
+| [架构总览](developer/architecture/overview.md) | Pallas 4.0 的整体边界 |
+| [Core 与扩展](developer/architecture/core-vs-extensions.md) | 本体 / 官方扩展 / 社区扩展怎么分 |
+| [Golden Plugin](developer/plugin-development/golden-plugin.md) | 官方推荐的插件骨架 |
+| [配置与 WebUI](developer/plugin-development/config-and-webui.md) | 配置落盘、插件页、热重载 |
+| [发布](developer/plugin-development/publishing.md) | 官方扩展、社区插件、PyPI |
+
+::: tip 关于旧文档
+`docs/guide`、`docs/develop`、`docs/architecture`、`docs/common` 现在只作迁移素材，不再是正式入口。普通用户文档会另起一套用户手册，不和开发文档混写。
+:::

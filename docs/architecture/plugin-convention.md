@@ -9,7 +9,7 @@
 - `__init__.py`：插件注册与 metadata（**core 保持薄**，目标 ≤120 行）
 - `config.py`：插件配置项定义（无插件页配置时可 re-export `features/` 层）
 
-按需：`handlers.py`（口令逻辑）、`startup.py`（启动/HTTP）。参照 `pb_core`、`pb_stats`；细则见 [内核插件统一化](core-plugin-unification-design.md)。
+按需：`handlers.py`（口令逻辑）、`startup.py`（启动/HTTP）。参照 `pb_core`、`pb_stats`；细则见 [内核插件统一化](internal/core-plugin-unification-design.md)。
 
 ## 推荐扩展结构（按需）
 
@@ -56,14 +56,14 @@
 
 ## WebUI 配置与命令权限
 
-- **插件页治理与社区 L1/L2 画像**：[plugin-governance-community-roadmap.md](plugin-governance-community-roadmap.md)
-- **`PluginMetadata.extra` 键名表**（`command_permissions`、`plugin_storage`、`ingress_route` 等）：见 [core-devx-roadmap.md · 内核键名约定](core-devx-roadmap.md#内核键名约定)。
+- **插件治理现行入口**：[开发者侧插件治理概览](../developer/architecture/plugin-governance.md)
+- **`PluginMetadata.extra` 键名**：以当前 `packages/` 现行实现和插件文档为准，不再以旧路线图为入口。
 - **新内核插件包名**：`pb_<role>`（如 `pb_core`、`pb_webui`、`pb_protocol`、`pb_stats`）。历史名经 `plugin_package_aliases.py` 别名兼容。
 - 需在 WebUI 保存 **`webui.json`** 后立即生效的插件配置：插件页用 `install_hot_reload_config`（`pallas.api.config`）；横切项在 `env_sections.py` 注册（见 [WebUI 插件配置](../common/webui/README.md)）。
 - **元数据热载**：`extra["reload_policy"]: "metadata"` 时保存插件配置可重建 help/ingress 索引（见 [hot-reload-tiers.md](hot-reload-tiers.md)）。
 - 可配置命令权限：在 `PluginMetadata.extra` 声明 `command_permissions`，matcher 使用 `pallas.api.perm.group_message_permission_for_command`（见 [cmd_perm](../common/cmd_perm/README.md)）。
 - 命令冷却：在 handler 内使用 `pallas.api.limits`（见 [command_limits](../common/command_limits/README.md)）；可在 `extra["command_limits"]` 声明默认 CD 供文档与后续扩展。
-- **插件存储键**：在 `extra["plugin_storage"]` 声明群/用户/牛级数据键；读写使用 `pallas.api.storage.GroupPluginStorage` 或 `get/set_plugin_storage`（见 [develop/plugin/structure.md](../develop/plugin/structure.md)）。
+- **插件存储键**：在 `extra["plugin_storage"]` 声明群/用户/牛级数据键；读写使用 `pallas.api.storage.GroupPluginStorage` 或 `get/set_plugin_storage`。
 
 ### 命令权限与帮助文案（cmd_perm）
 
@@ -77,7 +77,7 @@
 ## 站点覆盖与内核 import
 
 `local/plugins` 整包覆盖同名插件时，NoneBot 只加载 local 槽位；内核层（AI callback、WebUI、probe）若仍 hardcode `src.plugins.<名>`，会出现命令与收尾分裂。  
-约定与收敛进度见 **[AI 终态架构 §6](pallas-final-ai-shape.md)** 与 **[AI 实施 §4](pallas-ai-implementation.md)**。
+约定与收敛进度见 **[AI 终态架构 §6](internal/pallas-final-ai-shape.md)** 与 **[AI 实施 §4](internal/pallas-ai-implementation.md)**。
 
 ## 测试配套约定
 

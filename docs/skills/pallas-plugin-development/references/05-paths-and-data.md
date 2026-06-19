@@ -23,7 +23,7 @@ VOICES = resource_dir("voices")
 
 **不要**硬编码 `data/`、`resource/` 相对路径字符串；工作目录变化会导致漂移。
 
-完整跟做：[Cookbook · 牛牛赞我 §3](../../develop/plugin/cookbook.md#3数据落盘按群计数)。
+现行说明优先看 [配置与 WebUI](../../developer/plugin-development/config-and-webui.md) 与 [Golden Plugin](../../developer/plugin-development/golden-plugin.md)。
 
 ## 5.2 何时用哪种
 

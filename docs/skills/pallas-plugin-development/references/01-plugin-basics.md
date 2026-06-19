@@ -1,6 +1,6 @@
 # 一、插件基础结构
 
-Pallas 插件运行在 **NoneBot2** 之上，业务代码落在 `packages/` 或站点 `local/plugins/`；横切能力由 `pallas.api.*` 等内核层提供（见 [common-layers](../../architecture/common-layers.md)）。
+Pallas 插件运行在 **NoneBot2** 之上，业务代码落在 `packages/` 或站点 `local/plugins/`；横切能力由 `pallas.api.*` 等内核层提供（见 [架构总览](../../developer/architecture/overview.md)）。
 
 ## 1.1 两种参与方式
 
@@ -69,7 +69,7 @@ my_plugin/
 
 > **社区 / pip 扩展**：仅 `pallas.api.*`（L1）。**内置 `packages/`**：可用 `pallas.api.*` + `pallas.product.*`（L2），禁止 `pallas.core.*` 深层文件。
 
-内核分层说明：[common-layers.md](../../architecture/common-layers.md)。
+内核与公开 API 说明：[pallas-package-layout.md](../../architecture/internal/pallas-package-layout.md)。
 
 **反例**：从 `packages.other_plugin` 直接 import 业务逻辑 → 应把共享能力下沉到 `pallas/` 内核层。
 
@@ -130,7 +130,7 @@ async def handle_demo():
     await demo.finish("收到。")
 ```
 
-完整拷贝版见 [getting-started.md](../../develop/plugin/getting-started.md)。
+现行入口见 [插件开发入门](../../developer/plugin-development/getting-started.md)。
 
 ## 1.8 配置入口（可选）
 

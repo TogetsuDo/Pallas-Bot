@@ -1,6 +1,5 @@
 # 热重载分级（配置 / 元数据 / 代码）
 
-> 与 [core-devx-roadmap · 热重载分级](core-devx-roadmap.md#热重载分级) 对齐。  
 > **现状**：配置级已成熟；元数据/代码级以文档与 `reload_policy` 解析桩为主，CLI `pallas plugin reload` 尚未落地。
 
 ## 三级对照
@@ -13,7 +12,7 @@
 
 ## 明确不做
 
-- NoneBot matcher 级热卸载/重载**不作为默认运维路径**（见 [pallas-cli.md](pallas-cli.md)）。
+- NoneBot matcher 级热卸载/重载**不作为默认运维路径**。
 - 扩展 pip 包安装：`extension_install` 仍返回 `needs_restart`；与 **牛牛重启**（`pb_core`）共用调度 API。
 
 ## 官方扩展激活策略（activation_policy）
@@ -74,4 +73,4 @@ extra={
 
 - [WebUI 配置与热重载](../common/webui/README.md)
 - [settings-storage.md](settings-storage.md)
-- [core-devx-roadmap.md](core-devx-roadmap.md)
+- [开发者侧插件治理概览](../developer/architecture/plugin-governance.md)

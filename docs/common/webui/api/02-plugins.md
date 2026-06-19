@@ -59,9 +59,9 @@ PUT 成功后：
 
 插件作者接入： [WebUI 插件配置](../README.md)。
 
-### 单插件治理（G-P0 / G-P1）
+### 单插件治理
 
-见 [插件治理与社区生态路线 · API 分期](../../architecture/plugin-governance-community-roadmap.md#api-分期)：
+现行说明以开发文档与当前接口行为为准：
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |

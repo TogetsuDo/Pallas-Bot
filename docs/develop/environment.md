@@ -97,15 +97,15 @@ extra_plugin_dirs = ["local/plugins"]
 ## 质量检查（与 CI 一致）
 
 ```bash
-uv run ruff check src/
-uv run ruff format --check src/
+uv run ruff check pallas/ packages/
+uv run ruff format --check pallas/ packages/
 ```
 
 自动修复：
 
 ```bash
-uv run ruff check --fix src/
-uv run ruff format src/
+uv run ruff check --fix pallas/ packages/
+uv run ruff format pallas/ packages/
 ```
 
 运行测试：
@@ -128,7 +128,7 @@ uv run pre-commit install
 uv run pre-commit run -a
 ```
 
-策略说明：**全仓**做 YAML/TOML、尾随空格等基础检查；**Ruff 仅作用于 `src/`**；`.env` 被排除以免误改本地密钥。
+策略说明：**全仓**做 YAML/TOML、尾随空格等基础检查；**Ruff 仅作用于 `pallas/`、`packages/`**；`.env` 被排除以免误改本地密钥。
 
 ## 日志习惯
 
@@ -137,4 +137,4 @@ uv run pre-commit run -a
 ## 下一步
 
 - 准备提 PR：[贡献与提交流程](workflow.md)
-- 写新功能：[插件开发入门](plugin/getting-started.md)
+- 写新功能：[插件开发入门](../developer/plugin-development/getting-started.md)

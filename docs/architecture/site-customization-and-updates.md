@@ -28,7 +28,7 @@ extra_plugin_dirs = ["local/plugins"]
    - **hub / worker / unified** 均会加载 `extra_plugin_dirs`；与 `src/plugins/` 或 hub 内置模块**同名时优先 local**（如 `help`、`callback`）。
 4. **覆盖同名扩展**：若 `local/plugins/draw/` 与已装的 `pallas-plugin-draw` 同名，会**先加载 local**，再跳过 pip 包。适合「整包 fork 式定制」；只改少量文件见下文「改动主仓已有插件」。
 
-4.0 起另支持 **WebUI 社区插件商店**（git 安装到 `local/plugins/`）与 **官方扩展商店**（pip）。见 [社区插件商店](../guide/community-plugin-store.md)、[4.0 本体瘦身](pallas-4.0-slim.md#扩展安装路径并存)。
+4.0 起另支持 **WebUI 社区插件商店**（git 安装到 `local/plugins/`）与 **官方扩展商店**（pip）。见 [社区插件商店](../guide/community-plugin-store.md)。
 
 ## 部署形态与更新方式
 
@@ -62,7 +62,7 @@ extra_plugin_dirs = ["local/plugins"]
 
 NoneBot **不能**两个目录各加载一半同名插件；要么整包 override，要么 patch 主仓文件。
 
-整包 override 时，内核仍可能 hardcode `src.plugins.<名>`（AI callback、WebUI、probe），与 local 行为分裂；见 **[AI 终态架构 §6](pallas-final-ai-shape.md)**、**[AI 实施 §4](pallas-ai-implementation.md)**。
+整包 override 时，内核仍可能 hardcode `src.plugins.<名>`（AI callback、WebUI、probe），与 local 行为分裂；见 **[AI 终态架构 §6](internal/pallas-final-ai-shape.md)**、**[AI 实施 §4](internal/pallas-ai-implementation.md)**。
 
 ## 相关实现
 

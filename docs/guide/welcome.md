@@ -23,6 +23,6 @@
 | 用网页改配置 | [web-console](web-console.md) |
 | 群里有哪些口令 | [usage](usage.md) |
 | 进阶 / 排错 | [advanced](advanced.md) · [FAQ](../FAQ.md) |
-| 写插件 | [Cookbook](../develop/plugin/cookbook.md) |
+| 写插件 | [插件开发入门](../developer/plugin-development/getting-started.md) |
 
 在线站（侧栏更全）：<https://PallasBot.github.io/Pallas-Bot-Docs/>
