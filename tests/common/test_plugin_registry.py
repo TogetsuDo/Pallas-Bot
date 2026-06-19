@@ -46,6 +46,18 @@ def test_build_official_extension_rows_ai_media_cover():
     assert ai["cover"] == "https://raw.githubusercontent.com/TogetsuDo/pallas-plugin-ai-media/main/assets/brand-avatar.png"
 
 
+def test_build_official_extension_rows_prefers_cached_asset_urls(monkeypatch):
+    def fake_apply(kind, rows):
+        assert kind == "official"
+        return [{**row, "cover": "/pallas/store-assets/cover/official-draw.webp"} if row["package"] == "pallas-plugin-draw" else row for row in rows]
+
+    monkeypatch.setattr("pallas.console.webui.plugin_store_assets.apply_asset_snapshot_to_rows", fake_apply)
+
+    rows = build_official_extension_rows()
+    draw = next(r for r in rows if r["package"] == "pallas-plugin-draw")
+    assert draw["cover"] == "/pallas/store-assets/cover/official-draw.webp"
+
+
 def test_build_official_extension_rows_p0_repo_urls():
     rows = build_official_extension_rows()
     by_pkg = {r["package"]: r["repository_url"] for r in rows}

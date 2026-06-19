@@ -219,3 +219,56 @@ async def test_build_community_plugin_store_prefers_repo_cover_from_backend(monk
     row = store["plugins"][0]
 
     assert row["cover"] == "https://raw.githubusercontent.com/acme/demo/main/assets/cover.webp"
+
+
+async def test_build_community_plugin_store_prefers_cached_asset_urls(monkeypatch) -> None:
+    async def fake_index():
+        return {
+            "plugins": [
+                {
+                    "plugin_id": "demo",
+                    "name": "Demo",
+                    "repository_url": "https://github.com/acme/demo",
+                    "ref": "main",
+                }
+            ],
+            "meta": {},
+        }
+
+    monkeypatch.setattr(
+        "pallas.console.webui.community_plugin_registry.load_community_plugin_index_safe",
+        fake_index,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.community_plugin_registry.local_plugin_installed",
+        lambda plugin_id: False,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.community_plugin_registry.loaded_extra_plugin_ids",
+        lambda plugin_ids: [],
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.community_plugin_registry.webui_community_install_enabled",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.community_plugin_registry.bot_lifecycle_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.community_plugin_registry.extra_plugin_dirs_ready",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.community_plugin_registry.resolve_community_plugin_icon",
+        lambda entry: "https://raw.githubusercontent.com/acme/demo/main/assets/icon.png",
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_store_assets.apply_asset_snapshot_to_rows",
+        lambda kind, rows: [{**rows[0], "icon": "/pallas/store-assets/icon/community-demo.png"}] if kind == "community" else rows,
+    )
+
+    store = await build_community_plugin_store()
+    row = store["plugins"][0]
+
+    assert row["icon"] == "/pallas/store-assets/icon/community-demo.png"

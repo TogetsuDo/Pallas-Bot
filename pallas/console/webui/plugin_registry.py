@@ -140,7 +140,9 @@ def build_official_extension_rows() -> list[dict[str, Any]]:
             "latest_ref": latest_ref,
             "status": status,
         })
-    return rows
+    from pallas.console.webui.plugin_store_assets import apply_asset_snapshot_to_rows
+
+    return apply_asset_snapshot_to_rows("official", rows)
 
 
 def official_extension_for_plugin(plugin_id: str) -> dict[str, Any] | None:

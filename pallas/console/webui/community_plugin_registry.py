@@ -123,6 +123,7 @@ def build_community_plugin_row(
 
 async def build_community_plugin_store() -> dict[str, Any]:
     from pallas.console.webui.plugin_update_snapshot import load_snapshot, snapshot_checked_at
+    from pallas.console.webui.plugin_store_assets import apply_asset_snapshot_to_rows
 
     index = await load_community_plugin_index_safe()
     update_snapshot = load_snapshot()
@@ -130,6 +131,7 @@ async def build_community_plugin_store() -> dict[str, Any]:
         build_community_plugin_row(entry, update_snapshot=update_snapshot)
         for entry in index.get("plugins") or []
     ]
+    rows = apply_asset_snapshot_to_rows("community", rows)
     return {
         "source": index.get("source"),
         "meta": index.get("meta") or {},

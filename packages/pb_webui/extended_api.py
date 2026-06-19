@@ -2758,6 +2758,16 @@ async def _scheduled_refresh_plugin_update_snapshot() -> None:
         logger.exception("Pallas-Bot 控制台: 定时刷新插件更新快照失败")
 
 
+async def _scheduled_refresh_plugin_store_assets() -> None:
+    from pallas.console.webui.plugin_store_assets import refresh_store_asset_snapshot
+
+    try:
+        await refresh_store_asset_snapshot()
+        drop_read_cache(("plugins-community-store", "plugins-official-extensions"))
+    except Exception:  # noqa: BLE001
+        logger.exception("Pallas-Bot 控制台: 定时刷新插件商店资源快照失败")
+
+
 def _matcher_hist_bump(sid: str, plugin: str, had_error: bool, *, duration_ms: int | float = 0) -> None:
     """Matcher 执行按时间桶、按插件名记录。"""
     pname = str(plugin).strip() or "_"
@@ -4839,6 +4849,44 @@ def register_extended_api(
             logger.exception("Pallas-Bot 控制台: 刷新插件更新快照失败")
             raise HTTPException(status_code=500, detail=format_exception_for_log(e)) from e
 
+    @router.get(f"{x}/plugins/store/readme", include_in_schema=True)
+    async def _plugins_store_readme(
+        kind: str = Query(..., description="official 或 community"),
+        id: str = Query(..., description="官方包名或社区 plugin_id"),
+    ) -> JSONResponse:
+        from pallas.console.webui.plugin_store_assets import get_cached_readme_markdown
+
+        if kind not in {"official", "community"}:
+            raise HTTPException(status_code=400, detail="kind must be official or community")
+        markdown = get_cached_readme_markdown(kind, id)
+        if markdown is None:
+            raise HTTPException(status_code=404, detail="README not cached")
+        return JSONResponse({"ok": True, "data": {"kind": kind, "id": id, "markdown": markdown}})
+
+    @router.post(f"{x}/plugins/store-assets/refresh", include_in_schema=True)
+    async def _plugins_store_assets_refresh(
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        from pallas.console.webui.plugin_store_assets import refresh_store_asset_snapshot
+        from pallas.core.shared.utils.format_exception import format_exception_for_log
+
+        try:
+            snapshot = await refresh_store_asset_snapshot()
+            drop_read_cache(("plugins-community-store", "plugins-official-extensions"))
+            return JSONResponse({
+                "ok": True,
+                "data": {
+                    "checked_at": snapshot.get("checked_at"),
+                    "community_count": len(snapshot.get("community") or {}),
+                    "official_count": len(snapshot.get("official") or {}),
+                },
+            })
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Pallas-Bot 控制台: 刷新插件商店资源快照失败")
+            raise HTTPException(status_code=500, detail=format_exception_for_log(e)) from e
+
     @router.post(f"{x}/plugins/community-plugins/install", include_in_schema=True)
     async def _plugins_community_plugins_install(
         body: _CommunityPluginActionBody,
@@ -6906,6 +6954,20 @@ def register_extended_api(
             hour=4,
             minute=0,
             id=_plugin_update_snapshot_id,
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=3600,
+        )
+        _plugin_store_assets_id = "pallas_webui_plugin_store_assets"
+        if scheduler.get_job(_plugin_store_assets_id):
+            scheduler.remove_job(_plugin_store_assets_id)
+        scheduler.add_job(
+            _scheduled_refresh_plugin_store_assets,
+            trigger="cron",
+            hour="*/6",
+            minute=15,
+            id=_plugin_store_assets_id,
             replace_existing=True,
             coalesce=True,
             max_instances=1,
