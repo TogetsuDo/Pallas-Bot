@@ -6,7 +6,7 @@ from nonebot.permission import Permission
 
 from pallas.core.limits import is_command_cooldown_ready, refresh_command_cooldown
 from pallas.core.perm import satisfies_command_permission
-from pallas.core.shared.service_probe import format_probe_text
+from pallas.core.shared.service_probe import ServiceProbeResult
 from pallas.product.service_gateways.collect import probe_all_connectivity
 
 
@@ -40,11 +40,36 @@ connectivity_gateway_alias = on_command(
 )
 
 
+def format_connectivity_probe_text(results: list[ServiceProbeResult]) -> str:
+    if not results:
+        return "未配置可探测的服务端点。"
+    groups: dict[str, list[str]] = {}
+    order: list[str] = []
+    for result in results:
+        category = (result.category or "").strip() or "服务"
+        if category not in groups:
+            groups[category] = []
+            order.append(category)
+        site = (result.site or "").strip() or "节点"
+        if result.ok:
+            detail = f"{result.latency_ms}ms" if result.latency_ms is not None else "可用"
+        else:
+            detail = str(result.error or "不可用").strip() or "不可用"
+        groups[category].append(f"· {site}：{detail}")
+    lines: list[str] = []
+    for idx, category in enumerate(order):
+        if idx > 0:
+            lines.append("")
+        lines.append(f"【{category}】")
+        lines.extend(groups[category])
+    return "\n".join(lines)
+
+
 async def run_connectivity_probe(matcher) -> None:
     results = await probe_all_connectivity()
     if not results:
         await matcher.finish("未配置可探测的服务端点。")
-    await matcher.finish(format_probe_text(results))
+    await matcher.finish(format_connectivity_probe_text(results))
 
 
 async def handle_connectivity_probe(event: MessageEvent, matcher) -> None:

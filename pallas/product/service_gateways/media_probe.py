@@ -307,6 +307,7 @@ async def probe_maa_endpoints(
     draft_values: dict[str, Any] | None = None,
 ) -> list[ServiceProbeResult]:
     from packages.maa.endpoints import resolve_maa_probe_http_endpoints
+
     from pallas.core.platform.shard import context as shard_ctx
 
     if cfg is None and draft_values is not None:

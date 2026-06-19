@@ -101,9 +101,7 @@ async def send_mail(title: str, content: str, mail_config: MailConfig) -> str | 
 
     use_tls = mail_config.port == _SSL_PORT
     try:
-        async with aiosmtplib.SMTP(
-            hostname=mail_config.server, port=mail_config.port, use_tls=use_tls
-        ) as smtp:
+        async with aiosmtplib.SMTP(hostname=mail_config.server, port=mail_config.port, use_tls=use_tls) as smtp:
             await smtp.login(mail_config.user, mail_config.password)
             await smtp.send_message(message)
     except Exception as e:

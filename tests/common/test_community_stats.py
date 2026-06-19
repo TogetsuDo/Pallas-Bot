@@ -43,7 +43,10 @@ def test_auto_endpoint_mode_builtin_default(monkeypatch):
 
 
 def test_auto_endpoint_custom_url_not_builtin(monkeypatch):
-    monkeypatch.setenv("PALLAS_COMMUNITY_STATS_ENDPOINT", "https://stats.example/v1/heartbeat")
+    monkeypatch.setattr(
+        "pallas.product.community_stats.config.repo_env_raw_value",
+        lambda key: "https://stats.example/v1/heartbeat" if key == "PALLAS_COMMUNITY_STATS_ENDPOINT" else None,
+    )
     cfg_mod.clear_community_stats_config_cache()
     cfg = cfg_mod.get_community_stats_config()
     assert is_auto_endpoint_mode(cfg) is False
@@ -195,7 +198,10 @@ def test_config_disabled_from_toml(tmp_path, monkeypatch):
 
 
 def test_config_can_disable(monkeypatch):
-    monkeypatch.setenv("PALLAS_COMMUNITY_STATS_ENABLED", "false")
+    monkeypatch.setattr(
+        "pallas.product.community_stats.config.repo_env_raw_value",
+        lambda key: "false" if key == "PALLAS_COMMUNITY_STATS_ENABLED" else None,
+    )
     cfg_mod.clear_community_stats_config_cache()
     assert cfg_mod.get_community_stats_config().enabled is False
 
@@ -265,8 +271,15 @@ async def test_start_community_stats_reporter_registers_job(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_send_heartbeat_success(monkeypatch):
-    monkeypatch.setenv("PALLAS_COMMUNITY_STATS_ENDPOINT", "https://stats.example/v1/heartbeat")
-    monkeypatch.setenv("PALLAS_COMMUNITY_STATS_TOKEN", "secret")
+    def fake_env(key: str):
+        return {
+            "PALLAS_COMMUNITY_STATS_ENDPOINT": "https://stats.example/v1/heartbeat",
+            "PALLAS_COMMUNITY_STATS_TOKEN": "secret",
+            "PALLAS_COMMUNITY_STATS_ROSTER_PUBLIC_QQ": "false",
+            "PALLAS_COMMUNITY_STATS_ROSTER_PUBLIC_PROFILE": "false",
+        }.get(key)
+
+    monkeypatch.setattr("pallas.product.community_stats.config.repo_env_raw_value", fake_env)
     cfg_mod.clear_community_stats_config_cache()
 
     mock_resp = MagicMock()
@@ -300,6 +313,55 @@ async def test_send_heartbeat_success(monkeypatch):
         assert kwargs["headers"]["Authorization"] == "Bearer secret"
         assert kwargs["json"]["online_bots"] == 1
         assert kwargs["json"]["catalog_bots"] == 2
+
+
+@pytest.mark.asyncio
+async def test_send_heartbeat_roster_public_uses_core_inventory(monkeypatch):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.text = '{"ok":true}'
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=mock_resp)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    with (
+        patch(
+            "pallas.product.community_stats.reporter.load_or_create_deployment_id",
+            return_value="550e8400-e29b-41d4-a716-446655440000",
+        ),
+        patch(
+            "pallas.core.platform.shard.presence.count_connected_bots_for_reporting",
+            return_value=1,
+        ),
+        patch(
+            "pallas.product.community_stats.reporter.get_community_stats_config",
+            return_value=cfg_mod.CommunityStatsConfig(
+                enabled=True,
+                endpoint="https://stats.example/v1/heartbeat",
+                token="",
+                interval_sec=300,
+                roster_public_qq=True,
+                roster_public_profile=True,
+            ),
+        ),
+        patch("pallas.core.platform.multi_bot.fleet.get_catalog_bot_ids", return_value=frozenset({10001})),
+        patch(
+            "pallas.core.foundation.db.pallas_console_data.bot_community_roster_show_qq_by_accounts",
+            new=AsyncMock(return_value={10001: True}),
+        ) as roster_flags,
+        patch(
+            "pallas.product.community_stats.roster.build_public_roster_entries",
+            return_value=[{"qq": 10001, "nickname": "测试牛", "online": True, "message_weight": 5}],
+        ),
+        patch("pallas.product.community_stats.reporter.httpx.AsyncClient", return_value=mock_client),
+    ):
+        assert await send_community_stats_heartbeat() is True
+    roster_flags.assert_awaited_once_with([10001])
+    _args, kwargs = mock_client.post.await_args
+    assert kwargs["json"]["roster_public"] is True
+    assert kwargs["json"]["roster"][0]["qq"] == 10001
 
 
 def test_build_payload_sharded():

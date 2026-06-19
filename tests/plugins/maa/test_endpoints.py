@@ -1,6 +1,5 @@
 import pytest
 from fastapi import FastAPI
-
 from packages.maa import config as maa_cfg_mod
 from packages.maa import endpoints as ep_mod
 from packages.maa import http_api as http_api_mod

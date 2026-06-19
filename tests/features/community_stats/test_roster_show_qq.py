@@ -5,11 +5,11 @@ from pallas.product.community_stats.roster import build_public_roster_entries
 
 def test_build_public_roster_entries_skips_opt_out_bots(monkeypatch) -> None:
     monkeypatch.setattr(
-        "packages.bot_status.list_mode.status_inventory_bot_ids",
+        "pallas.product.community_stats.roster._status_inventory_bot_ids",
         lambda: {10001, 10002},
     )
     monkeypatch.setattr(
-        "packages.bot_status.list_mode.cluster_online_bot_ids_for_status",
+        "pallas.product.community_stats.roster._cluster_online_bot_ids_for_status",
         lambda: {10001},
     )
     monkeypatch.setattr(
@@ -27,11 +27,11 @@ def test_build_public_roster_entries_skips_opt_out_bots(monkeypatch) -> None:
 
 def test_build_public_roster_entries_includes_all_when_unset(monkeypatch) -> None:
     monkeypatch.setattr(
-        "packages.bot_status.list_mode.status_inventory_bot_ids",
+        "pallas.product.community_stats.roster._status_inventory_bot_ids",
         lambda: {20001},
     )
     monkeypatch.setattr(
-        "packages.bot_status.list_mode.cluster_online_bot_ids_for_status",
+        "pallas.product.community_stats.roster._cluster_online_bot_ids_for_status",
         lambda: set(),
     )
     monkeypatch.setattr(

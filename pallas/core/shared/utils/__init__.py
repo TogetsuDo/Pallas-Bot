@@ -3,7 +3,7 @@ from typing import Any
 
 import httpx
 from nonebot import get_bot, logger
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import RetryError, retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 
 async def is_bot_admin(bot_id: int, group_id: int, no_cache: bool = False) -> bool:
@@ -68,6 +68,13 @@ class HTTPXClient:
         if retry_config:
             cls.DEFAULT_RETRY.update(retry_config)
 
+    @staticmethod
+    def _transport_error_message(e: httpx.TransportError) -> str:
+        detail = str(e).strip()
+        if not detail:
+            detail = repr(e)
+        return f"httpx client transport error [{type(e).__name__}]: {detail}"
+
     @classmethod
     async def get(cls, url: str, **kwargs) -> httpx.Response | None:
         @retry(**cls.DEFAULT_RETRY)
@@ -78,7 +85,7 @@ class HTTPXClient:
                 response.raise_for_status()
                 return response
             except httpx.TransportError as e:
-                logger.error(f"httpx client transport error: {e}")
+                logger.error(cls._transport_error_message(e))
                 await cls._reset_client()
                 raise
 
@@ -87,6 +94,11 @@ class HTTPXClient:
         except httpx.HTTPStatusError as e:
             logger.warning(f"Request GET {url} failed after retries: {e}")
             return None
+        except RetryError as e:
+            if isinstance(e.__cause__, httpx.TransportError):
+                logger.warning(f"Request GET {url} failed after retries: {cls._transport_error_message(e.__cause__)}")
+                return None
+            raise
 
     @classmethod
     async def post(cls, url: str, json: dict[str, Any] | None = None, **kwargs) -> httpx.Response | None:
@@ -98,7 +110,7 @@ class HTTPXClient:
                 response.raise_for_status()
                 return response
             except httpx.TransportError as e:
-                logger.error(f"httpx client transport error: {e}")
+                logger.error(cls._transport_error_message(e))
                 await cls._reset_client()
                 raise
 
@@ -118,7 +130,7 @@ class HTTPXClient:
                 response.raise_for_status()
                 return response
             except httpx.TransportError as e:
-                logger.error(f"httpx client transport error: {e}")
+                logger.error(cls._transport_error_message(e))
                 await cls._reset_client()
                 raise
 
@@ -138,7 +150,7 @@ class HTTPXClient:
                 response.raise_for_status()
                 return response
             except httpx.TransportError as e:
-                logger.error(f"httpx client transport error: {e}")
+                logger.error(cls._transport_error_message(e))
                 await cls._reset_client()
                 raise
 

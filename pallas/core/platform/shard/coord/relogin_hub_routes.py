@@ -8,6 +8,7 @@ from fastapi import FastAPI  # noqa: TC002
 from nonebot import logger
 from pydantic import BaseModel, Field
 
+from pallas.core.platform.plugin_runtime.resolve import import_plugin_submodule
 from pallas.core.platform.shard.coord.relogin_constants import RELOGIN_HUB_PATH
 from pallas.core.platform.shard.coord.relogin_payload import result_to_payload
 
@@ -21,7 +22,8 @@ class ReloginMessageBody(BaseModel):
 
 
 async def hub_relogin_message(body: ReloginMessageBody) -> dict[str, Any]:
-    from packages.relogin_bot.service import handle_relogin_message
+    service = import_plugin_submodule("relogin_bot", "service")
+    handle_relogin_message = service.handle_relogin_message
 
     result = await handle_relogin_message(
         bot_id=body.bot_id.strip(),

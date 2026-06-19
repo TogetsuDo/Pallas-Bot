@@ -11,9 +11,9 @@ from pallas.core.perm.metadata_text import SCENE_BOTH, join_usage, usage_line
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛连通",
-    description="群内或私聊检测智能对话、画画、远控与唱歌服务是否通畅。",
+    description="检查牛牛常用功能现在是否连得上、用得了。",
     usage=join_usage(
-        usage_line("牛牛连通 / 牛牛网关", "并行探测上述服务并回报延迟"),
+        usage_line("牛牛连通 / 牛牛网关", "查看常用功能是否可用和快不快"),
     ),
     type="application",
     homepage=PLUGIN_HOMEPAGE,
@@ -36,8 +36,8 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_scene": SCENE_BOTH,
                 "trigger_condition": "牛牛连通 / 牛牛网关",
                 "command_permission": "connectivity.probe",
-                "brief_des": "检测外部服务是否通畅",
-                "detail_des": "并行检测智能对话、画画、MAA 远控与唱歌服务，并回报延迟。",
+                "brief_des": "查看服务连通情况",
+                "detail_des": "看看聊天、画图、唱歌这些常用功能现在能不能用，顺不顺畅。",
             },
         ],
     },

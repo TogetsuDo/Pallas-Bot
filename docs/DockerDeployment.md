@@ -172,7 +172,7 @@ uv run python tools/scripts/bot_watchdog.py --docker-container pallasbot --no-sp
 | 单进程 + PostgreSQL | `perf,pg` | **Dockerfile 默认值** |
 | 多进程分片 | `perf,pg,deploy-shard` | 需配置 `REDIS_URL` |
 | 4.0 core 仅接话 | `perf,pg` | 默认不装玩法扩展 |
-| 4.0 + 常用玩法 | `perf,pg,plugins-game` | 决斗 + 谁是卧底 |
+| 4.0 + 常用玩法 | `perf,pg,plugins-game` | 决斗 + 谁是卧底；仅用于镜像预装 |
 | 4.0 全官方扩展 | `perf,pg,deploy-full` | 决斗 + MAA + 谁是卧底 |
 | 4.0 全部官方扩展 | `perf,pg,deploy-all` | 11 个官方扩展包 |
 

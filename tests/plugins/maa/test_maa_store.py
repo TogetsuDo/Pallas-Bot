@@ -1,5 +1,4 @@
 import pytest
-
 from packages.maa.store import MaaStore, NotifyTarget
 from packages.maa.tasks import MaaTaskSpec
 

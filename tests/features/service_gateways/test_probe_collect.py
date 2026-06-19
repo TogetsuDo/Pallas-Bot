@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from packages.sing.config import Config
+
 from pallas.product.service_gateways.media_probe import (
     maa_hub_probe_note,
     probe_draw_ai_runtime,

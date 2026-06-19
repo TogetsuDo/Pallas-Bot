@@ -133,10 +133,10 @@ async def send_community_stats_heartbeat() -> bool:
         touch_primary_probe_unix()
     show_qq_by_account: dict[int, bool] | None = None
     if cfg.roster_public:
-        from packages.bot_status.list_mode import status_inventory_bot_ids
         from pallas.core.foundation.db.pallas_console_data import bot_community_roster_show_qq_by_accounts
+        from pallas.core.platform.multi_bot.fleet import get_catalog_bot_ids
 
-        inventory = status_inventory_bot_ids()
+        inventory = get_catalog_bot_ids()
         if inventory:
             show_qq_by_account = await bot_community_roster_show_qq_by_accounts(list(inventory))
     payload = build_heartbeat_payload(show_qq_by_account=show_qq_by_account)

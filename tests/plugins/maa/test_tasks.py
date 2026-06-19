@@ -45,10 +45,7 @@ def test_normalize_device_hex32() -> None:
 
 
 def test_normalize_device_uuid_to_hex32() -> None:
-    assert (
-        normalize_device_id("42cfa6e9-dfa1-47d8-a7c1-d9a6d658b06d")
-        == "42cfa6e9dfa147d8a7c1d9a6d658b06d"
-    )
+    assert normalize_device_id("42cfa6e9-dfa1-47d8-a7c1-d9a6d658b06d") == "42cfa6e9dfa147d8a7c1d9a6d658b06d"
 
 
 def test_bind_rejects_qq_as_device() -> None:

@@ -5,6 +5,24 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 
+def _status_inventory_bot_ids() -> frozenset[int]:
+    from pallas.core.platform.multi_bot.fleet import get_catalog_bot_ids
+
+    return get_catalog_bot_ids()
+
+
+def _cluster_online_bot_ids_for_status() -> frozenset[int]:
+    from pallas.core.platform.shard import context as shard_ctx
+
+    if shard_ctx.sharding_active():
+        from pallas.core.platform.shard.presence import get_cluster_online_bot_ids
+
+        return get_cluster_online_bot_ids()
+    from pallas.core.platform.multi_bot.connected_roster import connected_bot_ids
+
+    return frozenset(int(qq) for qq in connected_bot_ids())
+
+
 def rolling_message_weight_by_self_id(*, days: int = 7) -> dict[str, int]:
     """近 N 自然日每账号消息量，数据来自控制台按日统计落盘。"""
     if days < 1:
@@ -34,14 +52,13 @@ def build_public_roster_entries(
     max_entries: int = 256,
     show_qq_by_account: dict[int, bool] | None = None,
 ) -> list[dict[str, object]]:
-    from packages.bot_status.list_mode import cluster_online_bot_ids_for_status, status_inventory_bot_ids
     from pallas.console.webui.protocol_accounts import protocol_account_display_names
 
-    inventory = status_inventory_bot_ids()
+    inventory = _status_inventory_bot_ids()
     if not inventory:
         return []
 
-    online_ids = cluster_online_bot_ids_for_status()
+    online_ids = _cluster_online_bot_ids_for_status()
     names = protocol_account_display_names()
     weights = rolling_message_weight_by_self_id(days=7)
     qq_flags = show_qq_by_account or {}
