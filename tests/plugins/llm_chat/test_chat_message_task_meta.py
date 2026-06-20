@@ -6,6 +6,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from pallas.product.llm.behavior import BehaviorAction, BehaviorPattern, BehaviorScene
+from pallas.product.llm.reply_variation import build_recent_reply_variation_hint
+from pallas.product.llm.session_store import LlmChatTurn
+
 
 @pytest.mark.asyncio
 async def test_build_llm_chat_corpus_ending_hint_prefers_topical_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -389,6 +393,52 @@ async def test_build_llm_chat_corpus_ending_hint_falls_back_to_hot_candidates(mo
     assert hint == "\n【语料收尾参考】本群常见短句可参考：行啊、也不是不行。"
 
 
+def test_build_recent_reply_variation_hint_flags_repeated_structure_without_exact_duplicate() -> None:
+    turns = [
+        LlmChatTurn(role="assistant", content="其实这事可以慢慢来，你先别急。", user_id=1, created_at=1),
+        LlmChatTurn(role="assistant", content="感觉这事不用一下说满，你先收一收。", user_id=1, created_at=2),
+        LlmChatTurn(role="assistant", content="确实不用讲太整套，你先按这个做。", user_id=1, created_at=3),
+    ]
+
+    hint = build_recent_reply_variation_hint(turns)
+
+    assert "最近几轮别再用这些开头" in hint
+    assert "最近解释偏满，这轮优先短一点，像顺手接一句" in hint
+    assert "最近句式有点一个模子" in hint
+
+
+@pytest.mark.asyncio
+async def test_handle_llm_chat_skips_empty_to_me_without_reply(monkeypatch: pytest.MonkeyPatch) -> None:
+    from packages.llm_chat import chat_message as mod
+
+    event = SimpleNamespace(
+        to_me=True,
+        self_id="10001",
+        group_id=20002,
+        user_id=30003,
+        message_id=40004,
+        time=123456,
+        reply=None,
+        raw_message="[CQ:at,qq=10001]",
+        get_plaintext=lambda: "",
+        get_message=lambda: "",
+        get_session_id=lambda: "group_20002_30003",
+    )
+    bot = SimpleNamespace(self_id="10001")
+
+    send_mock = AsyncMock()
+    submit_mock = AsyncMock()
+
+    monkeypatch.setattr(mod, "is_llm_chat_service_enabled", lambda: True)
+    monkeypatch.setattr(mod.llm_chat_msg, "send", send_mock)
+    monkeypatch.setattr(mod, "submit_chat_task", submit_mock)
+
+    await mod.handle_llm_chat(bot, event)
+
+    send_mock.assert_not_awaited()
+    submit_mock.assert_not_awaited()
+
+
 @pytest.mark.asyncio
 async def test_handle_llm_chat_records_route_and_fallback_meta(monkeypatch: pytest.MonkeyPatch) -> None:
     from packages.llm_chat import chat_message as mod
@@ -463,6 +513,24 @@ async def test_handle_llm_chat_records_route_and_fallback_meta(monkeypatch: pyte
         "build_llm_chat_corpus_ending_hint",
         AsyncMock(return_value="\n【语料收尾参考】当前话题可参考本群常接的短句：行啊、那确实。"),
     )
+    monkeypatch.setattr(
+        mod,
+        "classify_behavior_scene",
+        lambda **_kwargs: BehaviorScene.PROVOCATION,
+    )
+    monkeypatch.setattr(
+        mod,
+        "list_behavior_patterns",
+        lambda: [
+            BehaviorPattern(
+                pattern_id="p1",
+                scene=BehaviorScene.PROVOCATION,
+                action=BehaviorAction.LIGHT_TEASE_AND_CLOSE,
+                scope_group_id=20002,
+                success_score=3,
+            )
+        ],
+    )
     monkeypatch.setattr(mod, "GroupMessageEvent", SimpleNamespace)
     monkeypatch.setattr(mod, "evaluate_llm_reply_gate", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(mod, "check_llm_chat_gate", AsyncMock(return_value=None))
@@ -512,8 +580,14 @@ async def test_handle_llm_chat_records_route_and_fallback_meta(monkeypatch: pyte
     assert payload["llm_route"] == "corpus_select"
     assert payload["last_reply_text"] == "上一句"
     assert "最近几轮别再用这些开头" in payload["variation_hint"]
+    assert payload["behavior_scene"] == "provocation"
+    assert payload["behavior_pattern_ids"] == ["p1"]
+    assert payload["behavior_actions"] == ["light_tease_and_close"]
+    assert "本轮行为参考" in payload["behavior_hint"]
     submit_request = submit_mock.await_args.args[0]
     assert "【本轮表达去重】" in submit_request.system_prompt
+    assert "【群聊注意】" in submit_request.system_prompt
+    assert "【本轮行为参考】" in submit_request.system_prompt
     assert "【表达习惯参考】" in submit_request.system_prompt
     assert "【收尾变化参考】" in submit_request.system_prompt
     assert "【语料收尾参考】" in submit_request.system_prompt

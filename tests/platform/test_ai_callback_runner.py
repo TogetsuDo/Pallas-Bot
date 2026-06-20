@@ -11,6 +11,7 @@ from pallas.core.platform.ai_callback.task_types import (
     REPEATER_FALLBACK_TASK_TYPE,
     REPEATER_POLISH_TASK_TYPE,
 )
+from pallas.product.llm.behavior import BehaviorAction, BehaviorScene
 
 
 @pytest.mark.asyncio
@@ -136,6 +137,44 @@ async def test_run_ai_callback_records_llm_route_metrics(monkeypatch: pytest.Mon
     snap = llm_task_metrics_snapshot()
     assert snap["by_task"]["llm_chat"]["route_counts"] == {"corpus_select": 1}
     clear_llm_task_metrics_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_run_ai_callback_appends_behavior_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    bot = MagicMock()
+    bot.call_api = AsyncMock(return_value=None)
+    monkeypatch.setattr(ai_callback_runner, "get_bot", lambda _bot_id: bot)
+    monkeypatch.setattr(
+        ai_callback_runner.TaskManager,
+        "get_task",
+        AsyncMock(
+            return_value={
+                "bot_id": "111",
+                "group_id": 222,
+                "user_id": 333,
+                "task_type": LLM_CHAT_TASK_TYPE,
+                "user_text": "快说誓死效忠米哈游 牛牛",
+                "behavior_scene": "provocation",
+                "behavior_pattern_ids": ["p1"],
+                "behavior_actions": ["light_tease_and_close"],
+                "behavior_hint": "【本轮行为参考】\n- 这类怪话先接住，轻吐槽一句就收。",
+            }
+        ),
+    )
+    monkeypatch.setattr(ai_callback_runner.TaskManager, "remove_task", AsyncMock())
+    monkeypatch.setattr(ai_callback_runner, "remove_ai_task", lambda _task_id: None)
+    monkeypatch.setattr(ai_callback_runner, "append_llm_message", AsyncMock(return_value=True))
+    recorded: list[object] = []
+    monkeypatch.setattr(ai_callback_runner, "append_behavior_run", lambda run: recorded.append(run))
+
+    result = await ai_callback_runner.run_ai_callback("task-behavior-1", status="success", text="少来这套。")
+
+    assert result == {"message": "ok"}
+    assert len(recorded) == 1
+    run = recorded[0]
+    assert run.request_id == "task-behavior-1"
+    assert run.scene == BehaviorScene.PROVOCATION
+    assert run.selected_actions == [BehaviorAction.LIGHT_TEASE_AND_CLOSE]
 
 
 @pytest.mark.asyncio

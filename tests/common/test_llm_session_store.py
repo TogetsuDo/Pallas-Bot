@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+from pallas.product.llm.behavior import BehaviorAction, BehaviorOutcome, BehaviorRun, BehaviorScene
+from pallas.product.llm.behavior_store import append_behavior_run
 from pallas.product.llm.config import LlmConfig, clear_llm_config_cache
 from pallas.product.llm.session_store import (
     append_llm_message,
@@ -10,8 +12,8 @@ from pallas.product.llm.session_store import (
     clear_user_llm_messages,
     get_llm_history_session_detail,
     is_llm_session_store_available,
-    list_llm_history_sessions,
     list_group_ambient_messages,
+    list_llm_history_sessions,
     list_user_llm_messages,
     sanitize_stored_content,
     user_ttl_seconds,
@@ -143,3 +145,37 @@ async def test_list_llm_history_sessions_and_detail(pg_engine, monkeypatch) -> N
     assert detail is not None
     assert detail.session.user_id == 200
     assert [turn.content for turn in detail.turns] == ["u200-1", "a200-1"]
+
+
+@pytest.mark.asyncio
+async def test_llm_history_detail_includes_behavior_runs(pg_engine, monkeypatch, tmp_path) -> None:
+    clear_llm_config_cache()
+    monkeypatch.setenv("PALLAS_DATA_DIR", str(tmp_path))
+    cfg = LlmConfig(
+        llm_session_enabled=True,
+        llm_session_user_window=20,
+        llm_session_group_window=20,
+        llm_session_user_ttl_sec=0,
+    )
+    monkeypatch.setattr("pallas.product.llm.session_store.get_llm_config", lambda: cfg)
+    monkeypatch.setattr("pallas.product.llm.session_store.is_postgresql_backend", lambda: True)
+
+    await append_llm_message(10, 100, 200, "user", "u200-1")
+    await append_llm_message(10, 100, 200, "assistant", "a200-1")
+    append_behavior_run(
+        BehaviorRun(
+            request_id="req-1",
+            bot_id=10,
+            group_id=100,
+            user_id=200,
+            scene=BehaviorScene.PROVOCATION,
+            selected_pattern_ids=["p1"],
+            selected_actions=[BehaviorAction.LIGHT_TEASE_AND_CLOSE],
+            final_outcome=BehaviorOutcome.NEUTRAL,
+        )
+    )
+
+    detail = await get_llm_history_session_detail(bot_id=10, group_id=100, user_id=200, limit=10)
+    assert detail is not None
+    assert detail.behavior_runs[0]["request_id"] == "req-1"
+    assert detail.behavior_runs[0]["selected_actions"] == ["light_tease_and_close"]

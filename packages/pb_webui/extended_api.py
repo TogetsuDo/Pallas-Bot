@@ -5427,6 +5427,28 @@ def register_extended_api(
             raise HTTPException(status_code=404, detail="未找到该 AI 会话")
         return JSONResponse({"ok": True, "data": data.model_dump() if hasattr(data, "model_dump") else data})
 
+    @router.post(f"{x}/common-config/llm/history/behavior/annotate", include_in_schema=True)
+    async def _llm_history_behavior_annotate(body: dict[str, Any]) -> JSONResponse:
+        from pallas.product.llm.session_store import update_llm_behavior_annotation
+
+        request_id = str(body.get("request_id") or "").strip()
+        if not request_id:
+            raise HTTPException(status_code=400, detail="缺少 request_id")
+        try:
+            data = await update_llm_behavior_annotation(
+                request_id=request_id,
+                labels=[str(item).strip() for item in list(body.get("labels") or []) if str(item).strip()],
+                final_outcome=str(body.get("final_outcome") or "").strip() or None,
+                disabled=body.get("disabled"),
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        if data is None:
+            raise HTTPException(status_code=404, detail="未找到该 behavior 记录")
+        return JSONResponse({"ok": True, "data": data.model_dump() if hasattr(data, "model_dump") else data})
+
     @router.get(f"{x}/common-config/llm/persona-observe", include_in_schema=True)
     async def _llm_persona_observe_get(
         group_id: int | None = Query(default=None, ge=1, description="群号；省略则仅展示 bot 基线"),

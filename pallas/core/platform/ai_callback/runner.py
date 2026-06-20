@@ -28,6 +28,8 @@ from pallas.core.platform.ai_callback.task_types import (
     SING_TASK_TYPES,
 )
 from pallas.core.platform.shard.coord.ai_task_registry import get_ai_task_record, remove_ai_task
+from pallas.product.llm.behavior import BehaviorAction, BehaviorRun, BehaviorScene
+from pallas.product.llm.behavior_store import append_behavior_run
 from pallas.product.llm.session_store import append_llm_message, compact_user_llm_history_with_summary
 from pallas.product.llm.task_metrics import record_bot_llm_route, record_bot_llm_task
 
@@ -139,7 +141,11 @@ async def run_ai_callback(
     except Exception as e:
         logger.warning("AI callback get_bot failed task={} bot_id={}: {}", task_id, bot_id_str, e)
     logger.info(
-        "AI callback resolved task={} status={} task_type={} bot_id={} group_id={} has_text={} has_file={} song_id={} chunk_index={} key={} history_summary={} history_keep_messages={}",
+        (
+            "AI callback resolved task={} status={} task_type={} bot_id={} group_id={} "
+            "has_text={} has_file={} song_id={} chunk_index={} key={} history_summary={} "
+            "history_keep_messages={}"
+        ),
         task_id,
         status,
         str(task.get("task_type") or "").strip(),
@@ -229,11 +235,34 @@ async def run_ai_callback(
                 if user_text:
                     await append_llm_message(int(bot_id), scope_group, speaker_id, "user", user_text)
                 await append_llm_message(int(bot_id), scope_group, speaker_id, "assistant", reply_text)
+        behavior_scene = str(task.get("behavior_scene") or "").strip()
+        if task_type == LLM_CHAT_TASK_TYPE and behavior_scene:
+            append_behavior_run(
+                BehaviorRun(
+                    request_id=task_id,
+                    bot_id=int(bot_id) if bot_id is not None else None,
+                    group_id=int(group_id) if group_id is not None else None,
+                    user_id=int(task.get("user_id") or 0) or None,
+                    scene=BehaviorScene(behavior_scene),
+                    selected_pattern_ids=[
+                        str(item) for item in list(task.get("behavior_pattern_ids") or []) if str(item).strip()
+                    ],
+                    selected_actions=[
+                        BehaviorAction(str(item))
+                        for item in list(task.get("behavior_actions") or [])
+                        if str(item).strip()
+                    ],
+                    behavior_hint_text=str(task.get("behavior_hint") or "").strip(),
+                )
+            )
         track_llm_callback(task, "callback_ok")
         if file and group_id and bot is not None:
             file_bytes = await file.read()
             logger.info(
-                "AI callback read file task={} bot_id={} group_id={} task_type={} bytes={} song_id={} chunk_index={} key={}",
+                (
+                    "AI callback read file task={} bot_id={} group_id={} task_type={} "
+                    "bytes={} song_id={} chunk_index={} key={}"
+                ),
                 task_id,
                 getattr(bot, "self_id", bot_id_str or "<missing>"),
                 group_id,
@@ -267,7 +296,10 @@ async def run_ai_callback(
                     invoke_media_task_success(task, image_bytes=file_bytes, group_id=int(group_id))
             elif task_type in SING_TASK_TYPES or (song_id is not None and chunk_index is not None):
                 logger.info(
-                    "AI callback delivering voice task={} bot_id={} group_id={} task_type={} bytes={} song_id={} chunk_index={} key={}",
+                    (
+                        "AI callback delivering voice task={} bot_id={} group_id={} task_type={} "
+                        "bytes={} song_id={} chunk_index={} key={}"
+                    ),
                     task_id,
                     getattr(bot, "self_id", bot_id_str or "<missing>"),
                     group_id,

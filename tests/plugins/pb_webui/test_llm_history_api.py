@@ -75,7 +75,17 @@ def test_llm_history_session_detail_get(monkeypatch) -> None:
             },
             "turns": [
                 LlmChatTurn(role="user", content="你好", user_id=30003, created_at=1718700000).model_dump(),
-                LlmChatTurn(role="assistant", content="你好，我在。", user_id=30003, created_at=1718700002).model_dump(),
+                LlmChatTurn(
+                    role="assistant", content="你好，我在。", user_id=30003, created_at=1718700002
+                ).model_dump(),
+            ],
+            "behavior_runs": [
+                {
+                    "request_id": "req-1",
+                    "scene": "provocation",
+                    "selected_actions": ["light_tease_and_close"],
+                    "manual_labels": ["像人"],
+                }
             ],
         }
 
@@ -95,3 +105,40 @@ def test_llm_history_session_detail_get(monkeypatch) -> None:
     assert payload["ok"] is True
     assert payload["data"]["session"]["user_id"] == 30003
     assert payload["data"]["turns"][0]["content"] == "你好"
+    assert payload["data"]["behavior_runs"][0]["request_id"] == "req-1"
+
+
+def test_llm_history_behavior_annotation_post(monkeypatch) -> None:
+    async def fake_update(*, request_id, labels, final_outcome=None, disabled=None):
+        assert request_id == "req-1"
+        assert labels == ["像人", "作为参考保留"]
+        assert final_outcome == "engaged"
+        assert disabled is False
+        return {
+            "request_id": "req-1",
+            "manual_labels": labels,
+            "final_outcome": "engaged",
+            "disabled": False,
+        }
+
+    monkeypatch.setattr(
+        "pallas.product.llm.session_store.update_llm_behavior_annotation",
+        fake_update,
+    )
+
+    client = _build_client(monkeypatch)
+    response = client.post(
+        "/pallas/api/common-config/llm/history/behavior/annotate",
+        json={
+            "request_id": "req-1",
+            "labels": ["像人", "作为参考保留"],
+            "final_outcome": "engaged",
+            "disabled": False,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["data"]["request_id"] == "req-1"
+    assert payload["data"]["manual_labels"] == ["像人", "作为参考保留"]

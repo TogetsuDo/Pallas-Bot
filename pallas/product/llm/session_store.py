@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import time
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
 
 from pallas.core.foundation.db.repository_pg import LlmChatMessageRow, get_session, is_pg_initialized
 from pallas.core.foundation.db.runtime import is_postgresql_backend
+from pallas.product.llm.behavior_store import (
+    behavior_run_public_dict,
+    list_behavior_runs_for_session,
+    update_behavior_run_annotation,
+)
 from pallas.product.llm.config import LlmConfig, get_llm_config
 from pallas.product.llm.message_guard import format_user_turn
 from pallas.product.llm.models import ChatCompletionMessage
@@ -45,6 +50,7 @@ class LlmHistorySessionSummary(BaseModel):
 class LlmHistorySessionDetail(BaseModel):
     session: LlmHistorySessionSummary
     turns: list[LlmChatTurn]
+    behavior_runs: list[dict[str, Any]] = Field(default_factory=list)
 
 
 def normalize_group_scope(group_id: int | None) -> int:
@@ -428,7 +434,31 @@ async def get_llm_history_session_detail(
     )
     if not summary_rows:
         return None
-    return LlmHistorySessionDetail(session=summary_rows[0], turns=turns)
+    behavior_runs = [
+        behavior_run_public_dict(item)
+        for item in list_behavior_runs_for_session(
+            bot_id=int(bot_id),
+            group_id=normalize_group_scope(group_id),
+            user_id=int(user_id),
+            limit=50,
+        )
+    ]
+    return LlmHistorySessionDetail(session=summary_rows[0], turns=turns, behavior_runs=behavior_runs)
+
+
+async def update_llm_behavior_annotation(
+    *,
+    request_id: str,
+    labels: list[str],
+    final_outcome: str | None = None,
+    disabled: bool | None = None,
+):
+    return update_behavior_run_annotation(
+        request_id,
+        labels=labels,
+        final_outcome=final_outcome,
+        disabled=disabled,
+    )
 
 
 def turn_to_completion_message(turn: LlmChatTurn, *, max_len: int) -> ChatCompletionMessage | None:

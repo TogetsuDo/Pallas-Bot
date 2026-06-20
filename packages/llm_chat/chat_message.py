@@ -12,6 +12,13 @@ from pallas.core.foundation.db import make_message_repository
 from pallas.core.perm import group_message_permission_for_command
 from pallas.core.platform.ai_callback.task_types import LLM_CHAT_TASK_TYPE
 from pallas.product.llm import ChatSubmitRequest, get_llm_config, is_llm_chat_service_enabled, submit_chat_task
+from pallas.product.llm.behavior import (
+    build_behavior_hint_text,
+    classify_behavior_scene,
+    default_group_chat_behavior_hint,
+    select_behavior_patterns,
+)
+from pallas.product.llm.behavior_store import list_behavior_patterns
 from pallas.product.llm.chat_queue import merge_queued_chat, stash_chat_during_cooldown
 from pallas.product.llm.governance import check_llm_chat_gate, refresh_llm_chat_cooldown
 from pallas.product.llm.memory import (
@@ -325,6 +332,8 @@ async def handle_llm_chat(bot: Bot, event: Event):
     session_id = event.get_session_id()
     msg = str(event.get_message()).strip()
     if not msg:
+        if not plain and not getattr(event, "reply", None):
+            return
         await llm_chat_msg.send(LLM_CHAT_VAGUE_REPLY)
         return
 
@@ -464,6 +473,28 @@ async def handle_llm_chat(bot: Bot, event: Event):
     variation_hint = build_recent_reply_variation_hint(recent_turns)
     if variation_hint:
         system_prompt = f"{system_prompt.rstrip()}\n\n{variation_hint}"
+    behavior_scene = classify_behavior_scene(
+        user_text=plain or msg,
+        recent_texts=[str(getattr(turn, "content", "") or "").strip() for turn in recent_turns[-6:]],
+        has_multi_party_overlap=isinstance(event, GroupMessageEvent)
+        and len({
+            int(getattr(turn, "user_id", 0) or 0) for turn in recent_turns[-6:] if int(getattr(turn, "user_id", 0) or 0)
+        })
+        >= 2,
+    )
+    behavior_patterns = select_behavior_patterns(
+        scene=behavior_scene,
+        group_id=group_id,
+        patterns=list_behavior_patterns(),
+        limit=2,
+    )
+    behavior_actions = [item.action for item in behavior_patterns]
+    group_behavior_hint = default_group_chat_behavior_hint()
+    if group_behavior_hint:
+        system_prompt = f"{system_prompt.rstrip()}\n{group_behavior_hint}"
+    behavior_hint = build_behavior_hint_text(scene=behavior_scene, actions=behavior_actions)
+    if behavior_hint:
+        system_prompt = f"{system_prompt.rstrip()}\n{behavior_hint}"
     ending_hint = build_llm_chat_ending_hint(recent_turns)
     if ending_hint:
         system_prompt = f"{system_prompt.rstrip()}{ending_hint}"
@@ -489,6 +520,10 @@ async def handle_llm_chat(bot: Bot, event: Event):
             "last_reply_text": last_reply_text,
             "variation_hint": variation_hint,
             "variation_applied": bool(variation_hint),
+            "behavior_scene": str(behavior_scene),
+            "behavior_pattern_ids": [item.pattern_id for item in behavior_patterns],
+            "behavior_actions": [str(item.action) for item in behavior_patterns],
+            "behavior_hint": behavior_hint,
             "start_time": time.time(),
         },
     )
