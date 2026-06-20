@@ -315,6 +315,48 @@ async def fetch_provider_models(
     return payload
 
 
+async def fetch_local_routing_config(
+    *,
+    cfg: LlmConfig | None = None,
+    timeout_sec: float = 15.0,
+) -> dict[str, Any]:
+    c = cfg or get_llm_config()
+    response = await HTTPXClient.get(f"{ai_llm_api_base(c)}/local-routing", timeout=timeout_sec)
+    if response is None:
+        raise RuntimeError("读取本地模型路由配置失败")
+    if response.status_code != 200:
+        detail = (response.text or "")[:300]
+        raise RuntimeError(f"读取本地模型路由配置失败 HTTP {response.status_code}: {detail}")
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise RuntimeError("本地模型路由配置响应无效")
+    return payload
+
+
+async def save_local_routing_config(
+    document: dict[str, Any],
+    *,
+    cfg: LlmConfig | None = None,
+    timeout_sec: float = 30.0,
+) -> dict[str, Any]:
+    c = cfg or get_llm_config()
+    response = await HTTPXClient.put(
+        f"{ai_llm_api_base(c)}/local-routing",
+        json=document,
+        timeout=timeout_sec,
+    )
+    if response is None:
+        raise RuntimeError("保存本地模型路由配置失败")
+    if response.status_code != 200:
+        detail = (response.text or "")[:300]
+        raise RuntimeError(f"保存本地模型路由配置失败 HTTP {response.status_code}: {detail}")
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise RuntimeError("保存本地模型路由配置响应无效")
+    logger.info("llm local routing config saved: env={}", payload.get("env_file"))
+    return payload
+
+
 async def test_provider(
     provider_id: str,
     *,

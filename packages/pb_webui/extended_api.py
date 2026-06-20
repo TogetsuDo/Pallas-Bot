@@ -3920,6 +3920,36 @@ class _LlmProvidersDocumentBody(BaseModel):
     routing: _LlmProvidersRoutingBody = Field(default_factory=_LlmProvidersRoutingBody)
 
 
+class _LlmLocalRoutingModelsBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    simple: str = ""
+    medium: str = ""
+    complex: str = ""
+    vision: str = ""
+
+
+class _LlmLocalRoutingTaskModelsBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    llm_chat: str = ""
+    drunk: str = ""
+    repeater_fallback: str = ""
+    repeater_polish: str = ""
+    repeater_polish_lite: str = ""
+    repeater_select: str = ""
+
+
+class _LlmLocalRoutingConfigBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    llm_model: str = Field(min_length=1, max_length=200)
+    local_multi_model_enabled: bool = False
+    moe_models: _LlmLocalRoutingModelsBody = Field(default_factory=_LlmLocalRoutingModelsBody)
+    task_models: _LlmLocalRoutingTaskModelsBody = Field(default_factory=_LlmLocalRoutingTaskModelsBody)
+    env_file: str = ""
+
+
 class _RequestActionsBatchBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -5322,6 +5352,31 @@ def register_extended_api(
 
         try:
             data = await fetch_providers_config()
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": data})
+
+    @router.get(f"{x}/common-config/llm/local-routing", include_in_schema=True)
+    async def _llm_local_routing_get() -> JSONResponse:
+        from pallas.product.llm.model_admin import fetch_local_routing_config
+
+        try:
+            data = await fetch_local_routing_config()
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": data})
+
+    @router.put(f"{x}/common-config/llm/local-routing", include_in_schema=True)
+    async def _llm_local_routing_put(
+        body: _LlmLocalRoutingConfigBody,
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        from pallas.product.llm.model_admin import save_local_routing_config
+
+        try:
+            data = await save_local_routing_config(body.model_dump())
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": data})
