@@ -27,17 +27,19 @@ def stub_fanout_plugins(monkeypatch: pytest.MonkeyPatch, *extras: dict) -> None:
     clear_ingress_policy_cache()
 
 
-def test_unified_drink_bypasses_once_claim(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_unified_drink_commands_do_not_bypass_once_claim(monkeypatch: pytest.MonkeyPatch) -> None:
     stub_fanout_plugins(
         monkeypatch,
         {
             "ingress_fanout": {
                 "scope": "always",
-                "plaintexts": ["牛牛喝酒", "牛牛醒一醒"],
+                "plaintexts": ["牛牛醒一醒"],
             }
         },
     )
-    assert ingress_fanout_bypasses_claim("牛牛喝酒")
+    assert not ingress_fanout_bypasses_claim("牛牛喝酒")
+    assert not ingress_fanout_bypasses_claim("牛牛干杯")
+    assert not ingress_fanout_bypasses_claim("牛牛继续喝")
     assert ingress_fanout_bypasses_claim("牛牛醒一醒")
 
 

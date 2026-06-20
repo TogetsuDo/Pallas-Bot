@@ -26,9 +26,6 @@ __plugin_meta__ = PluginMetadata(
         "ingress_fanout": {
             "scope": "always",
             "plaintexts": [
-                "牛牛喝酒",
-                "牛牛干杯",
-                "牛牛继续喝",
                 "牛牛醒一醒",
                 "牛牛别喝了",
             ],
