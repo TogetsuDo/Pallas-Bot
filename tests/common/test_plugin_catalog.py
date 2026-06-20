@@ -328,7 +328,7 @@ def test_catalog_row_reuses_official_extension_visuals(monkeypatch) -> None:
     row = next(r for r in rows if r["name"] == "draw")
 
     assert row["avatar"] in (None, "")
-    assert row["icon"] == "/pallas/official-extensions/pallas-plugin-draw.svg"
+    assert row["icon"] == "https://raw.githubusercontent.com/TogetsuDo/pallas-plugin-draw/main/assets/brand-avatar.png"
     assert row["cover"] == "https://raw.githubusercontent.com/TogetsuDo/pallas-plugin-draw/main/assets/brand-avatar.png"
 
 
@@ -423,7 +423,7 @@ def test_catalog_row_core_plugin_uses_brand_avatar(monkeypatch) -> None:
     rows = build_plugin_catalog_rows()
     row = next(r for r in rows if r["name"] == "help")
 
-    assert row["avatar"]
-    assert "brand-avatar" in row["avatar"]
-    assert row["icon"] is None
+    assert row["avatar"] in (None, "")
+    assert row["icon"]
+    assert row["icon"].endswith("/pallas/assets/brand-avatar.png")
     assert row["cover"] is None

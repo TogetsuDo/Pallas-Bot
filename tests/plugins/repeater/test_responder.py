@@ -1,5 +1,6 @@
 import asyncio
 from collections import defaultdict, deque
+from operator import itemgetter
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, patch
@@ -18,6 +19,10 @@ class _Config:
 
     async def drunkenness(self) -> int:
         return self._value
+
+
+def _pick_weighted_max(seq, weights):
+    return [seq[weights.index(max(weights))]]
 
 
 @pytest.mark.asyncio
@@ -646,6 +651,341 @@ def test_collect_ghost_candidate_pool_prefers_short_odd_texts():
 
     assert pool[0] == "寄"
     assert "有点那个" in pool
+
+
+def test_feedback_bias_multiplier_defaults_to_identity():
+    from packages.repeater.responder import Responder
+
+    mult = Responder._feedback_bias_multiplier(
+        "少来。",
+        feedback_snapshot={"count": 0, "top_replies": [], "scenes": []},
+    )
+
+    assert mult == 1.0
+
+
+def test_feedback_bias_multiplier_boosts_matching_short_reply():
+    from packages.repeater.responder import Responder
+
+    mult = Responder._feedback_bias_multiplier(
+        "少来。",
+        feedback_snapshot={"count": 4, "top_replies": ["少来。", "行吧"], "scenes": ["banter"]},
+    )
+
+    assert mult > 1.0
+
+
+def test_feedback_bias_multiplier_ignores_sparse_feedback():
+    from packages.repeater.responder import Responder
+
+    mult = Responder._feedback_bias_multiplier(
+        "少来。",
+        feedback_snapshot={"count": 1, "top_replies": ["少来。"], "scenes": ["banter"]},
+    )
+
+    assert mult == 1.0
+
+
+@pytest.mark.asyncio
+async def test_context_find_applies_llm_feedback_bias_only_when_enabled():
+    from packages.repeater.responder import Responder
+    from pallas.core.foundation.db import Answer, Context
+
+    group_id = 951
+    bot_id = 952
+    chat_data = SimpleNamespace(
+        group_id=group_id,
+        raw_message="你又来这套",
+        plain_text="你又来这套",
+        keywords="来这套",
+        bot_id=bot_id,
+        keywords_len=2,
+        to_me=False,
+        is_image=False,
+        is_plain_text=True,
+    )
+    config = _Config(0)
+    low_answer = Answer(keywords="ans_low", group_id=group_id, count=3, time=1, messages=["行吧"])
+    boosted_answer = Answer(keywords="ans_bias", group_id=group_id, count=3, time=1, messages=["少来。"])
+    context = Context.model_construct(
+        keywords="来这套",
+        time=1,
+        trigger_count=1,
+        answers=[low_answer, boosted_answer],
+        ban=[],
+        clear_time=0,
+    )
+    reply_dict = defaultdict(lambda: defaultdict(list))
+    message_dict = defaultdict(list)
+    message_dict[group_id] = [SimpleNamespace(raw_message="你又来这套", user_id=10001)]
+    recent_topics = defaultdict(lambda: deque(maxlen=16))
+    recent_topics[group_id] = deque(maxlen=16)
+    persona = SimpleNamespace(
+        reply_bias=1.0,
+        speak_bias=1.0,
+        chaos_bias=0.0,
+        warmth=0.0,
+        assertiveness=0.0,
+        bluntness=0.0,
+        harsh_msg_ratio=0.0,
+        polite_msg_ratio=0.0,
+        tone="neutral",
+        length_pref="any",
+    )
+
+    async def run_once(*, bias_enabled: bool):
+        with (
+            patch(
+                "packages.repeater.responder.context_repo.find_by_keywords_for_reply",
+                new_callable=AsyncMock,
+                return_value=context,
+                create=True,
+            ),
+            patch(
+                "packages.repeater.responder.BanManager.find_ban_keywords",
+                new_callable=AsyncMock,
+                return_value=set(),
+            ),
+            patch(
+                "pallas.product.persona.resolve_persona_for_message",
+                new_callable=AsyncMock,
+                return_value=persona,
+            ),
+            patch(
+                "pallas.product.persona.loader.load_affect_triggers",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch("packages.repeater.activity_gate.group_has_hosted_activity", return_value=False),
+            patch(
+                "packages.repeater.responder.get_llm_config",
+                return_value=SimpleNamespace(llm_repeater_bias_enabled=bias_enabled),
+            ),
+            patch(
+                "packages.repeater.responder.group_feedback_bias_snapshot",
+                return_value={"count": 5, "top_replies": ["少来。"], "scenes": ["banter"]},
+            ) as mock_feedback,
+            patch("packages.repeater.responder.random.choices", side_effect=_pick_weighted_max),
+            patch("packages.repeater.responder.random.choice", side_effect=itemgetter(0)),
+            patch("packages.repeater.responder.random.random", return_value=1.0),
+        ):
+            result = await Responder._context_find(
+                cast("Any", chat_data),
+                cast("Any", config),
+                reply_dict,
+                message_dict,
+                recent_topics,
+            )
+            return result, mock_feedback.call_count
+
+    try:
+        disabled_result, disabled_calls = await run_once(bias_enabled=False)
+        enabled_result, enabled_calls = await run_once(bias_enabled=True)
+
+        assert disabled_result == (["行吧"], "ans_low")
+        assert enabled_result == (["少来。"], "ans_bias")
+        assert disabled_calls == 0
+        assert enabled_calls == 1
+    finally:
+        reply_dict.clear()
+        message_dict.clear()
+        recent_topics.clear()
+
+
+@pytest.mark.asyncio
+async def test_context_find_feedback_snapshot_failure_preserves_baseline_behavior():
+    from packages.repeater.responder import Responder
+    from pallas.core.foundation.db import Answer, Context
+
+    group_id = 961
+    bot_id = 962
+    chat_data = SimpleNamespace(
+        group_id=group_id,
+        raw_message="你又来这套",
+        plain_text="你又来这套",
+        keywords="来这套",
+        bot_id=bot_id,
+        keywords_len=2,
+        to_me=False,
+        is_image=False,
+        is_plain_text=True,
+    )
+    config = _Config(0)
+    low_answer = Answer(keywords="ans_low", group_id=group_id, count=3, time=1, messages=["行吧"])
+    boosted_answer = Answer(keywords="ans_bias", group_id=group_id, count=3, time=1, messages=["少来。"])
+    context = Context.model_construct(
+        keywords="来这套",
+        time=1,
+        trigger_count=1,
+        answers=[low_answer, boosted_answer],
+        ban=[],
+        clear_time=0,
+    )
+    reply_dict = defaultdict(lambda: defaultdict(list))
+    message_dict = defaultdict(list)
+    message_dict[group_id] = [SimpleNamespace(raw_message="你又来这套", user_id=10001)]
+    recent_topics = defaultdict(lambda: deque(maxlen=16))
+    recent_topics[group_id] = deque(maxlen=16)
+    persona = SimpleNamespace(
+        reply_bias=1.0,
+        speak_bias=1.0,
+        chaos_bias=0.0,
+        warmth=0.0,
+        assertiveness=0.0,
+        bluntness=0.0,
+        harsh_msg_ratio=0.0,
+        polite_msg_ratio=0.0,
+        tone="neutral",
+        length_pref="any",
+    )
+
+    try:
+        with (
+            patch(
+                "packages.repeater.responder.context_repo.find_by_keywords_for_reply",
+                new_callable=AsyncMock,
+                return_value=context,
+                create=True,
+            ),
+            patch(
+                "packages.repeater.responder.BanManager.find_ban_keywords",
+                new_callable=AsyncMock,
+                return_value=set(),
+            ),
+            patch(
+                "pallas.product.persona.resolve_persona_for_message",
+                new_callable=AsyncMock,
+                return_value=persona,
+            ),
+            patch(
+                "pallas.product.persona.loader.load_affect_triggers",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch("packages.repeater.activity_gate.group_has_hosted_activity", return_value=False),
+            patch(
+                "packages.repeater.responder.get_llm_config",
+                return_value=SimpleNamespace(llm_repeater_bias_enabled=True),
+            ),
+            patch(
+                "packages.repeater.responder.group_feedback_bias_snapshot",
+                side_effect=RuntimeError("broken snapshot"),
+            ),
+            patch("packages.repeater.responder.random.choices", side_effect=_pick_weighted_max),
+            patch("packages.repeater.responder.random.choice", side_effect=itemgetter(0)),
+            patch("packages.repeater.responder.random.random", return_value=1.0),
+        ):
+            result = await Responder._context_find(
+                cast("Any", chat_data),
+                cast("Any", config),
+                reply_dict,
+                message_dict,
+                recent_topics,
+            )
+
+        assert result == (["行吧"], "ans_low")
+    finally:
+        reply_dict.clear()
+        message_dict.clear()
+        recent_topics.clear()
+
+
+@pytest.mark.asyncio
+async def test_context_find_sparse_feedback_does_not_bias_selection():
+    from packages.repeater.responder import Responder
+    from pallas.core.foundation.db import Answer, Context
+
+    group_id = 971
+    bot_id = 972
+    chat_data = SimpleNamespace(
+        group_id=group_id,
+        raw_message="你又来这套",
+        plain_text="你又来这套",
+        keywords="来这套",
+        bot_id=bot_id,
+        keywords_len=2,
+        to_me=False,
+        is_image=False,
+        is_plain_text=True,
+    )
+    config = _Config(0)
+    low_answer = Answer(keywords="ans_low", group_id=group_id, count=3, time=1, messages=["行吧"])
+    boosted_answer = Answer(keywords="ans_bias", group_id=group_id, count=3, time=1, messages=["少来。"])
+    context = Context.model_construct(
+        keywords="来这套",
+        time=1,
+        trigger_count=1,
+        answers=[low_answer, boosted_answer],
+        ban=[],
+        clear_time=0,
+    )
+    reply_dict = defaultdict(lambda: defaultdict(list))
+    message_dict = defaultdict(list)
+    message_dict[group_id] = [SimpleNamespace(raw_message="你又来这套", user_id=10001)]
+    recent_topics = defaultdict(lambda: deque(maxlen=16))
+    recent_topics[group_id] = deque(maxlen=16)
+    persona = SimpleNamespace(
+        reply_bias=1.0,
+        speak_bias=1.0,
+        chaos_bias=0.0,
+        warmth=0.0,
+        assertiveness=0.0,
+        bluntness=0.0,
+        harsh_msg_ratio=0.0,
+        polite_msg_ratio=0.0,
+        tone="neutral",
+        length_pref="any",
+    )
+
+    try:
+        with (
+            patch(
+                "packages.repeater.responder.context_repo.find_by_keywords_for_reply",
+                new_callable=AsyncMock,
+                return_value=context,
+                create=True,
+            ),
+            patch(
+                "packages.repeater.responder.BanManager.find_ban_keywords",
+                new_callable=AsyncMock,
+                return_value=set(),
+            ),
+            patch(
+                "pallas.product.persona.resolve_persona_for_message",
+                new_callable=AsyncMock,
+                return_value=persona,
+            ),
+            patch(
+                "pallas.product.persona.loader.load_affect_triggers",
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+            patch("packages.repeater.activity_gate.group_has_hosted_activity", return_value=False),
+            patch(
+                "packages.repeater.responder.get_llm_config",
+                return_value=SimpleNamespace(llm_repeater_bias_enabled=True),
+            ),
+            patch(
+                "packages.repeater.responder.group_feedback_bias_snapshot",
+                return_value={"count": 1, "top_replies": ["少来。"], "scenes": ["banter"]},
+            ),
+            patch("packages.repeater.responder.random.choices", side_effect=_pick_weighted_max),
+            patch("packages.repeater.responder.random.choice", side_effect=itemgetter(0)),
+            patch("packages.repeater.responder.random.random", return_value=1.0),
+        ):
+            result = await Responder._context_find(
+                cast("Any", chat_data),
+                cast("Any", config),
+                reply_dict,
+                message_dict,
+                recent_topics,
+            )
+
+        assert result == (["行吧"], "ans_low")
+    finally:
+        reply_dict.clear()
+        message_dict.clear()
+        recent_topics.clear()
 
 
 @pytest.mark.asyncio

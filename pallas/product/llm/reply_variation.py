@@ -19,6 +19,7 @@ _REPEATED_OPENERS = (
 
 _USER_WAIT_SUFFIXES = ("?", "？", "...", "…", "、")
 _USER_WAIT_TOKENS = ("等等", "等下", "先别", "我补一句", "还有", "然后")
+_STRUCTURE_MARKERS = ("先", "别", "可以", "不用", "慢慢", "一下", "这事", "你先")
 
 
 def should_wait_for_more(user_text: str) -> bool:
@@ -86,6 +87,26 @@ def build_recent_reply_variation_hint(turns: list[LlmChatTurn]) -> str:
     recent_lengths = [len(text) for text in assistant_texts[-3:]]
     if recent_lengths and min(recent_lengths) >= 28:
         hints.append("最近解释偏满，这轮优先短一点，像顺手接一句")
+    elif len(assistant_texts) >= 3:
+        structural_texts = assistant_texts[-3:]
+        if min(len(text) for text in structural_texts) >= 14:
+            shared_markers = sum(
+                1
+                for marker in _STRUCTURE_MARKERS
+                if sum(1 for text in structural_texts if marker in text) >= 2
+            )
+            if shared_markers >= 3:
+                hints.append("最近解释偏满，这轮优先短一点，像顺手接一句")
+
+    if len(assistant_texts) >= 3:
+        structural_texts = assistant_texts[-3:]
+        shared_markers = [
+            marker
+            for marker in _STRUCTURE_MARKERS
+            if sum(1 for text in structural_texts if marker in text) >= 2
+        ]
+        if len(shared_markers) >= 4:
+            hints.append("最近句式有点一个模子，少用“先判断一下、再补解释”的答法")
 
     endings = [text[-1] for text in assistant_texts[-3:] if text]
     if len(endings) >= 3 and len(set(endings)) == 1:

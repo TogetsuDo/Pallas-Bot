@@ -38,8 +38,8 @@ from pallas.core.shared.service_probe import (
 from pallas.product.service_gateways.registry import ServiceProbeProvider, register_service_probe_provider
 
 if TYPE_CHECKING:
-    from packages.maa.config import Config as MaaConfig
-    from packages.sing.config import Config as SingConfig
+    from typing import Any as MaaConfig
+    from typing import Any as SingConfig
 
 MAA_CATEGORY = "MAA远控"
 SING_CATEGORY = "唱歌"
@@ -306,9 +306,10 @@ async def probe_maa_endpoints(
     timeout_sec: float = 15.0,
     draft_values: dict[str, Any] | None = None,
 ) -> list[ServiceProbeResult]:
-    from packages.maa.endpoints import resolve_maa_probe_http_endpoints
-
     from pallas.core.platform.shard import context as shard_ctx
+
+    maa_endpoints = import_plugin_submodule("maa", "endpoints")
+    resolve_maa_probe_http_endpoints = maa_endpoints.resolve_maa_probe_http_endpoints
 
     if cfg is None and draft_values is not None:
         from pallas.product.service_gateways.draft import maa_cfg_from_draft
@@ -367,7 +368,10 @@ async def probe_sing_server(
     timeout_sec: float = 15.0,
     draft_values: dict[str, Any] | None = None,
 ) -> list[ServiceProbeResult]:
-    from packages.sing.config import get_sing_config, sing_runtime_mode, sing_server_url
+    sing_config = import_plugin_submodule("sing", "config")
+    get_sing_config = sing_config.get_sing_config
+    sing_runtime_mode = sing_config.sing_runtime_mode
+    sing_server_url = sing_config.sing_server_url
 
     if cfg is None and draft_values is not None:
         from pallas.product.service_gateways.draft import sing_cfg_from_draft

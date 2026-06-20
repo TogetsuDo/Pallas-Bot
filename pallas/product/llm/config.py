@@ -197,6 +197,9 @@ class LlmConfig(BaseModel):
     llm_repeater_group_cooldown_sec: int = Field(default=60, ge=0, le=3600)
     llm_repeater_max_inflight: int = Field(default=1, ge=1, le=32)
     llm_repeater_global_rpm: int = Field(default=10, ge=1, le=600)
+    llm_repeater_feedback_enabled: bool = Field(default=False)
+    llm_repeater_bias_enabled: bool = Field(default=False)
+    llm_repeater_writeback_enabled: bool = Field(default=False)
     llm_reply_gate_enabled: bool = Field(default=True)
     llm_reply_gate_min_chars: int = Field(default=1, ge=0, le=32)
     llm_chat_queue_merge: bool = Field(default=True)
@@ -279,6 +282,9 @@ def get_llm_config() -> LlmConfig:
             llm_repeater_group_cooldown_sec=_env_int("LLM_REPEATER_GROUP_COOLDOWN_SEC", 60),
             llm_repeater_max_inflight=_env_int("LLM_REPEATER_MAX_INFLIGHT", 1),
             llm_repeater_global_rpm=_env_int("LLM_REPEATER_GLOBAL_RPM", 10),
+            llm_repeater_feedback_enabled=_env_bool("LLM_REPEATER_FEEDBACK_ENABLED", False),
+            llm_repeater_bias_enabled=_env_bool("LLM_REPEATER_BIAS_ENABLED", False),
+            llm_repeater_writeback_enabled=_env_bool("LLM_REPEATER_WRITEBACK_ENABLED", False),
             llm_reply_gate_enabled=_env_bool("LLM_REPLY_GATE_ENABLED", True),
             llm_reply_gate_min_chars=_env_int("LLM_REPLY_GATE_MIN_CHARS", 1),
             llm_chat_queue_merge=_env_bool("LLM_CHAT_QUEUE_MERGE", True),

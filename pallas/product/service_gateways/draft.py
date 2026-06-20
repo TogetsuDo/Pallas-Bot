@@ -21,18 +21,22 @@ def draw_draft_from_values(values: dict[str, Any]) -> dict[str, Any]:
 
 
 def maa_cfg_from_draft(values: dict[str, Any]):
-    from packages.maa.config import Config as MaaConfig
-    from packages.maa.config import get_maa_config
+    from pallas.core.platform.plugin_runtime.resolve import import_plugin_submodule
 
+    maa_config = import_plugin_submodule("maa", "config")
+    maa_config_model = maa_config.Config
+    get_maa_config = maa_config.get_maa_config
     base = get_maa_config().model_dump(mode="python")
     base.update(draft_subset(values, MAA_GATEWAY_FIELDS))
-    return MaaConfig.model_validate(base)
+    return maa_config_model.model_validate(base)
 
 
 def sing_cfg_from_draft(values: dict[str, Any]):
-    from packages.sing.config import Config as SingConfig
-    from packages.sing.config import get_sing_config
+    from pallas.core.platform.plugin_runtime.resolve import import_plugin_submodule
 
+    sing_config = import_plugin_submodule("sing", "config")
+    sing_config_model = sing_config.Config
+    get_sing_config = sing_config.get_sing_config
     base = get_sing_config().model_dump(mode="python")
     base.update(draft_subset(values, SING_GATEWAY_FIELDS))
-    return SingConfig.model_validate(base)
+    return sing_config_model.model_validate(base)

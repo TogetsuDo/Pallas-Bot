@@ -1,24 +1,25 @@
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pallas.console.webui import plugin_store_assets as mod
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def test_apply_asset_snapshot_to_official_rows_prefers_cached_urls(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(mod, "plugin_data_dir", lambda _name, create=True: tmp_path)
-    mod.save_snapshot(
-        {
-            "official": {
-                "pallas-plugin-draw": {
-                    "assets": {
-                        "icon": {"public_url": "/pallas/store-assets/icon/draw.png"},
-                        "cover": {"public_url": "/pallas/store-assets/cover/draw.webp"},
-                    }
+    mod.save_snapshot({
+        "official": {
+            "pallas-plugin-draw": {
+                "assets": {
+                    "icon": {"public_url": "/pallas/store-assets/icon/draw.png"},
+                    "cover": {"public_url": "/pallas/store-assets/cover/draw.webp"},
                 }
             }
         }
-    )
+    })
     rows = [
         {
             "package": "pallas-plugin-draw",
@@ -36,25 +37,46 @@ def test_apply_asset_snapshot_to_official_rows_prefers_cached_urls(monkeypatch, 
 
 def test_get_cached_readme_markdown_reads_saved_snapshot(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(mod, "plugin_data_dir", lambda _name, create=True: tmp_path)
-    readme_path = tmp_path / "public" / "store-assets" / "readme" / "draw.md"
+    readme_path = tmp_path / "store-assets" / "readme" / "draw.md"
     readme_path.parent.mkdir(parents=True, exist_ok=True)
     readme_path.write_text("# Draw\n", encoding="utf-8")
-    mod.save_snapshot(
-        {
-            "official": {
-                "pallas-plugin-draw": {
-                    "readme": {
-                        "public_url": "/pallas/store-assets/readme/draw.md",
-                        "relative_path": "public/store-assets/readme/draw.md",
-                    }
+    mod.save_snapshot({
+        "official": {
+            "pallas-plugin-draw": {
+                "readme": {
+                    "public_url": "/pallas/store-assets/readme/draw.md",
+                    "relative_path": "readme/draw.md",
                 }
             }
         }
-    )
+    })
 
     markdown = mod.get_cached_readme_markdown("official", "pallas-plugin-draw")
 
     assert markdown == "# Draw\n"
+
+
+def test_snapshot_has_assets_for_kind_detects_ready_bucket(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(mod, "plugin_data_dir", lambda _name, create=True: tmp_path)
+    mod.save_snapshot({
+        "official": {
+            "pallas-plugin-draw": {
+                "assets": {
+                    "cover": {"public_url": "/pallas/store-assets/cover/draw.webp"},
+                }
+            }
+        },
+        "community": {},
+    })
+
+    assert mod.snapshot_has_assets_for_kind("official") is True
+    assert mod.snapshot_has_assets_for_kind("community") is False
+
+
+def test_resolve_readme_request_id_accepts_official_plugin_id() -> None:
+    assert mod.resolve_readme_request_id("official", "sing") == "pallas-plugin-ai-media"
+    assert mod.resolve_readme_request_id("official", "pallas-plugin-draw") == "pallas-plugin-draw"
+    assert mod.resolve_readme_request_id("community", "interact") == "interact"
 
 
 def test_refresh_asset_snapshot_keeps_existing_asset_when_download_fails(monkeypatch, tmp_path: Path) -> None:
@@ -62,21 +84,19 @@ def test_refresh_asset_snapshot_keeps_existing_asset_when_download_fails(monkeyp
     asset_path = tmp_path / "public" / "store-assets" / "icon" / "draw.png"
     asset_path.parent.mkdir(parents=True, exist_ok=True)
     asset_path.write_bytes(b"old-bytes")
-    mod.save_snapshot(
-        {
-            "official": {
-                "pallas-plugin-draw": {
-                    "assets": {
-                        "icon": {
-                            "source_url": "https://raw.githubusercontent.com/acme/draw/icon.png",
-                            "public_url": "/pallas/store-assets/icon/draw.png",
-                            "relative_path": "public/store-assets/icon/draw.png",
-                        }
+    mod.save_snapshot({
+        "official": {
+            "pallas-plugin-draw": {
+                "assets": {
+                    "icon": {
+                        "source_url": "https://raw.githubusercontent.com/acme/draw/icon.png",
+                        "public_url": "/pallas/store-assets/icon/draw.png",
+                        "relative_path": "public/store-assets/icon/draw.png",
                     }
                 }
             }
         }
-    )
+    })
 
     async def fake_collect_targets() -> dict[str, list[dict[str, object]]]:
         return {
@@ -100,7 +120,10 @@ def test_refresh_asset_snapshot_keeps_existing_asset_when_download_fails(monkeyp
     snapshot = mod.run_async(mod.refresh_store_asset_snapshot())
 
     assert asset_path.read_bytes() == b"old-bytes"
-    assert snapshot["official"]["pallas-plugin-draw"]["assets"]["icon"]["public_url"] == "/pallas/store-assets/icon/draw.png"
+    assert (
+        snapshot["official"]["pallas-plugin-draw"]["assets"]["icon"]["public_url"]
+        == "/pallas/store-assets/icon/draw.png"
+    )
 
 
 def test_collect_store_asset_targets_uses_author_avatar_for_community(monkeypatch) -> None:

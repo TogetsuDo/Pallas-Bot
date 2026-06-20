@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from nonebot import logger
 from starlette import status
 
+from packages.pb_webui.data_dir import pb_webui_data_dir
 from pallas.console.webui.console_login import (
     SESSION_COOKIE_NAME,
     SESSION_TTL_SEC,
@@ -127,6 +128,7 @@ def register_routes(
         return target
 
     shared_pallas_ui_dir = Path(__file__).resolve().parent.parent / "pb_protocol" / "web" / "static" / "pallas_ui"
+    plugin_store_assets_dir = pb_webui_data_dir(create=True) / "store-assets"
     use_priest_avatar = shared_pallas_ui_dir.is_dir()
 
     def _render_login_page(*, target: str, reason: str | None, token_submitted: bool) -> HTMLResponse:
@@ -278,6 +280,13 @@ def register_routes(
             f"{base}/_pallas_ui",
             StaticFiles(directory=str(shared_pallas_ui_dir)),
             name="pallas_webui_pallas_ui",
+        )
+
+    if plugin_store_assets_dir.is_dir():
+        app.mount(
+            f"{base}/store-assets",
+            StaticFiles(directory=str(plugin_store_assets_dir)),
+            name="pallas_webui_store_assets",
         )
 
     app.include_router(router)

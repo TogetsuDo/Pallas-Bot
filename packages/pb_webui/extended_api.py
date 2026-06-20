@@ -40,6 +40,10 @@ from pallas.console.webui.console_login import (
     verify_console_password,
 )
 from pallas.core.platform.shard import context as shard_ctx
+from pallas.product.llm.repeater_feedback import (
+    group_feedback_bias_snapshot,
+    list_group_feedback_entries,
+)
 
 from .console_meta_store import (
     get_console_meta,
@@ -4695,27 +4699,48 @@ def register_extended_api(
         from packages.help.plugin_manager import invalidate_disabled_plugin_gate_cache
         from packages.help.visibility import load_help_hidden_plugins, save_help_hidden_plugins
         from pallas.console.webui.plugin_api import upsert_env_dotenv_items
+        from pallas.core.limits.config import get_command_limits_config, normalize_command_limit_overrides
+        from pallas.core.perm.config import get_cmd_perm_config
+        from pallas.core.perm.ui_labels import plugin_name_for_command_id
+
+        target_ids = {
+            str(cid).strip()
+            for cid in (
+                list((body.command_permission_overrides or {}).keys())
+                + list((body.command_limit_overrides or {}).keys())
+            )
+            if str(cid).strip() and plugin_name_for_command_id(str(cid).strip()) == target
+        }
+
+        current_perm_overrides = {
+            str(k): str(v) for k, v in (get_cmd_perm_config().command_permission_overrides or {}).items()
+        }
+        current_limit_overrides = normalize_command_limit_overrides(
+            get_command_limits_config().command_limit_overrides or {},
+        )
 
         perm_overrides = {
-            str(k): str(v)
-            for k, v in (body.command_permission_overrides or {}).items()
-            if str(k).strip().startswith(f"{target}.")
+            str(k): str(v) for k, v in (body.command_permission_overrides or {}).items() if str(k).strip() in target_ids
         }
         limit_overrides = {
-            str(k): int(v)
-            for k, v in (body.command_limit_overrides or {}).items()
-            if str(k).strip().startswith(f"{target}.")
+            str(k): int(v) for k, v in (body.command_limit_overrides or {}).items() if str(k).strip() in target_ids
         }
         env_items: dict[str, str] = {}
-        if perm_overrides:
+        if target_ids:
+            merged_perm_overrides = {
+                cid: level for cid, level in current_perm_overrides.items() if cid not in target_ids
+            }
+            merged_perm_overrides.update(perm_overrides)
             env_items["PALLAS_COMMAND_PERMISSION_OVERRIDES"] = json.dumps(
-                perm_overrides,
+                merged_perm_overrides,
                 ensure_ascii=False,
                 separators=(",", ":"),
             )
-        if limit_overrides:
+        if target_ids:
+            merged_limit_overrides = {cid: cd for cid, cd in current_limit_overrides.items() if cid not in target_ids}
+            merged_limit_overrides.update(limit_overrides)
             env_items["PALLAS_COMMAND_LIMIT_OVERRIDES"] = json.dumps(
-                limit_overrides,
+                merged_limit_overrides,
                 ensure_ascii=False,
                 separators=(",", ":"),
             )
@@ -4754,6 +4779,13 @@ def register_extended_api(
     @router.get(f"{x}/plugins/official-extensions", include_in_schema=True)
     async def _plugins_official_extensions() -> JSONResponse:
         from pallas.console.webui.plugin_registry import build_official_extension_rows
+        from pallas.console.webui.plugin_store_assets import (
+            refresh_store_asset_snapshot,
+            snapshot_has_assets_for_kind,
+        )
+
+        if not snapshot_has_assets_for_kind("official"):
+            await refresh_store_asset_snapshot()
 
         async def _load() -> list[dict[str, Any]]:
             return build_official_extension_rows()
@@ -4844,15 +4876,57 @@ def register_extended_api(
         refresh: bool = Query(default=False, description="为 true 时跳过进程内读缓存并重新拉取索引"),
     ) -> JSONResponse:
         from pallas.console.webui.community_plugin_registry import build_community_plugin_store
+        from pallas.console.webui.plugin_store_assets import (
+            refresh_store_asset_snapshot,
+            snapshot_has_assets_for_kind,
+        )
 
         if refresh:
             drop_read_cache(("plugins-community-store",))
+            await refresh_store_asset_snapshot()
+        elif not snapshot_has_assets_for_kind("community"):
+            await refresh_store_asset_snapshot()
 
         async def _load() -> dict[str, Any]:
             return await build_community_plugin_store()
 
         data = await cached_read(key="plugins-community-store", loader=_load, ttl_sec=30.0, stale_sec=120.0)
         return JSONResponse({"ok": True, "data": data})
+
+    @router.post(f"{x}/plugins/store/refresh", include_in_schema=True)
+    async def _plugins_store_refresh(
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        from pallas.console.webui.plugin_store_assets import refresh_store_asset_snapshot
+        from pallas.console.webui.plugin_update_snapshot import refresh_plugin_update_snapshot
+        from pallas.core.shared.utils.format_exception import format_exception_for_log
+
+        try:
+            store_assets, update_snapshot = await asyncio.gather(
+                refresh_store_asset_snapshot(),
+                refresh_plugin_update_snapshot(),
+            )
+            drop_read_cache(("plugins-community-store", "plugins-official-extensions"))
+            return JSONResponse({
+                "ok": True,
+                "data": {
+                    "store_assets": {
+                        "checked_at": store_assets.get("checked_at"),
+                        "community_count": len(store_assets.get("community") or {}),
+                        "official_count": len(store_assets.get("official") or {}),
+                    },
+                    "update_snapshot": {
+                        "checked_at": update_snapshot.get("checked_at"),
+                        "community_count": len(update_snapshot.get("community") or {}),
+                        "official_count": len(update_snapshot.get("official") or {}),
+                    },
+                },
+            })
+        except Exception as e:  # noqa: BLE001
+            logger.exception("Pallas-Bot 控制台: 刷新插件商店聚合数据失败")
+            raise HTTPException(status_code=500, detail=format_exception_for_log(e)) from e
 
     @router.post(f"{x}/plugins/update-snapshot/refresh", include_in_schema=True)
     async def _plugins_update_snapshot_refresh(
@@ -4882,16 +4956,23 @@ def register_extended_api(
     @router.get(f"{x}/plugins/store/readme", include_in_schema=True)
     async def _plugins_store_readme(
         kind: str = Query(..., description="official 或 community"),
-        id: str = Query(..., description="官方包名或社区 plugin_id"),
+        target_id: str = Query(..., alias="id", description="官方包名或社区 plugin_id"),
     ) -> JSONResponse:
-        from pallas.console.webui.plugin_store_assets import get_cached_readme_markdown
+        from pallas.console.webui.plugin_store_assets import (
+            fetch_and_cache_readme_markdown,
+            get_cached_readme_markdown,
+            resolve_readme_request_id,
+        )
 
         if kind not in {"official", "community"}:
             raise HTTPException(status_code=400, detail="kind must be official or community")
-        markdown = get_cached_readme_markdown(kind, id)
+        resolved_id = resolve_readme_request_id(kind, target_id)
+        markdown = get_cached_readme_markdown(kind, resolved_id)
+        if markdown is None:
+            markdown = await fetch_and_cache_readme_markdown(kind, resolved_id)
         if markdown is None:
             raise HTTPException(status_code=404, detail="README not cached")
-        return JSONResponse({"ok": True, "data": {"kind": kind, "id": id, "markdown": markdown}})
+        return JSONResponse({"ok": True, "data": {"kind": kind, "id": resolved_id, "markdown": markdown}})
 
     @router.post(f"{x}/plugins/store-assets/refresh", include_in_schema=True)
     async def _plugins_store_assets_refresh(
@@ -5481,6 +5562,34 @@ def register_extended_api(
         if data is None:
             raise HTTPException(status_code=404, detail="未找到该 AI 会话")
         return JSONResponse({"ok": True, "data": data.model_dump() if hasattr(data, "model_dump") else data})
+
+    @router.get(f"{x}/llm/repeater-feedback", include_in_schema=True)
+    async def _llm_repeater_feedback_get(
+        group_id: int = Query(..., ge=1, description="群号"),
+        limit: int = Query(default=20, ge=1, le=200),
+    ) -> JSONResponse:
+        try:
+            rows = list_group_feedback_entries(group_id=group_id, limit=limit)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({
+            "ok": True,
+            "data": {
+                "items": [row.model_dump(mode="json") if hasattr(row, "model_dump") else row for row in rows],
+                "limit": limit,
+            },
+        })
+
+    @router.get(f"{x}/llm/repeater-feedback/summary", include_in_schema=True)
+    async def _llm_repeater_feedback_summary_get(
+        group_id: int = Query(..., ge=1, description="群号"),
+        limit: int = Query(default=40, ge=1, le=200),
+    ) -> JSONResponse:
+        try:
+            data = group_feedback_bias_snapshot(group_id=group_id, limit=limit)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": data})
 
     @router.post(f"{x}/common-config/llm/history/behavior/annotate", include_in_schema=True)
     async def _llm_history_behavior_annotate(body: dict[str, Any]) -> JSONResponse:

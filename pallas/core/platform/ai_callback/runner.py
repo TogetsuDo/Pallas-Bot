@@ -30,6 +30,12 @@ from pallas.core.platform.ai_callback.task_types import (
 from pallas.core.platform.shard.coord.ai_task_registry import get_ai_task_record, remove_ai_task
 from pallas.product.llm.behavior import BehaviorAction, BehaviorRun, BehaviorScene
 from pallas.product.llm.behavior_store import append_behavior_run
+from pallas.product.llm.config import get_llm_config
+from pallas.product.llm.repeater_feedback import (
+    append_feedback_entry,
+    build_feedback_entry,
+    should_collect_llm_repeater_feedback,
+)
 from pallas.product.llm.session_store import append_llm_message, compact_user_llm_history_with_summary
 from pallas.product.llm.task_metrics import record_bot_llm_route, record_bot_llm_task
 
@@ -47,6 +53,43 @@ _REPEATER_CALLBACK_TASKS = frozenset({
     REPEATER_POLISH_LITE_TASK_TYPE,
     REPEATER_SELECT_TASK_TYPE,
 })
+
+
+def maybe_append_llm_repeater_feedback(task_id: str, task: dict, reply_text: str) -> None:
+    cfg = get_llm_config()
+    if not cfg.llm_repeater_feedback_enabled:
+        return
+    user_text = str(task.get("user_text") or "").strip()
+    source_tags = [str(item).strip() for item in list(task.get("source_tags") or []) if str(item).strip()]
+    group_id = int(task.get("group_id") or 0)
+    if not should_collect_llm_repeater_feedback(
+        task_type=str(task.get("task_type") or "").strip(),
+        group_id=group_id,
+        user_text=user_text,
+        reply_text=reply_text,
+        source_tags=source_tags,
+    ):
+        return
+    try:
+        append_feedback_entry(
+            build_feedback_entry(
+                entry_id=task_id,
+                request_id=task_id,
+                bot_id=int(task.get("bot_id") or 0),
+                group_id=group_id,
+                user_id=int(task.get("user_id") or 0),
+                user_text=user_text,
+                reply_text=reply_text,
+                behavior_scene=str(task.get("behavior_scene") or "").strip(),
+                behavior_actions=list(task.get("behavior_actions") or []),
+                llm_route=str(task.get("llm_route") or "").strip(),
+                source_tags=source_tags,
+                eligible_for_bias=True,
+                eligible_for_writeback=False,
+            )
+        )
+    except Exception as e:
+        logger.warning("AI callback append llm_repeater feedback failed task={}: {}", task_id, e)
 
 
 def track_llm_callback(task: dict, event: str) -> None:
@@ -190,6 +233,7 @@ async def run_ai_callback(
     if status == "success":
         delivered = bot is not None
         reply_text = str(text or "").strip()
+        text_delivered = False
         task_type = str(task.get("task_type") or "").strip()
         if task_type == REPEATER_SELECT_TASK_TYPE:
             from pallas.product.llm.select import resolve_select_callback_text
@@ -217,7 +261,8 @@ async def run_ai_callback(
                 len(reply_text),
                 task_type,
             )
-            delivered = await send_group_message(bot, group_id, reply_text) and delivered
+            text_delivered = await send_group_message(bot, group_id, reply_text)
+            delivered = text_delivered and delivered
         if should_append_llm_session(task) and reply_text:
             raw_group_id = task.get("group_id")
             scope_group = int(raw_group_id) if raw_group_id is not None else None
@@ -235,6 +280,8 @@ async def run_ai_callback(
                 if user_text:
                     await append_llm_message(int(bot_id), scope_group, speaker_id, "user", user_text)
                 await append_llm_message(int(bot_id), scope_group, speaker_id, "assistant", reply_text)
+        if task_type == LLM_CHAT_TASK_TYPE and reply_text and text_delivered:
+            maybe_append_llm_repeater_feedback(task_id, task, reply_text)
         behavior_scene = str(task.get("behavior_scene") or "").strip()
         if task_type == LLM_CHAT_TASK_TYPE and behavior_scene:
             append_behavior_run(

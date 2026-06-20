@@ -1,3 +1,4 @@
+import asyncio
 import random
 import time
 from collections import defaultdict
@@ -14,6 +15,8 @@ from pallas.core.foundation.db.context_repo_access import context_repo
 from pallas.core.foundation.db.pool_budget import is_pg_pool_timeout_error, pg_pool_under_pressure
 from pallas.core.platform.shard import context as shard_ctx
 from pallas.core.platform.shard.repeater_ingress_metrics import record_repeater_reply_selection
+from pallas.product.llm.config import get_llm_config
+from pallas.product.llm.repeater_feedback import group_feedback_bias_snapshot
 from pallas.product.persona.model import ResolvedPersona
 from pallas.product.persona.scorer import freshness_multiplier, message_weight_multiplier
 
@@ -69,6 +72,9 @@ class Responder:
     )
     BLACKLIST_FLAG = 114514
     REPLY_FLAG = "[PallasBot: Reply]"
+    FEEDBACK_BIAS_LIMIT = 40
+    FEEDBACK_BIAS_MAX_MULTIPLIER = 1.08
+    FEEDBACK_BIAS_MIN_COUNT = 2
 
     @staticmethod
     def _repeat_ignore_user_ids() -> set[int]:
@@ -191,6 +197,7 @@ class Responder:
         recent_message: list[str],
         affect_triggers,
         mode: str,
+        feedback_snapshot: dict | None = None,
     ) -> float:
         from pallas.product.persona.scorer import (
             answer_popularity_multiplier,
@@ -215,6 +222,10 @@ class Responder:
                     recent_message=recent_message,
                     persona=persona,
                 )
+                * Responder._feedback_bias_multiplier(
+                    text,
+                    feedback_snapshot=feedback_snapshot,
+                )
             )
             mults.append(sample_weight)
         factor = max(mults) if mults else 1.0
@@ -223,6 +234,26 @@ class Responder:
         elif mode == "ghost":
             factor *= 1.12
         return max(0.05, base * factor)
+
+    @staticmethod
+    def _feedback_bias_multiplier(
+        text: str,
+        *,
+        feedback_snapshot: dict | None,
+    ) -> float:
+        plain = str(text or "").strip()
+        if not plain or not isinstance(feedback_snapshot, dict):
+            return 1.0
+        if int(feedback_snapshot.get("count") or 0) < Responder.FEEDBACK_BIAS_MIN_COUNT:
+            return 1.0
+        top_replies = {
+            str(item).strip() for item in list(feedback_snapshot.get("top_replies") or []) if str(item).strip()
+        }
+        if plain not in top_replies:
+            return 1.0
+        if len(plain) > 32:
+            return 1.0
+        return Responder.FEEDBACK_BIAS_MAX_MULTIPLIER
 
     @staticmethod
     def _pick_answer_text(
@@ -590,6 +621,16 @@ class Responder:
             for r in reply_dict[group_id][bot_id][-Responder.DUPLICATE_REPLY :]
             if r.get("reply") and r["reply"] != Responder.REPLY_FLAG
         ]
+        feedback_snapshot = None
+        if getattr(get_llm_config(), "llm_repeater_bias_enabled", False):
+            try:
+                feedback_snapshot = await asyncio.to_thread(
+                    group_feedback_bias_snapshot,
+                    group_id=group_id,
+                    limit=Responder.FEEDBACK_BIAS_LIMIT,
+                )
+            except Exception as exc:
+                logger.warning("repeater.llm_feedback_bias_snapshot_failed group_id={}: {}", group_id, exc)
 
         def candidate_append(dst: dict[str, Answer], answer: Answer):
             answer_key = answer.keywords
@@ -671,6 +712,7 @@ class Responder:
                 recent_message=recent_message,
                 affect_triggers=affect_triggers,
                 mode=reply_mode,
+                feedback_snapshot=feedback_snapshot,
             )
             for answer in candidate_answers.values()
         ]

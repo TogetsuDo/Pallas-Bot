@@ -10,6 +10,19 @@ from pallas.core.shared.utils import HTTPXClient
 
 from .config import LlmConfig, get_llm_config, llm_server_base_url
 from .startup_probe import probe_ai_service_health
+from .task_metrics import cluster_llm_task_metrics_snapshot, llm_task_metrics_snapshot, today_key
+
+
+def load_llm_daily_stats_range(*, start_day: str, end_day: str) -> tuple[list[dict[str, Any]], str, str]:
+    from pallas.product.llm.llm_daily_stats_store import load_range
+
+    return load_range(start_day=start_day, end_day=end_day)
+
+
+def write_llm_daily_stats_side(day: str, side: str, snapshot: dict[str, Any]) -> None:
+    from pallas.product.llm.llm_daily_stats_store import write_day_side
+
+    write_day_side(day, side, snapshot)
 
 
 def _ai_snapshot_collecting(snapshot: dict[str, Any] | None) -> bool:
@@ -66,6 +79,47 @@ def _normalize_ai_task_stats_snapshot(snapshot: dict[str, Any] | None) -> dict[s
             "by_model": tokens_raw.get("by_model") if isinstance(tokens_raw.get("by_model"), dict) else {},
         },
     }
+
+
+def _normalized_classification_table(raw: Any) -> dict[str, dict[str, int]]:
+    if not isinstance(raw, dict):
+        return {}
+    normalized: dict[str, dict[str, int]] = {}
+    for key, row in raw.items():
+        if not isinstance(row, dict):
+            continue
+        normalized[str(key)] = {
+            "ok": int(row.get("ok") or 0),
+            "fail": int(row.get("fail") or 0),
+        }
+    return normalized
+
+
+def _normalize_historical_ai_snapshot(snapshot: dict[str, Any] | None) -> dict[str, Any]:
+    normalized = _normalize_ai_task_stats_snapshot(snapshot)
+    classification = snapshot.get("classification") if isinstance(snapshot, dict) else None
+    if normalized["failure_counts"] or normalized["provider_stats"] or normalized["model_stats"]:
+        return normalized
+    if not isinstance(classification, dict):
+        return normalized
+    return {
+        **normalized,
+        "failure_counts": (
+            dict(classification.get("failure_counts"))
+            if isinstance(classification.get("failure_counts"), dict)
+            else {}
+        ),
+        "provider_stats": _normalized_classification_table(classification.get("provider_stats")),
+        "model_stats": _normalized_classification_table(classification.get("model_stats")),
+    }
+
+
+def _latest_historical_ai_snapshot(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    for row in reversed(rows):
+        ai = row.get("ai")
+        if isinstance(ai, dict) and ai:
+            return _normalize_historical_ai_snapshot(ai)
+    return None
 
 
 def ai_llm_api_base(cfg: LlmConfig | None = None) -> str:
@@ -390,9 +444,6 @@ async def fetch_llm_task_stats(
 ) -> dict[str, Any]:
     from datetime import date, timedelta
 
-    from pallas.product.llm.llm_daily_stats_store import load_range, write_day_side
-    from pallas.product.llm.task_metrics import cluster_llm_task_metrics_snapshot, llm_task_metrics_snapshot, today_key
-
     c = cfg or get_llm_config()
     try:
         from pallas.core.platform.shard import context as shard_ctx
@@ -433,7 +484,7 @@ async def fetch_llm_task_stats(
                     payload["ai_reachable"] = True
                     try:
                         ai_day = str(payload["ai"].get("day_key") or bot_snap.get("day_key") or today_key())
-                        write_day_side(ai_day, "ai", {**payload["ai"], "reachable": True})
+                        write_llm_daily_stats_side(ai_day, "ai", {**payload["ai"], "reachable": True})
                     except Exception:
                         pass
     payload["persistence"]["ai_collecting"] = _ai_snapshot_collecting(
@@ -456,10 +507,26 @@ async def fetch_llm_task_stats(
             pass
     if start_d > end_d:
         start_d, end_d = end_d, start_d
-    hist_rows, h_start, h_end = load_range(start_day=start_d.isoformat(), end_day=end_d.isoformat())
+    hist_rows, h_start, h_end = load_llm_daily_stats_range(start_day=start_d.isoformat(), end_day=end_d.isoformat())
     today_bot = bot_snap if isinstance(bot_snap, dict) else None
     today_ai = payload.get("ai") if isinstance(payload.get("ai"), dict) and payload.get("ai") else None
-    by_date = {r["date"]: r for r in hist_rows}
+    by_date = {}
+    for hist_row in hist_rows:
+        row_date = str(hist_row.get("date") or "").strip()[:10]
+        if not row_date:
+            continue
+        row = {
+            "date": row_date,
+            "bot": hist_row.get("bot") if isinstance(hist_row.get("bot"), dict) else None,
+            "ai": _normalize_historical_ai_snapshot(hist_row.get("ai"))
+            if isinstance(hist_row.get("ai"), dict)
+            else None,
+        }
+        by_date[row_date] = row
+    if not payload.get("ai"):
+        fallback_ai = _latest_historical_ai_snapshot(list(by_date.values()))
+        if fallback_ai is not None:
+            payload["ai"] = fallback_ai
     if start_d <= date.fromisoformat(clock_today) <= end_d:
         row = by_date.setdefault(clock_today, {"date": clock_today, "bot": None, "ai": None})
         if today_bot:

@@ -12,6 +12,7 @@ from pallas.core.platform.ai_callback.task_types import (
     REPEATER_POLISH_TASK_TYPE,
 )
 from pallas.product.llm.behavior import BehaviorAction, BehaviorScene
+from pallas.product.llm.config import LlmConfig
 
 
 @pytest.mark.asyncio
@@ -175,6 +176,167 @@ async def test_run_ai_callback_appends_behavior_run(monkeypatch: pytest.MonkeyPa
     assert run.request_id == "task-behavior-1"
     assert run.scene == BehaviorScene.PROVOCATION
     assert run.selected_actions == [BehaviorAction.LIGHT_TEASE_AND_CLOSE]
+
+
+@pytest.mark.asyncio
+async def test_run_ai_callback_appends_repeater_feedback_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = MagicMock()
+    bot.call_api = AsyncMock(return_value=None)
+    monkeypatch.setattr(ai_callback_runner, "get_bot", lambda _bot_id: bot)
+    monkeypatch.setattr(
+        ai_callback_runner.TaskManager,
+        "get_task",
+        AsyncMock(
+            return_value={
+                "bot_id": "111",
+                "group_id": 222,
+                "user_id": 333,
+                "task_type": LLM_CHAT_TASK_TYPE,
+                "user_text": "牛牛今天好拽",
+                "behavior_scene": "banter",
+                "behavior_actions": ["light_tease_and_close"],
+                "llm_route": "chat",
+                "source_tags": ["recent_chat"],
+            }
+        ),
+    )
+    monkeypatch.setattr(ai_callback_runner.TaskManager, "remove_task", AsyncMock())
+    monkeypatch.setattr(ai_callback_runner, "remove_ai_task", lambda _task_id: None)
+    monkeypatch.setattr(
+        ai_callback_runner,
+        "get_llm_config",
+        lambda: LlmConfig(llm_repeater_feedback_enabled=True),
+    )
+    appended: list[object] = []
+    monkeypatch.setattr(ai_callback_runner, "append_feedback_entry", lambda entry: appended.append(entry))
+
+    result = await ai_callback_runner.run_ai_callback("task-feedback-1", status="success", text="少装。")
+
+    assert result == {"message": "ok"}
+    assert len(appended) == 1
+    entry = appended[0]
+    assert entry.request_id == "task-feedback-1"
+    assert entry.group_id == 222
+    assert entry.reply_text == "少装。"
+    assert entry.behavior_scene == "banter"
+    assert entry.source_tags == ["recent_chat"]
+
+
+@pytest.mark.asyncio
+async def test_run_ai_callback_disabled_repeater_feedback_does_not_append(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = MagicMock()
+    bot.call_api = AsyncMock(return_value=None)
+    monkeypatch.setattr(ai_callback_runner, "get_bot", lambda _bot_id: bot)
+    monkeypatch.setattr(
+        ai_callback_runner.TaskManager,
+        "get_task",
+        AsyncMock(
+            return_value={
+                "bot_id": "111",
+                "group_id": 222,
+                "user_id": 333,
+                "task_type": LLM_CHAT_TASK_TYPE,
+                "user_text": "牛牛今天好拽",
+                "source_tags": ["recent_chat"],
+            }
+        ),
+    )
+    monkeypatch.setattr(ai_callback_runner.TaskManager, "remove_task", AsyncMock())
+    monkeypatch.setattr(ai_callback_runner, "remove_ai_task", lambda _task_id: None)
+    monkeypatch.setattr(
+        ai_callback_runner,
+        "get_llm_config",
+        lambda: LlmConfig(llm_repeater_feedback_enabled=False),
+    )
+    append_feedback_entry = MagicMock()
+    monkeypatch.setattr(ai_callback_runner, "append_feedback_entry", append_feedback_entry)
+
+    result = await ai_callback_runner.run_ai_callback("task-feedback-disabled-1", status="success", text="少装。")
+
+    assert result == {"message": "ok"}
+    append_feedback_entry.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_run_ai_callback_feedback_write_failure_does_not_break_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = MagicMock()
+    bot.call_api = AsyncMock(return_value=None)
+    monkeypatch.setattr(ai_callback_runner, "get_bot", lambda _bot_id: bot)
+    monkeypatch.setattr(
+        ai_callback_runner.TaskManager,
+        "get_task",
+        AsyncMock(
+            return_value={
+                "bot_id": "111",
+                "group_id": 222,
+                "user_id": 333,
+                "task_type": LLM_CHAT_TASK_TYPE,
+                "user_text": "牛牛今天好拽",
+                "source_tags": ["recent_chat"],
+            }
+        ),
+    )
+    remove_task = AsyncMock()
+    monkeypatch.setattr(ai_callback_runner.TaskManager, "remove_task", remove_task)
+    monkeypatch.setattr(ai_callback_runner, "remove_ai_task", lambda _task_id: None)
+    monkeypatch.setattr(
+        ai_callback_runner,
+        "get_llm_config",
+        lambda: LlmConfig(llm_repeater_feedback_enabled=True),
+    )
+
+    def raise_append(_entry) -> None:
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(ai_callback_runner, "append_feedback_entry", raise_append)
+
+    result = await ai_callback_runner.run_ai_callback("task-feedback-fail-1", status="success", text="少装。")
+
+    assert result == {"message": "ok"}
+    bot.call_api.assert_awaited_once()
+    remove_task.assert_awaited_once_with("task-feedback-fail-1")
+
+
+@pytest.mark.asyncio
+async def test_run_ai_callback_delivery_failure_does_not_append_repeater_feedback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(ai_callback_runner, "get_bot", lambda _bot_id: MagicMock())
+    monkeypatch.setattr(
+        ai_callback_runner.TaskManager,
+        "get_task",
+        AsyncMock(
+            return_value={
+                "bot_id": "111",
+                "group_id": 222,
+                "user_id": 333,
+                "task_type": LLM_CHAT_TASK_TYPE,
+                "user_text": "牛牛今天好拽",
+                "source_tags": ["recent_chat"],
+            }
+        ),
+    )
+    monkeypatch.setattr(ai_callback_runner.TaskManager, "remove_task", AsyncMock())
+    monkeypatch.setattr(ai_callback_runner, "remove_ai_task", lambda _task_id: None)
+    monkeypatch.setattr(
+        ai_callback_runner,
+        "get_llm_config",
+        lambda: LlmConfig(llm_repeater_feedback_enabled=True),
+    )
+    monkeypatch.setattr(ai_callback_runner, "send_group_message", AsyncMock(return_value=False))
+    append_feedback_entry = MagicMock()
+    monkeypatch.setattr(ai_callback_runner, "append_feedback_entry", append_feedback_entry)
+
+    result = await ai_callback_runner.run_ai_callback("task-feedback-delivery-fail-1", status="success", text="少装。")
+
+    assert result == {"message": "failed"}
+    append_feedback_entry.assert_not_called()
 
 
 @pytest.mark.asyncio

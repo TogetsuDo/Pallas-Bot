@@ -332,6 +332,9 @@ def _llm_section() -> WebuiEnvSection:
             "llm_repeater_group_cooldown_sec": "LLM_REPEATER_GROUP_COOLDOWN_SEC",
             "llm_repeater_max_inflight": "LLM_REPEATER_MAX_INFLIGHT",
             "llm_repeater_global_rpm": "LLM_REPEATER_GLOBAL_RPM",
+            "llm_repeater_feedback_enabled": "LLM_REPEATER_FEEDBACK_ENABLED",
+            "llm_repeater_bias_enabled": "LLM_REPEATER_BIAS_ENABLED",
+            "llm_repeater_writeback_enabled": "LLM_REPEATER_WRITEBACK_ENABLED",
             "llm_reply_gate_enabled": "LLM_REPLY_GATE_ENABLED",
             "llm_chat_queue_merge": "LLM_CHAT_QUEUE_MERGE",
             "llm_memory_rag_enabled": "LLM_MEMORY_RAG_ENABLED",
@@ -356,6 +359,31 @@ def _arknights_kb_section() -> WebuiEnvSection:
         },
         skip_fields=frozenset(),
     )
+
+
+def _base_section_by_id(section_id: str) -> WebuiEnvSection | None:
+    builders: dict[str, Any] = {
+        "cmd_perm": _cmd_perm_section,
+        "command_limits": _command_limits_section,
+        "mail": _mail_section,
+        "llm": _llm_section,
+        "arknights_kb": _arknights_kb_section,
+    }
+    if (PACKAGE_ROOT / "product" / "control_plane" / "webui_config.py").is_file():
+        builders["control_plane"] = _control_plane_section
+    if (PACKAGE_ROOT / "core" / "platform" / "ingress" / "config.py").is_file():
+        builders["ingress_fanout"] = _ingress_fanout_section
+    if (PACKAGE_ROOT / "core" / "platform" / "ingress" / "dispatch_runtime_config.py").is_file():
+        builders["ingress_dispatch"] = _ingress_dispatch_section
+    repeater_learn_cfg = PROJECT_ROOT / "packages" / "repeater" / "learn_runtime_config.py"
+    if repeater_learn_cfg.is_file():
+        builders["repeater_learn"] = _repeater_learn_section
+    from pallas.product.message_scrub.config import is_message_scrub_enabled
+
+    if (PACKAGE_ROOT / "product" / "message_scrub" / "config.py").is_file() and is_message_scrub_enabled():
+        builders["message_scrub"] = _message_scrub_section
+    builder = builders.get(section_id)
+    return builder() if builder is not None else None
 
 
 _sections_cache: tuple[WebuiEnvSection, ...] | None = None
@@ -483,6 +511,9 @@ def get_webui_env_section(section_id: str) -> WebuiEnvSection:
     from pallas.core.platform.bot_runtime.plugin_package_aliases import canonical_plugin_package
 
     sid = canonical_plugin_package((section_id or "").strip())
+    base = _base_section_by_id(sid)
+    if base is not None:
+        return base
     for s in _registered_sections():
         if s.id == sid:
             return s
@@ -495,18 +526,25 @@ def webui_env_section_payload(
     current_values: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """GET 默认读进程内配置；PUT 后应传 ``validated``，与刚写入 ``.env`` 的值一致。"""
-    from .community_stats_section import COMMUNITY_STATS_SECTION_ID, community_stats_payload
-    from .control_plane_section import CONTROL_PLANE_SECTION_ID, control_plane_payload
-    from .corpus_federation_section import CORPUS_FEDERATION_SECTION_ID, corpus_federation_payload
-    from .service_gateways_section import SERVICE_GATEWAYS_SECTION_ID, service_gateways_payload
+    from .control_plane_section import CONTROL_PLANE_SECTION_ID
+    from .corpus_federation_section import CORPUS_FEDERATION_SECTION_ID
+    from .service_gateways_section import SERVICE_GATEWAYS_SECTION_ID
 
     if section_id == CONTROL_PLANE_SECTION_ID:
+        from .control_plane_section import control_plane_payload
+
         return control_plane_payload(current_values=current_values)
     if section_id == CORPUS_FEDERATION_SECTION_ID:
+        from .corpus_federation_section import corpus_federation_payload
+
         return corpus_federation_payload(current_values=current_values)
-    if section_id == COMMUNITY_STATS_SECTION_ID:
+    if section_id == "community_stats":
+        from .community_stats_section import community_stats_payload
+
         return community_stats_payload(current_values=current_values)
     if section_id == SERVICE_GATEWAYS_SECTION_ID:
+        from .service_gateways_section import service_gateways_payload
+
         return service_gateways_payload(current_values=current_values)
     if section_id == "llm":
         from pallas.core.foundation.config.repo_settings import purge_misplaced_ai_env_keys_from_webui

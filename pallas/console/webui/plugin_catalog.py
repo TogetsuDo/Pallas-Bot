@@ -43,7 +43,7 @@ _INFRA_EXACT = frozenset({
     "nonebot-plugin-alconna",
     "nonebot_plugin_alconna",
 })
-_BRAND_AVATAR_PATH = "/pallas/assets/brand-avatar-hd.png"
+_BRAND_AVATAR_PATH = "/pallas/assets/brand-avatar.png"
 
 
 def discover_plugin_packages() -> list[str]:
@@ -430,14 +430,16 @@ def resolve_catalog_visuals(
 
     official = official_extension_for_plugin(plugin_id)
     if official is not None:
+        cover = str(official.get("cover") or "").strip() or None
+        icon = cover or (str(official.get("icon") or "").strip() or None)
         return {
-            "avatar": official.get("avatar"),
-            "icon": official.get("icon"),
-            "cover": official.get("cover"),
+            "avatar": None,
+            "icon": icon,
+            "cover": cover,
         }
 
     if is_core_plugin(plugin_id) or plugin_source == "core":
-        return {"avatar": _BRAND_AVATAR_PATH, "icon": None, "cover": None}
+        return {"avatar": None, "icon": _BRAND_AVATAR_PATH, "cover": None}
 
     return {"avatar": None, "icon": None, "cover": None}
 

@@ -1,4 +1,4 @@
-"""插件商店资源快照：README / icon / cover / avatar 定时拉取到本地 public 目录。"""
+"""插件商店资源快照：README / icon / cover / avatar 定时拉取到独立静态目录。"""
 
 from __future__ import annotations
 
@@ -41,6 +41,26 @@ def load_snapshot() -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def snapshot_has_assets_for_kind(kind: str) -> bool:
+    bucket = load_snapshot().get((kind or "").strip())
+    if not isinstance(bucket, dict) or not bucket:
+        return False
+    for entry in bucket.values():
+        if not isinstance(entry, dict):
+            continue
+        assets = entry.get("assets")
+        if not isinstance(assets, dict):
+            continue
+        for asset in assets.values():
+            if not isinstance(asset, dict):
+                continue
+            public_url = str(asset.get("public_url") or "").strip()
+            relative_path = str(asset.get("relative_path") or "").strip()
+            if public_url or relative_path:
+                return True
+    return False
+
+
 def save_snapshot(data: dict[str, Any]) -> None:
     path = snapshot_path()
     tmp = path.with_suffix(".json.tmp")
@@ -52,7 +72,7 @@ def save_snapshot(data: dict[str, Any]) -> None:
 
 
 def _public_root() -> Path:
-    return plugin_data_dir("pb_webui", create=True) / "public" / "store-assets"
+    return plugin_data_dir("pb_webui", create=True) / "store-assets"
 
 
 def _asset_target_id(kind: str, row: dict[str, Any]) -> str:
@@ -87,25 +107,21 @@ def _guess_suffix(url: str, content_type: str = "") -> str:
 
 
 def _readme_public_rel(kind: str, target_id: str) -> str:
-    return f"public/store-assets/readme/{kind}-{_safe_name(target_id)}.md"
+    return f"readme/{kind}-{_safe_name(target_id)}.md"
 
 
 def _asset_public_rel(kind: str, asset_type: str, target_id: str, suffix: str) -> str:
     clean_suffix = suffix if suffix.startswith(".") else f".{suffix}"
-    return f"public/store-assets/{asset_type}/{kind}-{_safe_name(target_id)}{clean_suffix}"
+    return f"{asset_type}/{kind}-{_safe_name(target_id)}{clean_suffix}"
 
 
 def _public_url_from_rel(relative_path: str) -> str:
     rel = relative_path.replace("\\", "/").strip("/")
-    if rel.startswith("public/store-assets/"):
-        return f"{_PUBLIC_PREFIX}/{rel[len('public/store-assets/'):]}"
-    return f"{_PUBLIC_PREFIX}/{Path(rel).name}"
+    return f"{_PUBLIC_PREFIX}/{rel}"
 
 
 def _resolve_path(relative_path: str) -> Path:
     rel = Path(relative_path)
-    if rel.parts and rel.parts[0] == "public":
-        return plugin_data_dir("pb_webui", create=True) / rel
     return _public_root() / rel
 
 
@@ -141,7 +157,7 @@ def apply_asset_snapshot_to_rows(kind: str, rows: list[dict[str, Any]]) -> list[
 
 def get_cached_readme_markdown(kind: str, target_id: str) -> str | None:
     snapshot = load_snapshot()
-    entry = ((snapshot.get(kind) or {}).get(target_id) or {})
+    entry = (snapshot.get(kind) or {}).get(target_id) or {}
     if not isinstance(entry, dict):
         return None
     readme = entry.get("readme") or {}
@@ -156,6 +172,16 @@ def get_cached_readme_markdown(kind: str, target_id: str) -> str | None:
     except (FileNotFoundError, OSError):
         return None
     return text or None
+
+
+def resolve_readme_request_id(kind: str, target_id: str) -> str:
+    clean_kind = (kind or "").strip()
+    clean_id = (target_id or "").strip()
+    if clean_kind != "official" or not clean_id:
+        return clean_id
+    from pallas.core.platform.bot_runtime.plugin_matrix import extra_package_for_plugin
+
+    return extra_package_for_plugin(clean_id) or clean_id
 
 
 async def collect_store_asset_targets() -> dict[str, list[dict[str, Any]]]:
@@ -200,6 +226,16 @@ async def collect_store_asset_targets() -> dict[str, list[dict[str, Any]]]:
     return {"official": official, "community": community}
 
 
+def _find_target(kind: str, target_id: str) -> dict[str, Any] | None:
+    targets = run_async(collect_store_asset_targets())
+    for target in targets.get(kind, []) or []:
+        if not isinstance(target, dict):
+            continue
+        if str(target.get("id") or "").strip() == target_id:
+            return target
+    return None
+
+
 def _github_readme_url(repository_url: str | None) -> str | None:
     parsed = _parse_repo(repository_url)
     if not parsed:
@@ -238,7 +274,11 @@ def _write_text(relative_path: str, content: str) -> None:
     tmp.replace(path)
 
 
-def _normalize_existing_asset(asset: dict[str, Any] | None, *, fallback_url: str | None = None) -> dict[str, Any] | None:
+def _normalize_existing_asset(
+    asset: dict[str, Any] | None,
+    *,
+    fallback_url: str | None = None,
+) -> dict[str, Any] | None:
     if not isinstance(asset, dict):
         return None
     source_url = str(asset.get("source_url") or fallback_url or "").strip()
@@ -266,7 +306,7 @@ async def _refresh_one(kind: str, target: dict[str, Any], previous: dict[str, An
     for asset_type, source_url in (target.get("assets") or {}).items():
         if asset_type not in ("icon", "cover", "avatar"):
             continue
-        raw_url = str(source_url or "").trim() if hasattr(str(source_url or ""), "trim") else str(source_url or "").strip()
+        raw_url = str(source_url or "").strip()
         prev_asset = _normalize_existing_asset(prev_assets.get(asset_type), fallback_url=raw_url)
         if not raw_url:
             if prev_asset:
@@ -346,7 +386,8 @@ async def refresh_store_asset_snapshot() -> dict[str, Any]:
 
     async def _run(kind: str, target: dict[str, Any]):
         async with sem:
-            prev = (((previous.get(kind) or {}) if isinstance(previous.get(kind), dict) else {}).get(target["id"]) or {})
+            previous_bucket = (previous.get(kind) or {}) if isinstance(previous.get(kind), dict) else {}
+            prev = previous_bucket.get(target["id"]) or {}
             if not isinstance(prev, dict):
                 prev = {}
             return await _refresh_one(kind, target, prev)
@@ -354,10 +395,30 @@ async def refresh_store_asset_snapshot() -> dict[str, Any]:
     for kind in ("official", "community"):
         items = [t for t in targets.get(kind, []) if isinstance(t, dict) and t.get("id")]
         results = await asyncio.gather(*[_run(kind, item) for item in items])
-        snapshot[kind] = {target_id: entry for target_id, entry in results}
+        snapshot[kind] = dict(results)
 
     save_snapshot(snapshot)
     return snapshot
+
+
+async def fetch_and_cache_readme_markdown(kind: str, target_id: str) -> str | None:
+    resolved_id = resolve_readme_request_id(kind, target_id)
+    if not resolved_id:
+        return None
+    target = _find_target(kind, resolved_id)
+    if not target:
+        return None
+    previous_bucket = load_snapshot().get(kind) or {}
+    previous = previous_bucket.get(resolved_id) or {}
+    if not isinstance(previous, dict):
+        previous = {}
+    _, entry = await _refresh_one(kind, target, previous)
+    snapshot = load_snapshot()
+    bucket = snapshot.setdefault(kind, {})
+    bucket[resolved_id] = entry
+    snapshot["checked_at"] = time.time()
+    save_snapshot(snapshot)
+    return get_cached_readme_markdown(kind, resolved_id)
 
 
 def run_async(awaitable):

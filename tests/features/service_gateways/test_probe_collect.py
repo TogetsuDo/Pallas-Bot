@@ -1,9 +1,8 @@
 import asyncio
 from collections.abc import Callable
+from dataclasses import dataclass
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
-
-from packages.sing.config import Config
 
 from pallas.product.service_gateways.media_probe import (
     maa_hub_probe_note,
@@ -13,6 +12,11 @@ from pallas.product.service_gateways.media_probe import (
     probe_sing_server,
     sing_probe_urls,
 )
+
+
+@dataclass(slots=True)
+class _SingConfig:
+    sing_enable: bool
 
 
 def _patch_draw_import_plugin_submodule(
@@ -54,8 +58,24 @@ def test_sing_probe_urls() -> None:
 
 def test_probe_sing_disabled(monkeypatch) -> None:
     monkeypatch.setattr(
-        "packages.sing.config.get_sing_config",
-        lambda: Config(sing_enable=False),
+        "pallas.product.service_gateways.media_probe.import_plugin_submodule",
+        lambda plugin_id, submodule: SimpleNamespace(
+            get_sing_config=lambda: _SingConfig(sing_enable=False),
+            sing_runtime_mode=lambda cfg: "plugin",
+            sing_server_url=lambda cfg: "http://127.0.0.1:9099",
+        )
+        if plugin_id == "sing" and submodule == "config"
+        else (_ for _ in ()).throw(AssertionError(f"unexpected import_plugin_submodule({plugin_id!r}, {submodule!r})")),
+    )
+    monkeypatch.setattr(
+        "pallas.core.platform.plugin_runtime.resolve.import_plugin_submodule",
+        lambda plugin_id, submodule: SimpleNamespace(
+            get_sing_config=lambda: _SingConfig(sing_enable=False),
+            sing_runtime_mode=lambda cfg: "plugin",
+            sing_server_url=lambda cfg: "http://127.0.0.1:9099",
+        )
+        if plugin_id == "sing" and submodule == "config"
+        else (_ for _ in ()).throw(AssertionError(f"unexpected import_plugin_submodule({plugin_id!r}, {submodule!r})")),
     )
     results = asyncio.run(probe_sing_server())
     assert len(results) == 1
@@ -88,7 +108,28 @@ def test_probe_sing_success_sets_runtime_state(monkeypatch) -> None:
         "pallas.product.service_gateways.media_probe.probe_ai_media_task_runtime",
         fake_media_task_runtime,
     )
-    results = asyncio.run(probe_sing_server(cfg=Config(sing_enable=True)))
+    cfg = _SingConfig(sing_enable=True)
+    monkeypatch.setattr(
+        "pallas.product.service_gateways.media_probe.import_plugin_submodule",
+        lambda plugin_id, submodule: SimpleNamespace(
+            get_sing_config=lambda: cfg,
+            sing_runtime_mode=lambda _cfg: "plugin",
+            sing_server_url=lambda _cfg: "http://127.0.0.1:9099",
+        )
+        if plugin_id == "sing" and submodule == "config"
+        else (_ for _ in ()).throw(AssertionError(f"unexpected import_plugin_submodule({plugin_id!r}, {submodule!r})")),
+    )
+    monkeypatch.setattr(
+        "pallas.core.platform.plugin_runtime.resolve.import_plugin_submodule",
+        lambda plugin_id, submodule: SimpleNamespace(
+            get_sing_config=lambda: cfg,
+            sing_runtime_mode=lambda _cfg: "plugin",
+            sing_server_url=lambda _cfg: "http://127.0.0.1:9099",
+        )
+        if plugin_id == "sing" and submodule == "config"
+        else (_ for _ in ()).throw(AssertionError(f"unexpected import_plugin_submodule({plugin_id!r}, {submodule!r})")),
+    )
+    results = asyncio.run(probe_sing_server(cfg=cfg))
     assert len(results) == 1
     assert results[0].ok is True
     assert results[0].runtime_state == "healthy"
@@ -245,9 +286,18 @@ def test_probe_maa_endpoints_sets_runtime_state(monkeypatch) -> None:
             runtime_type="automation",
         )
 
+    fake_endpoints_mod = SimpleNamespace(resolve_maa_probe_http_endpoints=lambda cfg=None: _Endpoints())
     monkeypatch.setattr(
-        "packages.maa.endpoints.resolve_maa_probe_http_endpoints",
-        lambda cfg=None: _Endpoints(),
+        "pallas.product.service_gateways.media_probe.import_plugin_submodule",
+        lambda plugin_id, submodule: fake_endpoints_mod
+        if plugin_id == "maa" and submodule == "endpoints"
+        else (_ for _ in ()).throw(AssertionError(f"unexpected import_plugin_submodule({plugin_id!r}, {submodule!r})")),
+    )
+    monkeypatch.setattr(
+        "pallas.core.platform.plugin_runtime.resolve.import_plugin_submodule",
+        lambda plugin_id, submodule: fake_endpoints_mod
+        if plugin_id == "maa" and submodule == "endpoints"
+        else (_ for _ in ()).throw(AssertionError(f"unexpected import_plugin_submodule({plugin_id!r}, {submodule!r})")),
     )
     monkeypatch.setattr(
         "pallas.product.service_gateways.media_probe.probe_http_post_json",
@@ -264,3 +314,59 @@ def test_probe_maa_endpoints_sets_runtime_state(monkeypatch) -> None:
     assert all(item.capability_group == "automation" for item in results)
     assert all(item.runtime_type == "automation" for item in results)
     assert all(item.health_state == "healthy" for item in results)
+
+
+def test_probe_maa_endpoints_uses_plugin_runtime_resolution(monkeypatch) -> None:
+    from pallas.core.shared.service_probe import ServiceProbeResult
+
+    class _Cfg:
+        pass
+
+    class _Endpoints:
+        get_task_url = "http://127.0.0.1:9000/get"
+        report_status_url = "http://127.0.0.1:9000/report"
+
+    async def fake_probe_http_post_json(*args, **kwargs):
+        site = kwargs["site"]
+        capability = kwargs["capability"]
+        assert capability.capability_id == "automation.maa"
+        return ServiceProbeResult(
+            "MAA远控",
+            site,
+            True,
+            9,
+            200,
+            None,
+            capability_id="automation.maa",
+            capability_group="automation",
+            runtime_type="automation",
+        )
+
+    fake_endpoints_mod = SimpleNamespace(resolve_maa_probe_http_endpoints=lambda cfg=None: _Endpoints())
+
+    def fake_import(plugin_id: str, submodule: str):
+        if plugin_id == "maa" and submodule == "endpoints":
+            return fake_endpoints_mod
+        raise AssertionError(f"unexpected import_plugin_submodule({plugin_id!r}, {submodule!r})")
+
+    monkeypatch.setattr(
+        "pallas.product.service_gateways.media_probe.import_plugin_submodule",
+        fake_import,
+    )
+    monkeypatch.setattr(
+        "pallas.core.platform.plugin_runtime.resolve.import_plugin_submodule",
+        fake_import,
+    )
+    monkeypatch.setattr(
+        "pallas.product.service_gateways.media_probe.probe_http_post_json",
+        fake_probe_http_post_json,
+    )
+    monkeypatch.setattr(
+        "pallas.core.platform.shard.context.sharding_active",
+        lambda: False,
+    )
+
+    results = asyncio.run(probe_maa_endpoints(cfg=_Cfg()))
+    assert len(results) == 2
+    assert all(item.runtime_state == "healthy" for item in results)
+    assert all(item.capability_id == "automation.maa" for item in results)

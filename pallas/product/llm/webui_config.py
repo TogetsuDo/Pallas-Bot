@@ -37,8 +37,11 @@ class LlmWebuiConfig(BaseModel):
         description=field_help(
             "接话时如何使用智能对话",
             "推荐「命中语料时 AI 选句」；需要时可开启语料缺失现编或偶尔轻顺口气",
-            "遗留项「完整润色」易注入过多人设，日常接话不建议使用",
-            "用户视角：off=只用语料；fallback=语料不够时 AI 补位；polish=命中语料时 AI 轻顺口气；both=两者都开",
+            (
+                "遗留项「完整润色」易注入过多人设，日常接话不建议使用。"
+                "用户视角：off=只用语料；fallback=语料不够时 AI 补位；"
+                "polish=命中语料时 AI 轻顺口气；both=两者都开"
+            ),
         ),
     )
     llm_polish_lite_sample_rate: float = Field(
@@ -107,6 +110,27 @@ class LlmWebuiConfig(BaseModel):
             "有 Redis 时全局限流；否则按 worker 数分摊",
         ),
     )
+    llm_repeater_feedback_enabled: bool = Field(
+        default=False,
+        description=field_help(
+            "是否收集闲聊成功回复，作为复读软反馈",
+            "只在回复真正发出后记录；默认只收集，不改复读行为",
+        ),
+    )
+    llm_repeater_bias_enabled: bool = Field(
+        default=False,
+        description=field_help(
+            "是否让复读轻微偏向已被闲聊验证过的短回复",
+            "保守弱偏置；样本不足时不会生效",
+        ),
+    )
+    llm_repeater_writeback_enabled: bool = Field(
+        default=False,
+        description=field_help(
+            "是否允许将软反馈回写到复读学习语料",
+            "默认关闭；后续确认策略后再开启",
+        ),
+    )
     llm_reply_gate_enabled: bool = Field(
         default=True,
         description=field_help(
@@ -155,6 +179,9 @@ def get_llm_webui_config() -> LlmWebuiConfig:
         llm_repeater_group_cooldown_sec=cfg.llm_repeater_group_cooldown_sec,
         llm_repeater_max_inflight=cfg.llm_repeater_max_inflight,
         llm_repeater_global_rpm=cfg.llm_repeater_global_rpm,
+        llm_repeater_feedback_enabled=cfg.llm_repeater_feedback_enabled,
+        llm_repeater_bias_enabled=cfg.llm_repeater_bias_enabled,
+        llm_repeater_writeback_enabled=cfg.llm_repeater_writeback_enabled,
         llm_reply_gate_enabled=cfg.llm_reply_gate_enabled,
         llm_chat_queue_merge=cfg.llm_chat_queue_merge,
         llm_memory_rag_enabled=cfg.llm_memory_rag_enabled,

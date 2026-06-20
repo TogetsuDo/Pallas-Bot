@@ -67,6 +67,9 @@ def test_list_webui_env_sections_contains_llm_section():
     env_keys = {f["env_key"] for f in data["fields"]}
     assert "LLM_CHAT_ENABLED" in env_keys
     assert "LLM_REPEATER_MODE" in env_keys
+    assert "LLM_REPEATER_FEEDBACK_ENABLED" in env_keys
+    assert "LLM_REPEATER_BIAS_ENABLED" in env_keys
+    assert "LLM_REPEATER_WRITEBACK_ENABLED" in env_keys
 
 
 def test_list_webui_env_sections_contains_ingress_dispatch():
@@ -231,6 +234,28 @@ def test_service_gateways_payload_shape():
     assert "pallas_image_base_url" in names
     assert "maa_public_base_url" in names
     assert "sing_enable" in names
+
+
+def test_arknights_kb_payload_does_not_import_unrelated_special_sections(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    import builtins
+
+    from pallas.console.webui import webui_env_section_payload
+
+    real_import = builtins.__import__
+
+    def guarded_import(name, globals_=None, locals_=None, fromlist=(), level=0):
+        if name == "pallas.console.webui.community_stats_section":
+            raise AssertionError("arknights_kb payload should not import community_stats_section")
+        return real_import(name, globals_, locals_, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+    data = webui_env_section_payload("arknights_kb")
+    assert data["plugin"] == "arknights_kb"
+    env_keys = {f["env_key"] for f in data["fields"]}
+    assert "ARKNIGHTS_KB_ENABLED" in env_keys
+    assert "ARKNIGHTS_KB_AUTO_SYNC" in env_keys
 
 
 def test_command_limits_section_payload_shape(monkeypatch: pytest.MonkeyPatch):

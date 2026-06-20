@@ -31,6 +31,54 @@ def test_plugin_store_readme_returns_cached_markdown(monkeypatch) -> None:
     assert payload["data"]["markdown"] == "# Draw\n"
 
 
+def test_plugin_store_readme_accepts_official_plugin_id(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_store_assets.resolve_readme_request_id",
+        lambda kind, target_id: "pallas-plugin-ai-media" if kind == "official" and target_id == "sing" else target_id,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_store_assets.get_cached_readme_markdown",
+        lambda kind, target_id: (
+            "# AI Media\n" if kind == "official" and target_id == "pallas-plugin-ai-media" else None
+        ),
+    )
+
+    client = _build_client(monkeypatch)
+    response = client.get("/pallas/api/plugins/store/readme", params={"kind": "official", "id": "sing"})
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["data"]["id"] == "pallas-plugin-ai-media"
+    assert payload["data"]["markdown"] == "# AI Media\n"
+
+
+def test_plugin_store_readme_fetches_on_cache_miss(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_store_assets.resolve_readme_request_id",
+        lambda kind, target_id: target_id,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_store_assets.get_cached_readme_markdown",
+        lambda kind, target_id: None,
+    )
+
+    async def fake_fetch(kind: str, target_id: str) -> str | None:
+        if kind == "official" and target_id == "pallas-plugin-draw":
+            return "# Draw fetched\n"
+        return None
+
+    monkeypatch.setattr("pallas.console.webui.plugin_store_assets.fetch_and_cache_readme_markdown", fake_fetch)
+
+    client = _build_client(monkeypatch)
+    response = client.get("/pallas/api/plugins/store/readme", params={"kind": "official", "id": "pallas-plugin-draw"})
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["data"]["markdown"] == "# Draw fetched\n"
+
+
 def test_plugin_store_assets_refresh_returns_counts(monkeypatch) -> None:
     async def fake_refresh() -> dict:
         return {
@@ -51,3 +99,57 @@ def test_plugin_store_assets_refresh_returns_counts(monkeypatch) -> None:
     assert payload["data"]["checked_at"] == 123.0
     assert payload["data"]["official_count"] == 1
     assert payload["data"]["community_count"] == 2
+
+
+def test_community_store_refresh_also_refreshes_store_assets(monkeypatch) -> None:
+    calls: list[str] = []
+
+    async def fake_build_store() -> dict:
+        calls.append("build-community-store")
+        return {"plugins": [], "meta": {}}
+
+    async def fake_refresh_assets() -> dict:
+        calls.append("refresh-store-assets")
+        return {"checked_at": 456.0, "official": {}, "community": {}}
+
+    monkeypatch.setattr(
+        "pallas.console.webui.community_plugin_registry.build_community_plugin_store",
+        fake_build_store,
+    )
+    monkeypatch.setattr("pallas.console.webui.plugin_store_assets.refresh_store_asset_snapshot", fake_refresh_assets)
+    monkeypatch.setattr(mod, "drop_read_cache", lambda *a, **k: None)
+
+    client = _build_client(monkeypatch)
+    response = client.get("/pallas/api/plugins/community-store", params={"refresh": "true"})
+
+    assert response.status_code == 200, response.text
+    assert calls == ["refresh-store-assets", "build-community-store"]
+
+
+def test_store_refresh_endpoint_refreshes_assets_and_updates(monkeypatch) -> None:
+    calls: list[str] = []
+
+    async def fake_refresh_assets() -> dict:
+        calls.append("assets")
+        return {"checked_at": 111.0, "official": {"a": {}}, "community": {"b": {}}}
+
+    async def fake_refresh_updates() -> dict:
+        calls.append("updates")
+        return {"checked_at": 222.0, "official": {"c": {}}, "community": {"d": {}, "e": {}}}
+
+    monkeypatch.setattr("pallas.console.webui.plugin_store_assets.refresh_store_asset_snapshot", fake_refresh_assets)
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_update_snapshot.refresh_plugin_update_snapshot",
+        fake_refresh_updates,
+    )
+    monkeypatch.setattr(mod, "drop_read_cache", lambda *a, **k: None)
+
+    client = _build_client(monkeypatch)
+    response = client.post("/pallas/api/plugins/store/refresh")
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["data"]["store_assets"]["checked_at"] == 111.0
+    assert payload["data"]["update_snapshot"]["checked_at"] == 222.0
+    assert calls == ["assets", "updates"]
