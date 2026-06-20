@@ -99,6 +99,14 @@ async def fetch_model_admin_status(*, cfg: LlmConfig | None = None, timeout_sec:
             status["categorizer_model"] = str(llm_info.get("categorizer_model") or "").strip()
             status["tools_selective"] = bool(llm_info.get("tools_selective"))
             status["moe_tier_routing"] = bool(llm_info.get("moe_tier_routing"))
+            status["local_multi_model_enabled"] = bool(llm_info.get("local_multi_model_enabled"))
+            status["local_model_policy"] = str(llm_info.get("local_model_policy") or "").strip()
+            local_task_models = llm_info.get("local_task_models")
+            if isinstance(local_task_models, dict):
+                status["local_task_models"] = {str(k): str(v) for k, v in local_task_models.items() if str(v).strip()}
+            local_moe_models = llm_info.get("local_moe_models")
+            if isinstance(local_moe_models, dict):
+                status["local_moe_models"] = {str(k): str(v) for k, v in local_moe_models.items() if str(v).strip()}
     try:
         response = await HTTPXClient.get(f"{ai_llm_api_base(c)}/model", timeout=timeout_sec)
     except Exception as exc:
