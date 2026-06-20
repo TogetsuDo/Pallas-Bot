@@ -7,13 +7,13 @@
 ## 先记住这个边界
 
 - 前端源码仓：`Pallas-Bot-WebUI`
-- 主仓运行产物目录：`data/pallas_webui/public/`
+- 主仓运行产物目录：`data/pb_webui/public/`
 - Bot 挂载静态资源时，读的是主仓运行产物，不是源码仓
 
 所以：
 
 - 想改前端页面或样式，得去 `Pallas-Bot-WebUI`。
-- 只改主仓 `data/pallas_webui/public/`，下次重新构建同步时会被覆盖。
+- 只改主仓 `data/pb_webui/public/`，下次重新构建同步时会被覆盖。
 - 只改源码仓但没重新构建并同步，线上页面不会变。
 
 ## 什么时候该看这页
@@ -29,7 +29,7 @@ flowchart LR
     Source[Pallas-Bot-WebUI 源码]
     Build[npm run build]
     Dist[dist 产物]
-    Runtime[data/pallas_webui/public]
+    Runtime[data/pb_webui/public]
     Bot[Pallas-Bot]
     Browser[浏览器]
 
@@ -42,7 +42,7 @@ flowchart LR
 
 ### 1. 正常使用控制台
 
-保证主仓里已经有可用的 `data/pallas_webui/public/`，且 Bot 已正常启动就行。访问入口通常是：
+保证主仓里已经有可用的 `data/pb_webui/public/`，且 Bot 已正常启动就行。访问入口通常是：
 
 ```text
 http://<host>:8088/pallas/
@@ -53,7 +53,7 @@ http://<host>:8088/pallas/
 拿到新的 `dist.zip` 或新构建产物后：
 
 1. 停止或避开当前写入过程。
-2. 把产物解压或覆盖到 `data/pallas_webui/public/`。
+2. 把产物解压或覆盖到 `data/pb_webui/public/`。
 3. 重启 Bot 或刷新静态资源缓存。
 4. 浏览器里强制刷新，确认版本已变化。
 
@@ -63,7 +63,7 @@ http://<host>:8088/pallas/
 
 1. 在 `Pallas-Bot-WebUI` 仓库改源码。
 2. 执行 `npm run build`。
-3. 把生成的 `dist` 同步到主仓 `data/pallas_webui/public/`。
+3. 把生成的 `dist` 同步到主仓 `data/pb_webui/public/`。
 4. 用实际运行中的 Bot 页面验证。
 
 ## 如何判断问题出在哪一层
@@ -78,7 +78,7 @@ http://<host>:8088/pallas/
 
 - 改的是不是 `Pallas-Bot-WebUI` 而不是主仓运行目录
 - `npm run build` 是否成功
-- 构建后的资源是否真的同步到了 `data/pallas_webui/public/`
+- 构建后的资源是否真的同步到了 `data/pb_webui/public/`
 
 ### API 返回是对的，但 UI 没展示
 
@@ -88,7 +88,7 @@ http://<host>:8088/pallas/
 
 优先检查：
 
-- `data/pallas_webui/public/` 是否存在完整资源
+- `data/pb_webui/public/` 是否存在完整资源
 - Bot 是否挂载了 `pb_webui`
 - 基础路径是不是 `/pallas/`
 
@@ -113,7 +113,7 @@ WebUI 前端和后端不在同一个仓库的同一层：
 ## 维护者排障顺序
 
 1. 确认访问的是正确路径 `/pallas/`。
-2. 看 `data/pallas_webui/public/` 是否有完整资源。
+2. 看 `data/pb_webui/public/` 是否有完整资源。
 3. 强制刷新浏览器缓存。
 4. 看 Bot 日志里 `pb_webui` 是否正常挂载。
 5. 再判断是前端问题还是 API 问题。

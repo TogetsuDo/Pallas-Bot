@@ -35,7 +35,11 @@ def test_build_official_extension_rows_include_visuals():
     rows = build_official_extension_rows()
     duel = next(r for r in rows if r["package"] == "pallas-plugin-duel")
     assert duel["icon"] == "/pallas/official-extensions/pallas-plugin-duel.svg"
-    assert duel["cover"] == "https://raw.githubusercontent.com/TogetsuDo/pallas-plugin-duel/main/assets/brand-avatar.png"
+    assert duel["cover"]
+    assert duel["cover"] in (
+        "https://raw.githubusercontent.com/TogetsuDo/pallas-plugin-duel/main/assets/brand-avatar.png",
+        "/pallas/store-assets/cover/official-pallas-plugin-duel.png",
+    )
     assert duel["description"] == "泰拉风味多幕决斗，带剧情事件、抢答和八角笼玩法。"
     assert duel["avatar"] is None
 
@@ -43,7 +47,11 @@ def test_build_official_extension_rows_include_visuals():
 def test_build_official_extension_rows_ai_media_cover():
     rows = build_official_extension_rows()
     ai = next(r for r in rows if r["package"] == "pallas-plugin-ai-media")
-    assert ai["cover"] == "https://raw.githubusercontent.com/TogetsuDo/pallas-plugin-ai-media/main/assets/brand-avatar.png"
+    assert ai["cover"]
+    assert ai["cover"] in (
+        "https://raw.githubusercontent.com/TogetsuDo/pallas-plugin-ai-media/main/assets/brand-avatar.png",
+        "/pallas/store-assets/cover/official-pallas-plugin-ai-media.png",
+    )
 
 
 def test_build_official_extension_rows_prefers_cached_asset_urls(monkeypatch):

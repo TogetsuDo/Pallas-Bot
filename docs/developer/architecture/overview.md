@@ -74,7 +74,7 @@ flowchart LR
 
 ### 把 WebUI 产物目录当成前端源码
 
-前端源码在 `Pallas-Bot-WebUI`，主仓 `data/pallas_webui/public/` 只是运行产物。
+前端源码在 `Pallas-Bot-WebUI`，主仓 `data/pb_webui/public/` 只是运行产物。
 
 ### 把 AI runtime 当成产品语义层
 

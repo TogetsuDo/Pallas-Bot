@@ -31,6 +31,9 @@ def github_repo_owner(repository_url: str) -> str | None:
 
 
 def resolve_community_plugin_avatar(entry: dict[str, Any]) -> str | None:
+    explicit_author_avatar = str(entry.get("author_avatar") or "").strip()
+    if explicit_author_avatar:
+        return explicit_author_avatar
     author = str(entry.get("author") or "").strip().lstrip("@")
     if author and "/" not in author:
         return f"https://avatars.githubusercontent.com/{author}?s=64"

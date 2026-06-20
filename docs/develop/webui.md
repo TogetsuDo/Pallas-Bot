@@ -30,14 +30,14 @@ cd Pallas-Bot-WebUI
 npm run build   # vue-tsc + vite build
 ```
 
-主仓 CI / Release 会从 **Pallas-Bot-WebUI** checkout 源码，经 `tools/build_webui_dist.sh` 构建并打包 **`dist.zip`**（zip 根为 `public/`），随 **Pallas-Bot Release** 附件发布。Bot 启动时解压到 **`data/pallas_webui`**，静态目录为 **`data/pallas_webui/public`**（与 `webui_public_path()` 一致）。
+主仓 CI / Release 会从 **Pallas-Bot-WebUI** checkout 源码，经 `tools/build_webui_dist.sh` 构建并打包 **`dist.zip`**（zip 根为 `public/`），随 **Pallas-Bot Release** 附件发布。Bot 启动时解压到 **`data/pb_webui`**，静态目录为 **`data/pb_webui/public`**（与 `webui_public_path()` 一致）。
 
-本地手动部署：将构建产物放入 `data/pallas_webui/public/`，或解压 Release 的 `dist.zip` 到 `data/pallas_webui/`。
+本地手动部署：将构建产物放入 `data/pb_webui/public/`，或解压 Release 的 `dist.zip` 到 `data/pb_webui/`。
 
 ```bash
 # 主仓内一键构建 zip（需已 clone WebUI 到 ../Pallas-Bot-WebUI 等路径）
 ./tools/build_webui_dist.sh /path/to/Pallas-Bot-WebUI dist.zip
-unzip -d data/pallas_webui dist.zip
+unzip -d data/pb_webui dist.zip
 ```
 
 自动更新默认从 **`PallasBot/Pallas-Bot`** Release 下载 `dist.zip`（配置项 `pallas_webui_dist_zip_repo`）。

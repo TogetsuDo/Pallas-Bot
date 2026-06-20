@@ -230,7 +230,13 @@ if not is_sharded_worker():
             except Exception as e:
                 logger.error("控制台：后台任务 {} 异常: {}", name, format_exception_for_log(e))
 
+        async def warm_plugin_store_assets() -> None:
+            from pallas.console.webui.plugin_store_assets import refresh_store_asset_snapshot
+
+            await refresh_store_asset_snapshot()
+
         if not check_webui_exists(public):
             asyncio.create_task(guarded("webui-dist-bootstrap", bootstrap_webui_dist))
         asyncio.create_task(guarded("release-version-check", background_release_checks))
         asyncio.create_task(guarded("console-read-cache-warm", warm_console_read_caches))
+        asyncio.create_task(guarded("plugin-store-assets-warm", warm_plugin_store_assets))

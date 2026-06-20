@@ -101,3 +101,34 @@ def test_refresh_asset_snapshot_keeps_existing_asset_when_download_fails(monkeyp
 
     assert asset_path.read_bytes() == b"old-bytes"
     assert snapshot["official"]["pallas-plugin-draw"]["assets"]["icon"]["public_url"] == "/pallas/store-assets/icon/draw.png"
+
+
+def test_collect_store_asset_targets_uses_author_avatar_for_community(monkeypatch) -> None:
+    async def fake_index():
+        return {
+            "plugins": [
+                {
+                    "plugin_id": "demo",
+                    "author": "acme",
+                    "repository_url": "https://github.com/acme/demo",
+                    "ref": "main",
+                    "icon": "https://raw.githubusercontent.com/acme/demo/main/assets/icon.png",
+                    "cover": "https://raw.githubusercontent.com/acme/demo/main/assets/cover.webp",
+                    "avatar": "https://raw.githubusercontent.com/acme/demo/main/assets/avatar.png",
+                }
+            ]
+        }
+
+    monkeypatch.setattr(
+        "pallas.console.webui.community_plugin_index.load_community_plugin_index_safe",
+        fake_index,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.community_plugin_registry.resolve_community_plugin_avatar",
+        lambda entry: "https://avatars.githubusercontent.com/acme?s=64",
+    )
+
+    targets = mod.run_async(mod.collect_store_asset_targets())
+    community = targets["community"][0]
+
+    assert community["assets"]["avatar"] == "https://avatars.githubusercontent.com/acme?s=64"

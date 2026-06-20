@@ -103,6 +103,57 @@ async def test_build_community_plugin_store_uses_author_avatar(monkeypatch) -> N
     assert row["avatar"] == "https://avatars.githubusercontent.com/acme?s=64"
 
 
+async def test_build_community_plugin_store_prefers_author_avatar_over_plugin_avatar_field(monkeypatch) -> None:
+    async def fake_index():
+        return {
+            "plugins": [
+                {
+                    "plugin_id": "demo",
+                    "name": "Demo",
+                    "author": "acme",
+                    "repository_url": "https://github.com/acme/demo",
+                    "ref": "main",
+                    "avatar": "https://raw.githubusercontent.com/acme/demo/main/assets/avatar.png",
+                }
+            ],
+            "meta": {},
+        }
+
+    monkeypatch.setattr(
+        "pallas.console.webui.community_plugin_registry.load_community_plugin_index_safe",
+        fake_index,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.community_plugin_registry.local_plugin_installed",
+        lambda plugin_id: False,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.community_plugin_registry.loaded_extra_plugin_ids",
+        lambda plugin_ids: [],
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.community_plugin_registry.webui_community_install_enabled",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.community_plugin_registry.bot_lifecycle_available",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.community_plugin_registry.extra_plugin_dirs_ready",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.community_plugin_registry.resolve_community_plugin_icon",
+        lambda entry: "https://raw.githubusercontent.com/acme/demo/main/assets/icon.png",
+    )
+
+    store = await build_community_plugin_store()
+    row = store["plugins"][0]
+
+    assert row["avatar"] == "https://avatars.githubusercontent.com/acme?s=64"
+
+
 def test_resolve_community_plugin_avatar_uses_author_avatar(monkeypatch) -> None:
     from pallas.console.webui.community_plugin_registry import resolve_community_plugin_avatar
 

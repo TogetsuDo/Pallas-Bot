@@ -7,7 +7,7 @@
 WebUI 的问题，至少要分清这三层：
 
 - 前端源码仓：`Pallas-Bot-WebUI`
-- 主仓运行产物：`data/pallas_webui/public/`
+- 主仓运行产物：`data/pb_webui/public/`
 - 主仓 WebUI 后端：`pb_webui` 和 `/pallas/api`
 
 不同层出问题，现象很像，处理方式却完全不同。
@@ -26,7 +26,7 @@ WebUI 的问题，至少要分清这三层：
 
 优先检查：
 
-- `data/pallas_webui/public/` 是否是新产物
+- `data/pb_webui/public/` 是否是新产物
 - 浏览器缓存是否强制刷新
 - 是否只改了源码仓但没同步运行产物
 

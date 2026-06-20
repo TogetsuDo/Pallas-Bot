@@ -160,6 +160,7 @@ def get_cached_readme_markdown(kind: str, target_id: str) -> str | None:
 
 async def collect_store_asset_targets() -> dict[str, list[dict[str, Any]]]:
     from pallas.console.webui.community_plugin_index import load_community_plugin_index_safe
+    from pallas.console.webui.community_plugin_registry import resolve_community_plugin_avatar
     from pallas.core.platform.bot_runtime.plugin_matrix import (
         EXTRA_PLUGIN_PACKAGES,
         official_extension_repo_url,
@@ -192,7 +193,7 @@ async def collect_store_asset_targets() -> dict[str, list[dict[str, Any]]]:
             "assets": {
                 "icon": row.get("icon"),
                 "cover": row.get("cover"),
-                "avatar": row.get("avatar"),
+                "avatar": resolve_community_plugin_avatar(row),
             },
             "readme_url": _github_readme_url(row.get("repository_url")),
         })

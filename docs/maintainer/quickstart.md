@@ -46,7 +46,7 @@ http://<host>:8088/pallas/
 
 - Bot 是否已启动
 - `pb_webui` 是否正常挂载
-- `data/pallas_webui/public/` 是否存在可用资源
+- `data/pb_webui/public/` 是否存在可用资源
 
 对应文档：
 

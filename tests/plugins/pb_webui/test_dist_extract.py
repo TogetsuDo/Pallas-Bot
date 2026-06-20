@@ -41,7 +41,7 @@ def test_sync_extract_public_zip_layout(tmp_path: Path) -> None:
             if path.is_file():
                 zf.write(path, path.relative_to(stage).as_posix())
 
-    dest = tmp_path / "data" / "pallas_webui" / "public"
+    dest = tmp_path / "data" / "pb_webui" / "public"
     _sync_extract_dist_zip_file(zip_path, dest)
 
     assert (dest / "index.html").read_text(encoding="utf-8") == "<html>ok</html>"

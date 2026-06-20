@@ -97,9 +97,9 @@
 ### WebUI
 
 - 前端源码：`Pallas-Bot-WebUI`
-- 主仓运行产物：`data/pallas_webui/public/`
+- 主仓运行产物：`data/pb_webui/public/`
 
-如果你在主仓里直接改 `data/pallas_webui/public/`，你改到的是运行产物，不是前端源码。
+如果你在主仓里直接改 `data/pb_webui/public/`，你改到的是运行产物，不是前端源码。
 
 ### AI
 

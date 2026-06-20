@@ -1,4 +1,4 @@
-"""控制台静态资源：默认目录 data/pallas_webui/public，可选 zip 直链下载解压。"""
+"""控制台静态资源：默认目录 data/pb_webui/public，可选 zip 直链下载解压。"""
 
 from __future__ import annotations
 
@@ -236,7 +236,7 @@ async def download_and_extract_dist_zip(public_dir: Path, url: str, *, follow_re
     try:
         await asyncio.to_thread(_sync_download_webui_zip, url, zip_path, follow_redirects=follow_redirects)
         await asyncio.to_thread(_sync_extract_dist_zip_file, zip_path, public_dir)
-        logger.info("Pallas-Bot 控制台: 已解压 dist 到 data/pallas_webui/public")
+        logger.info("Pallas-Bot 控制台: 已解压 dist 到 data/pb_webui/public")
     finally:
         await asyncio.to_thread(_unlink_ignore_missing, zip_path)
 

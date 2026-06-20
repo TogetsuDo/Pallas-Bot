@@ -67,7 +67,7 @@
 ## 第四步：按问题类型看日志
 
 ::: details WebUI 页面旧了或和源码不一致
-- `data/pallas_webui/public/` 是否是新产物
+- `data/pb_webui/public/` 是否是新产物
 - 浏览器缓存是否刷新
 - 你改的是不是 `Pallas-Bot-WebUI` 源码仓
 :::
@@ -117,7 +117,7 @@
 
 WebUI 运行资源：
 
-- `data/pallas_webui/public/`
+- `data/pb_webui/public/`
 
 ## 看到现象后，先做哪个判断
 
