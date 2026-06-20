@@ -110,13 +110,11 @@ async def test_schedule_publish_repeater_reply_record_does_not_drop_burst(monkey
     monkeypatch.setattr(
         mod,
         "publish_repeater_reply_record_sync",
-        lambda group_id, bot_id, record: published.append(
-            {
-                "group_id": group_id,
-                "bot_id": bot_id,
-                **dict(record),
-            }
-        ),
+        lambda group_id, bot_id, record: published.append({
+            "group_id": group_id,
+            "bot_id": bot_id,
+            **dict(record),
+        }),
     )
     monkeypatch.setattr(mod.asyncio, "to_thread", fake_to_thread)
 

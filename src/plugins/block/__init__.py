@@ -13,6 +13,7 @@ from src.features.cmd_perm.metadata_defaults import (
 )
 from src.features.cmd_perm.metadata_text import join_usage, usage_line
 from src.foundation.config import BotConfig
+from src.foundation.db import ensure_runtime_storage_ready
 from src.platform.multi_bot.fleet import fleet_bot_ids_contains
 from src.platform.multi_bot.session_seen import note_bot_session_seen
 from src.platform.shard import context as shard_ctx
@@ -52,6 +53,11 @@ __plugin_meta__ = PluginMetadata(
 driver = get_driver()
 
 
+async def ensure_bot_runtime_storage(qq: int) -> None:
+    _ = qq
+    await ensure_runtime_storage_ready()
+
+
 @driver.on_bot_connect
 async def bot_connect(bot: Bot) -> None:
     if bot.self_id.isnumeric() and bot.type == "OneBot V11":
@@ -60,6 +66,10 @@ async def bot_connect(bot: Bot) -> None:
         plugin_config.bots.add(qq)
         note_bot_session_seen(qq)
         await clear_protocol_bot_offline(qq)
+        try:
+            await ensure_bot_runtime_storage(qq)
+        except Exception as err:
+            logger.warning("Bot {} runtime storage ensure failed: {}", bot.self_id, err)
         if shard_ctx.sharding_active():
             await note_worker_bot_connected(bot)
         try:

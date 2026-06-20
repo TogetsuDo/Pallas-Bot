@@ -100,8 +100,7 @@ def test_merge_cluster_sorts_and_limits(tmp_path, monkeypatch):
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
     (log_dir / "worker-0.log").write_text(
-        "05-21 10:00:00 | INFO     | a:1 - early worker\n"
-        "05-21 12:00:00 | INFO     | a:1 - late worker\n",
+        "05-21 10:00:00 | INFO     | a:1 - early worker\n05-21 12:00:00 | INFO     | a:1 - late worker\n",
         encoding="utf-8",
     )
     monkeypatch.setattr("src.platform.shard.logs.view.shard_logs_dir", lambda: log_dir)
@@ -143,8 +142,7 @@ def test_collect_cluster_log_errors_no_log_rescan_after_cleanup(tmp_path, monkey
     err_dir = log_dir / "errors"
     err_dir.mkdir(parents=True)
     (log_dir / "hub.log").write_text(
-        "05-23 04:25:47 | ERROR    | nonebot:1 - stale hub error\n"
-        "ModuleNotFoundError: nope\n",
+        "05-23 04:25:47 | ERROR    | nonebot:1 - stale hub error\nModuleNotFoundError: nope\n",
         encoding="utf-8",
     )
     monkeypatch.setattr("src.platform.shard.logs.view.shard_logs_dir", lambda: log_dir)
@@ -162,7 +160,7 @@ def test_collect_cluster_log_errors(tmp_path, monkeypatch):
     (log_dir / "worker-2.log").write_text(
         "2026-05-21 10:00:01,0 - ERROR - boom worker\n"
         "Traceback (most recent call last):\n"
-        "  File \"x.py\", line 1, in <module>\n"
+        '  File "x.py", line 1, in <module>\n'
         "ValueError: bad\n",
         encoding="utf-8",
     )
@@ -178,11 +176,11 @@ def test_exc_type_from_traceback_ignores_stack_frames(tmp_path, monkeypatch):
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
     (log_dir / "worker-99.log").write_text(
-        "05-23 04:25:47 | ERROR    | nonebot:1 - Failed to import \"nonebot_plugin_apscheduler\"\n"
+        '05-23 04:25:47 | ERROR    | nonebot:1 - Failed to import "nonebot_plugin_apscheduler"\n'
         "Traceback (most recent call last):\n"
-        "  File \"plugin_loader.py\", line 176, in load_plugins_for_role\n"
+        '  File "plugin_loader.py", line 176, in load_plugins_for_role\n'
         "    manager.load_plugin(module_path)\n"
-        "  File \"load.py\", line 43, in load_plugin\n"
+        '  File "load.py", line 43, in load_plugin\n'
         "    importlib.import_module(name)\n"
         "ModuleNotFoundError: No module named 'nonebot_plugin_apscheduler'\n",
         encoding="utf-8",

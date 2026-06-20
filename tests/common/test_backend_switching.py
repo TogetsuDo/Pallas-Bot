@@ -139,3 +139,37 @@ async def test_init_db_dispatches_to_registered_backend(fake_backend):
 
     # fake backend 的 init 直接返回 None 不抛异常
     await init_db(backend=fake_backend)
+
+
+@pytest.mark.asyncio
+async def test_ensure_runtime_storage_ready_skips_initialized_postgresql(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.foundation import db as db_mod
+
+    calls: list[str] = []
+
+    async def fake_init_db(backend: str | None = None) -> None:
+        calls.append(str(backend))
+
+    monkeypatch.setattr(db_mod, "init_db", fake_init_db)
+    monkeypatch.setattr("src.foundation.db.repository_pg.is_pg_initialized", lambda: True)
+
+    await db_mod.ensure_runtime_storage_ready("postgresql")
+
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_ensure_runtime_storage_ready_initializes_unready_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.foundation import db as db_mod
+
+    calls: list[str] = []
+
+    async def fake_init_db(backend: str | None = None) -> None:
+        calls.append(str(backend))
+
+    monkeypatch.setattr(db_mod, "init_db", fake_init_db)
+    monkeypatch.setattr("src.foundation.db.repository_pg.is_pg_initialized", lambda: False)
+
+    await db_mod.ensure_runtime_storage_ready("postgresql")
+
+    assert calls == ["postgresql"]

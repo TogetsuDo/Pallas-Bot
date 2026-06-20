@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from src.foundation.apscheduler_runtime import ensure_apscheduler_running, register_apscheduler_startup_hook
 from src.features.community_stats import config as cfg_mod
 from src.features.community_stats.endpoints import (
     FALLBACK_CORPUS_API_BASE,
@@ -25,6 +24,7 @@ from src.features.community_stats.reporter import (
 from src.features.community_stats.scheduler import start_community_stats_reporter
 from src.features.community_stats.stats_url import monitor_overview_url_from_endpoint, stats_url_from_endpoint
 from src.features.community_stats.store import community_stats_state_path, load_or_create_deployment_id
+from src.foundation.apscheduler_runtime import ensure_apscheduler_running, register_apscheduler_startup_hook
 
 
 @pytest.fixture(autouse=True)

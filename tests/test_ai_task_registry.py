@@ -3,34 +3,31 @@ from __future__ import annotations
 import json
 import time
 
-from src.platform.shard.registry.config import get_shard_registry_settings
-
 from src.platform.shard.coord.ai_task_registry import (
     get_ai_task_record,
     register_ai_task,
     remove_ai_task,
     resolve_worker_port_for_task,
 )
+from src.platform.shard.registry.config import get_shard_registry_settings
 
 
 def test_register_and_resolve_worker_port(tmp_path, monkeypatch):
     shard_root = tmp_path / "pallas_shard"
     shard_root.mkdir(parents=True)
     (shard_root / "registry.json").write_text(
-        json.dumps(
-            {
-                "bots_per_shard": 5,
-                "hub_port": 8088,
-                "worker_base_port": 7970,
-                "ws_path": "/onebot/v11/ws",
-                "ws_host": "127.0.0.1",
-                "assignments": {"10001": 1},
-                "shards": [
-                    {"id": 0, "port": 7970, "bot_ids": []},
-                    {"id": 1, "port": 7971, "bot_ids": ["10001"]},
-                ],
-            }
-        ),
+        json.dumps({
+            "bots_per_shard": 5,
+            "hub_port": 8088,
+            "worker_base_port": 7970,
+            "ws_path": "/onebot/v11/ws",
+            "ws_host": "127.0.0.1",
+            "assignments": {"10001": 1},
+            "shards": [
+                {"id": 0, "port": 7970, "bot_ids": []},
+                {"id": 1, "port": 7971, "bot_ids": ["10001"]},
+            ],
+        }),
         encoding="utf-8",
     )
     monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")

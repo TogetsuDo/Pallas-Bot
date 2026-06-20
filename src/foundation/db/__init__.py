@@ -1,3 +1,4 @@
+import asyncio
 import os
 from collections.abc import Callable
 from urllib.parse import quote_plus
@@ -41,6 +42,8 @@ IMAGE_CACHE_REPO_REGISTRY: dict[str, Callable[[], ImageCacheRepository]] = {}
 INIT_DB_REGISTRY: dict[str, Callable] = {}
 
 _backends_registered: set[str] = set()
+_runtime_storage_ensure_lock = asyncio.Lock()
+_mongodb_initialized = False
 
 
 def register_backend(
@@ -184,6 +187,7 @@ def pg_session_server_settings() -> dict[str, str]:
 
 async def init_mongodb_db() -> None:
     """初始化 MongoDB 连接。"""
+    global _mongodb_initialized
     from beanie import init_beanie
     from nonebot.log import logger
     from pymongo import AsyncMongoClient
@@ -233,6 +237,7 @@ async def init_mongodb_db() -> None:
             ImageCache,
         ],
     )
+    _mongodb_initialized = True
     logger.info(f"{db_name} 连接成功！")
 
 
@@ -418,3 +423,24 @@ async def init_db(backend: str | None = None) -> None:
     """
     backend = ensure_backend_registered(backend)
     await INIT_DB_REGISTRY[backend]()
+
+
+def runtime_storage_ready(backend: str | None = None) -> bool:
+    name = normalize_db_backend_name(backend or get_db_backend())
+    if name == "postgresql":
+        from .repository_pg import is_pg_initialized
+
+        return is_pg_initialized()
+    if name == "mongodb":
+        return _mongodb_initialized
+    return False
+
+
+async def ensure_runtime_storage_ready(backend: str | None = None) -> None:
+    name = normalize_db_backend_name(backend or get_db_backend())
+    if runtime_storage_ready(name):
+        return
+    async with _runtime_storage_ensure_lock:
+        if runtime_storage_ready(name):
+            return
+        await init_db(name)

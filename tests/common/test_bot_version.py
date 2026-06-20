@@ -1,11 +1,11 @@
 from unittest.mock import patch
 
+from src.features.community_stats.reporter import build_heartbeat_payload
 from src.foundation.bot_version import (
     display_version_without_sha,
     get_pallas_bot_version_for_health,
     get_pallas_bot_version_for_reporting,
 )
-from src.features.community_stats.reporter import build_heartbeat_payload
 
 
 def test_display_version_without_sha():

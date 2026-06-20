@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from src.platform.shard.coord.listeners import (
     coord_listener_should_start,
     coord_listener_starters,

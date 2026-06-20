@@ -5,7 +5,7 @@ def test_command_perm_ui_labels_without_plugins():
     ui = build_command_perm_ui({})
     for pg in ui["plugins"]:
         assert pg["title"] == pg["title"].strip()
-        assert pg["title"] != pg["plugin"] or pg["plugin"] in ("maa",)
+        assert pg["title"] != pg["plugin"] or pg["plugin"] == "maa"
         for cmd in pg["commands"]:
             assert cmd["label"] != cmd["command_id"], f"missing label: {cmd['command_id']}"
             assert "…" not in cmd["label"]

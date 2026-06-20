@@ -36,7 +36,7 @@ def test_build_public_roster_entries_includes_all_when_unset(monkeypatch) -> Non
     )
     monkeypatch.setattr(
         "src.console.webui.protocol_accounts.protocol_account_display_names",
-        lambda: {},
+        dict,
     )
     monkeypatch.setattr(
         "src.features.community_stats.roster.rolling_message_weight_by_self_id",

@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.features.control_plane import bootstrap_client as bc
-from src.features.control_plane import store as cp_store
 
 
 @pytest.fixture

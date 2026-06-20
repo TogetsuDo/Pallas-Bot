@@ -32,6 +32,7 @@ async def test_friend_requests_overview_parallel_doubt(monkeypatch) -> None:
         return [{"user_id": self_id, "flag": "f", "nickname": ""}]
 
     monkeypatch.setattr(mod, "_doubt_friends_for_self_id_safe", fake_doubt)
+
     async def noop_enrich(*_a, **_k) -> None:
         return None
 

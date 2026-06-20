@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 
-from src.platform.shard import data_sync as sync_mod
 from src.platform.multi_bot import fleet as fleet_mod
+from src.platform.shard import data_sync as sync_mod
 from src.platform.shard.registry import store as reg_mod
 
 

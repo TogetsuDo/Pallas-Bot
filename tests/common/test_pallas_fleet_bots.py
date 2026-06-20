@@ -70,7 +70,9 @@ def test_registry_ghost_excluded_without_account_or_session(tmp_path, monkeypatc
     monkeypatch.setattr(
         mod,
         "plugin_data_dir",
-        lambda name, create=False: proto if name == "pallas_protocol" else shard_dir if name == "pallas_shard" else tmp_path,
+        lambda name, create=False: (
+            proto if name == "pallas_protocol" else shard_dir if name == "pallas_shard" else tmp_path
+        ),
     )
     monkeypatch.setattr(mod, "is_sharding_active", lambda: True)
     mod._session_connected.clear()

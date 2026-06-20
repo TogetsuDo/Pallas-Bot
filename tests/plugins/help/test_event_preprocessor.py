@@ -122,7 +122,13 @@ async def test_command_cross_bot_claim_trusts_unified_ingress_once_won(
         type(
             "E",
             (),
-            {"group_id": 12345, "user_id": 999, "time": 100, "raw_message": "牛牛帮助", "get_plaintext": lambda self: "牛牛帮助"},
+            {
+                "group_id": 12345,
+                "user_id": 999,
+                "time": 100,
+                "raw_message": "牛牛帮助",
+                "get_plaintext": (lambda self: "牛牛帮助"),
+            },
         )(),
         body="牛牛帮助",
     )

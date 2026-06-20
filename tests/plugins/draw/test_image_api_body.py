@@ -3,8 +3,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.plugins.draw.replies import DRAW_VAGUE_REPLY
-from src.shared.utils.http_msg import upstream_error_visible_to_user
 from src.plugins.draw.config import ImageApiBackend
 from src.plugins.draw.image_api import (
     extract_image_from_generation_payload,
@@ -14,6 +12,8 @@ from src.plugins.draw.image_api import (
     reply_from_image_api_json,
 )
 from src.plugins.draw.image_request_options import ImageGenRequestOptions
+from src.plugins.draw.replies import DRAW_VAGUE_REPLY
+from src.shared.utils.http_msg import upstream_error_visible_to_user
 
 # 1x1 PNG，用于单测校验
 _TEST_PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="

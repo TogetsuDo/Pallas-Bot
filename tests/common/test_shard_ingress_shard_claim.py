@@ -22,30 +22,18 @@ async def test_cross_shard_claim_one_shard_wins() -> None:
 async def test_ingress_shard_claim_scoped_by_message_time() -> None:
     plugin = "test_ingress_shard_time"
     gid, uid, body = 626266902, 3023094357, "牛牛唱歌"
-    assert await try_claim_cross_shard_message(
-        plugin, gid, uid, body, 100, shard_id=3, include_message_time=True
-    )
-    assert await try_claim_cross_shard_message(
-        plugin, gid, uid, body, 101, shard_id=6, include_message_time=True
-    )
-    assert not await try_claim_cross_shard_message(
-        plugin, gid, uid, body, 100, shard_id=6, include_message_time=True
-    )
+    assert await try_claim_cross_shard_message(plugin, gid, uid, body, 100, shard_id=3, include_message_time=True)
+    assert await try_claim_cross_shard_message(plugin, gid, uid, body, 101, shard_id=6, include_message_time=True)
+    assert not await try_claim_cross_shard_message(plugin, gid, uid, body, 100, shard_id=6, include_message_time=True)
 
 
 @pytest.mark.asyncio
 async def test_ingress_bot_claim_scoped_by_message_time() -> None:
     plugin = "test_ingress_bot_time"
     gid, uid, body = 626266902, 3023094357, "牛牛唱歌"
-    assert await try_claim_cross_bot_message_memory(
-        plugin, gid, uid, body, 100, 111, include_message_time=True
-    )
-    assert await try_claim_cross_bot_message_memory(
-        plugin, gid, uid, body, 101, 222, include_message_time=True
-    )
-    assert not await try_claim_cross_bot_message_memory(
-        plugin, gid, uid, body, 100, 222, include_message_time=True
-    )
+    assert await try_claim_cross_bot_message_memory(plugin, gid, uid, body, 100, 111, include_message_time=True)
+    assert await try_claim_cross_bot_message_memory(plugin, gid, uid, body, 101, 222, include_message_time=True)
+    assert not await try_claim_cross_bot_message_memory(plugin, gid, uid, body, 100, 222, include_message_time=True)
 
 
 @pytest.mark.asyncio
@@ -68,9 +56,5 @@ async def test_ingress_shard_claim_reclaims_obsolete_owner(monkeypatch: pytest.M
     assert ingress_shard_claim_owner_obsolete(99)
     assert not ingress_shard_claim_owner_obsolete(0)
 
-    assert await mod.try_claim_cross_shard_message(
-        plugin, gid, uid, body, t, shard_id=99, include_message_time=True
-    )
-    assert await mod.try_claim_cross_shard_message(
-        plugin, gid, uid, body, t, shard_id=0, include_message_time=True
-    )
+    assert await mod.try_claim_cross_shard_message(plugin, gid, uid, body, t, shard_id=99, include_message_time=True)
+    assert await mod.try_claim_cross_shard_message(plugin, gid, uid, body, t, shard_id=0, include_message_time=True)

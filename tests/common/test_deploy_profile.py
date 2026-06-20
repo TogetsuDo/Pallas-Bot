@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
@@ -18,7 +17,7 @@ from src.foundation.deploy_profile import (
 
 
 @pytest.fixture(autouse=True)
-def reset_deploy_marker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def reset_deploy_marker(tmp_path, monkeypatch: pytest.MonkeyPatch):
     marker = tmp_path / "deploy_profiles.json"
     monkeypatch.setattr(
         "src.foundation.deploy_profile.DEPLOY_MARKER_PATH",
@@ -34,7 +33,7 @@ def test_read_message_scrub_fragment_has_enabled() -> None:
     assert env.get("PALLAS_MESSAGE_SCRUB_ENABLED") == "true"
 
 
-def test_record_deploy_profile_merges(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_record_deploy_profile_merges(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     marker = tmp_path / "deploy_profiles.json"
     monkeypatch.setattr("src.foundation.deploy_profile.DEPLOY_MARKER_PATH", marker)
     clear_deploy_profile_cache()
@@ -51,7 +50,7 @@ def test_uv_sync_hint_shard() -> None:
     assert "deploy-shard" in uv_sync_hint_for_profile("shard")
 
 
-def test_message_scrub_webui_hidden_by_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_message_scrub_webui_hidden_by_default(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     keys = [
         "PALLAS_MESSAGE_SCRUB_ENABLED",
         "PALLAS_INBOUND_FILTER_SUBSTRINGS",
@@ -79,7 +78,7 @@ def test_message_scrub_webui_hidden_by_default(monkeypatch: pytest.MonkeyPatch, 
         )
         mp.setattr(
             "src.foundation.config.dotenv.merged_repo_dotenv_upper",
-            lambda: {},
+            dict,
         )
         mp.setattr(
             "src.foundation.config.dotenv.repo_layered_dotenv_files_exist",

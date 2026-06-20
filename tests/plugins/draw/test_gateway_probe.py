@@ -1,4 +1,3 @@
-from src.shared.service_probe import ServiceProbeResult
 from src.plugins.draw.config import Config, ImageApiBackend, ImageGenSettings
 from src.plugins.draw.gateway_probe import (
     IMAGE_PROBE_CATEGORY,
@@ -8,6 +7,7 @@ from src.plugins.draw.gateway_probe import (
     format_gateway_status_text,
     models_probe_urls,
 )
+from src.shared.service_probe import ServiceProbeResult
 
 
 def test_backend_site_name() -> None:

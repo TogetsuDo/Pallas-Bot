@@ -179,8 +179,6 @@ async def test_handle_group_plugin_operation_whitelist_allows_enable(tmp_path, m
 
     monkeypatch.setattr(plugin_manager, "is_plugin_globally_disabled", fake_is_plugin_globally_disabled)
 
-    success, msg = await plugin_manager._handle_group_plugin_operation(
-        "repeater", "牛牛复读", 12345, 88002, "enable"
-    )
+    success, msg = await plugin_manager._handle_group_plugin_operation("repeater", "牛牛复读", 12345, 88002, "enable")
     assert success is True
     assert "制约" not in (msg or "")

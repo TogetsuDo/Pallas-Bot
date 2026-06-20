@@ -5,7 +5,6 @@ import pytest
 from src.foundation.db import (
     CONTEXT_REPO_REGISTRY,
     ensure_backend_registered,
-    register_backend,
 )
 
 

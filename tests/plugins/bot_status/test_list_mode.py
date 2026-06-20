@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 
 from src.platform.multi_bot import fleet as fleet_mod
 from src.plugins.bot_status import list_mode as mod
 
 
+@dataclass
 class _Cfg:
-    def __init__(self, list_mode: str = "auto"):
-        self.bot_status_list_mode = list_mode
+    bot_status_list_mode: str = "auto"
 
 
 def patch_list_mode(monkeypatch, mode: str) -> None:

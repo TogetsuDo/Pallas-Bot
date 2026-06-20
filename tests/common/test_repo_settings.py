@@ -16,7 +16,7 @@ def clear_repo_settings_cache():
 
 def test_merged_prefers_webui_over_legacy_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     legacy = tmp_path / ".env"
-    legacy.write_text('FOO=from_dotenv\n', encoding="utf-8")
+    legacy.write_text("FOO=from_dotenv\n", encoding="utf-8")
     webui = tmp_path / "webui.json"
     webui.write_text(json.dumps({"env": {"FOO": "from_webui"}}), encoding="utf-8")
     monkeypatch.setattr(rs, "repo_config_path", lambda: tmp_path / "missing.toml")

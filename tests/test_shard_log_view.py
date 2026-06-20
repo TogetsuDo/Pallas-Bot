@@ -1,5 +1,5 @@
-from src.platform.shard.logs.view import dedupe_log_lines_preserve_order, merge_cluster_log_lines
 from src.console.web.bot_web import fill_missing_log_entry_times, parse_nonebot_log_line
+from src.platform.shard.logs.view import dedupe_log_lines_preserve_order, merge_cluster_log_lines
 
 
 def test_dedupe_log_lines():
@@ -69,7 +69,7 @@ def test_merge_traceback_stays_near_error_not_latest_time(tmp_path, monkeypatch)
     log_dir.mkdir()
     (log_dir / "worker-0.log").write_text(
         "05-22 02:02:19 | ERROR    | src:32 - [uvicorn] Traceback\n"
-        "  File \"a.py\", line 1\n"
+        '  File "a.py", line 1\n'
         "RuntimeError: Cannot add middleware after an application has started\n"
         "05-22 02:12:13 | INFO     | src:32 - Application startup complete.\n"
         "05-22 02:13:20 | DEBUG    | nonebot:178 - Running PreProcessors...\n",

@@ -8,7 +8,9 @@ from src.platform.multi_bot import claim as claim_mod
 @pytest.fixture
 def claim_plugin_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = tmp_path / "draw"
-    monkeypatch.setattr(claim_mod, "plugin_data_dir", lambda name, create=True: root if name == "draw" else tmp_path / name)
+    monkeypatch.setattr(
+        claim_mod, "plugin_data_dir", lambda name, create=True: root if name == "draw" else tmp_path / name
+    )
     return root
 
 

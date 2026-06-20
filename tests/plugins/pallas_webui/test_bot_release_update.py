@@ -51,10 +51,7 @@ def test_git_behind_only(
         patch("src.plugins.pallas_webui.manager._BOT_ROOT", root),
         patch("subprocess.check_output", side_effect=check_output),
     ):
-        assert (
-            bot_has_release_update(latest_tag="v1.1.0", current_tag="v1.0.0-dev")
-            is expected
-        )
+        assert bot_has_release_update(latest_tag="v1.1.0", current_tag="v1.0.0-dev") is expected
 
 
 @pytest.mark.parametrize(
@@ -93,7 +90,4 @@ def test_development_build_ahead(
         patch("src.plugins.pallas_webui.manager._BOT_ROOT", root),
         patch("subprocess.check_output", side_effect=check_output),
     ):
-        assert (
-            bot_is_development_build(latest_tag="v1.0.0", current_tag="", current_commit="abc1234")
-            is expected
-        )
+        assert bot_is_development_build(latest_tag="v1.0.0", current_tag="", current_commit="abc1234") is expected
