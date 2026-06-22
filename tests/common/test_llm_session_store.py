@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from pallas.product.llm.behavior import BehaviorAction, BehaviorOutcome, BehaviorRun, BehaviorScene
-from pallas.product.llm.behavior_store import append_behavior_run
+from pallas.product.llm.behavior import BehaviorAction, BehaviorOutcome, BehaviorPattern, BehaviorRun, BehaviorScene
+from pallas.product.llm.behavior_store import append_behavior_run, list_behavior_patterns, save_behavior_patterns
 from pallas.product.llm.config import LlmConfig, clear_llm_config_cache
 from pallas.product.llm.session_store import (
     append_llm_message,
@@ -179,3 +179,151 @@ async def test_llm_history_detail_includes_behavior_runs(pg_engine, monkeypatch,
     assert detail is not None
     assert detail.behavior_runs[0]["request_id"] == "req-1"
     assert detail.behavior_runs[0]["selected_actions"] == ["light_tease_and_close"]
+
+
+@pytest.mark.asyncio
+async def test_llm_history_detail_auto_settles_behavior_outcome(pg_engine, monkeypatch, tmp_path) -> None:
+    clear_llm_config_cache()
+    monkeypatch.setenv("PALLAS_DATA_DIR", str(tmp_path))
+    cfg = LlmConfig(
+        llm_session_enabled=True,
+        llm_session_user_window=20,
+        llm_session_group_window=20,
+        llm_session_user_ttl_sec=0,
+    )
+    monkeypatch.setattr("pallas.product.llm.session_store.get_llm_config", lambda: cfg)
+    monkeypatch.setattr("pallas.product.llm.session_store.is_postgresql_backend", lambda: True)
+
+    await append_llm_message(10, 100, 200, "user", "你又来这套")
+    await append_llm_message(10, 100, 200, "assistant", "少来。")
+    turns = await list_user_llm_messages(10, 100, 200, limit=10)
+    assistant_turn = next(item for item in turns if item.role == "assistant")
+    save_behavior_patterns([
+        BehaviorPattern(
+            pattern_id="p1",
+            scene=BehaviorScene.PROVOCATION,
+            action=BehaviorAction.LIGHT_TEASE_AND_CLOSE,
+            success_score=0,
+        )
+    ])
+    append_behavior_run(
+        BehaviorRun(
+            request_id="req-2",
+            bot_id=10,
+            group_id=100,
+            user_id=200,
+            created_at=assistant_turn.created_at,
+            scene=BehaviorScene.PROVOCATION,
+            reply_text="少来。",
+            selected_pattern_ids=["p1"],
+            selected_actions=[BehaviorAction.LIGHT_TEASE_AND_CLOSE],
+        )
+    )
+    await append_llm_message(10, 100, 200, "user", "哈哈那然后呢？")
+
+    detail = await get_llm_history_session_detail(bot_id=10, group_id=100, user_id=200, limit=10)
+    assert detail is not None
+    assert detail.behavior_runs[-1]["request_id"] == "req-2"
+    assert detail.behavior_runs[-1]["final_outcome"] == BehaviorOutcome.ENGAGED
+    assert detail.behavior_runs[-1]["score_delta"] == 2
+    assert list_behavior_patterns()[0].success_score == 2
+
+
+@pytest.mark.asyncio
+async def test_llm_history_detail_auto_settles_behavior_outcome_from_group_ambient_reply(
+    pg_engine, monkeypatch, tmp_path
+) -> None:
+    clear_llm_config_cache()
+    monkeypatch.setenv("PALLAS_DATA_DIR", str(tmp_path))
+    cfg = LlmConfig(
+        llm_session_enabled=True,
+        llm_session_user_window=20,
+        llm_session_group_window=20,
+        llm_session_user_ttl_sec=0,
+    )
+    monkeypatch.setattr("pallas.product.llm.session_store.get_llm_config", lambda: cfg)
+    monkeypatch.setattr("pallas.product.llm.session_store.is_postgresql_backend", lambda: True)
+
+    await append_llm_message(10, 100, 200, "user", "你又来这套")
+    await append_llm_message(10, 100, 200, "assistant", "少来。")
+    turns = await list_user_llm_messages(10, 100, 200, limit=10)
+    assistant_turn = next(item for item in turns if item.role == "assistant")
+    save_behavior_patterns([
+        BehaviorPattern(
+            pattern_id="p1",
+            scene=BehaviorScene.PROVOCATION,
+            action=BehaviorAction.LIGHT_TEASE_AND_CLOSE,
+            success_score=0,
+        )
+    ])
+    append_behavior_run(
+        BehaviorRun(
+            request_id="req-ambient-1",
+            bot_id=10,
+            group_id=100,
+            user_id=200,
+            created_at=assistant_turn.created_at,
+            scene=BehaviorScene.PROVOCATION,
+            reply_text="少来。",
+            selected_pattern_ids=["p1"],
+            selected_actions=[BehaviorAction.LIGHT_TEASE_AND_CLOSE],
+        )
+    )
+    await append_llm_message(10, 100, 300, "user", "哈哈那然后呢？")
+
+    detail = await get_llm_history_session_detail(bot_id=10, group_id=100, user_id=200, limit=10)
+    assert detail is not None
+    assert detail.behavior_runs[-1]["request_id"] == "req-ambient-1"
+    assert detail.behavior_runs[-1]["final_outcome"] == BehaviorOutcome.ENGAGED
+    assert detail.behavior_runs[-1]["score_delta"] == 2
+    assert list_behavior_patterns()[0].success_score == 2
+
+
+@pytest.mark.asyncio
+async def test_llm_history_detail_auto_settles_behavior_outcome_from_group_ambient_derailed(
+    pg_engine, monkeypatch, tmp_path
+) -> None:
+    clear_llm_config_cache()
+    monkeypatch.setenv("PALLAS_DATA_DIR", str(tmp_path))
+    cfg = LlmConfig(
+        llm_session_enabled=True,
+        llm_session_user_window=20,
+        llm_session_group_window=20,
+        llm_session_user_ttl_sec=0,
+    )
+    monkeypatch.setattr("pallas.product.llm.session_store.get_llm_config", lambda: cfg)
+    monkeypatch.setattr("pallas.product.llm.session_store.is_postgresql_backend", lambda: True)
+
+    await append_llm_message(10, 100, 200, "user", "在聊抽卡")
+    await append_llm_message(10, 100, 200, "assistant", "突然去聊庆典。")
+    turns = await list_user_llm_messages(10, 100, 200, limit=10)
+    assistant_turn = next(item for item in turns if item.role == "assistant")
+    save_behavior_patterns([
+        BehaviorPattern(
+            pattern_id="p2",
+            scene=BehaviorScene.SMALLTALK,
+            action=BehaviorAction.AVOID_FORCED_TOPIC_SHIFT,
+            success_score=0,
+        )
+    ])
+    append_behavior_run(
+        BehaviorRun(
+            request_id="req-ambient-2",
+            bot_id=10,
+            group_id=100,
+            user_id=200,
+            created_at=assistant_turn.created_at,
+            scene=BehaviorScene.SMALLTALK,
+            reply_text="突然去聊庆典。",
+            selected_pattern_ids=["p2"],
+            selected_actions=[BehaviorAction.AVOID_FORCED_TOPIC_SHIFT],
+        )
+    )
+    await append_llm_message(10, 100, 300, "user", "你别转话题啊，还在说抽卡")
+
+    detail = await get_llm_history_session_detail(bot_id=10, group_id=100, user_id=200, limit=10)
+    assert detail is not None
+    assert detail.behavior_runs[-1]["request_id"] == "req-ambient-2"
+    assert detail.behavior_runs[-1]["final_outcome"] == BehaviorOutcome.DERAILED
+    assert detail.behavior_runs[-1]["score_delta"] == -3
+    assert list_behavior_patterns()[0].success_score == -3

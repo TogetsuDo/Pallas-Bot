@@ -8,9 +8,11 @@ from sqlalchemy import delete, func, select
 
 from pallas.core.foundation.db.repository_pg import LlmChatMessageRow, get_session, is_pg_initialized
 from pallas.core.foundation.db.runtime import is_postgresql_backend
+from pallas.product.llm.behavior import infer_behavior_feedback
 from pallas.product.llm.behavior_store import (
     behavior_run_public_dict,
     list_behavior_runs_for_session,
+    settle_behavior_run_outcome,
     update_behavior_run_annotation,
 )
 from pallas.product.llm.config import LlmConfig, get_llm_config
@@ -426,6 +428,12 @@ async def get_llm_history_session_detail(
     )
     if not turns:
         return None
+    ambient_turns = await list_group_ambient_messages(
+        int(bot_id),
+        normalize_group_scope(group_id),
+        limit=50,
+    )
+    ambient_turns = [item for item in ambient_turns if int(item.user_id) != int(user_id)]
     summary_rows = await list_llm_history_sessions(
         bot_id=int(bot_id),
         group_id=normalize_group_scope(group_id),
@@ -434,16 +442,28 @@ async def get_llm_history_session_detail(
     )
     if not summary_rows:
         return None
-    behavior_runs = [
-        behavior_run_public_dict(item)
-        for item in list_behavior_runs_for_session(
+    behavior_runs = list(
+        list_behavior_runs_for_session(
             bot_id=int(bot_id),
             group_id=normalize_group_scope(group_id),
             user_id=int(user_id),
             limit=50,
         )
-    ]
-    return LlmHistorySessionDetail(session=summary_rows[0], turns=turns, behavior_runs=behavior_runs)
+    )
+    resolved_runs: list[dict[str, Any]] = []
+    now = int(time.time())
+    for item in behavior_runs:
+        outcome, payload = infer_behavior_feedback(run=item, turns=turns, ambient_turns=ambient_turns, now=now)
+        if outcome is not None:
+            updated = settle_behavior_run_outcome(
+                item.request_id,
+                final_outcome=outcome,
+                auto_feedback_payload=payload,
+            )
+            if updated is not None:
+                item = updated
+        resolved_runs.append(behavior_run_public_dict(item))
+    return LlmHistorySessionDetail(session=summary_rows[0], turns=turns, behavior_runs=resolved_runs)
 
 
 async def update_llm_behavior_annotation(

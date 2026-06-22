@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -53,12 +54,16 @@ class BehaviorRun(BaseModel):
     group_id: int | None = None
     user_id: int | None = None
     bot_id: int | None = None
+    created_at: int = 0
     scene: BehaviorScene
+    user_text: str = ""
+    reply_text: str = ""
     selected_pattern_ids: list[str] = Field(default_factory=list)
     selected_actions: list[BehaviorAction] = Field(default_factory=list)
     behavior_hint_text: str = ""
     final_outcome: BehaviorOutcome | None = None
     score_delta: int = 0
+    auto_feedback_payload: dict[str, Any] = Field(default_factory=dict)
     manual_labels: list[str] = Field(default_factory=list)
     disabled: bool = False
 
@@ -67,6 +72,9 @@ _PROVOCATION_TOKENS = ("效忠", "反党", "走资派", "快说", "表态", "忠
 _VENTING_TOKENS = ("烦死", "气死", "无语", "沃日", "绷不住", "受不了")
 _BANTER_TOKENS = ("哈哈", "乐", "蚌", "绷", "典", "梗")
 _HELP_TOKENS = ("怎么", "为啥", "为什么", "咋", "能不能", "可以吗")
+_NEGATIVE_OUTCOME_TOKENS = ("答非所问", "没懂", "没看懂", "什么玩意", "你在说啥", "不是这个", "尬", "怪")
+_DERAILED_TOKENS = ("跑题", "别转", "扯远", "别岔开", "别拐", "不是在说这个")
+_ENGAGED_TOKENS = ("?", "？", "然后", "所以", "笑死", "哈哈", "确实", "行", "草")
 
 _ACTION_HINTS: dict[BehaviorAction, str] = {
     BehaviorAction.LIGHT_TEASE_AND_CLOSE: "这类怪话先接住，轻吐槽一句就收。",
@@ -146,3 +154,118 @@ def map_behavior_outcome_score(outcome: BehaviorOutcome) -> int:
         BehaviorOutcome.AWKWARD: -2,
         BehaviorOutcome.DERAILED: -3,
     }[outcome]
+
+
+def infer_behavior_outcome(
+    *,
+    run: BehaviorRun,
+    turns: list[Any],
+    ambient_turns: list[Any] | None = None,
+    now: int,
+    window_sec: int = 90,
+) -> BehaviorOutcome | None:
+    outcome, _payload = infer_behavior_feedback(
+        run=run,
+        turns=turns,
+        ambient_turns=ambient_turns,
+        now=now,
+        window_sec=window_sec,
+    )
+    return outcome
+
+
+def infer_behavior_feedback(
+    *,
+    run: BehaviorRun,
+    turns: list[Any],
+    ambient_turns: list[Any] | None = None,
+    now: int,
+    window_sec: int = 90,
+) -> tuple[BehaviorOutcome | None, dict[str, Any]]:
+    if run.final_outcome is not None or int(run.created_at) <= 0:
+        return None, {}
+    later_user_turns = [
+        item
+        for item in turns
+        if str(getattr(item, "role", "")).strip() == "user"
+        and int(getattr(item, "created_at", 0) or 0) > int(run.created_at)
+    ]
+    ambient_later_turns = [
+        item
+        for item in list(ambient_turns or [])
+        if str(getattr(item, "role", "")).strip() == "user"
+        and int(getattr(item, "created_at", 0) or 0) > int(run.created_at)
+    ]
+    session_later_turn_count = len(later_user_turns)
+    later_user_turns.extend(ambient_later_turns)
+    if not later_user_turns:
+        if int(now) - int(run.created_at) >= max(20, int(window_sec)):
+            return BehaviorOutcome.IGNORED, {
+                "source": "timeout",
+                "matched_signal": "timeout_without_followup",
+                "matched_tokens": [],
+                "observed_turn_count": 0,
+            }
+        return None, {}
+    later_user_turns.sort(key=lambda item: int(getattr(item, "created_at", 0) or 0))
+    window_turns = [
+        item
+        for item in later_user_turns
+        if int(getattr(item, "created_at", 0) or 0) - int(run.created_at) <= max(20, int(window_sec))
+    ][:3]
+    if not window_turns:
+        return BehaviorOutcome.NEUTRAL, {
+            "source": "mixed" if ambient_later_turns and session_later_turn_count else "session",
+            "matched_signal": "followup_outside_window",
+            "matched_tokens": [],
+            "observed_turn_count": 0,
+        }
+    merged = " ".join(str(getattr(item, "content", "") or "").strip() for item in window_turns)
+    if ambient_later_turns and session_later_turn_count:
+        source = "mixed"
+    elif ambient_later_turns:
+        source = "ambient"
+    else:
+        source = "session"
+    if any(token in merged for token in _DERAILED_TOKENS):
+        matched = [token for token in _DERAILED_TOKENS if token in merged]
+        return BehaviorOutcome.DERAILED, {
+            "source": source,
+            "matched_signal": "derailed_token",
+            "matched_tokens": matched,
+            "observed_turn_count": len(window_turns),
+        }
+    if any(token in merged for token in _NEGATIVE_OUTCOME_TOKENS):
+        matched = [token for token in _NEGATIVE_OUTCOME_TOKENS if token in merged]
+        return BehaviorOutcome.AWKWARD, {
+            "source": source,
+            "matched_signal": "negative_token",
+            "matched_tokens": matched,
+            "observed_turn_count": len(window_turns),
+        }
+    if any(token in merged for token in _ENGAGED_TOKENS):
+        matched = [token for token in _ENGAGED_TOKENS if token in merged]
+        return BehaviorOutcome.ENGAGED, {
+            "source": source,
+            "matched_signal": "engaged_token",
+            "matched_tokens": matched,
+            "observed_turn_count": len(window_turns),
+        }
+    if ambient_later_turns and not [
+        item
+        for item in turns
+        if str(getattr(item, "role", "")).strip() == "user"
+        and int(getattr(item, "created_at", 0) or 0) > int(run.created_at)
+    ]:
+        return BehaviorOutcome.IGNORED, {
+            "source": "ambient",
+            "matched_signal": "ambient_continued_without_pickup",
+            "matched_tokens": [],
+            "observed_turn_count": len(window_turns),
+        }
+    return BehaviorOutcome.NEUTRAL, {
+        "source": source,
+        "matched_signal": "default_neutral",
+        "matched_tokens": [],
+        "observed_turn_count": len(window_turns),
+    }

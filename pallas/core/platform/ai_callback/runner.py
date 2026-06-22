@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from fastapi import HTTPException, UploadFile
 from nonebot import get_bot, logger
 
@@ -291,7 +293,10 @@ async def run_ai_callback(
                     bot_id=int(bot_id) if bot_id is not None else None,
                     group_id=int(group_id) if group_id is not None else None,
                     user_id=int(task.get("user_id") or 0) or None,
+                    created_at=int(time.time()),
                     scene=BehaviorScene(behavior_scene),
+                    user_text=str(task.get("user_text") or "").strip(),
+                    reply_text=reply_text,
                     selected_pattern_ids=[
                         str(item) for item in list(task.get("behavior_pattern_ids") or []) if str(item).strip()
                     ],

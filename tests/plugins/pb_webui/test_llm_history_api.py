@@ -84,6 +84,10 @@ def test_llm_history_session_detail_get(monkeypatch) -> None:
                     "request_id": "req-1",
                     "scene": "provocation",
                     "selected_actions": ["light_tease_and_close"],
+                    "auto_feedback_payload": {
+                        "source": "ambient",
+                        "matched_signal": "engaged_token",
+                    },
                     "manual_labels": ["像人"],
                 }
             ],
@@ -106,6 +110,48 @@ def test_llm_history_session_detail_get(monkeypatch) -> None:
     assert payload["data"]["session"]["user_id"] == 30003
     assert payload["data"]["turns"][0]["content"] == "你好"
     assert payload["data"]["behavior_runs"][0]["request_id"] == "req-1"
+    assert payload["data"]["behavior_runs"][0]["auto_feedback_payload"]["source"] == "ambient"
+
+
+def test_llm_behavior_runs_get(monkeypatch) -> None:
+    def fake_runs(*, limit):
+        assert limit == 20
+        return [
+            {
+                "request_id": "req-1",
+                "group_id": 20002,
+                "scene": "provocation",
+                "final_outcome": "engaged",
+                "disabled": False,
+            },
+            {
+                "request_id": "req-2",
+                "group_id": 20003,
+                "scene": "smalltalk",
+                "final_outcome": "ignored",
+                "disabled": True,
+            },
+        ]
+
+    monkeypatch.setattr(mod, "list_behavior_runs", fake_runs)
+
+    client = _build_client(monkeypatch)
+    response = client.get(
+        "/pallas/api/common-config/llm/behavior/runs",
+        params={
+            "group_id": 20002,
+            "scene": "provocation",
+            "final_outcome": "engaged",
+            "include_disabled": False,
+            "limit": 20,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["data"]["count"] == 1
+    assert payload["data"]["items"][0]["request_id"] == "req-1"
 
 
 def test_llm_history_behavior_annotation_post(monkeypatch) -> None:

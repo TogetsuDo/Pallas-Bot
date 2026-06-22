@@ -9,15 +9,20 @@ from pallas.product.llm.behavior import (
     build_behavior_hint_text,
     classify_behavior_scene,
     default_group_chat_behavior_hint,
+    infer_behavior_feedback,
+    infer_behavior_outcome,
     map_behavior_outcome_score,
     select_behavior_patterns,
 )
 from pallas.product.llm.behavior_store import (
     append_behavior_run,
+    delete_behavior_pattern,
     list_behavior_patterns,
     list_behavior_runs,
     save_behavior_patterns,
+    settle_behavior_run_outcome,
     update_behavior_run_annotation,
+    upsert_behavior_pattern,
 )
 
 
@@ -93,6 +98,115 @@ def test_map_behavior_outcome_score() -> None:
     assert map_behavior_outcome_score(BehaviorOutcome.DERAILED) == -3
 
 
+def test_infer_behavior_outcome_detects_engaged() -> None:
+    run = BehaviorRun(
+        request_id="req-1",
+        created_at=100,
+        scene=BehaviorScene.PROVOCATION,
+        reply_text="少来。",
+    )
+    turns = [
+        type("Turn", (), {"role": "assistant", "content": "少来。", "created_at": 100})(),
+        type("Turn", (), {"role": "user", "content": "哈哈那然后呢？", "created_at": 120})(),
+    ]
+    assert infer_behavior_outcome(run=run, turns=turns, now=130) == BehaviorOutcome.ENGAGED
+
+
+def test_infer_behavior_outcome_detects_ignored_after_window() -> None:
+    run = BehaviorRun(request_id="req-1", created_at=100, scene=BehaviorScene.SMALLTALK)
+    assert infer_behavior_outcome(run=run, turns=[], now=220) == BehaviorOutcome.IGNORED
+
+
+def test_infer_behavior_outcome_uses_group_ambient_reply() -> None:
+    run = BehaviorRun(
+        request_id="req-ambient-1",
+        created_at=100,
+        scene=BehaviorScene.PROVOCATION,
+        reply_text="少来。",
+    )
+    ambient_turns = [
+        type("Turn", (), {"role": "user", "content": "哈哈那然后呢？", "created_at": 120})(),
+    ]
+    assert (
+        infer_behavior_outcome(run=run, turns=[], ambient_turns=ambient_turns, now=130)
+        == BehaviorOutcome.ENGAGED
+    )
+
+
+def test_infer_behavior_outcome_uses_group_ambient_derailed_signal() -> None:
+    run = BehaviorRun(
+        request_id="req-ambient-2",
+        created_at=100,
+        scene=BehaviorScene.SMALLTALK,
+        reply_text="突然去聊庆典。",
+    )
+    ambient_turns = [
+        type("Turn", (), {"role": "user", "content": "你别转话题啊，还在说抽卡", "created_at": 118})(),
+    ]
+    assert (
+        infer_behavior_outcome(run=run, turns=[], ambient_turns=ambient_turns, now=130)
+        == BehaviorOutcome.DERAILED
+    )
+
+
+def test_infer_behavior_outcome_marks_unpicked_group_flow_as_ignored() -> None:
+    run = BehaviorRun(
+        request_id="req-ambient-3",
+        created_at=100,
+        scene=BehaviorScene.SMALLTALK,
+        reply_text="那你们继续。",
+    )
+    ambient_turns = [
+        type("Turn", (), {"role": "user", "content": "我十连又歪了", "created_at": 118})(),
+        type("Turn", (), {"role": "user", "content": "继续说抽卡那个", "created_at": 126})(),
+    ]
+    assert (
+        infer_behavior_outcome(run=run, turns=[], ambient_turns=ambient_turns, now=130)
+        == BehaviorOutcome.IGNORED
+    )
+
+
+def test_infer_behavior_feedback_includes_derailed_evidence() -> None:
+    run = BehaviorRun(
+        request_id="req-evidence-1",
+        created_at=100,
+        scene=BehaviorScene.SMALLTALK,
+        reply_text="突然去聊庆典。",
+    )
+    ambient_turns = [
+        type("Turn", (), {"role": "user", "content": "你别转话题啊，还在说抽卡", "created_at": 118})(),
+    ]
+    outcome, payload = infer_behavior_feedback(run=run, turns=[], ambient_turns=ambient_turns, now=130)
+    assert outcome == BehaviorOutcome.DERAILED
+    assert payload["source"] == "ambient"
+    assert payload["matched_signal"] == "derailed_token"
+    assert "别转" in payload["matched_tokens"]
+    assert payload["observed_turn_count"] == 1
+
+
+def test_settle_behavior_run_outcome_persists_auto_feedback_payload(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PALLAS_DATA_DIR", str(tmp_path))
+    append_behavior_run(
+        BehaviorRun(
+            request_id="req-evidence-2",
+            scene=BehaviorScene.SMALLTALK,
+        )
+    )
+    updated = settle_behavior_run_outcome(
+        "req-evidence-2",
+        final_outcome=BehaviorOutcome.IGNORED,
+        auto_feedback_payload={
+            "source": "ambient",
+            "matched_signal": "ambient_continued_without_pickup",
+        },
+    )
+    assert updated is not None
+    assert updated.auto_feedback_payload["source"] == "ambient"
+    assert list_behavior_runs(limit=1)[0].auto_feedback_payload["matched_signal"] == (
+        "ambient_continued_without_pickup"
+    )
+
+
 def test_behavior_store_round_trip(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("PALLAS_DATA_DIR", str(tmp_path))
     save_behavior_patterns([
@@ -104,6 +218,57 @@ def test_behavior_store_round_trip(tmp_path, monkeypatch) -> None:
     ])
     rows = list_behavior_patterns()
     assert rows[0].pattern_id == "p1"
+
+
+def test_behavior_pattern_upsert_and_delete(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PALLAS_DATA_DIR", str(tmp_path))
+    upsert_behavior_pattern(
+        BehaviorPattern(
+            pattern_id="p1",
+            scene=BehaviorScene.PROVOCATION,
+            action=BehaviorAction.LIGHT_TEASE_AND_CLOSE,
+            success_score=1,
+        )
+    )
+    upsert_behavior_pattern(
+        BehaviorPattern(
+            pattern_id="p1",
+            scene=BehaviorScene.PROVOCATION,
+            action=BehaviorAction.ACK_THEN_SHORT_REPLY,
+            success_score=3,
+        )
+    )
+    rows = list_behavior_patterns()
+    assert len(rows) == 1
+    assert rows[0].action == BehaviorAction.ACK_THEN_SHORT_REPLY
+    assert rows[0].success_score == 3
+    assert delete_behavior_pattern("p1") is True
+    assert list_behavior_patterns() == []
+    assert delete_behavior_pattern("missing") is False
+
+
+def test_settle_behavior_run_outcome_updates_pattern_score(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PALLAS_DATA_DIR", str(tmp_path))
+    save_behavior_patterns([
+        BehaviorPattern(
+            pattern_id="p1",
+            scene=BehaviorScene.PROVOCATION,
+            action=BehaviorAction.LIGHT_TEASE_AND_CLOSE,
+            success_score=0,
+        )
+    ])
+    append_behavior_run(
+        BehaviorRun(
+            request_id="req-1",
+            scene=BehaviorScene.PROVOCATION,
+            selected_pattern_ids=["p1"],
+        )
+    )
+    updated = settle_behavior_run_outcome("req-1", final_outcome=BehaviorOutcome.ENGAGED)
+    assert updated is not None
+    assert updated.final_outcome == BehaviorOutcome.ENGAGED
+    assert updated.score_delta == 2
+    assert list_behavior_patterns()[0].success_score == 2
 
 
 def test_behavior_run_annotation_update(tmp_path, monkeypatch) -> None:

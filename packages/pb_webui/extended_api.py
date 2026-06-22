@@ -40,6 +40,13 @@ from pallas.console.webui.console_login import (
     verify_console_password,
 )
 from pallas.core.platform.shard import context as shard_ctx
+from pallas.product.llm.behavior import BehaviorPattern, BehaviorScene
+from pallas.product.llm.behavior_store import (
+    delete_behavior_pattern,
+    list_behavior_patterns,
+    list_behavior_runs,
+    upsert_behavior_pattern,
+)
 from pallas.product.llm.kernel.observability import (
     build_conversation_kernel_status,
     list_recent_conversation_traces,
@@ -5645,6 +5652,104 @@ def register_extended_api(
         if data is None:
             raise HTTPException(status_code=404, detail="未找到该 behavior 记录")
         return JSONResponse({"ok": True, "data": data.model_dump() if hasattr(data, "model_dump") else data})
+
+    @router.get(f"{x}/common-config/llm/behavior/patterns", include_in_schema=True)
+    async def _llm_behavior_patterns_get(
+        group_id: int | None = Query(default=None, ge=1, description="群号；省略则查看全部 pattern"),
+        scene: str | None = Query(default=None, description="scene 过滤"),
+        include_disabled: bool = Query(default=True, description="是否包含 disabled pattern"),
+    ) -> JSONResponse:
+        try:
+            target_scene = BehaviorScene(str(scene).strip()) if scene else None
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"非法 scene: {scene}") from e
+        try:
+            items = list_behavior_patterns()
+            if target_scene is not None:
+                items = [item for item in items if item.scene == target_scene]
+            if group_id is not None:
+                target_group_id = int(group_id)
+                items = [
+                    item
+                    for item in items
+                    if item.scope_group_id is None or int(item.scope_group_id) == target_group_id
+                ]
+            if not include_disabled:
+                items = [item for item in items if not item.disabled]
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({
+            "ok": True,
+            "data": {
+                "items": [item.model_dump(mode="json") for item in items],
+                "count": len(items),
+            },
+        })
+
+    @router.post(f"{x}/common-config/llm/behavior/patterns/upsert", include_in_schema=True)
+    async def _llm_behavior_patterns_upsert(
+        body: dict[str, Any],
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        try:
+            data = upsert_behavior_pattern(BehaviorPattern.model_validate(body))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": data.model_dump(mode="json")})
+
+    @router.post(f"{x}/common-config/llm/behavior/patterns/delete", include_in_schema=True)
+    async def _llm_behavior_patterns_delete(
+        body: dict[str, Any],
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        pattern_id = str(body.get("pattern_id") or "").strip()
+        if not pattern_id:
+            raise HTTPException(status_code=400, detail="缺少 pattern_id")
+        try:
+            ok = delete_behavior_pattern(pattern_id)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        if not ok:
+            raise HTTPException(status_code=404, detail="未找到该 behavior pattern")
+        return JSONResponse({"ok": True, "data": {"pattern_id": pattern_id}})
+
+    @router.get(f"{x}/common-config/llm/behavior/runs", include_in_schema=True)
+    async def _llm_behavior_runs_get(
+        group_id: int | None = Query(default=None, ge=1, description="群号"),
+        scene: str | None = Query(default=None, description="scene 过滤"),
+        final_outcome: str | None = Query(default=None, description="outcome 过滤"),
+        include_disabled: bool = Query(default=True, description="是否包含 disabled run"),
+        limit: int = Query(default=50, ge=1, le=200),
+    ) -> JSONResponse:
+        try:
+            target_scene = BehaviorScene(str(scene).strip()) if scene else None
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"非法 scene: {scene}") from e
+        try:
+            items = list_behavior_runs(limit=limit)
+            filtered: list[dict[str, Any]] = []
+            for item in items:
+                row = item.model_dump(mode="json") if hasattr(item, "model_dump") else dict(item)
+                if target_scene is not None and str(row.get("scene") or "") != target_scene.value:
+                    continue
+                if group_id is not None and int(row.get("group_id") or 0) != int(group_id):
+                    continue
+                if final_outcome and str(row.get("final_outcome") or "") != str(final_outcome).strip():
+                    continue
+                if not include_disabled and bool(row.get("disabled")):
+                    continue
+                filtered.append(row)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": {"items": filtered, "count": len(filtered), "limit": limit}})
 
     @router.get(f"{x}/common-config/llm/persona-observe", include_in_schema=True)
     async def _llm_persona_observe_get(

@@ -8,7 +8,7 @@ from typing import Any
 
 from pallas.core.foundation.paths import plugin_data_dir
 
-from .behavior import BehaviorOutcome, BehaviorPattern, BehaviorRun
+from .behavior import BehaviorOutcome, BehaviorPattern, BehaviorRun, map_behavior_outcome_score
 
 
 def _base_dir() -> Path:
@@ -45,6 +45,33 @@ def list_behavior_patterns() -> list[BehaviorPattern]:
         return []
     payload = json.loads(path.read_text(encoding="utf-8") or "[]")
     return [BehaviorPattern.model_validate(item) for item in payload if isinstance(item, dict)]
+
+
+def upsert_behavior_pattern(pattern: BehaviorPattern) -> BehaviorPattern:
+    rows = list_behavior_patterns()
+    replaced = False
+    for idx, item in enumerate(rows):
+        if item.pattern_id != pattern.pattern_id:
+            continue
+        rows[idx] = pattern
+        replaced = True
+        break
+    if not replaced:
+        rows.append(pattern)
+    save_behavior_patterns(rows)
+    return pattern
+
+
+def delete_behavior_pattern(pattern_id: str) -> bool:
+    target_id = str(pattern_id or "").strip()
+    if not target_id:
+        return False
+    rows = list_behavior_patterns()
+    kept = [item for item in rows if item.pattern_id != target_id]
+    if len(kept) == len(rows):
+        return False
+    save_behavior_patterns(kept)
+    return True
 
 
 def append_behavior_run(run: BehaviorRun) -> None:
@@ -112,6 +139,45 @@ def update_behavior_run_annotation(
     with path.open("w", encoding="utf-8") as f:
         for item in rows:
             f.write(json.dumps(item.model_dump(mode="json"), ensure_ascii=False) + "\n")
+    return updated
+
+
+def settle_behavior_run_outcome(
+    request_id: str,
+    *,
+    final_outcome: BehaviorOutcome | str,
+    auto_feedback_payload: dict[str, Any] | None = None,
+) -> BehaviorRun | None:
+    rows = list_behavior_runs(limit=10_000)
+    updated: BehaviorRun | None = None
+    outcome = final_outcome if isinstance(final_outcome, BehaviorOutcome) else BehaviorOutcome(str(final_outcome))
+    score_delta = map_behavior_outcome_score(outcome)
+    for idx, item in enumerate(rows):
+        if item.request_id != request_id or item.final_outcome is not None:
+            continue
+        item.final_outcome = outcome
+        item.score_delta = score_delta
+        item.auto_feedback_payload = dict(auto_feedback_payload or {})
+        rows[idx] = item
+        updated = item
+        break
+    if updated is None:
+        return None
+    path = _runs_path()
+    with path.open("w", encoding="utf-8") as f:
+        for item in rows:
+            f.write(json.dumps(item.model_dump(mode="json"), ensure_ascii=False) + "\n")
+    if updated.selected_pattern_ids and score_delta:
+        patterns = list_behavior_patterns()
+        changed = False
+        for idx, item in enumerate(patterns):
+            if item.pattern_id not in updated.selected_pattern_ids:
+                continue
+            item.success_score = int(item.success_score) + score_delta
+            patterns[idx] = item
+            changed = True
+        if changed:
+            save_behavior_patterns(patterns)
     return updated
 
 
