@@ -396,6 +396,13 @@ def make_bot_config_repository() -> ConfigRepository:
     return BOT_CONFIG_REPO_REGISTRY[backend]()
 
 
+async def ensure_bot_config_row(bot_id: int) -> bool:
+    """协议连接时为该 QQ 确保 bot_config 行存在。返回是否新建。"""
+    repo = make_bot_config_repository()
+    _, created = await repo.get_or_create(bot_id, disabled_plugins=[])
+    return created
+
+
 def make_group_config_repository() -> ConfigRepository:
     """根据当前配置的后端，返回 GroupConfig Repository 实例。"""
     backend = ensure_backend_registered()
