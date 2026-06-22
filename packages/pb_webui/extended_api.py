@@ -40,6 +40,10 @@ from pallas.console.webui.console_login import (
     verify_console_password,
 )
 from pallas.core.platform.shard import context as shard_ctx
+from pallas.product.llm.kernel.observability import (
+    build_conversation_kernel_status,
+    list_recent_conversation_traces,
+)
 from pallas.product.llm.repeater_feedback import (
     group_feedback_bias_snapshot,
     list_group_feedback_entries,
@@ -5590,6 +5594,35 @@ def register_extended_api(
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": data})
+
+    @router.get(f"{x}/llm/conversation-kernel/status", include_in_schema=True)
+    async def _llm_conversation_kernel_status_get() -> JSONResponse:
+        try:
+            data = build_conversation_kernel_status()
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": data})
+
+    @router.get(f"{x}/llm/conversation-kernel/traces", include_in_schema=True)
+    async def _llm_conversation_kernel_traces_get(
+        group_id: int | None = Query(default=None, ge=1, description="群号"),
+        bot_id: int | None = Query(default=None, ge=1, description="Bot QQ"),
+        kind: str | None = Query(
+            default="decision",
+            description="trace kind；decision=conversation_decision_trace",
+        ),
+        limit: int = Query(default=50, ge=1, le=200),
+    ) -> JSONResponse:
+        try:
+            items = list_recent_conversation_traces(
+                group_id=group_id,
+                bot_id=bot_id,
+                kind=kind,
+                limit=limit,
+            )
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": {"items": items, "limit": limit}})
 
     @router.post(f"{x}/common-config/llm/history/behavior/annotate", include_in_schema=True)
     async def _llm_history_behavior_annotate(body: dict[str, Any]) -> JSONResponse:

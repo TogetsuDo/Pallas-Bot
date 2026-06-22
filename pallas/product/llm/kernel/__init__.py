@@ -32,6 +32,10 @@ from pallas.product.llm.kernel.models import (
     behavior_scene_to_conversation_scene,
     normalize_conversation_mode,
 )
+from pallas.product.llm.kernel.observability import (
+    build_conversation_kernel_status,
+    list_recent_conversation_traces,
+)
 
 __all__ = [
     "CandidateSource",
@@ -53,6 +57,7 @@ __all__ = [
     "MemoryReadPolicy",
     "PromotionCandidate",
     "behavior_scene_to_conversation_scene",
+    "build_conversation_kernel_status",
     "build_repeater_generation_plan",
     "can_apply_feedback_bias",
     "can_collect_feedback",
@@ -60,6 +65,7 @@ __all__ = [
     "decide_direct_chat_action",
     "decide_repeater_action",
     "empty_bias_snapshot",
+    "list_recent_conversation_traces",
     "normalize_conversation_mode",
     "plan_generation_stages",
     "resolve_conversation_feature_level",
