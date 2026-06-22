@@ -3,8 +3,6 @@ from __future__ import annotations
 import argparse  # noqa: TC003
 import asyncio
 
-from pallas.console.cli.maintenance_ops import run_maintenance
-
 
 def register(sub: argparse._SubParsersAction) -> None:
     parser = sub.add_parser("maintenance", help="组合运维（同步 / 更新 / 重启）")
@@ -33,6 +31,8 @@ def register(sub: argparse._SubParsersAction) -> None:
 
 
 def run(args: argparse.Namespace) -> int:
+    from pallas.console.cli.maintenance_ops import run_maintenance
+
     update_bot = bool(args.update_bot)
     restart = bool(args.restart) or (update_bot and not args.no_restart)
 

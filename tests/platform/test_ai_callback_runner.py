@@ -6,6 +6,7 @@ import pytest
 from nonebot.adapters.onebot.v11.exception import NetworkError
 
 from pallas.core.platform.ai_callback import runner as ai_callback_runner
+from pallas.core.platform.ai_callback.handlers import should_suppress_llm_duplicate_reply
 from pallas.core.platform.ai_callback.task_types import (
     LLM_CHAT_TASK_TYPE,
     REPEATER_FALLBACK_TASK_TYPE,
@@ -13,6 +14,13 @@ from pallas.core.platform.ai_callback.task_types import (
 )
 from pallas.product.llm.behavior import BehaviorAction, BehaviorScene
 from pallas.product.llm.config import LlmConfig
+
+
+def test_should_suppress_llm_duplicate_reply_for_short_parasitic_tail() -> None:
+    task = {"task_type": LLM_CHAT_TASK_TYPE, "last_reply_text": "哈哈，别这么正式啦，叫我牛牛就行！"}
+
+    assert should_suppress_llm_duplicate_reply(task, "哈哈，别这么正式啦，叫我牛牛就行！彩表演吧！")
+    assert not should_suppress_llm_duplicate_reply(task, "哈哈，别这么正式啦，叫我牛牛就行！不过你先说事。")
 
 
 @pytest.mark.asyncio

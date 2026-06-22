@@ -11,7 +11,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from packages.pb_webui.data_dir import pb_webui_data_dir
+from pallas.core.foundation.paths import plugin_data_dir
 
 _BLOCKED_SOURCE_TAGS = {"memory", "relationship", "tool", "knowledge"}
 _BLOCKED_REPLY_HINTS = (
@@ -54,7 +54,7 @@ def feedback_base_dir() -> Path:
         path = root / "llm_repeater_feedback"
         path.mkdir(parents=True, exist_ok=True)
         return path
-    path = pb_webui_data_dir() / "llm_repeater_feedback"
+    path = plugin_data_dir("pb_webui", create=True) / "llm_repeater_feedback"
     path.mkdir(parents=True, exist_ok=True)
     return path
 

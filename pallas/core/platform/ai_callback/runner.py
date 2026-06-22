@@ -5,7 +5,6 @@ from __future__ import annotations
 from fastapi import HTTPException, UploadFile
 from nonebot import get_bot, logger
 
-from packages.repeater.responder import Responder
 from pallas.core.foundation.config import GroupConfig, TaskManager
 from pallas.core.foundation.db import SingProgress
 from pallas.core.platform.ai_callback.delivery import send_group_image, send_group_message, send_group_voice
@@ -104,6 +103,8 @@ async def evaluate_repeater_callback_text(task: dict, reply_text: str) -> bool:
     task_type = str(task.get("task_type") or "").strip()
     if task_type not in _REPEATER_CALLBACK_TASKS:
         return True
+    from packages.repeater.responder import Responder
+
     text = str(reply_text or "").strip()
     if not text:
         return False

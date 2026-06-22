@@ -217,7 +217,7 @@ async def test_build_llm_chat_corpus_ending_hint_prefers_topic_run_from_same_rec
 
 
 @pytest.mark.asyncio
-async def test_build_llm_chat_corpus_ending_hint_uses_repeater_bundle_as_near_field_backfill(
+async def test_build_llm_chat_corpus_ending_hint_ignores_repeater_bundle_backfill(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from packages.llm_chat import chat_message as mod
@@ -245,24 +245,15 @@ async def test_build_llm_chat_corpus_ending_hint_uses_repeater_bundle_as_near_fi
     )
     monkeypatch.setattr(mod, "make_message_repository", lambda: message_repo)
     monkeypatch.setattr(mod, "extract_chat_trigger_keywords", lambda _text: ["明日方舟", "抽卡"])
-    monkeypatch.setattr(
-        mod,
-        "load_repeater_near_field_rows",
-        AsyncMock(
-            return_value=[
-                {"text": "这也太黑了吧", "count": 3, "keywords": "明日方舟 抽卡", "time": now - 5, "topic_hits": 2},
-                {"text": "你这波有点狠", "count": 2, "keywords": "明日方舟 抽卡", "time": now - 4, "topic_hits": 2},
-            ]
-        ),
-    )
-
     hint = await mod.build_llm_chat_corpus_ending_hint(20002, "这次抽卡也太黑了吧？？？")
 
-    assert hint == "\n【语料收尾参考】当前话题可参考本群最近常接的短句：这也太黑了吧、你这波有点狠。"
+    assert hint == "\n【语料收尾参考】当前话题可参考本群最近常接的短句：那确实。"
 
 
 @pytest.mark.asyncio
-async def test_build_llm_chat_corpus_ending_hint_unifies_sources_by_score(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_build_llm_chat_corpus_ending_hint_unifies_recent_and_answer_sources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from packages.llm_chat import chat_message as mod
 
     now = int(time.time())
@@ -298,27 +289,15 @@ async def test_build_llm_chat_corpus_ending_hint_unifies_sources_by_score(monkey
     )
     monkeypatch.setattr(mod, "make_message_repository", lambda: message_repo)
     monkeypatch.setattr(mod, "extract_chat_trigger_keywords", lambda _text: ["明日方舟", "抽卡"])
-    monkeypatch.setattr(
-        mod,
-        "load_repeater_near_field_rows",
-        AsyncMock(
-            return_value=[
-                {"text": "这也太黑了吧", "count": 2, "keywords": "明日方舟 抽卡", "time": now - 5, "topic_hits": 2},
-                {"text": "这也太离谱了吧", "count": 2, "keywords": "明日方舟 抽卡", "time": now - 4, "topic_hits": 2},
-            ]
-        ),
-    )
-
     hint = await mod.build_llm_chat_corpus_ending_hint(20002, "这次抽卡也太黑了吧？？？")
 
-    assert hint == "\n【语料收尾参考】当前话题可参考本群最近常接的短句：这也太黑了吧、你这波有点狠。"
+    assert hint == "\n【语料收尾参考】当前话题可参考本群最近常接的短句：那确实、这也太黑了吧、你这波有点狠。"
 
 
 @pytest.mark.asyncio
 async def test_build_llm_chat_corpus_ending_hint_dedupes_similar_endings(monkeypatch: pytest.MonkeyPatch) -> None:
     from packages.llm_chat import chat_message as mod
 
-    now = int(time.time())
     repo = SimpleNamespace(list_answers_for_group_since=AsyncMock(return_value=[]))
     message_repo = SimpleNamespace(find_recent_in_group=AsyncMock(return_value=[]))
 
@@ -329,21 +308,24 @@ async def test_build_llm_chat_corpus_ending_hint_dedupes_similar_endings(monkeyp
     )
     monkeypatch.setattr(mod, "make_message_repository", lambda: message_repo)
     monkeypatch.setattr(mod, "extract_chat_trigger_keywords", lambda _text: ["明日方舟", "抽卡"])
-    monkeypatch.setattr(
-        mod,
-        "load_repeater_near_field_rows",
-        AsyncMock(
+    repo = SimpleNamespace(
+        list_answers_for_group_since=AsyncMock(
             return_value=[
-                {"text": "这也太黑了吧", "count": 3, "keywords": "明日方舟 抽卡", "time": now - 5, "topic_hits": 2},
-                {"text": "这也太离谱了吧", "count": 3, "keywords": "明日方舟 抽卡", "time": now - 4, "topic_hits": 2},
-                {"text": "你这波有点狠", "count": 2, "keywords": "明日方舟 抽卡", "time": now - 3, "topic_hits": 2},
+                SimpleNamespace(messages=["这也太黑了吧"], keywords="明日方舟 抽卡", count=8),
+                SimpleNamespace(messages=["这也太离谱了吧"], keywords="明日方舟 抽卡", count=7),
+                SimpleNamespace(messages=["你这波有点狠"], keywords="明日方舟 抽卡", count=6),
             ]
-        ),
+        )
+    )
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "pallas.core.foundation.db.context_repo_access",
+        SimpleNamespace(get_shared_context_repository=lambda: repo),
     )
 
     hint = await mod.build_llm_chat_corpus_ending_hint(20002, "这次抽卡也太黑了吧？？？")
 
-    assert hint == "\n【语料收尾参考】当前话题可参考本群最近常接的短句：这也太黑了吧、你这波有点狠。"
+    assert hint == "\n【语料收尾参考】当前话题可参考本群常接的短句：这也太黑了吧、你这波有点狠。"
 
 
 @pytest.mark.asyncio
@@ -405,6 +387,42 @@ def test_build_recent_reply_variation_hint_flags_repeated_structure_without_exac
     assert "最近几轮别再用这些开头" in hint
     assert "最近解释偏满，这轮优先短一点，像顺手接一句" in hint
     assert "最近句式有点一个模子" in hint
+
+
+def test_build_recent_reply_variation_hint_flags_repeated_laugh_opener() -> None:
+    turns = [
+        LlmChatTurn(role="assistant", content="哈哈，这事还真挺怪。", user_id=1, created_at=1),
+        LlmChatTurn(role="assistant", content="哈哈，先别急。", user_id=1, created_at=2),
+        LlmChatTurn(role="assistant", content="哈哈哈，你这波也太巧了。", user_id=1, created_at=3),
+    ]
+
+    hint = build_recent_reply_variation_hint(turns)
+
+    assert "最近几轮别再用这些开头：哈哈类" in hint
+
+
+def test_build_recent_reply_variation_hint_flags_repeated_sigh_opener() -> None:
+    turns = [
+        LlmChatTurn(role="assistant", content="欸，这也太巧了。", user_id=1, created_at=1),
+        LlmChatTurn(role="assistant", content="哎，先别急。", user_id=1, created_at=2),
+        LlmChatTurn(role="assistant", content="唉，你这波真离谱。", user_id=1, created_at=3),
+    ]
+
+    hint = build_recent_reply_variation_hint(turns)
+
+    assert "最近几轮别再用这些开头：语气词类" in hint
+
+
+def test_build_recent_reply_variation_hint_flags_generic_prefix_cluster() -> None:
+    turns = [
+        LlmChatTurn(role="assistant", content="行吧，那就先这样。", user_id=1, created_at=1),
+        LlmChatTurn(role="assistant", content="行吧，你先忙。", user_id=1, created_at=2),
+        LlmChatTurn(role="assistant", content="行吧，回头再说。", user_id=1, created_at=3),
+    ]
+
+    hint = build_recent_reply_variation_hint(turns)
+
+    assert "最近几轮别再用这些开头：行吧" in hint
 
 
 @pytest.mark.asyncio

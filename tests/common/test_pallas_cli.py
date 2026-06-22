@@ -34,6 +34,18 @@ def test_main_ext_list():
     assert code in (0, 1)
 
 
+def test_module_invocation_ext_list_does_not_require_nonebot_init():
+    proc = subprocess.run(
+        [sys.executable, "-m", "pallas.console.cli.main", "ext", "list"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode in (0, 1)
+    assert "NoneBot has not been initialized." not in proc.stderr
+
+
 def test_main_sync_dry(monkeypatch):
     async def fake_sync(**_kwargs):
         return 0

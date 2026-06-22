@@ -4,8 +4,6 @@ import argparse  # noqa: TC003
 import asyncio
 import sys
 
-from pallas.console.cli.update_ops import WebuiUpdateError, apply_bot_update, apply_webui_dist_update
-
 
 def register(sub: argparse._SubParsersAction) -> None:
     parser = sub.add_parser("update", help="更新本体或 WebUI")
@@ -21,6 +19,7 @@ def register(sub: argparse._SubParsersAction) -> None:
 
 def run_bot(args: argparse.Namespace) -> int:
     async def work() -> int:
+        from pallas.console.cli.update_ops import apply_bot_update
         from packages.pb_webui.manager import BotGitUpdateError
 
         try:
@@ -36,6 +35,8 @@ def run_bot(args: argparse.Namespace) -> int:
 
 def run_webui(_args: argparse.Namespace) -> int:
     async def work() -> int:
+        from pallas.console.cli.update_ops import WebuiUpdateError, apply_webui_dist_update
+
         try:
             data = await apply_webui_dist_update(refresh_runtime_meta=False)
         except WebuiUpdateError as e:

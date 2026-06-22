@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 import nonebot
 import pytest
 
@@ -99,6 +101,46 @@ def test_worker_role_skips_maa_hub(monkeypatch: pytest.MonkeyPatch):
     loaded = {p.name for p in nonebot.get_loaded_plugins()}
     assert "maa_hub" not in loaded
     assert "maa" in loaded
+
+
+def test_register_kernel_runtime_does_not_preimport_repeater_plugin(monkeypatch: pytest.MonkeyPatch):
+    from pallas.core.platform.ai_callback import http as callback_http
+    from pallas.core.platform.bot_runtime import kernel_runtime
+
+    monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
+    monkeypatch.setenv("PALLAS_BOT_ROLE", "worker")
+    get_shard_registry_settings.cache_clear()
+
+    kernel_runtime._KERNEL_REGISTERED = False
+    callback_http._http_registered = False
+    for name in list(sys.modules):
+        if name == "packages.repeater" or name.startswith("packages.repeater."):
+            sys.modules.pop(name, None)
+
+    nonebot.init()
+    kernel_runtime.register_kernel_runtime()
+
+    assert "packages.repeater" not in sys.modules
+
+
+def test_register_kernel_runtime_does_not_preimport_pb_webui_plugin(monkeypatch: pytest.MonkeyPatch):
+    from pallas.core.platform.ai_callback import http as callback_http
+    from pallas.core.platform.bot_runtime import kernel_runtime
+
+    monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
+    monkeypatch.setenv("PALLAS_BOT_ROLE", "hub")
+    get_shard_registry_settings.cache_clear()
+
+    kernel_runtime._KERNEL_REGISTERED = False
+    callback_http._http_registered = False
+    for name in list(sys.modules):
+        if name == "packages.pb_webui" or name.startswith("packages.pb_webui."):
+            sys.modules.pop(name, None)
+
+    nonebot.init()
+    kernel_runtime.register_kernel_runtime()
+
+    assert "packages.pb_webui" not in sys.modules
 
 
 def test_register_worker_console_metrics_only_on_worker(monkeypatch: pytest.MonkeyPatch):

@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from packages.pb_webui.data_dir import pb_webui_data_dir
+from pallas.core.foundation.paths import plugin_data_dir
 
 from .behavior import BehaviorOutcome, BehaviorPattern, BehaviorRun
 
@@ -19,7 +19,7 @@ def _base_dir() -> Path:
         path = root / "llm_behavior"
         path.mkdir(parents=True, exist_ok=True)
         return path
-    path = pb_webui_data_dir() / "llm_behavior"
+    path = plugin_data_dir("pb_webui", create=True) / "llm_behavior"
     path.mkdir(parents=True, exist_ok=True)
     return path
 

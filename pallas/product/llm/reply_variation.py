@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pallas.product.llm.session_store import LlmChatTurn
 
-_REPEATED_OPENERS = (
+_DIRECT_REPEATED_OPENERS = (
+    "哈喽",
     "其实",
     "这倒是",
     "怎么说呢",
@@ -16,10 +18,14 @@ _REPEATED_OPENERS = (
     "确实",
     "一般来说",
 )
+_LAUGH_OPENER_RE = re.compile(r"^(哈哈+|呵呵+|嘿嘿+)")
+_SIGH_OPENER_RE = re.compile(r"^(欸|哎|唉|呃|额)+")
 
 _USER_WAIT_SUFFIXES = ("?", "？", "...", "…", "、")
 _USER_WAIT_TOKENS = ("等等", "等下", "先别", "我补一句", "还有", "然后")
 _STRUCTURE_MARKERS = ("先", "别", "可以", "不用", "慢慢", "一下", "这事", "你先")
+_GENERIC_PREFIX_MIN_LEN = 2
+_GENERIC_PREFIX_MAX_LEN = 4
 
 
 def should_wait_for_more(user_text: str) -> bool:
@@ -39,12 +45,45 @@ def repeated_assistant_openers(turns: list[LlmChatTurn], *, limit: int = 3) -> l
         text = str(turn.content or "").strip()
         if not text:
             continue
-        opener = next((item for item in _REPEATED_OPENERS if text.startswith(item)), "")
+        opener = classify_repeated_opener(text)
         if opener and opener not in seen:
             seen.append(opener)
         if len(seen) >= limit:
             break
     return seen
+
+
+def classify_repeated_opener(text: str) -> str:
+    plain = str(text or "").strip()
+    if not plain:
+        return ""
+    if _LAUGH_OPENER_RE.match(plain):
+        return "哈哈类"
+    if _SIGH_OPENER_RE.match(plain):
+        return "语气词类"
+    direct = next((item for item in _DIRECT_REPEATED_OPENERS if plain.startswith(item)), "")
+    if direct:
+        return direct
+    return normalize_generic_prefix(plain)
+
+
+def normalize_generic_prefix(text: str) -> str:
+    plain = str(text or "").strip()
+    if len(plain) < _GENERIC_PREFIX_MIN_LEN:
+        return ""
+    prefix_chars: list[str] = []
+    for char in plain:
+        if char in "，,。！？!?~～…：:；;、()（）[]【】<>《》\"'“”‘’ ":
+            break
+        prefix_chars.append(char)
+        if len(prefix_chars) >= _GENERIC_PREFIX_MAX_LEN:
+            break
+    prefix = "".join(prefix_chars).strip()
+    if len(prefix) < _GENERIC_PREFIX_MIN_LEN:
+        return ""
+    if prefix in {"我是", "你是", "这个", "那个", "不是", "就是"}:
+        return ""
+    return prefix
 
 
 def recent_assistant_endings(turns: list[LlmChatTurn], *, limit: int = 3) -> list[str]:

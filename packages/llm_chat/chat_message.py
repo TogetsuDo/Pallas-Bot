@@ -46,7 +46,6 @@ from . import startup as _startup  # noqa: F401
 from .config import get_llm_chat_config
 from .near_field_scorer import ANSWER_SOURCE as _ANSWER_SOURCE
 from .near_field_scorer import RECENT_LIVE_SOURCE as _RECENT_LIVE_SOURCE
-from .near_field_scorer import REPEATER_SOURCE as _REPEATER_SOURCE
 from .near_field_scorer import recent_hint_source_label, select_scored_expression_candidates
 from .prompts import get_system_prompt
 from .replies import (
@@ -131,58 +130,6 @@ def extract_chat_trigger_keywords(text: str) -> list[str]:
     return [item for item in getattr(data, "_keywords_list", []) if item]
 
 
-async def load_repeater_near_field_rows(group_id: int, text: str) -> list[dict[str, object]]:
-    try:
-        from packages.repeater.model import ChatData
-        from packages.repeater.responder import Responder
-    except Exception:
-        return []
-
-    plain = str(text or "").strip()
-    if not plain:
-        return []
-    try:
-        chat_data = ChatData(
-            group_id=int(group_id),
-            user_id=0,
-            raw_message=plain,
-            plain_text=plain,
-            time=int(time.time()),
-            bot_id=0,
-        )
-    except Exception:
-        return []
-
-    try:
-        bundle = await Responder.find_reply_bundle(
-            chat_data,
-            None,
-            reply_dict={},
-            message_dict={},
-            recent_topics={},
-        )
-    except Exception:
-        return []
-    if bundle is None:
-        return []
-
-    now_ts = int(time.time())
-    rows: list[dict[str, object]] = []
-    for idx, item in enumerate(list(getattr(bundle, "answer_list", []) or [])):
-        text_item = str(item or "").strip()
-        if not text_item or "[CQ:" in text_item:
-            continue
-        rows.append({
-            "text": text_item,
-            "count": max(1, 3 - idx),
-            "keywords": str(getattr(bundle, "answer_keywords", "") or chat_data.keywords or "").strip(),
-            "time": now_ts - idx,
-            "topic_hits": 2,
-            "source": _REPEATER_SOURCE,
-        })
-    return rows
-
-
 async def load_recent_live_expression_rows(
     group_id: int,
     text: str,
@@ -260,11 +207,7 @@ async def build_llm_chat_corpus_ending_hint(
         bot_id=bot_id,
         current_user_id=current_user_id,
     )
-    repeater_rows = await load_repeater_near_field_rows(int(group_id), text)
-    for row in repeater_rows:
-        if not str(row.get("source") or "").strip():
-            row["source"] = _REPEATER_SOURCE
-    near_field_rows = list(recent_rows) + list(repeater_rows)
+    near_field_rows = list(recent_rows)
 
     try:
         from pallas.core.foundation.db.context_repo_access import get_shared_context_repository

@@ -1,10 +1,20 @@
 from __future__ import annotations
 
 import argparse  # noqa: TC003
+from importlib import import_module
 import sys
 
 from pallas.console.cli import CLI_VERSION
-from pallas.console.cli.commands import deploy_cmd, doctor, ext_cmd, lifecycle, maintenance_cmd, sync_cmd, update_cmd
+
+_COMMAND_MODULES = (
+    "pallas.console.cli.commands.doctor",
+    "pallas.console.cli.commands.sync_cmd",
+    "pallas.console.cli.commands.ext_cmd",
+    "pallas.console.cli.commands.update_cmd",
+    "pallas.console.cli.commands.lifecycle",
+    "pallas.console.cli.commands.maintenance_cmd",
+    "pallas.console.cli.commands.deploy_cmd",
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -19,15 +29,14 @@ def build_parser() -> argparse.ArgumentParser:
         version=f"%(prog)s {CLI_VERSION}",
     )
     sub = parser.add_subparsers(dest="command", required=True)
-
-    doctor.register(sub)
-    sync_cmd.register(sub)
-    ext_cmd.register(sub)
-    update_cmd.register(sub)
-    lifecycle.register_run(sub)
-    lifecycle.register_lifecycle(sub)
-    maintenance_cmd.register(sub)
-    deploy_cmd.register(sub)
+    for module_name in _COMMAND_MODULES:
+        module = import_module(module_name)
+        if hasattr(module, "register"):
+            module.register(sub)
+        if hasattr(module, "register_run"):
+            module.register_run(sub)
+        if hasattr(module, "register_lifecycle"):
+            module.register_lifecycle(sub)
 
     return parser
 
