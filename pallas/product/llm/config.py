@@ -159,6 +159,13 @@ def resolve_llm_polish_lite_enabled() -> bool:
     return resolve_llm_repeater_mode() == "select_polish_lite"
 
 
+def resolve_conversation_feature_level_raw() -> str:
+    raw = _env_str("CONVERSATION_FEATURE_LEVEL").strip().lower()
+    if raw in ("legacy_repeater", "repeater_plus_decision", "full_conversation_kernel"):
+        return raw
+    return ""
+
+
 class LlmConfig(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="ignore")
 
@@ -200,6 +207,7 @@ class LlmConfig(BaseModel):
     llm_repeater_feedback_enabled: bool = Field(default=False)
     llm_repeater_bias_enabled: bool = Field(default=False)
     llm_repeater_writeback_enabled: bool = Field(default=False)
+    conversation_feature_level: str = Field(default="")
     llm_reply_gate_enabled: bool = Field(default=True)
     llm_reply_gate_min_chars: int = Field(default=1, ge=0, le=32)
     llm_chat_queue_merge: bool = Field(default=True)
@@ -285,6 +293,7 @@ def get_llm_config() -> LlmConfig:
             llm_repeater_feedback_enabled=_env_bool("LLM_REPEATER_FEEDBACK_ENABLED", False),
             llm_repeater_bias_enabled=_env_bool("LLM_REPEATER_BIAS_ENABLED", False),
             llm_repeater_writeback_enabled=_env_bool("LLM_REPEATER_WRITEBACK_ENABLED", False),
+            conversation_feature_level=resolve_conversation_feature_level_raw(),
             llm_reply_gate_enabled=_env_bool("LLM_REPLY_GATE_ENABLED", True),
             llm_reply_gate_min_chars=_env_int("LLM_REPLY_GATE_MIN_CHARS", 1),
             llm_chat_queue_merge=_env_bool("LLM_CHAT_QUEUE_MERGE", True),

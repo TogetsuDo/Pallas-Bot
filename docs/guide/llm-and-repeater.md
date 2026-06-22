@@ -84,6 +84,22 @@ Pallas 的默认顺序是：
 
 也就是说，Pallas 会先尽量在已有群语料上做选择和轻改写，只有前面的 grounded 路径都没走通时，才让 fallback 生成补位。
 
+## 对话内核能力档位
+
+`CONVERSATION_FEATURE_LEVEL` 用于控制 repeater 与 llm_chat 共享的对话内核收敛程度。留空时会按现有开关自动推断。
+
+| 档位 | 含义 |
+| --- | --- |
+| `legacy_repeater` | 仅语料 + 规则 + 现有 persona/scorer，不依赖统一 decision 链路 |
+| `repeater_plus_decision` | 启用统一 decision 与 trace，但不要求 feedback / writeback 全链路 |
+| `full_conversation_kernel` | decision + generation + persona-affect + memory-learning 治理全启 |
+
+老用户兼容原则：
+
+- 未开启 `LLM_CHAT_ENABLED` 时，默认落在 `legacy_repeater`
+- `LLM_REPEATER_FEEDBACK_ENABLED` / `LLM_REPEATER_BIAS_ENABLED` / `LLM_REPEATER_WRITEBACK_ENABLED` 默认关闭
+- writeback 默认关闭，direct chat 原句不会无门槛写穿 repeater 主语料
+
 ## 为什么优化后可能“不总是回”
 
 这通常不是坏事。

@@ -335,6 +335,7 @@ def _llm_section() -> WebuiEnvSection:
             "llm_repeater_feedback_enabled": "LLM_REPEATER_FEEDBACK_ENABLED",
             "llm_repeater_bias_enabled": "LLM_REPEATER_BIAS_ENABLED",
             "llm_repeater_writeback_enabled": "LLM_REPEATER_WRITEBACK_ENABLED",
+            "conversation_feature_level": "CONVERSATION_FEATURE_LEVEL",
             "llm_reply_gate_enabled": "LLM_REPLY_GATE_ENABLED",
             "llm_chat_queue_merge": "LLM_CHAT_QUEUE_MERGE",
             "llm_memory_rag_enabled": "LLM_MEMORY_RAG_ENABLED",

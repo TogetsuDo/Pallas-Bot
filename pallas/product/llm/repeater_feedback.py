@@ -12,6 +12,11 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from pallas.core.foundation.paths import plugin_data_dir
+from pallas.product.llm.kernel.feedback_models import FeedbackBiasSnapshot
+from pallas.product.llm.kernel.memory_governance import (
+    can_collect_feedback,
+    can_promote_writeback,
+)
 
 _BLOCKED_SOURCE_TAGS = {"memory", "relationship", "tool", "knowledge"}
 _BLOCKED_REPLY_HINTS = (
@@ -172,8 +177,18 @@ def group_feedback_bias_snapshot(*, group_id: int, limit: int = 50) -> dict[str,
     scene_counter = Counter(item.behavior_scene for item in rows if item.behavior_scene)
     top_replies = [text for text, _ in reply_counter.most_common(_TOP_REPLIES_LIMIT)]
     scenes = [text for text, _ in scene_counter.most_common(_TOP_SCENES_LIMIT)]
-    return {
-        "count": len(rows),
-        "top_replies": top_replies,
-        "scenes": scenes,
-    }
+    snapshot = FeedbackBiasSnapshot(
+        count=len(rows),
+        top_replies=top_replies,
+        scenes=scenes,
+        promotion_candidate_count=0,
+    )
+    return snapshot.model_dump(mode="json")
+
+
+def should_append_feedback_for_task(task_type: str) -> bool:
+    return can_collect_feedback() and str(task_type).strip().lower() == "llm_chat"
+
+
+def promotion_allowed() -> bool:
+    return can_promote_writeback()

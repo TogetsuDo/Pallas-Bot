@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pallas.product.llm.config import clear_llm_config_cache, get_llm_config
+from pallas.product.llm.config import LlmConfig, clear_llm_config_cache, get_llm_config
 from pallas.product.llm.repeater_feedback import (
     LlmRepeaterFeedbackEntry,
     append_feedback_entry,
@@ -18,11 +18,10 @@ def test_llm_repeater_feedback_defaults_disabled_bias_writeback(monkeypatch) -> 
     monkeypatch.delenv("LLM_REPEATER_BIAS_ENABLED", raising=False)
     monkeypatch.delenv("LLM_REPEATER_WRITEBACK_ENABLED", raising=False)
 
-    cfg = get_llm_config()
-
-    assert cfg.llm_repeater_feedback_enabled is False
-    assert cfg.llm_repeater_bias_enabled is False
-    assert cfg.llm_repeater_writeback_enabled is False
+    defaults = LlmConfig()
+    assert defaults.llm_repeater_feedback_enabled is False
+    assert defaults.llm_repeater_bias_enabled is False
+    assert defaults.llm_repeater_writeback_enabled is False
 
 
 def test_should_collect_llm_repeater_feedback_accepts_short_group_reply() -> None:

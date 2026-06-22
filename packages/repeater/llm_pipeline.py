@@ -3,6 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from pallas.product.llm.kernel.generation import GenerationPlan, build_repeater_generation_plan
+from pallas.product.llm.kernel.models import ConversationMode, ConversationPath, ConversationScene, GenerationStage
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
@@ -15,6 +18,7 @@ class RepeaterLlmPlan:
     fallback_text: str
     candidate_text: str
     candidate_pool: list[str]
+    generation_plan: GenerationPlan | None = None
 
 
 def build_repeater_llm_plan(
@@ -41,7 +45,18 @@ def build_repeater_llm_plan(
         stage_names.append("generate")
     elif "generate" not in stage_names:
         stage_names.append("generate")
-    return RepeaterLlmPlan(stage_names, candidate, candidate, pool)
+    stages = [GenerationStage(item) for item in stage_names]
+    generation_plan = build_repeater_generation_plan(
+        path=ConversationPath.REPEATER_ASSIST,
+        stages=stages,
+        scene=ConversationScene.SMALLTALK,
+        mode=ConversationMode.NORMAL,
+        user_text="",
+        candidate_pool=pool,
+        candidate_text=candidate,
+        fallback_text=candidate,
+    )
+    return RepeaterLlmPlan(stage_names, candidate, candidate, pool, generation_plan)
 
 
 def build_stitch_candidate(candidate_pool: list[str]) -> str:

@@ -7,6 +7,7 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.rule import Rule
 from ulid import ULID
 
+from packages.repeater.opportunity_trace import append_conversation_decision_trace
 from pallas.core.foundation.config import TaskManager
 from pallas.core.foundation.db import make_message_repository
 from pallas.core.perm import group_message_permission_for_command
@@ -21,6 +22,12 @@ from pallas.product.llm.behavior import (
 from pallas.product.llm.behavior_store import list_behavior_patterns
 from pallas.product.llm.chat_queue import merge_queued_chat, stash_chat_during_cooldown
 from pallas.product.llm.governance import check_llm_chat_gate, refresh_llm_chat_cooldown
+from pallas.product.llm.kernel import (
+    ConversationContext,
+    behavior_scene_to_conversation_scene,
+    decide_direct_chat_action,
+    resolve_conversation_feature_level,
+)
 from pallas.product.llm.memory import (
     append_memory_context,
     append_relationship_context,
@@ -36,10 +43,12 @@ from pallas.product.llm.reply_gate import evaluate_llm_reply_gate
 from pallas.product.llm.reply_variation import (
     build_recent_reply_ending_hint,
     build_recent_reply_variation_hint,
+    repeated_assistant_openers,
     should_wait_for_more,
 )
 from pallas.product.llm.session_store import list_user_llm_messages
 from pallas.product.llm.task_metrics import record_bot_llm_task
+from pallas.product.persona.affect_kernel import build_persona_affect_contract, build_variation_hint_from_contract
 from pallas.product.persona.corpus_expression_habits import infer_expression_affect_stance
 
 from . import startup as _startup  # noqa: F401
@@ -414,6 +423,14 @@ async def handle_llm_chat(bot: Bot, event: Event):
     request_id = str(ULID())
     recent_turns = await list_user_llm_messages(int(bot.self_id), group_id, user_id, limit=6)
     variation_hint = build_recent_reply_variation_hint(recent_turns)
+    if persona_for_gate is not None:
+        affect_contract = build_persona_affect_contract(
+            persona_for_gate,
+            repeated_openers=repeated_assistant_openers(recent_turns),
+        )
+        affect_hint = build_variation_hint_from_contract(affect_contract)
+        if affect_hint and affect_hint not in variation_hint:
+            variation_hint = f"{variation_hint}\n{affect_hint}".strip() if variation_hint else affect_hint
     if variation_hint:
         system_prompt = f"{system_prompt.rstrip()}\n\n{variation_hint}"
     behavior_scene = classify_behavior_scene(
@@ -425,6 +442,30 @@ async def handle_llm_chat(bot: Bot, event: Event):
         })
         >= 2,
     )
+    conversation_scene = behavior_scene_to_conversation_scene(behavior_scene)
+    direct_ctx = ConversationContext.for_direct_chat(
+        plain_text=plain or msg,
+        group_id=group_id,
+        bot_id=int(bot.self_id),
+        user_id=user_id,
+        scene=conversation_scene,
+        recent_texts=[str(getattr(turn, "content", "") or "").strip() for turn in recent_turns[-6:]],
+        has_multi_party_overlap=isinstance(event, GroupMessageEvent)
+        and len({
+            int(getattr(turn, "user_id", 0) or 0) for turn in recent_turns[-6:] if int(getattr(turn, "user_id", 0) or 0)
+        })
+        >= 2,
+    )
+    direct_decision = decide_direct_chat_action(
+        direct_ctx,
+        feature_level=resolve_conversation_feature_level(llm_cfg),
+    )
+    if group_id is not None:
+        append_conversation_decision_trace({
+            "group_id": int(group_id),
+            "bot_id": int(bot.self_id),
+            **direct_decision.trace.to_trace_row(),
+        })
     behavior_patterns = select_behavior_patterns(
         scene=behavior_scene,
         group_id=group_id,

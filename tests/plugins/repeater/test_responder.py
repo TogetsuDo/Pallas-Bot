@@ -757,10 +757,10 @@ async def test_context_find_applies_llm_feedback_bias_only_when_enabled():
                 return_value=[],
             ),
             patch("packages.repeater.activity_gate.group_has_hosted_activity", return_value=False),
-            patch(
-                "packages.repeater.responder.get_llm_config",
-                return_value=SimpleNamespace(llm_repeater_bias_enabled=bias_enabled),
-            ),
+                patch(
+                    "packages.repeater.responder.can_apply_feedback_bias",
+                    return_value=bias_enabled,
+                ),
             patch(
                 "packages.repeater.responder.group_feedback_bias_snapshot",
                 return_value={"count": 5, "top_replies": ["少来。"], "scenes": ["banter"]},
@@ -864,8 +864,8 @@ async def test_context_find_feedback_snapshot_failure_preserves_baseline_behavio
             ),
             patch("packages.repeater.activity_gate.group_has_hosted_activity", return_value=False),
             patch(
-                "packages.repeater.responder.get_llm_config",
-                return_value=SimpleNamespace(llm_repeater_bias_enabled=True),
+                "packages.repeater.responder.can_apply_feedback_bias",
+                return_value=True,
             ),
             patch(
                 "packages.repeater.responder.group_feedback_bias_snapshot",
@@ -962,8 +962,8 @@ async def test_context_find_sparse_feedback_does_not_bias_selection():
             ),
             patch("packages.repeater.activity_gate.group_has_hosted_activity", return_value=False),
             patch(
-                "packages.repeater.responder.get_llm_config",
-                return_value=SimpleNamespace(llm_repeater_bias_enabled=True),
+                "packages.repeater.responder.can_apply_feedback_bias",
+                return_value=True,
             ),
             patch(
                 "packages.repeater.responder.group_feedback_bias_snapshot",

@@ -29,7 +29,7 @@ def append_repeater_opportunity_trace(row: dict[str, Any]) -> bool:
         path.parent.mkdir(parents=True, exist_ok=True)
         try:
             previous = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
-        except OSError:
+        except (OSError, UnicodeDecodeError):
             previous = []
         previous.append(line)
         if len(previous) > _MAX_LINES:
@@ -57,3 +57,9 @@ def read_recent_repeater_opportunity_trace(*, limit: int = 200) -> list[dict[str
         if isinstance(row, dict):
             rows.append(row)
     return rows
+
+
+def append_conversation_decision_trace(trace_row: dict[str, Any]) -> bool:
+    payload = dict(trace_row or {})
+    payload.setdefault("kind", "conversation_decision_trace")
+    return append_repeater_opportunity_trace(payload)

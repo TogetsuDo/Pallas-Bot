@@ -12,7 +12,14 @@ from pallas.core.foundation.config import BotConfig
 from pallas.core.foundation.db.pool_budget import is_pg_pool_timeout_error
 from pallas.core.platform.observability import SlowPathTimer, slow_path_threshold_ms
 from pallas.core.shared.utils.media_cache import insert_image
+from pallas.product.llm.behavior import classify_behavior_scene
 from pallas.product.llm.fallback import maybe_submit_repeater_llm_fallback
+from pallas.product.llm.kernel import (
+    ConversationContext,
+    behavior_scene_to_conversation_scene,
+    decide_repeater_action,
+    resolve_conversation_feature_level,
+)
 from pallas.product.llm.polish_lite import maybe_submit_repeater_corpus_llm
 from pallas.product.llm.task_metrics import record_bot_llm_route
 from pallas.product.message_scrub import is_message_scrub_blocked_async
@@ -27,7 +34,7 @@ from ..opportunity_gate import (
     estimate_candidate_style_score,
     should_attempt_repeater_opportunity,
 )
-from ..opportunity_trace import append_repeater_opportunity_trace
+from ..opportunity_trace import append_conversation_decision_trace
 from ..reply_gate import should_prepare_repeater_reply
 from ..responder import Responder
 
@@ -125,6 +132,7 @@ async def handle_group_message(bot: Bot, event: GroupMessageEvent):
     from ..message_store import MessageStore
 
     llm_cfg = get_llm_config()
+    feature_level = resolve_conversation_feature_level(llm_cfg)
     recent_group_messages = list(MessageStore._message_dict.get(int(event.group_id), []))
     has_candidate_pool = bool(bundle.message_pool or bundle.answer_list)
     recent_human_user_ids = [
@@ -150,10 +158,34 @@ async def handle_group_message(bot: Bot, event: GroupMessageEvent):
         plan.candidate_pool or ([plan.candidate_text] if plan.candidate_text else []),
         reply_mode=bundle.reply_mode,
     )
-    should_try_llm_opportunity = should_attempt_repeater_opportunity(
-        ctx.plain_body,
+    behavior_scene = classify_behavior_scene(
+        user_text=ctx.plain_body,
+        recent_texts=[
+            str(getattr(msg, "plain_text", "") or "").strip()
+            for msg in recent_group_messages[-6:]
+            if str(getattr(msg, "plain_text", "") or "").strip()
+        ],
+        has_multi_party_overlap=has_recent_back_and_forth,
+    )
+    decision_ctx = ConversationContext.for_repeater(
+        plain_text=ctx.plain_body,
+        group_id=int(event.group_id),
+        bot_id=int(event.self_id),
+        user_id=int(event.user_id),
+        reply_mode=bundle.reply_mode,
         unique_users=len({user_id for user_id in recent_human_user_ids if user_id}),
         recent_message_count=len(recent_group_messages),
+        has_candidate_pool=has_candidate_pool,
+        candidate_pool_size=len(plan.candidate_pool),
+        candidate_style_score=candidate_style_score,
+        has_recent_back_and_forth=has_recent_back_and_forth,
+        bot_recently_replied=bot_recently_replied,
+        scene=behavior_scene_to_conversation_scene(behavior_scene),
+    )
+    opportunity_accepted = should_attempt_repeater_opportunity(
+        ctx.plain_body,
+        unique_users=decision_ctx.unique_users,
+        recent_message_count=decision_ctx.recent_message_count,
         has_candidate_pool=has_candidate_pool,
         candidate_pool_size=len(plan.candidate_pool),
         candidate_style_score=candidate_style_score,
@@ -162,13 +194,18 @@ async def handle_group_message(bot: Bot, event: GroupMessageEvent):
         reply_mode=bundle.reply_mode,
         is_to_me=bool(event.is_tome()),
     )
-    append_repeater_opportunity_trace({
-        "group_id": int(event.group_id),
-        "bot_id": int(event.self_id),
-        **build_opportunity_trace_payload(
+    decision = decide_repeater_action(
+        decision_ctx,
+        llm_enabled=llm_cfg.llm_chat_enabled,
+        select_enabled=llm_cfg.llm_select_enabled,
+        polish_enabled=llm_cfg.llm_polish_enabled,
+        polish_lite_enabled=llm_cfg.llm_polish_lite_enabled,
+        has_grounded_candidate=bool(plan.candidate_text or plan.candidate_pool),
+        opportunity_accepted=opportunity_accepted,
+        opportunity_trace_extra=build_opportunity_trace_payload(
             ctx.plain_body,
-            unique_users=len({user_id for user_id in recent_human_user_ids if user_id}),
-            recent_message_count=len(recent_group_messages),
+            unique_users=decision_ctx.unique_users,
+            recent_message_count=decision_ctx.recent_message_count,
             has_candidate_pool=has_candidate_pool,
             candidate_pool_size=len(plan.candidate_pool),
             candidate_style_score=candidate_style_score,
@@ -176,9 +213,16 @@ async def handle_group_message(bot: Bot, event: GroupMessageEvent):
             bot_recently_replied=bot_recently_replied,
             reply_mode=bundle.reply_mode,
             is_to_me=bool(event.is_tome()),
-            accepted=should_try_llm_opportunity,
+            accepted=opportunity_accepted,
         ),
+        feature_level=feature_level,
+    )
+    append_conversation_decision_trace({
+        "group_id": int(event.group_id),
+        "bot_id": int(event.self_id),
+        **decision.trace.to_trace_row(),
     })
+    should_try_llm_opportunity = decision.opportunity_accepted
 
     async def stage_runner(stage_name: str) -> bool:
         if stage_name in {"select", "rewrite"}:

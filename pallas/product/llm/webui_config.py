@@ -10,6 +10,7 @@ from pallas.console.webui.field_help import field_help
 from pallas.product.llm.config import get_llm_config
 
 RepeaterMode = Literal["off", "select", "select_polish_lite", "select_fallback", "fallback", "polish", "both"]
+ConversationFeatureLevel = Literal["", "legacy_repeater", "repeater_plus_decision", "full_conversation_kernel"]
 
 
 class LlmWebuiConfig(BaseModel):
@@ -131,6 +132,13 @@ class LlmWebuiConfig(BaseModel):
             "默认关闭；后续确认策略后再开启",
         ),
     )
+    conversation_feature_level: ConversationFeatureLevel = Field(
+        default="",
+        description=field_help(
+            "对话内核能力档位",
+            "留空则按现有开关自动推断；legacy=仅语料规则，plus=统一决策，full=决策+生成+反馈全链路",
+        ),
+    )
     llm_reply_gate_enabled: bool = Field(
         default=True,
         description=field_help(
@@ -182,6 +190,7 @@ def get_llm_webui_config() -> LlmWebuiConfig:
         llm_repeater_feedback_enabled=cfg.llm_repeater_feedback_enabled,
         llm_repeater_bias_enabled=cfg.llm_repeater_bias_enabled,
         llm_repeater_writeback_enabled=cfg.llm_repeater_writeback_enabled,
+        conversation_feature_level=cfg.conversation_feature_level or "",  # type: ignore[arg-type]
         llm_reply_gate_enabled=cfg.llm_reply_gate_enabled,
         llm_chat_queue_merge=cfg.llm_chat_queue_merge,
         llm_memory_rag_enabled=cfg.llm_memory_rag_enabled,

@@ -153,6 +153,7 @@ FIELD_LABELS: dict[str, str] = {
     "llm_repeater_feedback_enabled": "收集闲聊反哺接话软反馈",
     "llm_repeater_bias_enabled": "让闲聊软反馈参与接话弱打分",
     "llm_repeater_writeback_enabled": "允许闲聊回复回写接话主学习库",
+    "conversation_feature_level": "对话内核能力档位",
     "llm_reply_gate_enabled": "过滤无意义 @（门控）",
     "llm_chat_queue_merge": "冷却期合并多条 @",
     "llm_memory_rag_enabled": "群记忆检索（记住口令）",

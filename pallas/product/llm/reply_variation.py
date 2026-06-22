@@ -122,6 +122,19 @@ def build_recent_reply_variation_hint(turns: list[LlmChatTurn]) -> str:
     openers = repeated_assistant_openers(turns)
     if openers:
         hints.append("最近几轮别再用这些开头：" + "、".join(openers))
+        try:
+            from pallas.product.persona.affect_kernel import (
+                build_persona_affect_contract,
+                build_variation_hint_from_contract,
+            )
+
+            affect_hint = build_variation_hint_from_contract(
+                build_persona_affect_contract(repeated_openers=openers),
+            )
+            if affect_hint and affect_hint not in hints:
+                hints.append(affect_hint.removeprefix("【开头去重】"))
+        except Exception:
+            pass
 
     recent_lengths = [len(text) for text in assistant_texts[-3:]]
     if recent_lengths and min(recent_lengths) >= 28:

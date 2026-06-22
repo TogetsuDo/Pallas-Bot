@@ -15,7 +15,7 @@ from pallas.core.foundation.db.context_repo_access import context_repo
 from pallas.core.foundation.db.pool_budget import is_pg_pool_timeout_error, pg_pool_under_pressure
 from pallas.core.platform.shard import context as shard_ctx
 from pallas.core.platform.shard.repeater_ingress_metrics import record_repeater_reply_selection
-from pallas.product.llm.config import get_llm_config
+from pallas.product.llm.kernel.memory_governance import can_apply_feedback_bias
 from pallas.product.llm.repeater_feedback import group_feedback_bias_snapshot
 from pallas.product.persona.model import ResolvedPersona
 from pallas.product.persona.scorer import freshness_multiplier, message_weight_multiplier
@@ -304,6 +304,21 @@ class Responder:
             score *= message_weight_multiplier(plain, persona, affect_triggers=affect_triggers)
             score *= freshness_multiplier(plain, recent_sent or [], persona=persona)
         mode = str(reply_mode or "normal").strip().lower()
+        try:
+            from pallas.product.llm.kernel.models import normalize_conversation_mode
+            from pallas.product.persona.affect_kernel import (
+                affect_contract_to_constraints,
+                build_persona_affect_contract,
+            )
+
+            contract = build_persona_affect_contract(persona, mode=normalize_conversation_mode(mode))
+            constraints = affect_contract_to_constraints(contract)
+            if constraints.max_length and len(plain) > constraints.max_length:
+                score *= 0.85
+            if constraints.min_length and len(plain) < constraints.min_length:
+                score *= 0.9
+        except Exception:
+            pass
         if mode == "ghost":
             if len(plain) <= 8:
                 score *= 1.12
@@ -622,7 +637,7 @@ class Responder:
             if r.get("reply") and r["reply"] != Responder.REPLY_FLAG
         ]
         feedback_snapshot = None
-        if getattr(get_llm_config(), "llm_repeater_bias_enabled", False):
+        if can_apply_feedback_bias():
             try:
                 feedback_snapshot = await asyncio.to_thread(
                     group_feedback_bias_snapshot,
