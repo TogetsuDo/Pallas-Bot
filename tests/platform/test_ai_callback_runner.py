@@ -187,6 +187,48 @@ async def test_run_ai_callback_appends_behavior_run(monkeypatch: pytest.MonkeyPa
 
 
 @pytest.mark.asyncio
+async def test_run_ai_callback_attaches_agent_trace_to_behavior_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    bot = MagicMock()
+    bot.call_api = AsyncMock(return_value=None)
+    monkeypatch.setattr(ai_callback_runner, "get_bot", lambda _bot_id: bot)
+    monkeypatch.setattr(
+        ai_callback_runner.TaskManager,
+        "get_task",
+        AsyncMock(
+            return_value={
+                "bot_id": "111",
+                "group_id": 222,
+                "user_id": 333,
+                "task_type": LLM_CHAT_TASK_TYPE,
+                "user_text": "帮我查一下银灰技能",
+                "behavior_scene": "light_help",
+                "behavior_pattern_ids": ["p1"],
+                "behavior_actions": ["short_help_then_stop"],
+                "behavior_hint": "【本轮行为参考】\n- 给短帮助就收，不强行追问。",
+            }
+        ),
+    )
+    monkeypatch.setattr(ai_callback_runner.TaskManager, "remove_task", AsyncMock())
+    monkeypatch.setattr(ai_callback_runner, "remove_ai_task", lambda _task_id: None)
+    monkeypatch.setattr(ai_callback_runner, "append_llm_message", AsyncMock(return_value=True))
+    recorded: list[object] = []
+    monkeypatch.setattr(ai_callback_runner, "append_behavior_run", lambda run: recorded.append(run))
+
+    result = await ai_callback_runner.run_ai_callback(
+        "task-agent-trace-1",
+        status="success",
+        text="银灰是谢拉格阵营近卫干员。",
+        agent_trace='{"agent_stage_plan":["plan","tool_loop","generate"],"tool_call_count":1}',
+    )
+
+    assert result == {"message": "ok"}
+    assert len(recorded) == 1
+    run = recorded[0]
+    assert run.auto_feedback_payload["agent_trace"]["tool_call_count"] == 1
+    assert run.auto_feedback_payload["agent_trace"]["agent_stage_plan"] == ["plan", "tool_loop", "generate"]
+
+
+@pytest.mark.asyncio
 async def test_run_ai_callback_appends_repeater_feedback_when_enabled(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

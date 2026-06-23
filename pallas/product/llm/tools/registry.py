@@ -6,6 +6,7 @@ import inspect
 import operator
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from pallas.product.arknights_kb.config import get_arknights_kb_config
@@ -19,6 +20,18 @@ if TYPE_CHECKING:
 ToolHandler = Callable[..., dict[str, Any] | Awaitable[dict[str, Any]]]
 
 
+class LlmToolSource(StrEnum):
+    BUILTIN = "builtin"
+    PLUGIN_COMMAND = "plugin_command"
+
+
+@dataclass(frozen=True)
+class LlmToolResult:
+    ok: bool
+    result: dict[str, Any] | None = None
+    error: str = ""
+
+
 @dataclass(frozen=True)
 class LlmToolSpec:
     name: str
@@ -26,7 +39,9 @@ class LlmToolSpec:
     parameters: dict[str, Any]
     domains: frozenset[str]
     handler: ToolHandler
+    source: LlmToolSource = LlmToolSource.BUILTIN
     command_id: str | None = None
+    visible_in_ui: bool = True
 
 
 _REGISTRY: list[LlmToolSpec] = []
@@ -51,9 +66,22 @@ def register_tool(spec: LlmToolSpec) -> None:
     _REGISTERED_NAMES.add(spec.name)
 
 
-def list_registered_tools() -> tuple[LlmToolSpec, ...]:
+def iter_registered_tools(
+    *,
+    domains: frozenset[str] | None = None,
+    source: LlmToolSource | None = None,
+) -> tuple[LlmToolSpec, ...]:
     ensure_tools_loaded()
-    return tuple(_REGISTRY)
+    items = tuple(_REGISTRY)
+    if domains is not None:
+        items = tuple(spec for spec in items if spec.domains.intersection(domains))
+    if source is not None:
+        items = tuple(spec for spec in items if spec.source == source)
+    return items
+
+
+def list_registered_tools() -> tuple[LlmToolSpec, ...]:
+    return iter_registered_tools()
 
 
 def trim_tool_description(description: str, *, max_len: int) -> str:
@@ -61,6 +89,14 @@ def trim_tool_description(description: str, *, max_len: int) -> str:
     if max_len <= 0 or len(text) <= max_len:
         return text
     return text[: max_len - 1].rstrip() + "…"
+
+
+def normalize_tool_result(raw: Any) -> dict[str, Any]:
+    if isinstance(raw, dict):
+        if "ok" in raw:
+            return raw
+        return {"ok": True, "result": raw}
+    return {"ok": True, "result": {"value": raw}}
 
 
 def tool_openai_schemas(*, domains: frozenset[str] | None = None) -> list[dict[str, Any]]:
@@ -73,9 +109,7 @@ def tool_openai_schemas(*, domains: frozenset[str] | None = None) -> list[dict[s
     blacklist = {item.strip().lower() for item in cfg.llm_tools_blacklist if item.strip()}
     overrides = load_tool_description_overrides()
     out: list[dict[str, Any]] = []
-    for spec in _REGISTRY:
-        if allowed is not None and not spec.domains.intersection(allowed):
-            continue
+    for spec in iter_registered_tools(domains=allowed):
         if blacklist:
             if spec.name.lower() in blacklist:
                 continue
@@ -115,11 +149,7 @@ async def execute_tool_async(
             result = spec.handler(args, context)
             if inspect.isawaitable(result):
                 result = await result
-            if isinstance(result, dict):
-                if "ok" in result:
-                    return result
-                return {"ok": True, "result": result}
-            return {"ok": True, "result": {"value": result}}
+            return normalize_tool_result(result)
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
     return {"ok": False, "error": f"unknown tool: {name}"}
@@ -166,8 +196,10 @@ def build_tools_ui_rows() -> list[dict[str, Any]]:
             "description": spec.description,
             "domains": sorted(spec.domains),
             "command_id": spec.command_id,
+            "source": spec.source.value,
         }
-        for spec in _REGISTRY
+        for spec in iter_registered_tools()
+        if spec.visible_in_ui
     ]
     rows.sort(key=operator.itemgetter("name"))
     return rows

@@ -16,6 +16,7 @@ async def forward_ai_callback_to_worker(
     *,
     status: str,
     text: str | None = None,
+    agent_trace: str | None = None,
     song_id: str | None = None,
     chunk_index: int | None = None,
     key: int | None = None,
@@ -30,6 +31,8 @@ async def forward_ai_callback_to_worker(
     data: dict[str, str] = {"status": status}
     if text is not None:
         data["text"] = text
+    if agent_trace is not None:
+        data["agent_trace"] = agent_trace
     if song_id is not None:
         data["song_id"] = str(song_id)
     if chunk_index is not None:

@@ -127,10 +127,7 @@ def test_infer_behavior_outcome_uses_group_ambient_reply() -> None:
     ambient_turns = [
         type("Turn", (), {"role": "user", "content": "哈哈那然后呢？", "created_at": 120})(),
     ]
-    assert (
-        infer_behavior_outcome(run=run, turns=[], ambient_turns=ambient_turns, now=130)
-        == BehaviorOutcome.ENGAGED
-    )
+    assert infer_behavior_outcome(run=run, turns=[], ambient_turns=ambient_turns, now=130) == BehaviorOutcome.ENGAGED
 
 
 def test_infer_behavior_outcome_uses_group_ambient_derailed_signal() -> None:
@@ -143,10 +140,7 @@ def test_infer_behavior_outcome_uses_group_ambient_derailed_signal() -> None:
     ambient_turns = [
         type("Turn", (), {"role": "user", "content": "你别转话题啊，还在说抽卡", "created_at": 118})(),
     ]
-    assert (
-        infer_behavior_outcome(run=run, turns=[], ambient_turns=ambient_turns, now=130)
-        == BehaviorOutcome.DERAILED
-    )
+    assert infer_behavior_outcome(run=run, turns=[], ambient_turns=ambient_turns, now=130) == BehaviorOutcome.DERAILED
 
 
 def test_infer_behavior_outcome_marks_unpicked_group_flow_as_ignored() -> None:
@@ -160,10 +154,7 @@ def test_infer_behavior_outcome_marks_unpicked_group_flow_as_ignored() -> None:
         type("Turn", (), {"role": "user", "content": "我十连又歪了", "created_at": 118})(),
         type("Turn", (), {"role": "user", "content": "继续说抽卡那个", "created_at": 126})(),
     ]
-    assert (
-        infer_behavior_outcome(run=run, turns=[], ambient_turns=ambient_turns, now=130)
-        == BehaviorOutcome.IGNORED
-    )
+    assert infer_behavior_outcome(run=run, turns=[], ambient_turns=ambient_turns, now=130) == BehaviorOutcome.IGNORED
 
 
 def test_infer_behavior_feedback_includes_derailed_evidence() -> None:
@@ -190,6 +181,12 @@ def test_settle_behavior_run_outcome_persists_auto_feedback_payload(tmp_path, mo
         BehaviorRun(
             request_id="req-evidence-2",
             scene=BehaviorScene.SMALLTALK,
+            auto_feedback_payload={
+                "agent_trace": {
+                    "agent_stage_plan": ["plan", "tool_loop", "generate"],
+                    "tool_call_count": 1,
+                }
+            },
         )
     )
     updated = settle_behavior_run_outcome(
@@ -202,9 +199,15 @@ def test_settle_behavior_run_outcome_persists_auto_feedback_payload(tmp_path, mo
     )
     assert updated is not None
     assert updated.auto_feedback_payload["source"] == "ambient"
+    assert updated.auto_feedback_payload["agent_trace"]["tool_call_count"] == 1
     assert list_behavior_runs(limit=1)[0].auto_feedback_payload["matched_signal"] == (
         "ambient_continued_without_pickup"
     )
+    assert list_behavior_runs(limit=1)[0].auto_feedback_payload["agent_trace"]["agent_stage_plan"] == [
+        "plan",
+        "tool_loop",
+        "generate",
+    ]
 
 
 def test_behavior_store_round_trip(tmp_path, monkeypatch) -> None:

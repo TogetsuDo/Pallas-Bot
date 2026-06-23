@@ -6,6 +6,7 @@ from pallas.product.llm.kernel.decision import (
     DecisionResult,
     decide_direct_chat_action,
     decide_repeater_action,
+    plan_direct_chat_stages,
     plan_generation_stages,
 )
 from pallas.product.llm.kernel.feedback_models import FeedbackBiasSnapshot, PromotionCandidate
@@ -67,6 +68,7 @@ __all__ = [
     "empty_bias_snapshot",
     "list_recent_conversation_traces",
     "normalize_conversation_mode",
+    "plan_direct_chat_stages",
     "plan_generation_stages",
     "resolve_conversation_feature_level",
     "resolve_memory_read_policy",

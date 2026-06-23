@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 
 from fastapi import HTTPException, UploadFile
@@ -166,6 +167,7 @@ async def run_ai_callback(
     *,
     status: str,
     text: str | None = None,
+    agent_trace: str | None = None,
     song_id: str | None = None,
     chunk_index: int | None = None,
     key: int | None = None,
@@ -176,6 +178,16 @@ async def run_ai_callback(
     task = await resolve_callback_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+
+    parsed_agent_trace: dict | None = None
+    if agent_trace:
+        try:
+            raw_trace = json.loads(agent_trace)
+        except json.JSONDecodeError:
+            raw_trace = None
+        if isinstance(raw_trace, dict):
+            parsed_agent_trace = raw_trace
+            task["agent_trace"] = raw_trace
 
     bot_id = task.get("bot_id")
     group_id = task.get("group_id")
@@ -190,7 +202,7 @@ async def run_ai_callback(
         (
             "AI callback resolved task={} status={} task_type={} bot_id={} group_id={} "
             "has_text={} has_file={} song_id={} chunk_index={} key={} history_summary={} "
-            "history_keep_messages={}"
+            "history_keep_messages={} agent_trace={}"
         ),
         task_id,
         status,
@@ -204,6 +216,7 @@ async def run_ai_callback(
         key,
         bool(history_summary),
         history_keep_messages,
+        bool(parsed_agent_trace),
     )
 
     if group_id and song_id is not None and chunk_index is not None and key is not None and bot is not None:
@@ -306,6 +319,7 @@ async def run_ai_callback(
                         if str(item).strip()
                     ],
                     behavior_hint_text=str(task.get("behavior_hint") or "").strip(),
+                    auto_feedback_payload={"agent_trace": parsed_agent_trace} if parsed_agent_trace else {},
                 )
             )
         track_llm_callback(task, "callback_ok")

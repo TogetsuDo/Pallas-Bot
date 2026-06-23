@@ -10,7 +10,7 @@ from pallas.product.llm.tools.command_invoke import (
     render_command_template,
 )
 from pallas.product.llm.tools.metadata import LlmCommandToolDecl, iter_loaded_plugin_llm_tools
-from pallas.product.llm.tools.registry import LlmToolSpec, register_tool
+from pallas.product.llm.tools.registry import LlmToolSource, LlmToolSpec, register_tool
 
 if TYPE_CHECKING:
     from pallas.product.llm.tools.context import ToolInvokeContext
@@ -65,5 +65,6 @@ def build_command_tool_spec(
         parameters=decl.parameters or {"type": "object", "properties": {}},
         domains=frozenset({"command", plugin_name}),
         handler=handler,
+        source=LlmToolSource.PLUGIN_COMMAND,
         command_id=decl.command_id,
     )

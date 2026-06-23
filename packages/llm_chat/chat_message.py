@@ -48,6 +48,7 @@ from pallas.product.llm.reply_variation import (
 )
 from pallas.product.llm.session_store import list_user_llm_messages
 from pallas.product.llm.task_metrics import record_bot_llm_task
+from pallas.product.llm.tools.registry import tool_metadata_for_chat
 from pallas.product.persona.affect_kernel import build_persona_affect_contract, build_variation_hint_from_contract
 from pallas.product.persona.corpus_expression_habits import infer_expression_affect_stance
 
@@ -456,9 +457,11 @@ async def handle_llm_chat(bot: Bot, event: Event):
         })
         >= 2,
     )
+    tool_meta = tool_metadata_for_chat(task="llm_chat", user_text=plain or msg)
     direct_decision = decide_direct_chat_action(
         direct_ctx,
         feature_level=resolve_conversation_feature_level(llm_cfg),
+        tools_enabled=bool(tool_meta.get("tools_enabled")),
     )
     if group_id is not None:
         append_conversation_decision_trace({
@@ -501,6 +504,9 @@ async def handle_llm_chat(bot: Bot, event: Event):
             "user_text": msg,
             "fallback_text": corpus_fallback,
             "llm_route": llm_route,
+            "agent_loop_enabled": bool(tool_meta.get("tools_enabled")),
+            "agent_stage_plan": list(direct_decision.agent_stages),
+            "tool_schema_count": len(tool_meta.get("tool_schemas") or []),
             "last_reply_text": last_reply_text,
             "variation_hint": variation_hint,
             "variation_applied": bool(variation_hint),

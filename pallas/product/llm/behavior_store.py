@@ -157,7 +157,9 @@ def settle_behavior_run_outcome(
             continue
         item.final_outcome = outcome
         item.score_delta = score_delta
-        item.auto_feedback_payload = dict(auto_feedback_payload or {})
+        merged_payload = dict(item.auto_feedback_payload or {})
+        merged_payload.update(dict(auto_feedback_payload or {}))
+        item.auto_feedback_payload = merged_payload
         rows[idx] = item
         updated = item
         break

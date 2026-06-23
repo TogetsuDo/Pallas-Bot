@@ -93,6 +93,7 @@ async def submit_chat_task(request: ChatSubmitRequest, *, cfg: LlmConfig | None 
         else:
             metadata["task"] = "llm_chat"
         from pallas.product.llm.inference_params import chat_token_count_with_tools
+        from pallas.product.llm.kernel import plan_direct_chat_stages
         from pallas.product.llm.tools.registry import tool_metadata_for_chat
 
         user_text = str(request.user_text or "").strip()
@@ -100,6 +101,9 @@ async def submit_chat_task(request: ChatSubmitRequest, *, cfg: LlmConfig | None 
             user_text = str(messages[-1].content or "")
         tool_meta = tool_metadata_for_chat(task=str(metadata.get("task") or ""), user_text=user_text)
         metadata.update(tool_meta)
+        if str(metadata.get("task") or "").strip().lower() == "llm_chat":
+            metadata["agent_stage_plan"] = plan_direct_chat_stages(tools_enabled=bool(tool_meta.get("tools_enabled")))
+            metadata["tool_schema_count"] = len(tool_meta.get("tool_schemas") or [])
         metadata["token_count"] = chat_token_count_with_tools(
             request.token_count,
             tools_enabled=bool(tool_meta.get("tools_enabled")),

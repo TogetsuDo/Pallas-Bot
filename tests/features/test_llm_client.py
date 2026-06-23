@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+import types
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -93,6 +95,56 @@ async def test_submit_chat_task_unified_payload(monkeypatch: pytest.MonkeyPatch)
     assert payload["metadata"]["task"] == "drunk"
     assert payload["metadata"]["token_count"] == 50
     assert payload["messages"][-1]["content"].startswith("【用户消息")
+
+
+@pytest.mark.asyncio
+async def test_submit_chat_task_unified_llm_chat_payload_includes_agent_stage_plan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict = {}
+
+    class FakeResponse:
+        def json(self):
+            return {"task_id": "task-u2", "status": "processing"}
+
+    async def fake_post(url: str, json: dict | None = None, **kwargs):
+        captured["url"] = url
+        captured["json"] = json
+        return FakeResponse()
+
+    monkeypatch.setattr("pallas.product.llm.client.HTTPXClient.post", fake_post)
+    monkeypatch.setattr("pallas.product.llm.client.is_llm_session_store_available", lambda: False)
+    monkeypatch.setattr(
+        "pallas.product.llm.tools.registry.tool_metadata_for_chat",
+        lambda **_kwargs: {
+            "tools_enabled": True,
+            "tool_schemas": [
+                {"type": "function", "function": {"name": "arknights_operator_get"}},
+                {"type": "function", "function": {"name": "command_roll"}},
+            ],
+        },
+    )
+
+    cfg = LlmConfig(use_unified_chat_api=True, llm_chat_enabled=True, llm_governance_enabled=False)
+    result = await submit_chat_task(
+        ChatSubmitRequest(
+            request_id="req-u2",
+            session_id="sess-u2",
+            user_text="帮我查一下能天使技能",
+            system_prompt="system",
+            bot_id=10001,
+            group_id=20002,
+            user_id=30003,
+            task="llm_chat",
+        ),
+        cfg=cfg,
+    )
+    assert result.ok is True
+    metadata = captured["json"]["metadata"]
+    assert metadata["task"] == "llm_chat"
+    assert metadata["tools_enabled"] is True
+    assert metadata["agent_stage_plan"] == ["plan", "tool_loop", "generate"]
+    assert metadata["tool_schema_count"] == 2
 
 
 @pytest.mark.asyncio
@@ -266,9 +318,16 @@ def test_resolve_llm_chat_enabled_priority(monkeypatch: pytest.MonkeyPatch) -> N
             return values.get(key)
 
         monkeypatch.setattr("pallas.product.llm.config.repo_env_raw_value", fake_raw)
+        chat_pkg = types.ModuleType("packages.chat")
+        chat_cfg = types.ModuleType("packages.chat.config")
+        chat_cfg.get_chat_config = lambda: type("Cfg", (), {"chat_enable": False})()
+        monkeypatch.setitem(sys.modules, "packages.chat", chat_pkg)
+        monkeypatch.setitem(sys.modules, "packages.chat.config", chat_cfg)
         monkeypatch.setattr(
-            "packages.chat.config.get_chat_config",
-            lambda: type("Cfg", (), {"chat_enable": False})(),
+            chat_pkg,
+            "config",
+            chat_cfg,
+            raising=False,
         )
         clear_llm_config_cache()
 

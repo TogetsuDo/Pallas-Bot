@@ -94,6 +94,23 @@ def test_decide_direct_chat_action_forces_reply_generate() -> None:
     result = decide_direct_chat_action(ctx)
     assert result.action == ConversationAction.REPLY_GENERATE
     assert result.trace.path == ConversationPath.LLM_CHAT_DIRECT
+    assert result.agent_stages == ["generate"]
+    assert result.trace.generation_stages == ["generate"]
+
+
+def test_decide_direct_chat_action_plans_agent_loop_when_tools_enabled() -> None:
+    ctx = ConversationContext.for_direct_chat(
+        plain_text="@牛牛 帮我查一下能天使技能",
+        group_id=100,
+        bot_id=1,
+        user_id=2,
+        scene=ConversationScene.LIGHT_HELP,
+    )
+    result = decide_direct_chat_action(ctx, tools_enabled=True)
+    assert result.action == ConversationAction.REPLY_GENERATE
+    assert result.agent_stages == ["plan", "tool_loop", "generate"]
+    assert result.trace.generation_stages == ["plan", "tool_loop", "generate"]
+    assert result.trace.trace_reason == "direct_chat_agent_loop_planned"
 
 
 def test_resolve_conversation_feature_level_legacy_when_llm_disabled(monkeypatch) -> None:

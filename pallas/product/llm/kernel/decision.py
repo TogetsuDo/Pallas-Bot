@@ -27,10 +27,17 @@ class DecisionResult(BaseModel):
     trace: DecisionTrace
     opportunity_accepted: bool = False
     generation_stages: list[GenerationStage] = Field(default_factory=list)
+    agent_stages: list[str] = Field(default_factory=list)
 
 
 def resolve_direct_chat_action() -> ConversationAction:
     return ConversationAction.REPLY_GENERATE
+
+
+def plan_direct_chat_stages(*, tools_enabled: bool) -> list[str]:
+    if tools_enabled:
+        return ["plan", "tool_loop", GenerationStage.GENERATE.value]
+    return [GenerationStage.GENERATE.value]
 
 
 def decide_repeater_action(
@@ -93,6 +100,7 @@ def decide_repeater_action(
         trace=trace,
         opportunity_accepted=opportunity_accepted,
         generation_stages=stages,
+        agent_stages=[stage.value for stage in stages],
     )
 
 
@@ -100,10 +108,12 @@ def decide_direct_chat_action(
     ctx: ConversationContext,
     *,
     feature_level: ConversationFeatureLevel = ConversationFeatureLevel.FULL_CONVERSATION_KERNEL,
+    tools_enabled: bool = False,
 ) -> DecisionResult:
     action = resolve_direct_chat_action()
     if feature_level == ConversationFeatureLevel.LEGACY_REPEATER:
         action = ConversationAction.REPLY_GENERATE
+    agent_stages = plan_direct_chat_stages(tools_enabled=tools_enabled)
     constraints = build_mode_constraints(ConversationMode.NORMAL, direct_chat=True)
     trace = DecisionTrace(
         path=ConversationPath.LLM_CHAT_DIRECT,
@@ -111,16 +121,18 @@ def decide_direct_chat_action(
         mode=ConversationMode.NORMAL,
         action=action,
         confidence=1.0,
-        trace_reason="direct_chat_forced_reply",
+        trace_reason="direct_chat_agent_loop_planned" if tools_enabled else "direct_chat_forced_reply",
         constraints=constraints,
         opportunity_accepted=True,
-        generation_stages=[GenerationStage.GENERATE.value],
+        generation_stages=agent_stages,
+        extra={"tools_enabled": tools_enabled},
     )
     return DecisionResult(
         action=action,
         trace=trace,
         opportunity_accepted=True,
         generation_stages=[GenerationStage.GENERATE],
+        agent_stages=agent_stages,
     )
 
 
