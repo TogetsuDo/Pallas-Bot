@@ -14,6 +14,7 @@ from pallas.core.perm.schema import build_command_perm_ui
 from pallas.core.platform.bot_runtime.plugin_matrix import activation_policy_for_plugin
 from pallas.core.plugin_reload import reload_policy_from_metadata
 from pallas.core.storage.schema import build_plugin_storage_ui
+from pallas.product.llm.knowledge.metadata import iter_loaded_plugin_knowledge_sources
 from pallas.product.llm.tools.metadata import iter_loaded_plugin_llm_tools
 
 
@@ -38,6 +39,7 @@ def build_plugin_capabilities_ui() -> dict[str, Any]:
                 "title": title or plugin,
                 "commands": {},
                 "llm_tools": [],
+                "knowledge_sources": [],
                 "storage_keys": [],
                 "reload_policy": None,
                 "activation_policy": None,
@@ -83,6 +85,16 @@ def build_plugin_capabilities_ui() -> dict[str, Any]:
             "description": decl.description,
         })
 
+    for plugin_name, title, decl in iter_loaded_plugin_knowledge_sources():
+        bucket = ensure_plugin(plugin_name, title)
+        bucket["knowledge_sources"].append({
+            "source_id": decl.source_id,
+            "title": decl.title,
+            "description": decl.description,
+            "retrieval_mode": decl.retrieval_mode.value,
+            "scope": decl.scope.value,
+        })
+
     for row in storage_ui.get("plugins", []):
         bucket = ensure_plugin(str(row.get("plugin") or ""), str(row.get("title") or ""))
         bucket["storage_keys"] = list(row.get("keys") or [])
@@ -110,6 +122,8 @@ def build_plugin_capabilities_ui() -> dict[str, Any]:
         commands.sort(key=itemgetter("label", "command_id"))
         llm_tools = list(bucket["llm_tools"])
         llm_tools.sort(key=itemgetter("name"))
+        knowledge_sources = list(bucket["knowledge_sources"])
+        knowledge_sources.sort(key=itemgetter("source_id"))
         storage_keys = list(bucket["storage_keys"])
         storage_keys.sort(key=itemgetter("key"))
         rows_out.append({
@@ -117,6 +131,7 @@ def build_plugin_capabilities_ui() -> dict[str, Any]:
             "title": bucket["title"],
             "commands": commands,
             "llm_tools": llm_tools,
+            "knowledge_sources": knowledge_sources,
             "storage_keys": storage_keys,
             "reload_policy": bucket.get("reload_policy"),
             "activation_policy": bucket.get("activation_policy"),

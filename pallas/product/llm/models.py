@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -16,6 +18,7 @@ class ChatSubmitRequest(BaseModel):
     token_count: int | None = None
     temperature: float | None = None
     task: str | None = None
+    knowledge_retrieval_trace: dict[str, Any] | None = None
 
 
 class ChatSubmitResult(BaseModel):

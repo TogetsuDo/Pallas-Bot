@@ -3,6 +3,7 @@ from __future__ import annotations
 from pallas.product.llm.config import LlmConfig, clear_llm_config_cache
 from pallas.product.llm.kernel.memory_governance import (
     can_read_behavioral_learning,
+    can_read_generic_knowledge,
     can_read_persistent_memory,
     can_read_runtime_state,
     can_write_runtime_state_summary,
@@ -16,6 +17,12 @@ def test_can_read_runtime_state_requires_session_enabled() -> None:
     assert can_read_runtime_state(cfg) is False
     assert can_write_runtime_state_summary(cfg) is False
     assert runtime_state_summary_metadata(cfg) is None
+
+
+def test_can_read_generic_knowledge_requires_enabled_flag() -> None:
+    assert can_read_generic_knowledge(LlmConfig(llm_chat_enabled=True, llm_knowledge_sources_enabled=True)) is True
+    assert can_read_generic_knowledge(LlmConfig(llm_chat_enabled=False, llm_knowledge_sources_enabled=True)) is False
+    assert can_read_generic_knowledge(LlmConfig(llm_chat_enabled=True, llm_knowledge_sources_enabled=False)) is False
 
 
 def test_can_read_persistent_memory_requires_rag_or_relationship() -> None:

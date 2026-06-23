@@ -29,6 +29,7 @@ from pallas.product.llm.kernel import (
     decide_direct_chat_action,
     resolve_conversation_feature_level,
 )
+from pallas.product.llm.knowledge.inject import enrich_system_with_knowledge_sources
 from pallas.product.llm.memory import (
     append_memory_context,
     append_relationship_context,
@@ -343,6 +344,17 @@ async def handle_llm_chat(bot: Bot, event: Event):
         cfg=llm_cfg,
     )
 
+    knowledge_result = await enrich_system_with_knowledge_sources(
+        system_prompt,
+        bot_id=int(bot.self_id),
+        group_id=group_id,
+        user_id=user_id,
+        query_text=plain or msg,
+        cfg=llm_cfg,
+    )
+    system_prompt = knowledge_result.system_prompt
+    knowledge_retrieval_trace = knowledge_result.trace
+
     system_prompt = await append_relationship_context(
         system_prompt,
         bot_id=int(bot.self_id),
@@ -534,6 +546,7 @@ async def handle_llm_chat(bot: Bot, event: Event):
             task="llm_chat",
             token_count=token_count,
             temperature=temperature,
+            knowledge_retrieval_trace=knowledge_retrieval_trace,
         ),
         cfg=llm_cfg,
     )

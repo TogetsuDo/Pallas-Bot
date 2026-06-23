@@ -123,6 +123,12 @@ async def submit_chat_task(request: ChatSubmitRequest, *, cfg: LlmConfig | None 
         metadata["runtime_state_summary_enabled"] = can_write_runtime_state_summary(c)
         if summary_meta:
             metadata["session_summary"] = summary_meta
+        if request.knowledge_retrieval_trace is not None:
+            from pallas.product.llm.knowledge.registry import knowledge_metadata_payload
+
+            metadata.update(
+                knowledge_metadata_payload(request.knowledge_retrieval_trace, cfg=c)
+            )
         payload = {
             "session_id": request.session_id if not use_pg_session else request.request_id,
             "model": request.model,

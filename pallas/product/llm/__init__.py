@@ -6,6 +6,7 @@ from .config import LlmConfig, clear_llm_config_cache, get_llm_config, llm_serve
 from .message_guard import contains_likely_prompt_injection, format_user_turn, sanitize_user_message
 from .models import ChatCompletionMessage, ChatCompletionRequest, ChatSubmitRequest, ChatSubmitResult
 from .tools import registry as tools_registry  # noqa: F401 — 注册内置 tools
+from .knowledge import builtin as knowledge_builtin  # noqa: F401 — 注册内置知识源
 
 __all__ = [
     "ChatCompletionMessage",

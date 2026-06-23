@@ -17,6 +17,7 @@ class MemoryAssetKind(StrEnum):
     PERSISTENT_MEMORY = "persistent_memory"
     CORPUS_FOUNDATION = "corpus_foundation"
     BEHAVIORAL_LEARNING = "behavioral_learning"
+    GENERIC_KNOWLEDGE = "generic_knowledge"
 
 
 class MemoryReadPolicy(BaseModel):
@@ -26,6 +27,7 @@ class MemoryReadPolicy(BaseModel):
     allow_persistent_memory: bool = True
     allow_corpus_foundation: bool = True
     allow_behavioral_learning: bool = False
+    allow_generic_knowledge: bool = True
     allow_writeback: bool = False
 
 
@@ -61,6 +63,7 @@ def resolve_memory_read_policy(cfg: LlmConfig | None = None) -> MemoryReadPolicy
         ),
         allow_corpus_foundation=True,
         allow_behavioral_learning=allow_behavioral,
+        allow_generic_knowledge=bool(c.llm_chat_enabled and c.llm_knowledge_sources_enabled),
         allow_writeback=allow_writeback,
     )
 
@@ -75,6 +78,10 @@ def can_read_persistent_memory(cfg: LlmConfig | None = None) -> bool:
 
 def can_read_behavioral_learning(cfg: LlmConfig | None = None) -> bool:
     return resolve_memory_read_policy(cfg).allow_behavioral_learning
+
+
+def can_read_generic_knowledge(cfg: LlmConfig | None = None) -> bool:
+    return resolve_memory_read_policy(cfg).allow_generic_knowledge
 
 
 def can_write_runtime_state_summary(cfg: LlmConfig | None = None) -> bool:
