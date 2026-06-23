@@ -3817,6 +3817,12 @@ class _HelpMenuVisibilityBody(BaseModel):
     hidden_plugins: list[str] = Field(default_factory=list, max_length=2000)
 
 
+class _SystemRestartBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    workers_only: bool = False
+
+
 class _OfficialExtensionPackageBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -4422,6 +4428,48 @@ def register_extended_api(
 
         data = await cached_read(key="system", loader=_load, ttl_sec=0.8, stale_sec=8.0)
         return JSONResponse({"ok": True, "data": data})
+
+    @router.post(f"{x}/system/restart", include_in_schema=True)
+    async def _system_restart(
+        body: _SystemRestartBody,
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        from pallas.console.cli.bot_process import bot_lifecycle_available, schedule_bot_restart
+        from pallas.console.cli.runtime_mode import resolve_bot_mode
+
+        if not bot_lifecycle_available():
+            raise HTTPException(
+                status_code=503,
+                detail="当前环境不支持通过控制台调度 Bot 重启（缺少 scripts/run_*.sh）",
+            )
+
+        resolved_mode = resolve_bot_mode("auto")
+        workers_only = bool(body.workers_only)
+        if workers_only and resolved_mode != "shard":
+            raise HTTPException(status_code=400, detail="workers_only 仅适用于分片（shard）部署模式")
+
+        scheduled = schedule_bot_restart(workers_only=workers_only)
+        if not scheduled:
+            raise HTTPException(status_code=500, detail="重启调度失败")
+
+        mode_label = "workers-restart" if workers_only else "full-restart"
+        logger.info(
+            "Pallas-Bot 控制台: 已调度 Bot 重启 mode={} workers_only={}",
+            mode_label,
+            workers_only,
+        )
+        return JSONResponse({
+            "ok": True,
+            "data": {
+                "scheduled": True,
+                "mode": mode_label,
+                "workers_only": workers_only,
+                "bot_runtime_mode": resolved_mode,
+                "message": "已安排重启，数秒后进程将重新拉起。",
+            },
+        })
 
     @router.get(f"{x}/shard-registry", include_in_schema=True)
     async def _shard_registry() -> JSONResponse:
