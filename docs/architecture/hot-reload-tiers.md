@@ -1,6 +1,6 @@
 # 热重载分级（配置 / 元数据 / 代码）
 
-> **现状**：配置级已成熟；元数据/代码级以文档与 `reload_policy` 解析桩为主，CLI `pallas plugin reload` 尚未落地。
+> **现状**：配置级已成熟；元数据级 WebUI 保存与 `pallas plugin reload` / `POST /plugins/{name}/reload` 可触发索引重建；代码级 `full` 策略尝试 `importlib.reload`，失败则提示重启。
 
 ## 三级对照
 
@@ -65,12 +65,13 @@ extra={
 | --- | --- |
 | 改插件开关/阈值 | WebUI **插件** 页保存（配置级） |
 | 改命令权限 / CD | WebUI **命令权限** / **命令冷却**（配置级） |
-| 改 help / ingress 声明 | 插件 `reload_policy: metadata` 时 WebUI 保存可触发元数据索引重建；否则重启 |
-| 改 Python 代码 | 重启 Bot；群内 **牛牛重启** 或 `pallas restart` |
+| 改 help / ingress 声明 | 插件 `reload_policy: metadata` 时 WebUI 保存可触发元数据索引重建；或 `pallas plugin reload <name>` / 控制台 API |
+| 改 Python 代码 | 重启 Bot；`reload_policy: full` 可尝试 `pallas plugin reload`（失败则重启）；群内 **牛牛重启** 或 `pallas restart` |
 | 安装官方扩展 | WebUI 插件商店；勾选「安装并重启」或手动重启 |
 
 ## 相关文档
 
+- [插件热重载与分级无痛重启 — 实现计划](plugin-hot-reload-implementation.md)
 - [WebUI 配置与热重载](../common/webui/README.md)
 - [settings-storage.md](settings-storage.md)
 - [开发者侧插件治理概览](../developer/architecture/plugin-governance.md)

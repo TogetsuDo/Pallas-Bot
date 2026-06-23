@@ -10,6 +10,7 @@ _COMMAND_MODULES = (
     "pallas.console.cli.commands.doctor",
     "pallas.console.cli.commands.sync_cmd",
     "pallas.console.cli.commands.ext_cmd",
+    "pallas.console.cli.commands.plugin_cmd",
     "pallas.console.cli.commands.update_cmd",
     "pallas.console.cli.commands.lifecycle",
     "pallas.console.cli.commands.maintenance_cmd",

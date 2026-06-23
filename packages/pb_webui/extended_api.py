@@ -4851,6 +4851,28 @@ def register_extended_api(
             },
         })
 
+    @router.post(f"{x}/plugins/{{plugin_name}}/reload", include_in_schema=True)
+    async def _plugin_reload(
+        plugin_name: str,
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        from pallas.core.plugin_reload.reload_ops import PluginReloadError, execute_plugin_reload
+
+        target = (plugin_name or "").strip()
+        if not target:
+            raise HTTPException(status_code=400, detail="plugin_name required")
+
+        try:
+            data = execute_plugin_reload(target)
+        except PluginReloadError as e:
+            raise HTTPException(status_code=e.status_code, detail=e.detail) from e
+
+        drop_read_cache(("plugins", "plugins-capabilities"))
+        status = 200 if data.get("ok") else 409
+        return JSONResponse({"ok": bool(data.get("ok")), "data": data}, status_code=status)
+
     @router.get(f"{x}/plugins/official-extensions", include_in_schema=True)
     async def _plugins_official_extensions() -> JSONResponse:
         from pallas.console.webui.plugin_registry import build_official_extension_rows
