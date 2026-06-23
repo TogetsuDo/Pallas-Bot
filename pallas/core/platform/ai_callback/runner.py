@@ -33,6 +33,7 @@ from pallas.core.platform.shard.coord.ai_task_registry import get_ai_task_record
 from pallas.product.llm.behavior import BehaviorAction, BehaviorRun, BehaviorScene
 from pallas.product.llm.behavior_store import append_behavior_run
 from pallas.product.llm.config import get_llm_config
+from pallas.product.llm.kernel.memory_governance import can_write_runtime_state_summary
 from pallas.product.llm.repeater_feedback import (
     append_feedback_entry,
     build_feedback_entry,
@@ -285,7 +286,7 @@ async def run_ai_callback(
             speaker_id = int(task.get("user_id") or 0)
             user_text = str(task.get("user_text") or "").strip()
             if speaker_id:
-                if history_summary and history_keep_messages:
+                if history_summary and history_keep_messages and can_write_runtime_state_summary():
                     await compact_user_llm_history_with_summary(
                         int(bot_id),
                         scope_group,

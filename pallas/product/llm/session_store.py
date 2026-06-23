@@ -16,6 +16,7 @@ from pallas.product.llm.behavior_store import (
     update_behavior_run_annotation,
 )
 from pallas.product.llm.config import LlmConfig, get_llm_config
+from pallas.product.llm.kernel.memory_governance import can_read_runtime_state
 from pallas.product.llm.message_guard import format_user_turn
 from pallas.product.llm.models import ChatCompletionMessage
 from pallas.product.persona.prompt_guard import normalize_enum, sanitize_prompt_block, sanitize_prompt_literal
@@ -516,6 +517,13 @@ async def build_llm_chat_messages(
 ) -> list[ChatCompletionMessage]:
     c = cfg or get_llm_config()
     messages: list[ChatCompletionMessage] = []
+
+    if not can_read_runtime_state(c):
+        current = format_user_turn(current_user_text, max_len=c.user_message_max_len)
+        if not current:
+            return messages
+        messages.append(ChatCompletionMessage(role="user", content=current))
+        return messages
 
     if not is_private_scope(group_id) and c.llm_session_group_ambient_enabled:
         ambient = await list_group_ambient_messages(bot_id, group_id, cfg=c)

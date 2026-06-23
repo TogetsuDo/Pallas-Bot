@@ -195,6 +195,89 @@ async def test_submit_chat_task_unified_pg_session_payload(monkeypatch: pytest.M
 
 
 @pytest.mark.asyncio
+async def test_submit_chat_task_metadata_includes_runtime_state_summary_gate(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict = {}
+
+    class FakeResponse:
+        def json(self):
+            return {"task_id": "task-sum", "status": "processing"}
+
+    async def fake_post(url: str, json: dict | None = None, **kwargs):
+        captured["json"] = json
+        return FakeResponse()
+
+    monkeypatch.setattr("pallas.product.llm.client.HTTPXClient.post", fake_post)
+    monkeypatch.setattr("pallas.product.llm.client.is_llm_session_store_available", lambda: False)
+
+    cfg = LlmConfig(
+        use_unified_chat_api=True,
+        llm_chat_enabled=True,
+        llm_session_enabled=True,
+        llm_session_summary_enabled=True,
+        llm_session_summary_threshold=24,
+        llm_session_summary_keep_messages=6,
+    )
+    result = await submit_chat_task(
+        ChatSubmitRequest(
+            request_id="req-sum",
+            session_id="sess-sum",
+            user_text="你好",
+            system_prompt="system",
+            bot_id=10001,
+            group_id=20002,
+            user_id=30003,
+        ),
+        cfg=cfg,
+    )
+    assert result.ok is True
+    metadata = captured["json"]["metadata"]
+    assert metadata["runtime_state_summary_enabled"] is True
+    assert metadata["session_summary"] == {
+        "enabled": True,
+        "threshold": 24,
+        "keep_messages": 6,
+    }
+
+
+@pytest.mark.asyncio
+async def test_submit_chat_task_metadata_disables_summary_when_session_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict = {}
+
+    class FakeResponse:
+        def json(self):
+            return {"task_id": "task-sum-off", "status": "processing"}
+
+    async def fake_post(url: str, json: dict | None = None, **kwargs):
+        captured["json"] = json
+        return FakeResponse()
+
+    monkeypatch.setattr("pallas.product.llm.client.HTTPXClient.post", fake_post)
+    monkeypatch.setattr("pallas.product.llm.client.is_llm_session_store_available", lambda: False)
+
+    cfg = LlmConfig(
+        use_unified_chat_api=True,
+        llm_chat_enabled=True,
+        llm_session_enabled=False,
+        llm_session_summary_enabled=True,
+    )
+    await submit_chat_task(
+        ChatSubmitRequest(
+            request_id="req-sum-off",
+            session_id="sess-sum-off",
+            user_text="你好",
+            system_prompt="system",
+            bot_id=10001,
+            group_id=20002,
+            user_id=30003,
+        ),
+        cfg=cfg,
+    )
+    metadata = captured["json"]["metadata"]
+    assert metadata["runtime_state_summary_enabled"] is False
+    assert "session_summary" not in metadata
+
+
+@pytest.mark.asyncio
 async def test_delete_llm_chat_session_unified(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict = {}
 

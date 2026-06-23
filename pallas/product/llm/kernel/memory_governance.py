@@ -51,13 +51,48 @@ def resolve_memory_read_policy(cfg: LlmConfig | None = None) -> MemoryReadPolicy
     c = cfg or get_llm_config()
     feature_level = resolve_conversation_feature_level(c)
     allow_behavioral = bool(c.llm_repeater_bias_enabled) and feature_level != ConversationFeatureLevel.LEGACY_REPEATER
+    allow_writeback = bool(c.llm_repeater_writeback_enabled)
+    if feature_level == ConversationFeatureLevel.LEGACY_REPEATER:
+        allow_writeback = False
     return MemoryReadPolicy(
-        allow_runtime_state=True,
-        allow_persistent_memory=bool(c.llm_chat_enabled),
+        allow_runtime_state=bool(c.llm_chat_enabled and c.llm_session_enabled),
+        allow_persistent_memory=bool(
+            c.llm_chat_enabled and (c.llm_memory_rag_enabled or c.llm_relationship_notes_enabled)
+        ),
         allow_corpus_foundation=True,
         allow_behavioral_learning=allow_behavioral,
-        allow_writeback=bool(c.llm_repeater_writeback_enabled),
+        allow_writeback=allow_writeback,
     )
+
+
+def can_read_runtime_state(cfg: LlmConfig | None = None) -> bool:
+    return resolve_memory_read_policy(cfg).allow_runtime_state
+
+
+def can_read_persistent_memory(cfg: LlmConfig | None = None) -> bool:
+    return resolve_memory_read_policy(cfg).allow_persistent_memory
+
+
+def can_read_behavioral_learning(cfg: LlmConfig | None = None) -> bool:
+    return resolve_memory_read_policy(cfg).allow_behavioral_learning
+
+
+def can_write_runtime_state_summary(cfg: LlmConfig | None = None) -> bool:
+    c = cfg or get_llm_config()
+    if not can_read_runtime_state(c):
+        return False
+    return bool(c.llm_session_summary_enabled)
+
+
+def runtime_state_summary_metadata(cfg: LlmConfig | None = None) -> dict[str, object] | None:
+    c = cfg or get_llm_config()
+    if not can_write_runtime_state_summary(c):
+        return None
+    return {
+        "enabled": True,
+        "threshold": c.llm_session_summary_threshold,
+        "keep_messages": c.llm_session_summary_keep_messages,
+    }
 
 
 def can_collect_feedback(cfg: LlmConfig | None = None) -> bool:

@@ -25,6 +25,7 @@ from pallas.product.llm.governance import check_llm_chat_gate, refresh_llm_chat_
 from pallas.product.llm.kernel import (
     ConversationContext,
     behavior_scene_to_conversation_scene,
+    can_read_behavioral_learning,
     decide_direct_chat_action,
     resolve_conversation_feature_level,
 )
@@ -476,12 +477,15 @@ async def handle_llm_chat(bot: Bot, event: Event):
         limit=2,
     )
     behavior_actions = [item.action for item in behavior_patterns]
-    group_behavior_hint = default_group_chat_behavior_hint()
-    if group_behavior_hint:
-        system_prompt = f"{system_prompt.rstrip()}\n{group_behavior_hint}"
-    behavior_hint = build_behavior_hint_text(scene=behavior_scene, actions=behavior_actions)
-    if behavior_hint:
-        system_prompt = f"{system_prompt.rstrip()}\n{behavior_hint}"
+    if can_read_behavioral_learning(llm_cfg):
+        group_behavior_hint = default_group_chat_behavior_hint()
+        if group_behavior_hint:
+            system_prompt = f"{system_prompt.rstrip()}\n{group_behavior_hint}"
+        behavior_hint = build_behavior_hint_text(scene=behavior_scene, actions=behavior_actions)
+        if behavior_hint:
+            system_prompt = f"{system_prompt.rstrip()}\n{behavior_hint}"
+    else:
+        behavior_hint = ""
     ending_hint = build_llm_chat_ending_hint(recent_turns)
     if ending_hint:
         system_prompt = f"{system_prompt.rstrip()}{ending_hint}"

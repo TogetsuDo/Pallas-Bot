@@ -79,6 +79,27 @@ async def test_llm_session_user_window_independent(pg_engine, monkeypatch) -> No
 
 
 @pytest.mark.asyncio
+async def test_build_llm_chat_messages_skips_history_when_policy_disabled(pg_engine, monkeypatch) -> None:
+    clear_llm_config_cache()
+    cfg = LlmConfig(
+        llm_chat_enabled=True,
+        llm_session_enabled=False,
+        llm_session_user_window=8,
+        llm_session_group_window=4,
+    )
+    monkeypatch.setattr("pallas.product.llm.session_store.get_llm_config", lambda: cfg)
+    monkeypatch.setattr("pallas.product.llm.session_store.is_postgresql_backend", lambda: True)
+
+    await append_llm_message(1, 100, 300, "user", "my-old")
+    await append_llm_message(1, 100, 300, "assistant", "my-reply")
+
+    messages = await build_llm_chat_messages(1, 100, 300, "my-new", cfg=cfg)
+    assert len(messages) == 1
+    assert "my-new" in messages[0].content
+    assert not any("my-old" in item.content for item in messages)
+
+
+@pytest.mark.asyncio
 async def test_build_llm_chat_messages_user_thread_and_ambient(pg_engine, monkeypatch) -> None:
     clear_llm_config_cache()
     cfg = LlmConfig(

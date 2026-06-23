@@ -5,6 +5,7 @@ from __future__ import annotations
 import operator
 
 from pallas.product.llm.config import LlmConfig, get_llm_config
+from pallas.product.llm.kernel.memory_governance import can_read_persistent_memory
 from pallas.product.llm.memory.policy import classify_memory_candidate, normalize_episode_note
 from pallas.product.llm.memory.relationship_store import retrieve_relationship_note
 from pallas.product.llm.memory.retrieve import memory_relevance_score
@@ -64,7 +65,7 @@ async def append_memory_context(
     cfg: LlmConfig | None = None,
 ) -> str:
     c = cfg or get_llm_config()
-    if not c.llm_memory_rag_enabled:
+    if not can_read_persistent_memory(c) or not c.llm_memory_rag_enabled:
         return system_prompt
     entries = await retrieve_memory_entries(bot_id, group_id, query_text, cfg=c)
     if group_id is not None and len(entries) < 3:
@@ -101,7 +102,7 @@ async def append_relationship_context(
 ) -> str:
     """把当前说话人的稳定关系备注追加到 system prompt（高门槛层，单条）。"""
     c = cfg or get_llm_config()
-    if not c.llm_relationship_notes_enabled or not user_id:
+    if not can_read_persistent_memory(c) or not c.llm_relationship_notes_enabled or not user_id:
         return system_prompt
     note = await retrieve_relationship_note(bot_id, group_id, user_id, cfg=c)
     if not note:

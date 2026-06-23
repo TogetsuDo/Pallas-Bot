@@ -22,7 +22,11 @@ def test_conversation_kernel_status_api_returns_rollout_flags(monkeypatch) -> No
             "feature_level": "kernel_v1",
             "llm_chat_enabled": True,
             "feedback_bias_active": False,
-            "memory_policy": {"read_session": True},
+            "runtime_state_summary_active": True,
+            "memory_policy": {
+                "read_session": True,
+                "runtime_state_summary_enabled": True,
+            },
         }
 
     monkeypatch.setattr(
@@ -40,6 +44,7 @@ def test_conversation_kernel_status_api_returns_rollout_flags(monkeypatch) -> No
     assert payload["ok"] is True
     assert payload["data"]["feature_level"] == "kernel_v1"
     assert payload["data"]["feedback_bias_active"] is False
+    assert payload["data"]["runtime_state_summary_active"] is True
 
 
 def test_conversation_kernel_traces_api_filters_decision_rows(monkeypatch) -> None:

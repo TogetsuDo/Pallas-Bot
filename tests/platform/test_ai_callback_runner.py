@@ -90,6 +90,45 @@ async def test_run_ai_callback_appends_user_and_assistant_on_llm_chat_success(
 
 
 @pytest.mark.asyncio
+async def test_run_ai_callback_skips_summary_writeback_when_policy_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = MagicMock()
+    bot.call_api = AsyncMock(return_value=None)
+    monkeypatch.setattr(ai_callback_runner, "get_bot", lambda _bot_id: bot)
+    monkeypatch.setattr(
+        ai_callback_runner.TaskManager,
+        "get_task",
+        AsyncMock(
+            return_value={
+                "bot_id": "111",
+                "group_id": 222,
+                "user_id": 333,
+                "task_type": LLM_CHAT_TASK_TYPE,
+                "user_text": "你好",
+            }
+        ),
+    )
+    monkeypatch.setattr(ai_callback_runner.TaskManager, "remove_task", AsyncMock())
+    monkeypatch.setattr(ai_callback_runner, "remove_ai_task", lambda _task_id: None)
+    monkeypatch.setattr(ai_callback_runner, "append_llm_message", AsyncMock(return_value=True))
+    monkeypatch.setattr(ai_callback_runner, "can_write_runtime_state_summary", lambda: False)
+
+    compact = AsyncMock()
+    monkeypatch.setattr(ai_callback_runner, "compact_user_llm_history_with_summary", compact)
+
+    await ai_callback_runner.run_ai_callback(
+        "task-summary-off",
+        status="success",
+        text="嗯",
+        history_summary="此前聊过银灰",
+        history_keep_messages=8,
+    )
+
+    compact.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_run_ai_callback_records_llm_task_metrics(monkeypatch: pytest.MonkeyPatch) -> None:
     from pallas.product.llm.task_metrics import clear_llm_task_metrics_for_tests, llm_task_metrics_snapshot
 

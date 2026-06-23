@@ -8,6 +8,7 @@ from pallas.core.shared.utils import HTTPXClient
 from .budget import trim_messages_to_char_budget
 from .config import LlmConfig, get_llm_config, llm_server_base_url
 from .governance import LlmChatGovernance
+from .kernel.memory_governance import can_write_runtime_state_summary, runtime_state_summary_metadata
 from .message_guard import format_user_turn
 from .models import ChatCompletionMessage, ChatSubmitRequest, ChatSubmitResult
 from .repeater_limit import (
@@ -118,12 +119,10 @@ async def submit_chat_task(request: ChatSubmitRequest, *, cfg: LlmConfig | None 
             metadata["vision_image_urls"] = list(vision_payload.image_urls)
         if vision_payload.plain_text:
             metadata["vision_plain_text"] = vision_payload.plain_text
-        if c.llm_session_summary_enabled:
-            metadata["session_summary"] = {
-                "enabled": True,
-                "threshold": c.llm_session_summary_threshold,
-                "keep_messages": c.llm_session_summary_keep_messages,
-            }
+        summary_meta = runtime_state_summary_metadata(c)
+        metadata["runtime_state_summary_enabled"] = can_write_runtime_state_summary(c)
+        if summary_meta:
+            metadata["session_summary"] = summary_meta
         payload = {
             "session_id": request.session_id if not use_pg_session else request.request_id,
             "model": request.model,
