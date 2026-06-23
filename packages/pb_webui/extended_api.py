@@ -4630,6 +4630,18 @@ def register_extended_api(
         data = await cached_read(key="plugins-capabilities", loader=_load, ttl_sec=2.0, stale_sec=30.0)
         return JSONResponse({"ok": True, "data": data})
 
+    @router.get(f"{x}/plugins/{{plugin_name}}/readme", include_in_schema=True)
+    async def _plugin_bundled_readme(plugin_name: str) -> JSONResponse:
+        from pallas.console.webui.plugin_docs_readme import read_bundled_plugin_readme
+
+        target = (plugin_name or "").strip()
+        if not target:
+            raise HTTPException(status_code=400, detail="plugin_name required")
+        payload = read_bundled_plugin_readme(target)
+        if payload is None:
+            raise HTTPException(status_code=404, detail=f"README not found for plugin: {target}")
+        return JSONResponse({"ok": True, "data": payload})
+
     @router.get(f"{x}/plugins/{{plugin_name}}/governance", include_in_schema=True)
     async def _plugin_governance_get(plugin_name: str) -> JSONResponse:
         from packages.help.global_disable import load_global_disabled_plugins
