@@ -51,6 +51,10 @@ from pallas.product.llm.kernel.observability import (
     build_conversation_kernel_status,
     list_recent_conversation_traces,
 )
+from pallas.product.llm.promotion_candidates import (
+    list_promotion_candidates,
+    resolve_promotion_candidate,
+)
 from pallas.product.llm.repeater_feedback import (
     group_feedback_bias_snapshot,
     list_group_feedback_entries,
@@ -5601,6 +5605,53 @@ def register_extended_api(
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": data})
+
+    @router.get(f"{x}/llm/repeater-feedback/promotion-candidates", include_in_schema=True)
+    async def _llm_repeater_feedback_promotion_candidates_get(
+        group_id: int = Query(..., ge=1, description="群号"),
+        limit: int = Query(default=20, ge=1, le=200),
+        include_resolved: bool = Query(default=False, description="是否包含已晋升/已拒绝"),
+    ) -> JSONResponse:
+        try:
+            rows = list_promotion_candidates(
+                group_id=group_id,
+                limit=limit,
+                include_resolved=include_resolved,
+            )
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({
+            "ok": True,
+            "data": {
+                "items": [row.model_dump(mode="json") for row in rows],
+                "limit": limit,
+            },
+        })
+
+    @router.post(f"{x}/llm/repeater-feedback/promotion-candidates/resolve", include_in_schema=True)
+    async def _llm_repeater_feedback_promotion_candidates_resolve(
+        body: dict[str, Any],
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        candidate_id = str(body.get("candidate_id") or "").strip()
+        action = str(body.get("action") or "").strip().lower()
+        if not candidate_id:
+            raise HTTPException(status_code=400, detail="candidate_id required")
+        if action not in {"promote", "reject"}:
+            raise HTTPException(status_code=400, detail="action must be promote or reject")
+        try:
+            updated = resolve_promotion_candidate(
+                candidate_id,
+                action=action,  # type: ignore[arg-type]
+                reason=str(body.get("reason") or "").strip(),
+            )
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        if updated is None:
+            raise HTTPException(status_code=404, detail="未找到候选或 writeback 未开启")
+        return JSONResponse({"ok": True, "data": updated.model_dump(mode="json")})
 
     @router.get(f"{x}/llm/conversation-kernel/status", include_in_schema=True)
     async def _llm_conversation_kernel_status_get() -> JSONResponse:

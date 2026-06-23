@@ -123,6 +123,9 @@ def append_feedback_entry(entry: LlmRepeaterFeedbackEntry) -> None:
         if needs_leading_newline:
             handle.write("\n")
         handle.write(json.dumps(entry.model_dump(mode="json"), ensure_ascii=False) + "\n")
+    from pallas.product.llm.promotion_candidates import note_feedback_entry_for_promotion
+
+    note_feedback_entry_for_promotion(entry)
 
 
 def _iter_feedback_entries(path: Path):
@@ -177,11 +180,16 @@ def group_feedback_bias_snapshot(*, group_id: int, limit: int = 50) -> dict[str,
     scene_counter = Counter(item.behavior_scene for item in rows if item.behavior_scene)
     top_replies = [text for text, _ in reply_counter.most_common(_TOP_REPLIES_LIMIT)]
     scenes = [text for text, _ in scene_counter.most_common(_TOP_SCENES_LIMIT)]
+    promotion_candidate_count = 0
+    if can_promote_writeback():
+        from pallas.product.llm.promotion_candidates import count_pending_promotion_candidates
+
+        promotion_candidate_count = count_pending_promotion_candidates(group_id=int(group_id))
     snapshot = FeedbackBiasSnapshot(
         count=len(rows),
         top_replies=top_replies,
         scenes=scenes,
-        promotion_candidate_count=0,
+        promotion_candidate_count=promotion_candidate_count,
     )
     return snapshot.model_dump(mode="json")
 
