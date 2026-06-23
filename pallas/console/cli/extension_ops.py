@@ -11,6 +11,11 @@ from pallas.console.webui.extension_install import (
 )
 
 
+def should_append_activation_note(result: dict[str, str | bool], *, restart: bool) -> bool:
+    action = str(result.get("activation_action") or "none")
+    return bool(restart or result.get("needs_restart") or action != "none")
+
+
 async def install_official_extension_with_options(
     package: str,
     *,
@@ -18,7 +23,7 @@ async def install_official_extension_with_options(
 ) -> dict[str, str | bool]:
     result = await install_official_extension(package)
     result = append_activation_result(result, restart=restart)
-    if restart or result.get("needs_restart"):
+    if should_append_activation_note(result, restart=restart):
         result["message"] = append_activation_note(str(result.get("message") or ""), result)
     return result
 
@@ -30,7 +35,7 @@ async def update_official_extension_with_options(
 ) -> dict[str, str | bool]:
     result = await update_official_extension(package)
     result = append_activation_result(result, restart=restart)
-    if restart or result.get("needs_restart"):
+    if should_append_activation_note(result, restart=restart):
         result["message"] = append_activation_note(str(result.get("message") or ""), result)
     return result
 
@@ -42,7 +47,7 @@ async def uninstall_official_extension_with_options(
 ) -> dict[str, str | bool]:
     result = await uninstall_official_extension(package)
     result = append_activation_result(result, restart=restart)
-    if restart or result.get("needs_restart"):
+    if should_append_activation_note(result, restart=restart):
         result["message"] = append_activation_note(str(result.get("message") or ""), result)
     return result
 

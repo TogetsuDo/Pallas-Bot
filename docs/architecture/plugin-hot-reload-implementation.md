@@ -104,6 +104,28 @@ pip install/update/uninstall
 2. 记录 NoneBot 限制与失败模式（卸载旧 matcher 不可行等）
 3. 失败时文档化阻塞原因，不夸大能力
 
+**现状（2026-06-23）**
+
+- WebUI / CLI 安装路径经 `extension_ops` → `append_activation_result` 复用 `_hot_load_package_modules`。
+- **unified 模式**：`hot-reloadable` 扩展（`pallas-plugin-draw`、`pallas-plugin-bot-status`）在 pip 安装成功后**即尝试**运行时加载，无需勾选「安装并重启」；成功则 `activation_action=hot-reload`。
+- **热加载失败 + 用户勾选重启**：fallback 全进程重启，返回 `hot_load_fallback` 与诚实文案。
+- **分片模式**：`hot-reloadable` 仍走 pending 提示 + 全进程/worker 重启，不在 worker 内做 pip 热插拔。
+
+**已知限制（不夸大能力）**
+
+| 限制 | 说明 |
+| --- | --- |
+| 无 matcher 卸载 | NoneBot 不支持卸载已注册 matcher；**更新**已加载扩展可能重复注册或行为异常，PoC 仅覆盖**首次安装后加载** |
+| 同名槽位已占用 | `_load_plugin_module` 见 `loaded_short` 已有时跳过，热加载返回失败 |
+| 模块未发现 | pip 成功但 `importlib.find_spec` 失败时热加载失败 |
+| 分片 / hub 角色 | 不在 worker 进程内对 hub-only 扩展做热加载 |
+| 卸载 | pip uninstall 后已加载 matcher 仍在内存，须重启 |
+
+**验收**
+
+- unified + draw/bot-status 安装成功后可 `hot-reload`（或 honest fallback）
+- 测试覆盖：无 restart 热加载成功、热加载失败 fallback 重启
+
 ## API 草案（Phase 2）
 
 ```

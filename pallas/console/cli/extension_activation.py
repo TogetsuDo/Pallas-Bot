@@ -54,7 +54,7 @@ def append_activation_result(
     out["activation_action"] = "none"
     out["restart_scheduled"] = False
 
-    if not restart or not bot_lifecycle_available() or not package or policy is None:
+    if not bot_lifecycle_available() or not package or policy is None:
         return out
 
     mode = resolve_bot_mode("auto")
@@ -65,7 +65,14 @@ def append_activation_result(
             out["needs_restart"] = False
             logger.info("official extension {} activated by runtime hot load", package)
             return out
-        logger.warning("official extension {} hot load failed, fallback to process restart", package)
+        if restart:
+            logger.warning("official extension {} hot load failed, fallback to process restart", package)
+            out["hot_load_fallback"] = True
+        else:
+            return out
+
+    if not restart:
+        return out
 
     workers_only = policy == "workers-restart" and mode == "shard"
     scheduled = schedule_bot_restart(mode=mode, workers_only=workers_only)
@@ -82,6 +89,8 @@ def append_activation_note(message: str, result: dict[str, Any]) -> str:
     policy = result.get("activation_policy")
     if action == "hot-reload":
         suffix = "已在当前进程直接加载。"
+    elif scheduled and action == "full-restart" and result.get("hot_load_fallback"):
+        suffix = "运行时热加载失败，已改为安排全进程重启。"
     elif scheduled and action == "workers-restart":
         suffix = "已安排仅重启 worker。"
     elif scheduled and action == "full-restart":
