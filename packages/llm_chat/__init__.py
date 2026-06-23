@@ -7,6 +7,7 @@ from pallas.core.perm.metadata_defaults import (
     PLUGIN_MENU_TEMPLATE,
 )
 from pallas.core.perm.metadata_text import SCENE_GROUP, SCENE_PRIVATE, join_usage, usage_line
+from pallas.product.llm.knowledge.declare import knowledge_source_row
 from pallas.product.llm.tools.declare import llm_command_tool_row
 
 from . import admin_commands as _admin_commands  # noqa: F401
@@ -48,6 +49,36 @@ __plugin_meta__ = PluginMetadata(
                 description="清空当前用户与本 bot 的多轮 LLM 会话记忆。用户明确要求忘记聊过的内容时使用。",
                 parameters={"type": "object", "properties": {}},
                 command_template="clear",
+            ),
+        ],
+        "knowledge_sources": [
+            knowledge_source_row(
+                source_id="llm_chat.faq",
+                title="随时闲聊说明",
+                description="群内智能闲聊的触发方式与会话管理",
+                chunks=[
+                    {
+                        "title": "如何开始闲聊",
+                        "content": "在群内 @牛牛 并发送消息即可开始多轮对话；牛牛会结合本轮上下文接话。",
+                        "keywords": "聊天,闲聊,怎么聊,怎么用,@牛牛,对话",
+                    },
+                    {
+                        "title": "清空本轮记录",
+                        "content": (
+                            "发送 @牛牛 clear 可清空当前群内的多轮会话记忆；"
+                            "也可在对话中明确要求牛牛忘记刚聊的内容。"
+                        ),
+                        "keywords": "清空,clear,忘记,重置,会话,记录",
+                    },
+                    {
+                        "title": "与口令工具的分工",
+                        "content": (
+                            "闲聊走 @牛牛 对话；清空记忆用 clear 口令或由模型调用清空工具，"
+                            "不要凭空编造不存在的管理入口。"
+                        ),
+                        "keywords": "工具,口令,清空,帮助",
+                    },
+                ],
             ),
         ],
         "menu_data": [

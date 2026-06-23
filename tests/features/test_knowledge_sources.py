@@ -76,7 +76,17 @@ def test_retrieve_from_knowledge_sources_returns_sorted_hits() -> None:
     cfg = LlmConfig(llm_chat_enabled=True, llm_knowledge_sources_enabled=True)
     hits = retrieve_from_knowledge_sources("清空 clear", bot_id=1, group_id=2, user_id=3, cfg=cfg)
     assert hits
-    assert hits[0].source_id == "pallas.bot_faq"
+    assert hits[0].source_id in {"pallas.bot_faq", "llm_chat.faq"}
+
+
+def test_llm_chat_plugin_declares_knowledge_source() -> None:
+    from packages.llm_chat import __plugin_meta__
+    from pallas.product.llm.knowledge.metadata import knowledge_sources_from_metadata
+
+    decls = knowledge_sources_from_metadata(__plugin_meta__)
+    assert any(decl.source_id == "llm_chat.faq" for decl in decls)
+    faq = next(decl for decl in decls if decl.source_id == "llm_chat.faq")
+    assert len(faq.chunks) >= 2
 
 
 @pytest.mark.asyncio

@@ -2,6 +2,13 @@
 
 插件可通过 `PluginMetadata.extra['knowledge_sources']` 声明静态文本知识源，由 Bot 在 LLM 闲聊前统一检索并注入 system prompt。
 
+## 官方参考实现
+
+本体插件 [`packages/llm_chat/__init__.py`](../../packages/llm_chat/__init__.py) 同时声明了 `llm_tools`（动作）与 `knowledge_sources`（FAQ 说明），可作为对照：
+
+- **`llm_chat.clear` tool**：用户明确要求忘记时，由模型触发清空动作
+- **`llm_chat.faq` knowledge source**：回答「怎么聊 / 怎么清空」类问题时注入参考文案
+
 ## 声明示例
 
 ```python
