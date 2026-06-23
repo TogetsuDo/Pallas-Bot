@@ -29,6 +29,19 @@ def _hot_load_package_modules(package: str) -> bool:
     return loaded
 
 
+def activation_pending_note(policy: str | None) -> str:
+    if policy == "hot-reloadable":
+        return (
+            "理论支持热加载；当前环境仍需重启生效，"
+            "可选择「安装并重启」尝试立即加载。"
+        )
+    if policy == "workers-restart":
+        return "需重启 Worker（分片部署）或 Bot 进程后生效。"
+    if policy == "full-restart":
+        return "需全进程重启后生效。"
+    return "请重启 Bot 后生效。"
+
+
 def append_activation_result(
     result: dict[str, Any],
     *,
@@ -66,6 +79,7 @@ def append_activation_note(message: str, result: dict[str, Any]) -> str:
     base = (message or "").strip()
     action = str(result.get("activation_action") or "none")
     scheduled = bool(result.get("restart_scheduled"))
+    policy = result.get("activation_policy")
     if action == "hot-reload":
         suffix = "已在当前进程直接加载。"
     elif scheduled and action == "workers-restart":
@@ -74,6 +88,8 @@ def append_activation_note(message: str, result: dict[str, Any]) -> str:
         suffix = "已安排 Bot 重启。"
     elif scheduled:
         suffix = "已安排生效操作。"
+    elif result.get("needs_restart") and action == "none":
+        suffix = activation_pending_note(str(policy) if policy else None)
     else:
         suffix = ""
     return f"{base} {suffix}".strip() if suffix else base

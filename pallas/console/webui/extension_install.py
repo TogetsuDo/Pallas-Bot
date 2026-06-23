@@ -97,7 +97,7 @@ async def install_official_extension(package: str) -> dict[str, str | bool]:
             "pip_installed": True,
             "needs_restart": True,
             "already_installed": True,
-            "message": "扩展包已在当前环境中，重启 Bot 后生效。",
+            "message": "扩展包已在当前环境中。",
         }
     logger.info("Pallas-Bot 控制台: 安装官方扩展 package={}", pkg)
     code, out, err = await run_uv_command(
@@ -120,7 +120,7 @@ async def install_official_extension(package: str) -> dict[str, str | bool]:
         "pip_installed": True,
         "needs_restart": True,
         "already_installed": False,
-        "message": "安装完成，请重启 Bot 进程后加载扩展。",
+        "message": "安装完成。",
         "stdout_tail": tail_output(out),
     }
 
@@ -149,7 +149,7 @@ async def update_official_extension(package: str) -> dict[str, str | bool]:
         "package": pkg,
         "pip_installed": True,
         "needs_restart": True,
-        "message": "更新完成，请重启 Bot 进程后加载扩展。",
+        "message": "更新完成。",
         "stdout_tail": tail_output(out),
     }
 
@@ -179,6 +179,6 @@ async def uninstall_official_extension(package: str) -> dict[str, str | bool]:
         "pip_installed": False,
         "needs_restart": True,
         "already_removed": False,
-        "message": "已卸载 pip 包，请重启 Bot 后生效。",
+        "message": "已卸载 pip 包。",
         "stdout_tail": tail_output(out),
     }

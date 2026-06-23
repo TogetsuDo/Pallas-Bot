@@ -71,6 +71,56 @@ async def test_install_with_restart_schedules_full_restart(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_install_without_restart_uses_policy_pending_note(monkeypatch):
+    from pallas.console.cli import extension_ops
+
+    monkeypatch.setattr("pallas.console.cli.extension_activation.bot_lifecycle_available", lambda: True)
+    monkeypatch.setattr(
+        extension_ops,
+        "install_official_extension",
+        AsyncMock(
+            return_value={
+                "package": "pallas-plugin-draw",
+                "needs_restart": True,
+                "message": "安装完成。",
+            },
+        ),
+    )
+    out = await extension_ops.install_official_extension_with_options(
+        "pallas-plugin-draw",
+        restart=False,
+    )
+    assert out["activation_policy"] == "hot-reloadable"
+    assert out["activation_action"] == "none"
+    assert "热加载" in str(out.get("message"))
+    assert "重启" in str(out.get("message"))
+
+
+@pytest.mark.asyncio
+async def test_install_without_restart_workers_restart_note(monkeypatch):
+    from pallas.console.cli import extension_ops
+
+    monkeypatch.setattr("pallas.console.cli.extension_activation.bot_lifecycle_available", lambda: True)
+    monkeypatch.setattr(
+        extension_ops,
+        "install_official_extension",
+        AsyncMock(
+            return_value={
+                "package": "pallas-plugin-duel",
+                "needs_restart": True,
+                "message": "安装完成。",
+            },
+        ),
+    )
+    out = await extension_ops.install_official_extension_with_options(
+        "pallas-plugin-duel",
+        restart=False,
+    )
+    assert out["activation_policy"] == "workers-restart"
+    assert "Worker" in str(out.get("message"))
+
+
+@pytest.mark.asyncio
 async def test_install_with_restart_hot_loads_in_unified(monkeypatch):
     from pallas.console.cli import extension_ops
 
