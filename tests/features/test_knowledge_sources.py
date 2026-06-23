@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import importlib.util
+from pathlib import Path
+
 import pytest
 
 from pallas.product.llm.config import LlmConfig
@@ -86,6 +89,73 @@ def test_llm_chat_plugin_declares_knowledge_source() -> None:
     decls = knowledge_sources_from_metadata(__plugin_meta__)
     assert any(decl.source_id == "llm_chat.faq" for decl in decls)
     faq = next(decl for decl in decls if decl.source_id == "llm_chat.faq")
+    assert len(faq.chunks) >= 2
+
+
+@pytest.mark.parametrize(
+    ("module_path", "source_id"),
+    [
+        ("packages.help", "help.faq"),
+        ("packages.drink", "drink.faq"),
+        ("packages.greeting", "greeting.faq"),
+        ("packages.roulette", "roulette.faq"),
+        ("packages.take_name", "take_name.faq"),
+    ],
+)
+def test_core_plugins_declare_knowledge_sources(module_path: str, source_id: str) -> None:
+    import importlib
+
+    from pallas.product.llm.knowledge.metadata import knowledge_sources_from_metadata
+
+    mod = importlib.import_module(module_path)
+    decls = knowledge_sources_from_metadata(mod.__plugin_meta__)
+    assert any(decl.source_id == source_id for decl in decls)
+    faq = next(decl for decl in decls if decl.source_id == source_id)
+    assert len(faq.chunks) >= 2
+
+
+def load_plugin_meta_from_init(init_path: Path, *, cut_before: str):
+    spec = importlib.util.spec_from_file_location(f"meta_probe_{init_path.stem}", init_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    code = init_path.read_text(encoding="utf-8")
+    if cut_before in code:
+        code = code.split(cut_before, 1)[0]
+    code = "\n".join(
+        line for line in code.splitlines() if not line.lstrip().startswith("from .")
+    )
+    exec(compile(code, str(init_path), "exec"), module.__dict__)  # noqa: S102
+    return module.__plugin_meta__
+
+
+@pytest.mark.parametrize(
+    ("rel_path", "source_id", "cut_before"),
+    [
+        (
+            "../Pallas-Plugin-Draw/src/pallas_plugin_draw/__init__.py",
+            "draw.faq",
+            "from . import draw as _pallas_draw",
+        ),
+        (
+            "../pallas-community-plugin-interact/__init__.py",
+            "interact.faq",
+            "praise_cmd = message_command",
+        ),
+    ],
+)
+def test_extension_plugins_declare_knowledge_sources(
+    rel_path: str, source_id: str, cut_before: str
+) -> None:
+    from pallas.product.llm.knowledge.metadata import knowledge_sources_from_metadata
+
+    init_path = (Path(__file__).resolve().parents[2] / rel_path).resolve()
+    if not init_path.is_file():
+        pytest.skip(f"missing extension metadata file: {init_path}")
+    meta = load_plugin_meta_from_init(init_path, cut_before=cut_before)
+    decls = knowledge_sources_from_metadata(meta)
+    assert any(decl.source_id == source_id for decl in decls)
+    faq = next(decl for decl in decls if decl.source_id == source_id)
     assert len(faq.chunks) >= 2
 
 

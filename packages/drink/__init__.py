@@ -6,6 +6,7 @@ from pallas.core.perm.metadata_defaults import (
     PLUGIN_MENU_TEMPLATE,
 )
 from pallas.core.perm.metadata_text import SCENE_GROUP, join_usage, usage_line
+from pallas.product.llm.knowledge.declare import knowledge_source_row
 
 from . import handlers as _handlers  # noqa: F401
 from . import startup as _startup  # noqa: F401
@@ -47,6 +48,36 @@ __plugin_meta__ = PluginMetadata(
                 "brief_des": "立即醒酒",
                 "detail_des": "让牛牛立刻清醒；如果它正在做梦，也会一起停下来。",
             },
+        ],
+        "knowledge_sources": [
+            knowledge_source_row(
+                source_id="drink.faq",
+                title="牛牛喝酒说明",
+                description="饮酒、醒酒与醉酒状态",
+                chunks=[
+                    {
+                        "title": "如何让牛牛喝酒",
+                        "content": (
+                            "在群内发送「牛牛喝酒」「牛牛干杯」或「牛牛继续喝」"
+                            "可增加醉酒度；喝得越多越容易醉，严重时可能睡着。"
+                        ),
+                        "keywords": "喝酒,干杯,继续喝,醉酒,醉了,怎么喝",
+                    },
+                    {
+                        "title": "如何让牛牛醒酒",
+                        "content": ("发送「牛牛醒一醒」或「牛牛别喝了」可立即让牛牛清醒；若本群正在做梦也会一并停止。"),
+                        "keywords": "醒酒,醒一醒,别喝了,清醒, sober",
+                    },
+                    {
+                        "title": "醉酒会影响什么",
+                        "content": (
+                            "醉酒后牛牛说话与行为会变化，自动夺舍等玩法也会更夸张；"
+                            "部分扩展（如酒后聊天）可能要求先处于醉酒状态。"
+                        ),
+                        "keywords": "醉酒,影响,聊天,夺舍,前置,状态",
+                    },
+                ],
+            ),
         ],
     },
 )

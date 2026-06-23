@@ -8,6 +8,7 @@ from pallas.core.perm.metadata_defaults import (
 )
 from pallas.core.perm.metadata_text import SCENE_BOTH, SCENE_GROUP, join_usage, usage_line
 from pallas.core.storage.declare import plugin_storage_list, plugin_storage_row
+from pallas.product.llm.knowledge.declare import knowledge_source_row
 
 from . import commands as _commands  # noqa: F401
 from .style_cache import refresh_style_cache
@@ -107,6 +108,41 @@ __plugin_meta__ = PluginMetadata(
             plugin_storage_row("hidden_plugins", scope="deploy", label="帮助总览隐藏名单"),
             plugin_storage_row("global_disabled_plugins", scope="deploy", label="全实例禁用名单"),
         ),
+        "knowledge_sources": [
+            knowledge_source_row(
+                source_id="help.faq",
+                title="牛牛帮助说明",
+                description="查看功能说明与本群插件开关",
+                chunks=[
+                    {
+                        "title": "查看功能总览",
+                        "content": (
+                            "发送「牛牛帮助」可查看本群可用功能总览；"
+                            "「牛牛帮助 插件名或序号」查看单个插件；"
+                            "「牛牛帮助 插件 功能序号或名称」查看单条详情。"
+                        ),
+                        "keywords": "帮助,功能,怎么用,牛牛帮助,总览,说明",
+                    },
+                    {
+                        "title": "本群开关插件",
+                        "content": (
+                            "群管理可用「牛牛开启 / 牛牛关闭 插件名或序号」开关本群某功能；"
+                            "「牛牛开启全部功能 / 牛牛关闭全部功能」可批量开关。"
+                            "具体谁能操作以当前群设置为准。"
+                        ),
+                        "keywords": "开启,关闭,开关,插件,全部功能,禁用,启用",
+                    },
+                    {
+                        "title": "与闲聊的分工",
+                        "content": (
+                            "功能用法与开关状态以「牛牛帮助」口令为准；"
+                            "向 @牛牛 提问时若不确定口令，应引导用户发送牛牛帮助，不要编造不存在的命令。"
+                        ),
+                        "keywords": "口令,帮助,闲聊,怎么查",
+                    },
+                ],
+            ),
+        ],
     },
 )
 

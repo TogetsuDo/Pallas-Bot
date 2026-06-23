@@ -7,6 +7,7 @@ from pallas.core.perm.metadata_defaults import (
     PLUGIN_MENU_TEMPLATE,
 )
 from pallas.core.perm.metadata_text import SCENE_GROUP, join_usage, usage_line
+from pallas.product.llm.knowledge.declare import knowledge_source_row
 
 from . import commands as _commands  # noqa: F401
 from .game import parse_roulette_start_command
@@ -84,6 +85,35 @@ __plugin_meta__ = PluginMetadata(
                 "brief_des": "对已禁言玩家追加惩罚",
                 "detail_des": "给已经中招的人再补一轮惩罚；可 @ 指定对象，也有翻车概率。",
             },
+        ],
+        "knowledge_sources": [
+            knowledge_source_row(
+                source_id="roulette.faq",
+                title="牛牛轮盘说明",
+                description="群内踢人/禁言轮盘玩法",
+                chunks=[
+                    {
+                        "title": "如何开始轮盘",
+                        "content": (
+                            "发送「牛牛轮盘」启动默认禁言模式；也可用「牛牛轮盘踢人」或「牛牛轮盘禁言」指定模式。"
+                        ),
+                        "keywords": "轮盘,怎么玩,开始,踢人,禁言,牛牛轮盘",
+                    },
+                    {
+                        "title": "如何参与轮盘",
+                        "content": "轮盘开始后，在群内发送「牛牛开枪」即可参与本局，中弹者按当前模式受罚。",
+                        "keywords": "开枪,参与,怎么加入,中弹",
+                    },
+                    {
+                        "title": "救人与补枪",
+                        "content": (
+                            "「牛牛救一下 [@用户]」可尝试解除禁言，不带 @ 时帮大家解禁；"
+                            "「牛牛补一枪 [@用户]」对已中招者追加惩罚；两者均有翻车概率。"
+                        ),
+                        "keywords": "救一下,补一枪,解禁,追加,翻车",
+                    },
+                ],
+            ),
         ],
     },
 )

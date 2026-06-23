@@ -8,6 +8,7 @@ from pallas.core.perm.metadata_defaults import (
     PLUGIN_MENU_TEMPLATE,
 )
 from pallas.core.perm.metadata_text import SCENE_AUTO, SCENE_GROUP, SCENE_PRIVATE, join_usage, usage_line
+from pallas.product.llm.knowledge.declare import knowledge_source_row
 
 from . import commands as _commands  # noqa: F401
 from .commands import call_me_message_rule, greeting_plugin_disabled, handle_notice
@@ -85,6 +86,35 @@ __plugin_meta__ = PluginMetadata(
                 "brief_des": "恢复默认入群欢迎",
                 "detail_des": "删掉当前群保存的欢迎内容，恢复成默认欢迎。",
             },
+        ],
+        "knowledge_sources": [
+            knowledge_source_row(
+                source_id="greeting.faq",
+                title="牛牛欢迎说明",
+                description="入群与加好友欢迎及自定义",
+                chunks=[
+                    {
+                        "title": "自动欢迎",
+                        "content": (
+                            "新人入群或有人加好友时，牛牛会自动发送欢迎消息；若已设置自定义欢迎则优先使用自定义内容。"
+                        ),
+                        "keywords": "欢迎,入群,加好友,新人,自动",
+                    },
+                    {
+                        "title": "自定义欢迎",
+                        "content": (
+                            "私聊发送「设置好友欢迎」可自定义新好友欢迎；"
+                            "群内发送「设置群欢迎」可自定义本群入群欢迎，按提示发送文字或图片。"
+                        ),
+                        "keywords": "设置,自定义,好友欢迎,群欢迎,怎么设",
+                    },
+                    {
+                        "title": "恢复默认欢迎",
+                        "content": ("私聊「清除好友欢迎」或群内「清除群欢迎」可删除已保存内容并恢复默认欢迎。"),
+                        "keywords": "清除,恢复,默认,删除欢迎",
+                    },
+                ],
+            ),
         ],
     },
 )
