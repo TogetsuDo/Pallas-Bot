@@ -189,6 +189,9 @@ async def run_ai_callback(
         if isinstance(raw_trace, dict):
             parsed_agent_trace = raw_trace
             task["agent_trace"] = raw_trace
+            from pallas.product.llm.runtime_debug import append_runtime_trace
+
+            append_runtime_trace(request_id=task_id, trace=raw_trace)
 
     bot_id = task.get("bot_id")
     group_id = task.get("group_id")

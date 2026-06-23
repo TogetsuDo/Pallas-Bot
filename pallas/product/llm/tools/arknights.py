@@ -5,7 +5,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from pallas.core.domain.arknights import query as ark_query
+from pallas.product.llm.tools.contracts import ToolCapability
 from pallas.product.llm.tools.registry import LlmToolSpec, register_tool
+
+_READ_ONLY = frozenset({ToolCapability.READ_ONLY.value})
 
 if TYPE_CHECKING:
     from pallas.product.llm.tools.context import ToolInvokeContext
@@ -25,6 +28,7 @@ def register_arknights_tools() -> None:
             },
             domains=frozenset({"arknights"}),
             handler=handle_operator_get,
+            capabilities=_READ_ONLY,
         )
     )
     register_tool(
@@ -41,6 +45,7 @@ def register_arknights_tools() -> None:
             },
             domains=frozenset({"arknights"}),
             handler=handle_operator_search,
+            capabilities=_READ_ONLY,
         )
     )
     register_tool(
@@ -57,6 +62,7 @@ def register_arknights_tools() -> None:
             },
             domains=frozenset({"arknights"}),
             handler=handle_skill_get,
+            capabilities=_READ_ONLY,
         )
     )
     register_tool(
@@ -72,6 +78,7 @@ def register_arknights_tools() -> None:
             },
             domains=frozenset({"arknights"}),
             handler=handle_enemy_get,
+            capabilities=_READ_ONLY,
         )
     )
     register_tool(
@@ -88,6 +95,7 @@ def register_arknights_tools() -> None:
             },
             domains=frozenset({"arknights"}),
             handler=handle_enemy_search,
+            capabilities=_READ_ONLY,
         )
     )
 

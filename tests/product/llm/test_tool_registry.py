@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+
+import pytest
 
 from pallas.product.llm.tools import registry
-
-if TYPE_CHECKING:
-    import pytest
 
 
 async def _echo_handler(args: dict, _ctx) -> dict[str, object]:
@@ -32,6 +30,15 @@ def _patch_tool_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda: SimpleNamespace(arknights_kb_enabled=True),
     )
     monkeypatch.setattr(registry, "load_tool_description_overrides", dict)
+
+
+@pytest.fixture(autouse=True)
+def restore_global_tool_registry() -> None:
+    yield
+    from pallas.product.llm.tools.bootstrap import ensure_llm_tools_bootstrapped, reset_llm_tools_bootstrap_for_tests
+
+    reset_llm_tools_bootstrap_for_tests()
+    ensure_llm_tools_bootstrapped()
 
 
 def _make_spec(
@@ -113,4 +120,6 @@ def test_execute_tool_async_normalizes_non_ok_dict(monkeypatch: pytest.MonkeyPat
 
     result = asyncio.run(registry.execute_tool_async("test.echo", {"message": "hi"}))
 
-    assert result == {"ok": True, "result": {"value": "hi"}}
+    assert result["ok"] is True
+    assert result["result"] == {"value": "hi"}
+    assert result["source"] == "builtin"

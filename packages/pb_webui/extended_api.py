@@ -5884,6 +5884,33 @@ def register_extended_api(
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": {"items": filtered, "count": len(filtered), "limit": limit}})
 
+    @router.get(f"{x}/common-config/llm/runtime-debug/{{request_id}}", include_in_schema=True)
+    async def _llm_runtime_debug_get(request_id: str) -> JSONResponse:
+        from pallas.product.llm.runtime_debug import load_runtime_debug_bundle
+
+        rid = str(request_id or "").strip()
+        if not rid:
+            raise HTTPException(status_code=400, detail="缺少 request_id")
+        data = load_runtime_debug_bundle(request_id=rid)
+        if not data.get("snapshot") and not data.get("trace"):
+            raise HTTPException(status_code=404, detail="未找到 runtime debug 记录")
+        return JSONResponse({"ok": True, "data": data})
+
+    @router.get(f"{x}/common-config/llm/runtime-debug/{{request_id}}/replay", include_in_schema=True)
+    async def _llm_runtime_replay_get(
+        request_id: str,
+        mode: str = Query(default="mock_tools"),
+    ) -> JSONResponse:
+        from pallas.product.llm.runtime_debug import build_replay_payload
+
+        rid = str(request_id or "").strip()
+        if not rid:
+            raise HTTPException(status_code=400, detail="缺少 request_id")
+        payload = build_replay_payload(request_id=rid, mode=str(mode or "mock_tools"))
+        if payload.get("error") == "snapshot_not_found":
+            raise HTTPException(status_code=404, detail="未找到 request snapshot")
+        return JSONResponse({"ok": True, "data": payload})
+
     @router.get(f"{x}/common-config/llm/persona-observe", include_in_schema=True)
     async def _llm_persona_observe_get(
         group_id: int | None = Query(default=None, ge=1, description="群号；省略则仅展示 bot 基线"),

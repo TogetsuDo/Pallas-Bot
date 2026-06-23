@@ -9,6 +9,7 @@ from pallas.product.llm.tools.command_invoke import (
     dispatch_group_command_text,
     render_command_template,
 )
+from pallas.product.llm.tools.contracts import ToolCapability
 from pallas.product.llm.tools.metadata import LlmCommandToolDecl, iter_loaded_plugin_llm_tools
 from pallas.product.llm.tools.registry import LlmToolSource, LlmToolSpec, register_tool
 
@@ -67,4 +68,9 @@ def build_command_tool_spec(
         handler=handler,
         source=LlmToolSource.PLUGIN_COMMAND,
         command_id=decl.command_id,
+        plugin_name=plugin_name,
+        capabilities=frozenset({
+            ToolCapability.SIDE_EFFECTING.value,
+            ToolCapability.REQUIRES_GROUP_CONTEXT.value,
+        }),
     )

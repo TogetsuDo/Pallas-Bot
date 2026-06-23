@@ -188,3 +188,38 @@ def test_llm_history_behavior_annotation_post(monkeypatch) -> None:
     assert payload["ok"] is True
     assert payload["data"]["request_id"] == "req-1"
     assert payload["data"]["manual_labels"] == ["像人", "作为参考保留"]
+
+
+def test_llm_runtime_debug_api_returns_snapshot_and_trace(tmp_path, monkeypatch) -> None:
+    from pallas.product.llm.runtime_debug import append_request_snapshot, append_runtime_trace
+
+    monkeypatch.setattr(
+        "pallas.product.llm.runtime_debug.runtime_debug_dir",
+        lambda: tmp_path,
+    )
+    snapshot_id = append_request_snapshot(
+        request_id="req-1",
+        task="llm_chat",
+        system_prompt="你是牛牛",
+        messages=[{"role": "user", "content": "你好"}],
+        metadata={"agent_stage_plan": ["plan", "tool_loop", "generate"]},
+    )
+    append_runtime_trace(
+        request_id="req-1",
+        trace={"request_snapshot_id": snapshot_id, "version": "agent_trace/v1"},
+    )
+
+    client = _build_client(monkeypatch)
+    response = client.get("/pallas/api/common-config/llm/runtime-debug/req-1")
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["data"]["snapshot"]["request_snapshot_id"] == snapshot_id
+    assert payload["data"]["trace"]["request_snapshot_id"] == snapshot_id
+
+    replay = client.get("/pallas/api/common-config/llm/runtime-debug/req-1/replay")
+    assert replay.status_code == 200, replay.text
+    replay_payload = replay.json()
+    assert replay_payload["ok"] is True
+    assert replay_payload["data"]["request_snapshot_id"] == snapshot_id
+    assert replay_payload["data"]["mode"] == "mock_tools"

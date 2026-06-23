@@ -129,6 +129,19 @@ async def submit_chat_task(request: ChatSubmitRequest, *, cfg: LlmConfig | None 
             metadata.update(
                 knowledge_metadata_payload(request.knowledge_retrieval_trace, cfg=c)
             )
+        from pallas.product.llm.runtime_debug import append_request_snapshot
+
+        snapshot_id = append_request_snapshot(
+            request_id=request.request_id,
+            task=str(metadata.get("task") or "llm_chat"),
+            system_prompt=request.system_prompt,
+            messages=[{"role": item.role, "content": item.content} for item in messages],
+            metadata=metadata,
+        )
+        metadata.setdefault("runtime_debug", {})
+        metadata["runtime_debug"]["request_snapshot_id"] = snapshot_id
+        metadata["runtime_debug"]["replay_enabled"] = True
+        metadata["runtime_debug"]["trace_level"] = "standard"
         payload = {
             "session_id": request.session_id if not use_pg_session else request.request_id,
             "model": request.model,

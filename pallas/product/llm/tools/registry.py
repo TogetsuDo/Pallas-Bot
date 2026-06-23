@@ -5,12 +5,19 @@ from __future__ import annotations
 import inspect
 import operator
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from pallas.product.arknights_kb.config import get_arknights_kb_config
 from pallas.product.llm.config import get_llm_config
+from pallas.product.llm.tools.contracts import (
+    ToolAuditInfo,
+    ToolCatalogEntry,
+    ToolCatalogSelection,
+    ToolCatalogSnapshot,
+    ToolResultEnvelope,
+)
 from pallas.product.llm.tools.overrides import load_tool_description_overrides
 from pallas.product.llm.tools.select import infer_tool_domains
 
@@ -42,6 +49,9 @@ class LlmToolSpec:
     source: LlmToolSource = LlmToolSource.BUILTIN
     command_id: str | None = None
     visible_in_ui: bool = True
+    capabilities: frozenset[str] = field(default_factory=frozenset)
+    plugin_name: str | None = None
+    provider_name: str | None = None
 
 
 _REGISTRY: list[LlmToolSpec] = []
@@ -91,25 +101,65 @@ def trim_tool_description(description: str, *, max_len: int) -> str:
     return text[: max_len - 1].rstrip() + "…"
 
 
-def normalize_tool_result(raw: Any) -> dict[str, Any]:
-    if isinstance(raw, dict):
-        if "ok" in raw:
-            return raw
-        return {"ok": True, "result": raw}
-    return {"ok": True, "result": {"value": raw}}
+def tool_catalog_entry_from_spec(spec: LlmToolSpec, *, description: str | None = None) -> ToolCatalogEntry:
+    return ToolCatalogEntry(
+        name=spec.name,
+        description=description if description is not None else spec.description,
+        parameters=spec.parameters,
+        source=spec.source.value,
+        domains=sorted(spec.domains),
+        capabilities=sorted(spec.capabilities),
+        audit=ToolAuditInfo(
+            command_id=spec.command_id,
+            plugin_name=spec.plugin_name,
+            provider_name=spec.provider_name,
+        ),
+    )
 
 
-def tool_openai_schemas(*, domains: frozenset[str] | None = None) -> list[dict[str, Any]]:
+def normalize_tool_result(raw: Any, *, spec: LlmToolSpec | None = None) -> dict[str, Any]:
+    if isinstance(raw, dict) and "ok" in raw:
+        ok = bool(raw.get("ok"))
+        result = raw.get("result")
+        if result is not None and not isinstance(result, dict):
+            result = {"value": result}
+        error = str(raw.get("error") or "")
+    elif isinstance(raw, dict):
+        ok = True
+        result = raw
+        error = ""
+    elif raw is None:
+        ok = True
+        result = None
+        error = ""
+    else:
+        ok = True
+        result = {"value": raw}
+        error = ""
+
+    envelope = ToolResultEnvelope(
+        ok=ok,
+        result=result,
+        error=error,
+        source=spec.source.value if spec is not None else "",
+        audit=ToolAuditInfo(
+            command_id=spec.command_id if spec is not None else None,
+            plugin_name=spec.plugin_name if spec is not None else None,
+            provider_name=spec.provider_name if spec is not None else None,
+        ),
+    )
+    return envelope.model_dump(mode="json")
+
+
+def iter_eligible_tool_specs(*, domains: frozenset[str] | None = None) -> tuple[LlmToolSpec, ...]:
     cfg = get_llm_config()
     if not cfg.llm_tools_enabled:
-        return []
+        return ()
     ensure_tools_loaded()
     kb = get_arknights_kb_config()
-    allowed = domains
     blacklist = {item.strip().lower() for item in cfg.llm_tools_blacklist if item.strip()}
-    overrides = load_tool_description_overrides()
-    out: list[dict[str, Any]] = []
-    for spec in iter_registered_tools(domains=allowed):
+    items: list[LlmToolSpec] = []
+    for spec in iter_registered_tools(domains=domains):
         if blacklist:
             if spec.name.lower() in blacklist:
                 continue
@@ -117,21 +167,72 @@ def tool_openai_schemas(*, domains: frozenset[str] | None = None) -> list[dict[s
                 continue
         if "arknights" in spec.domains and not kb.arknights_kb_enabled:
             continue
-        description = trim_tool_description(spec.description, max_len=cfg.llm_tools_desc_max_len)
-        override = overrides.get(spec.name)
-        if isinstance(override, dict):
-            custom = str(override.get("description") or "").strip()
-            if custom:
-                description = trim_tool_description(custom, max_len=cfg.llm_tools_desc_max_len)
-        out.append({
+        items.append(spec)
+    return tuple(items)
+
+
+def catalog_entry_for_spec(spec: LlmToolSpec) -> ToolCatalogEntry:
+    cfg = get_llm_config()
+    description = trim_tool_description(spec.description, max_len=cfg.llm_tools_desc_max_len)
+    override = load_tool_description_overrides().get(spec.name)
+    if isinstance(override, dict):
+        custom = str(override.get("description") or "").strip()
+        if custom:
+            description = trim_tool_description(custom, max_len=cfg.llm_tools_desc_max_len)
+    return tool_catalog_entry_from_spec(spec, description=description)
+
+
+def openai_schemas_from_catalog(catalog: ToolCatalogSnapshot) -> list[dict[str, Any]]:
+    return [
+        {
             "type": "function",
             "function": {
-                "name": spec.name,
-                "description": description,
-                "parameters": spec.parameters,
+                "name": item.name,
+                "description": item.description,
+                "parameters": item.parameters,
             },
-        })
-    return out
+        }
+        for item in catalog.tools
+    ]
+
+
+def tool_catalog_for_chat(*, task: str | None = None, user_text: str = "") -> ToolCatalogSnapshot | None:
+    normalized = str(task or "").strip().lower()
+    if normalized in _NO_TOOL_TASKS:
+        return None
+    cfg = get_llm_config()
+    domains: frozenset[str] | None = None
+    inferred_domains: list[str] = []
+    if cfg.llm_tools_selective:
+        inferred = infer_tool_domains(user_text)
+        if not inferred:
+            return None
+        domains = inferred
+        inferred_domains = sorted(inferred)
+    specs = iter_eligible_tool_specs(domains=domains)
+    if not specs:
+        return None
+    entries = [catalog_entry_for_spec(spec) for spec in specs]
+    return ToolCatalogSnapshot(
+        tools=entries,
+        selection=ToolCatalogSelection(
+            tools_enabled=True,
+            selective_enabled=bool(cfg.llm_tools_selective),
+            inferred_domains=inferred_domains,
+            schema_count=len(entries),
+        ),
+    )
+
+
+def tool_openai_schemas(*, domains: frozenset[str] | None = None) -> list[dict[str, Any]]:
+    specs = iter_eligible_tool_specs(domains=domains)
+    if not specs:
+        return []
+    catalog = ToolCatalogSnapshot(
+        tools=[catalog_entry_for_spec(spec) for spec in specs],
+        selection=ToolCatalogSelection(tools_enabled=True, schema_count=len(specs)),
+    )
+    return openai_schemas_from_catalog(catalog)
 
 
 async def execute_tool_async(
@@ -149,10 +250,10 @@ async def execute_tool_async(
             result = spec.handler(args, context)
             if inspect.isawaitable(result):
                 result = await result
-            return normalize_tool_result(result)
+            return normalize_tool_result(result, spec=spec)
         except Exception as exc:
-            return {"ok": False, "error": str(exc)}
-    return {"ok": False, "error": f"unknown tool: {name}"}
+            return normalize_tool_result({"ok": False, "error": str(exc)}, spec=spec)
+    return normalize_tool_result({"ok": False, "error": f"unknown tool: {name}"})
 
 
 def execute_tool(name: str, arguments: dict[str, Any] | None) -> dict[str, Any]:
@@ -171,21 +272,17 @@ _NO_TOOL_TASKS = frozenset({"repeater_fallback", "repeater_polish", "repeater_po
 
 
 def tool_metadata_for_chat(*, task: str | None = None, user_text: str = "") -> dict[str, Any]:
-    """写入 AI 仓 metadata：tools_enabled + tool_schemas。"""
-    normalized = str(task or "").strip().lower()
-    if normalized in _NO_TOOL_TASKS:
+    """写入 AI 仓 metadata：tool_catalog + 兼容字段 tools_enabled / tool_schemas。"""
+    catalog = tool_catalog_for_chat(task=task, user_text=user_text)
+    if catalog is None:
         return {}
-    cfg = get_llm_config()
-    domains: frozenset[str] | None = None
-    if cfg.llm_tools_selective:
-        inferred = infer_tool_domains(user_text)
-        if not inferred:
-            return {}
-        domains = inferred
-    schemas = tool_openai_schemas(domains=domains)
-    if not schemas:
-        return {}
-    return {"tools_enabled": True, "tool_schemas": schemas}
+    schemas = openai_schemas_from_catalog(catalog)
+    return {
+        "tools_enabled": True,
+        "tool_catalog": catalog.model_dump(mode="json"),
+        "tool_schemas": schemas,
+        "tool_schema_count": int(catalog.selection.schema_count),
+    }
 
 
 def build_tools_ui_rows() -> list[dict[str, Any]]:
