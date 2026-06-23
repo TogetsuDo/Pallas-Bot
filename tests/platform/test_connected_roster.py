@@ -69,8 +69,12 @@ async def test_bot_connect_ignores_runtime_storage_failure(monkeypatch: pytest.M
     async def ensure_bot_runtime_storage(_qq: int) -> bool:
         raise RuntimeError("boom")
 
+    async def ensure_bot_config_row(_qq: int) -> bool:
+        return False
+
     monkeypatch.setattr(mod, "clear_protocol_bot_offline", clear_protocol_bot_offline)
     monkeypatch.setattr(mod, "ensure_bot_runtime_storage", ensure_bot_runtime_storage)
+    monkeypatch.setattr(mod, "ensure_bot_config_row", ensure_bot_config_row)
     monkeypatch.setattr(mod, "note_bot_session_seen", lambda _qq: None)
     monkeypatch.setattr(mod.shard_ctx, "sharding_active", lambda: False)
     monkeypatch.setattr(mod.logger, "warning", lambda msg, *args: warnings.append((msg, args)))
@@ -85,6 +89,73 @@ async def test_bot_connect_ignores_runtime_storage_failure(monkeypatch: pytest.M
     assert msg == "Bot {} runtime storage ensure failed: {}"
     assert args[0] == "1354970010"
     assert str(args[1]) == "boom"
+
+
+@pytest.mark.asyncio
+async def test_bot_connect_ensures_bot_config_row(monkeypatch: pytest.MonkeyPatch) -> None:
+    mod._connected_bots.clear()
+    ensure_calls: list[int] = []
+    info_calls: list[tuple[str, tuple[object, ...]]] = []
+
+    async def clear_protocol_bot_offline(_qq: int) -> None:
+        return None
+
+    async def ensure_bot_runtime_storage(_qq: int) -> bool:
+        return False
+
+    async def ensure_bot_config_row(qq: int) -> bool:
+        ensure_calls.append(qq)
+        return True
+
+    monkeypatch.setattr(mod, "clear_protocol_bot_offline", clear_protocol_bot_offline)
+    monkeypatch.setattr(mod, "ensure_bot_runtime_storage", ensure_bot_runtime_storage)
+    monkeypatch.setattr(mod, "ensure_bot_config_row", ensure_bot_config_row)
+    monkeypatch.setattr(mod, "note_bot_session_seen", lambda _qq: None)
+    monkeypatch.setattr(mod.shard_ctx, "sharding_active", lambda: False)
+    monkeypatch.setattr(mod.logger, "info", lambda msg, *args: info_calls.append((msg, args)))
+    monkeypatch.setattr(mod.logger, "debug", lambda *_args, **_kwargs: None)
+
+    bot = SimpleNamespace(self_id="1354970010", type="OneBot V11")
+
+    await mod.on_bot_connect(bot)
+
+    assert ensure_calls == [1354970010]
+    assert ("bot_config ensured for Bot {}", ("1354970010",)) in info_calls
+
+
+@pytest.mark.asyncio
+async def test_bot_connect_ignores_bot_config_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    mod._connected_bots.clear()
+    warnings: list[tuple[str, tuple[object, ...]]] = []
+
+    async def clear_protocol_bot_offline(_qq: int) -> None:
+        return None
+
+    async def ensure_bot_runtime_storage(_qq: int) -> bool:
+        return False
+
+    async def ensure_bot_config_row(_qq: int) -> bool:
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr(mod, "clear_protocol_bot_offline", clear_protocol_bot_offline)
+    monkeypatch.setattr(mod, "ensure_bot_runtime_storage", ensure_bot_runtime_storage)
+    monkeypatch.setattr(mod, "ensure_bot_config_row", ensure_bot_config_row)
+    monkeypatch.setattr(mod, "note_bot_session_seen", lambda _qq: None)
+    monkeypatch.setattr(mod.shard_ctx, "sharding_active", lambda: False)
+    monkeypatch.setattr(mod.logger, "info", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(mod.logger, "debug", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(mod.logger, "warning", lambda msg, *args: warnings.append((msg, args)))
+
+    bot = SimpleNamespace(self_id="1354970010", type="OneBot V11")
+
+    await mod.on_bot_connect(bot)
+
+    assert 1354970010 in mod.connected_bot_ids()
+    assert len(warnings) == 1
+    msg, args = warnings[0]
+    assert msg == "Bot {} bot_config ensure failed: {}"
+    assert args[0] == "1354970010"
+    assert str(args[1]) == "db down"
 
 
 @pytest.mark.asyncio

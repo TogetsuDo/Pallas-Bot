@@ -9,6 +9,8 @@ from pallas.core.foundation.command_prefix import extract_command_tail
 HELP_COMMAND = "牛牛帮助"
 PLUGIN_ENABLE_COMMAND = "牛牛开启"
 PLUGIN_DISABLE_COMMAND = "牛牛关闭"
+PLUGIN_ENABLE_ALL_COMMAND = "牛牛开启全部功能"
+PLUGIN_DISABLE_ALL_COMMAND = "牛牛关闭全部功能"
 
 _TAIL_WS_RE = re.compile(r"[\s\u3000]+")
 

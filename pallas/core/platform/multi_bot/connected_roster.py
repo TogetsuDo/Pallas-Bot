@@ -7,7 +7,7 @@ import asyncio
 from nonebot import get_driver, logger
 from nonebot.adapters import Bot  # noqa: TC002
 
-from pallas.core.foundation.db import ensure_runtime_storage_ready
+from pallas.core.foundation.db import ensure_bot_config_row, ensure_runtime_storage_ready
 from pallas.core.platform.multi_bot.session_seen import note_bot_session_seen
 from pallas.core.platform.shard import context as shard_ctx
 from pallas.core.platform.shard.presence import (
@@ -52,6 +52,14 @@ async def on_bot_connect(bot: Bot) -> None:
                 logger.info("Bot {} runtime storage already ready on connect.", bot.self_id)
         except Exception as err:
             logger.warning("Bot {} runtime storage ensure failed: {}", bot.self_id, err)
+        try:
+            created = await ensure_bot_config_row(qq)
+            if created:
+                logger.info("bot_config ensured for Bot {}", bot.self_id)
+            else:
+                logger.debug("bot_config already exists for Bot {}", bot.self_id)
+        except Exception as err:
+            logger.warning("Bot {} bot_config ensure failed: {}", bot.self_id, err)
         if shard_ctx.sharding_active():
             await note_worker_bot_connected(bot)
         try:

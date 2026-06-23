@@ -1,4 +1,4 @@
-from nonebot import on_command, on_message
+from nonebot import on_message
 from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, PrivateMessageEvent
 from nonebot.rule import Rule
@@ -13,7 +13,9 @@ from .config import plugin_config
 from .handlers import handle_help_command, handle_plugin_operation
 from .help_args import (
     HELP_COMMAND,
+    PLUGIN_DISABLE_ALL_COMMAND,
     PLUGIN_DISABLE_COMMAND,
+    PLUGIN_ENABLE_ALL_COMMAND,
     PLUGIN_ENABLE_COMMAND,
     parse_plugin_toggle_args,
 )
@@ -21,39 +23,55 @@ from .plugin_manager import get_help_menu_plugins
 from .style_cache import AVAILABLE_STYLES, DEFAULT_STYLE_NAME
 
 
-def help_command_rule() -> Rule:
-    async def match_help_command(event: Event, state: T_State) -> bool:
+def prefix_command_rule(command: str, *, exclude_prefixes: tuple[str, ...] = ()) -> Rule:
+    async def match_prefix_command(event: Event, state: T_State) -> bool:
         del state
         try:
             plain = event.get_plaintext()
         except Exception:
             return False
-        return matches_command_prefix(plain, HELP_COMMAND)
+        text = plain or ""
+        for excluded in exclude_prefixes:
+            if matches_command_prefix(text, excluded):
+                return False
+        return matches_command_prefix(text, command)
 
-    return Rule(match_help_command)
+    return Rule(match_prefix_command)
 
 
 help_cmd = on_message(
-    help_command_rule(),
+    prefix_command_rule(HELP_COMMAND),
     priority=5,
     block=True,
     permission=permission_for_command("help.help"),
 )
 
-plugin_enable_cmd = on_command(
-    "牛牛开启", priority=5, block=True, permission=permission_for_command("help.plugin_enable")
+plugin_enable_all_cmd = on_message(
+    prefix_command_rule(PLUGIN_ENABLE_ALL_COMMAND),
+    priority=4,
+    block=True,
+    permission=permission_for_command("help.plugin_enable_all"),
 )
 
-plugin_disable_cmd = on_command(
-    "牛牛关闭", priority=5, block=True, permission=permission_for_command("help.plugin_disable")
+plugin_disable_all_cmd = on_message(
+    prefix_command_rule(PLUGIN_DISABLE_ALL_COMMAND),
+    priority=4,
+    block=True,
+    permission=permission_for_command("help.plugin_disable_all"),
 )
 
-plugin_enable_all_cmd = on_command(
-    "牛牛开启全部功能", priority=5, block=True, permission=permission_for_command("help.plugin_enable_all")
+plugin_enable_cmd = on_message(
+    prefix_command_rule(PLUGIN_ENABLE_COMMAND, exclude_prefixes=(PLUGIN_ENABLE_ALL_COMMAND,)),
+    priority=5,
+    block=True,
+    permission=permission_for_command("help.plugin_enable"),
 )
 
-plugin_disable_all_cmd = on_command(
-    "牛牛关闭全部功能", priority=5, block=True, permission=permission_for_command("help.plugin_disable_all")
+plugin_disable_cmd = on_message(
+    prefix_command_rule(PLUGIN_DISABLE_COMMAND, exclude_prefixes=(PLUGIN_DISABLE_ALL_COMMAND,)),
+    priority=5,
+    block=True,
+    permission=permission_for_command("help.plugin_disable"),
 )
 
 
