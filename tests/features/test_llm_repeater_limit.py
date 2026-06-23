@@ -9,6 +9,21 @@ from pallas.product.llm.repeater_limit import (
     per_worker_global_rpm_limit,
     try_consume_local_rpm,
 )
+from pallas.product.llm.task_routing import TaskRouteSpec
+
+
+@pytest.fixture(autouse=True)
+def stub_task_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_resolve(task: str, *, explicit_model: str | None = None) -> TaskRouteSpec:
+        task_name = str(task or "").strip().lower() or "llm_chat"
+        return TaskRouteSpec(
+            task=task_name,
+            resolved_model=str(explicit_model or "").strip() or None,
+            provider_hint=None,
+            source="explicit" if explicit_model else "config",
+        )
+
+    monkeypatch.setattr("pallas.product.llm.client.resolve_task_route", fake_resolve)
 
 
 def test_is_repeater_llm_task() -> None:

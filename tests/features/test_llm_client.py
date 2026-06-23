@@ -9,6 +9,21 @@ import pytest
 from pallas.product.llm.client import delete_llm_chat_session, resolve_chat_messages, submit_chat_task
 from pallas.product.llm.config import LlmConfig
 from pallas.product.llm.models import ChatSubmitRequest
+from pallas.product.llm.task_routing import TaskRouteSpec
+
+
+@pytest.fixture(autouse=True)
+def stub_task_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_resolve(task: str, *, explicit_model: str | None = None) -> TaskRouteSpec:
+        task_name = str(task or "").strip().lower() or "llm_chat"
+        return TaskRouteSpec(
+            task=task_name,
+            resolved_model=str(explicit_model or "").strip() or None,
+            provider_hint=None,
+            source="explicit" if explicit_model else "config",
+        )
+
+    monkeypatch.setattr("pallas.product.llm.client.resolve_task_route", fake_resolve)
 
 
 @pytest.mark.asyncio
@@ -93,6 +108,8 @@ async def test_submit_chat_task_unified_payload(monkeypatch: pytest.MonkeyPatch)
     assert payload["system"] == "system"
     assert payload["metadata"]["mode"] == "drunk"
     assert payload["metadata"]["task"] == "drunk"
+    assert payload["metadata"]["task_route"]["task"] == "drunk"
+    assert payload["metadata"]["task_route"]["source"] == "config"
     assert payload["metadata"]["token_count"] == 50
     assert payload["messages"][-1]["content"].startswith("【用户消息")
 
@@ -142,6 +159,7 @@ async def test_submit_chat_task_unified_llm_chat_payload_includes_agent_stage_pl
     assert result.ok is True
     metadata = captured["json"]["metadata"]
     assert metadata["task"] == "llm_chat"
+    assert metadata["task_route"]["task"] == "llm_chat"
     assert metadata["tools_enabled"] is True
     assert metadata["agent_stage_plan"] == ["plan", "tool_loop", "generate"]
     assert metadata["tool_schema_count"] == 2
@@ -355,6 +373,17 @@ async def test_submit_chat_task_repeater_payload_has_single_message(monkeypatch:
     slot = MagicMock(acquired=True)
     monkeypatch.setattr("pallas.product.llm.client.try_acquire_repeater_llm_slot", AsyncMock(return_value=slot))
 
+    async def fake_route(task: str, *, explicit_model: str | None = None) -> TaskRouteSpec:
+        _ = explicit_model
+        return TaskRouteSpec(
+            task=task,
+            resolved_model="qwen3:14b",
+            provider_hint="local",
+            source="ai_health",
+        )
+
+    monkeypatch.setattr("pallas.product.llm.client.resolve_task_route", fake_route)
+
     cfg = LlmConfig(use_unified_chat_api=True, llm_chat_enabled=True, llm_governance_enabled=False)
     result = await submit_chat_task(
         ChatSubmitRequest(
@@ -371,6 +400,8 @@ async def test_submit_chat_task_repeater_payload_has_single_message(monkeypatch:
     )
     assert result.ok is True
     assert len(captured["json"]["messages"]) == 1
+    assert captured["json"]["metadata"]["resolved_model"] == "qwen3:14b"
+    assert captured["json"]["metadata"]["task_route"]["task"] == "repeater_polish"
 
 
 @pytest.mark.asyncio

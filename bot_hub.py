@@ -32,10 +32,9 @@ import nonebot
 from nonebot.adapters.onebot.v11 import Adapter as ONEBOT_V11Adapter
 
 from pallas.console.web import install_nonebot_log_sink
-from pallas.product.ban_gate.snapshot import start_ban_gate_snapshot, stop_ban_gate_snapshot
-from pallas.product.message_scrub import start_message_scrub_if_enabled
 from pallas.core.foundation.db import init_db
 from pallas.core.foundation.logging import apply_stdlib_logging_channel_prefix
+from pallas.core.foundation.startup_report import emit_startup_summary
 from pallas.core.platform.bot_runtime import load_plugins_for_role
 from pallas.core.platform.shard.logs.process import install_shard_process_logging
 from pallas.core.platform.shard.registry import get_shard_registry
@@ -43,6 +42,8 @@ from pallas.core.platform.shard.registry.config import get_shard_registry_settin
 from pallas.core.platform.shard.registry.listen_port import apply_listen_port
 from pallas.core.shared.adapters import register_onebot_v11_custom_events
 from pallas.core.shared.utils.voice_downloader import ensure_voices
+from pallas.product.ban_gate.snapshot import start_ban_gate_snapshot, stop_ban_gate_snapshot
+from pallas.product.message_scrub import start_message_scrub_if_enabled
 
 apply_stdlib_logging_channel_prefix()
 nonebot.init()
@@ -86,6 +87,12 @@ async def shutdown():
 
 
 load_plugins_for_role()
+
+
+@driver.on_startup
+async def emit_startup_summary_on_startup():
+    emit_startup_summary()
+
 
 if __name__ == "__main__":
     nonebot.run()

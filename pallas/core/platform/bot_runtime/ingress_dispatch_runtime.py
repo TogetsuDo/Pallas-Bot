@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from nonebot import get_driver, logger
 
+from pallas.core.foundation.startup_report import register_startup_fact
 from pallas.core.platform.bot_runtime.roles import is_hub_role
 from pallas.core.platform.ingress.dispatch_stats_logger import (
     start_dispatch_stats_logger,
@@ -36,12 +37,12 @@ def register_ingress_dispatch_runtime() -> None:
     async def install_ingress_dispatch_on_startup() -> None:
         if route_index_enabled():
             index = build_route_index()
-            logger.info(
-                "入站路由：prefix={} exact={} modules={} strict={}",
-                len(index.prefix_to_modules),
-                len(index.exact_to_modules),
-                len(index.indexed_modules),
-                route_index_strict(),
+            register_startup_fact(
+                "ingress",
+                f"prefix={len(index.prefix_to_modules)} "
+                f"exact={len(index.exact_to_modules)} "
+                f"modules={len(index.indexed_modules)} "
+                f"strict={route_index_strict()}",
             )
         install_send_queue()
         await start_send_queue_workers()

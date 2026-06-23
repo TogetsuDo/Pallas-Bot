@@ -19,6 +19,7 @@ from .repeater_limit import (
     try_acquire_repeater_llm_slot,
 )
 from .session_store import build_llm_chat_messages, format_legacy_transcript, is_llm_session_store_available
+from .task_routing import resolve_submit_task_name, resolve_task_route, serialize_task_route
 
 
 def chat_endpoint_path(cfg: LlmConfig | None = None) -> str:
@@ -73,12 +74,14 @@ async def submit_chat_task(request: ChatSubmitRequest, *, cfg: LlmConfig | None 
         timer.mark("trim_budget")
 
     use_pg_session = is_llm_session_store_available() and request.bot_id is not None and request.user_id is not None
+    task_name = resolve_submit_task_name(request.task, request.mode)
 
     base = llm_server_base_url(c)
     endpoint = chat_endpoint_path(c)
     url = f"{base}{endpoint}/{request.request_id}"
 
     if c.use_unified_chat_api:
+        task_route = await resolve_task_route(task_name, explicit_model=request.model)
         metadata = {
             "bot_id": request.bot_id,
             "group_id": request.group_id,
@@ -86,13 +89,13 @@ async def submit_chat_task(request: ChatSubmitRequest, *, cfg: LlmConfig | None 
             "request_id": request.request_id,
             "pg_session": use_pg_session,
             "mode": str(request.mode or "normal"),
+            "task": task_name,
+            "task_route": serialize_task_route(task_route),
         }
-        if request.task:
-            metadata["task"] = str(request.task).strip().lower()
-        elif str(request.mode or "normal").strip().lower() == "drunk":
-            metadata["task"] = "drunk"
-        else:
-            metadata["task"] = "llm_chat"
+        if task_route.resolved_model:
+            metadata["resolved_model"] = task_route.resolved_model
+        if task_route.provider_hint:
+            metadata["provider_hint"] = task_route.provider_hint
         from pallas.product.llm.inference_params import chat_token_count_with_tools
         from pallas.product.llm.kernel import plan_direct_chat_stages
         from pallas.product.llm.tools.registry import tool_metadata_for_chat
@@ -100,9 +103,9 @@ async def submit_chat_task(request: ChatSubmitRequest, *, cfg: LlmConfig | None 
         user_text = str(request.user_text or "").strip()
         if not user_text and messages:
             user_text = str(messages[-1].content or "")
-        tool_meta = tool_metadata_for_chat(task=str(metadata.get("task") or ""), user_text=user_text)
+        tool_meta = tool_metadata_for_chat(task=task_name, user_text=user_text)
         metadata.update(tool_meta)
-        if str(metadata.get("task") or "").strip().lower() == "llm_chat":
+        if task_name == "llm_chat":
             metadata["agent_stage_plan"] = plan_direct_chat_stages(tools_enabled=bool(tool_meta.get("tools_enabled")))
             metadata["tool_schema_count"] = len(tool_meta.get("tool_schemas") or [])
         metadata["token_count"] = chat_token_count_with_tools(
@@ -133,7 +136,7 @@ async def submit_chat_task(request: ChatSubmitRequest, *, cfg: LlmConfig | None 
 
         snapshot_id = append_request_snapshot(
             request_id=request.request_id,
-            task=str(metadata.get("task") or "llm_chat"),
+            task=task_name,
             system_prompt=request.system_prompt,
             messages=[{"role": item.role, "content": item.content} for item in messages],
             metadata=metadata,
@@ -158,11 +161,6 @@ async def submit_chat_task(request: ChatSubmitRequest, *, cfg: LlmConfig | None 
             "model": request.model,
         }
 
-    task_name = str(request.task or "").strip().lower()
-    if not task_name and c.use_unified_chat_api:
-        task_name = str(metadata.get("task") or "llm_chat").strip().lower()
-    if not task_name:
-        task_name = "llm_chat"
     if is_repeater_llm_task(task_name):
         return await submit_repeater_chat_task(
             request,

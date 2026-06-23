@@ -19,6 +19,7 @@ class ToolAuditInfo(BaseModel):
     command_id: str | None = None
     plugin_name: str | None = None
     provider_name: str | None = None
+    mcp_server_id: str | None = None
 
 
 class ToolCatalogEntry(BaseModel):

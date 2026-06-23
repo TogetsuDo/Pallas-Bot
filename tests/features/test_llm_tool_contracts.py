@@ -49,13 +49,14 @@ def test_tool_result_envelope_roundtrip() -> None:
         ok=True,
         result={"found": True},
         source="builtin",
-        audit=ToolAuditInfo(command_id="cmd.roll"),
+        audit=ToolAuditInfo(command_id="cmd.roll", mcp_server_id="notion"),
     )
     payload = envelope.model_dump(mode="json")
     restored = ToolResultEnvelope.model_validate(payload)
     assert restored.ok is True
     assert restored.result == {"found": True}
     assert restored.audit.command_id == "cmd.roll"
+    assert restored.audit.mcp_server_id == "notion"
 
 
 def test_tool_catalog_entry_from_spec(monkeypatch) -> None:
@@ -80,6 +81,28 @@ def test_tool_catalog_entry_from_spec(monkeypatch) -> None:
     assert entry.source == "plugin_command"
     assert entry.audit.plugin_name == "demo"
     assert "side_effecting" in entry.capabilities
+
+
+def test_tool_catalog_entry_from_mcp_spec(monkeypatch) -> None:
+    monkeypatch.setattr(registry, "ensure_tools_loaded", lambda: None)
+
+    spec = registry.LlmToolSpec(
+        name="mcp.notion.search",
+        description="notion search",
+        parameters={"type": "object", "properties": {"query": {"type": "string"}}},
+        domains=frozenset({"mcp", "notion"}),
+        handler=lambda *_args, **_kwargs: {"ok": False},
+        source=registry.LlmToolSource.MCP,
+        provider_name="mcp",
+        mcp_server_id="notion",
+        capabilities=frozenset({ToolCapability.READ_ONLY.value}),
+    )
+
+    entry = registry.tool_catalog_entry_from_spec(spec)
+
+    assert entry.source == "mcp"
+    assert entry.audit.mcp_server_id == "notion"
+    assert entry.capabilities == ["read_only"]
 
 
 def test_tool_metadata_for_chat_includes_tool_catalog(monkeypatch) -> None:
@@ -121,3 +144,71 @@ def test_tool_metadata_for_chat_includes_tool_catalog(monkeypatch) -> None:
     assert meta["tool_catalog"]["version"] == "tool_catalog/v1"
     assert isinstance(meta.get("tool_schemas"), list)
     assert meta["tool_schema_count"] == len(meta["tool_schemas"])
+
+
+def test_register_mcp_tools(monkeypatch) -> None:
+    from pallas.product.llm.config import LlmMcpServerConfig
+    from pallas.product.llm.tools.mcp_bootstrap import clear_mcp_tools, register_mcp_tools
+
+    registry.clear_tool_registry()
+    clear_mcp_tools()
+    server = LlmMcpServerConfig(id="notion", transport="stdio", command=["python", "-m", "fake"])
+    monkeypatch.setattr(
+        "pallas.product.llm.tools.mcp_bootstrap.get_llm_config",
+        lambda: SimpleNamespace(mcp_servers=[server]),
+    )
+    monkeypatch.setattr(
+        "pallas.product.llm.tools.mcp_bootstrap.list_mcp_tools",
+        lambda _server: [
+            {
+                "name": "search",
+                "description": "Search Notion",
+                "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}},
+                "annotations": {"readOnlyHint": True},
+            }
+        ],
+    )
+
+    assert register_mcp_tools() == 1
+    spec = registry.list_registered_tools()[0]
+    assert spec.name == "mcp.notion.search"
+    assert spec.source == registry.LlmToolSource.MCP
+    assert spec.mcp_server_id == "notion"
+    assert ToolCapability.READ_ONLY.value in spec.capabilities
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_async_runs_mcp_branch(monkeypatch) -> None:
+    monkeypatch.setattr(registry, "ensure_tools_loaded", lambda: None)
+    registry.clear_tool_registry()
+
+    registry.register_tool(
+        registry.LlmToolSpec(
+            name="mcp.notion.search",
+            description="Search Notion",
+            parameters={"type": "object", "properties": {"query": {"type": "string"}}},
+            domains=frozenset({"mcp", "notion"}),
+            handler=lambda *_args, **_kwargs: {"ok": False, "error": "should not run"},
+            source=registry.LlmToolSource.MCP,
+            provider_name="mcp",
+            mcp_server_id="notion",
+            capabilities=frozenset({ToolCapability.READ_ONLY.value}),
+        )
+    )
+
+    async def fake_execute(spec, arguments):
+        assert spec.name == "mcp.notion.search"
+        assert arguments == {"query": "amiya"}
+        return {
+            "ok": True,
+            "result": {"structured_content": {"hits": 1}},
+        }
+
+    monkeypatch.setattr("pallas.product.llm.tools.mcp_bootstrap.execute_mcp_tool_async", fake_execute)
+
+    result = await registry.execute_tool_async("mcp.notion.search", {"query": "amiya"}, context=None)
+
+    assert result["ok"] is True
+    assert result["source"] == "mcp"
+    assert result["audit"]["mcp_server_id"] == "notion"
+    assert result["result"] == {"structured_content": {"hits": 1}}

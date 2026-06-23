@@ -4744,6 +4744,8 @@ def register_extended_api(
                 "runtime": {
                     "global_disable": target in disabled,
                     "help_hidden": target in hidden,
+                    "global_disable_protected": bool(plugin_meta.get("global_disable_protected")),
+                    "help_ignored": bool(plugin_meta.get("help_ignored")),
                 },
                 "perm_ui_filtered": {
                     "levels": list(perm_ui.get("levels") or []),

@@ -30,6 +30,7 @@ ToolHandler = Callable[..., dict[str, Any] | Awaitable[dict[str, Any]]]
 class LlmToolSource(StrEnum):
     BUILTIN = "builtin"
     PLUGIN_COMMAND = "plugin_command"
+    MCP = "mcp"
 
 
 @dataclass(frozen=True)
@@ -52,6 +53,7 @@ class LlmToolSpec:
     capabilities: frozenset[str] = field(default_factory=frozenset)
     plugin_name: str | None = None
     provider_name: str | None = None
+    mcp_server_id: str | None = None
 
 
 _REGISTRY: list[LlmToolSpec] = []
@@ -113,6 +115,7 @@ def tool_catalog_entry_from_spec(spec: LlmToolSpec, *, description: str | None =
             command_id=spec.command_id,
             plugin_name=spec.plugin_name,
             provider_name=spec.provider_name,
+            mcp_server_id=spec.mcp_server_id,
         ),
     )
 
@@ -146,6 +149,7 @@ def normalize_tool_result(raw: Any, *, spec: LlmToolSpec | None = None) -> dict[
             command_id=spec.command_id if spec is not None else None,
             plugin_name=spec.plugin_name if spec is not None else None,
             provider_name=spec.provider_name if spec is not None else None,
+            mcp_server_id=spec.mcp_server_id if spec is not None else None,
         ),
     )
     return envelope.model_dump(mode="json")
@@ -247,6 +251,11 @@ async def execute_tool_async(
         if spec.name != name:
             continue
         try:
+            if spec.source == LlmToolSource.MCP:
+                from pallas.product.llm.tools.mcp_bootstrap import execute_mcp_tool_async
+
+                result = await execute_mcp_tool_async(spec, args)
+                return normalize_tool_result(result, spec=spec)
             result = spec.handler(args, context)
             if inspect.isawaitable(result):
                 result = await result

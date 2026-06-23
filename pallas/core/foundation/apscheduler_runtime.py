@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from nonebot import get_driver, logger
+from nonebot import get_driver
+
+from pallas.core.foundation.startup_report import register_startup_fact
 
 _HOOK_REGISTERED = False
 
@@ -15,7 +17,7 @@ def ensure_apscheduler_running() -> None:
     if scheduler.running:
         return
     scheduler.start()
-    logger.info("启动：定时任务调度器已就绪")
+    register_startup_fact("scheduler", "ready")
 
 
 def register_apscheduler_startup_hook() -> None:

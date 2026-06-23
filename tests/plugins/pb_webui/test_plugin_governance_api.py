@@ -52,6 +52,8 @@ def test_plugin_governance_get_returns_commands_and_runtime(monkeypatch) -> None
             {
                 "package": "sing",
                 "name": "sing",
+                "global_disable_protected": True,
+                "help_ignored": True,
                 "usage": "唱歌",
                 "metadata": {
                     "extra": {
@@ -121,6 +123,8 @@ def test_plugin_governance_get_returns_commands_and_runtime(monkeypatch) -> None
     assert payload["data"]["menu_items"][0]["command_permission"] == "sing.play"
     assert payload["data"]["runtime"]["global_disable"] is True
     assert payload["data"]["runtime"]["help_hidden"] is True
+    assert payload["data"]["runtime"]["global_disable_protected"] is True
+    assert payload["data"]["runtime"]["help_ignored"] is True
     assert payload["data"]["perm_ui_filtered"]["levels"] == []
     assert payload["data"]["perm_ui_filtered"]["plugins"][0]["commands"][0]["command_id"] == "sing.play"
     assert payload["data"]["limits_ui_filtered"]["plugins"][0]["commands"][0]["command_id"] == "sing.play"

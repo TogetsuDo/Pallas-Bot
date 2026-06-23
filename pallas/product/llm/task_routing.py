@@ -1,0 +1,123 @@
+from __future__ import annotations
+
+import time
+from dataclasses import asdict, dataclass
+from typing import Any, Literal
+
+from .model_admin import fetch_local_routing_config
+from .startup_probe import probe_ai_service_health
+
+_CACHE_TTL_SEC = 15.0
+_health_cache: dict[str, Any] = {}
+_health_cache_at = 0.0
+_local_routing_cache: dict[str, Any] = {}
+_local_routing_cache_at = 0.0
+
+
+@dataclass(frozen=True)
+class TaskRouteSpec:
+    task: str
+    resolved_model: str | None
+    provider_hint: str | None
+    source: Literal["config", "ai_health", "explicit"]
+
+
+def resolve_submit_task_name(task: str | None, mode: str | None = None) -> str:
+    task_name = str(task or "").strip().lower()
+    if task_name:
+        return task_name
+    if str(mode or "normal").strip().lower() == "drunk":
+        return "drunk"
+    return "llm_chat"
+
+
+def serialize_task_route(spec: TaskRouteSpec) -> dict[str, str | None]:
+    return asdict(spec)
+
+
+def clear_task_route_cache() -> None:
+    global _health_cache_at, _local_routing_cache_at
+    _health_cache.clear()
+    _local_routing_cache.clear()
+    _health_cache_at = 0.0
+    _local_routing_cache_at = 0.0
+
+
+def _mapping_lookup(mapping: Any, task: str) -> str | None:
+    if not isinstance(mapping, dict):
+        return None
+    value = str(mapping.get(task) or "").strip()
+    return value or None
+
+
+def _route_from_local_config(task: str, payload: dict[str, Any]) -> str | None:
+    for key in ("task_models", "task_routing", "local_task_models"):
+        resolved = _mapping_lookup(payload.get(key), task)
+        if resolved:
+            return resolved
+    fallback = str(payload.get("llm_model") or payload.get("model") or "").strip()
+    return fallback or None
+
+
+async def _cached_ai_health_payload() -> dict[str, Any]:
+    global _health_cache_at
+    now = time.monotonic()
+    if _health_cache and now - _health_cache_at < _CACHE_TTL_SEC:
+        return dict(_health_cache)
+    result = await probe_ai_service_health(timeout_sec=2.0)
+    body = result.get("body")
+    payload = dict(body) if result.get("ok") and isinstance(body, dict) else {}
+    _health_cache.clear()
+    _health_cache.update(payload)
+    _health_cache_at = now
+    return payload
+
+
+async def _cached_local_routing_payload() -> dict[str, Any]:
+    global _local_routing_cache_at
+    now = time.monotonic()
+    if _local_routing_cache and now - _local_routing_cache_at < _CACHE_TTL_SEC:
+        return dict(_local_routing_cache)
+    try:
+        payload = await fetch_local_routing_config(timeout_sec=2.0)
+    except Exception:
+        payload = {}
+    payload = dict(payload) if isinstance(payload, dict) else {}
+    _local_routing_cache.clear()
+    _local_routing_cache.update(payload)
+    _local_routing_cache_at = now
+    return payload
+
+
+async def resolve_task_route(task: str, *, explicit_model: str | None = None) -> TaskRouteSpec:
+    normalized_task = resolve_submit_task_name(task)
+    explicit = str(explicit_model or "").strip()
+    if explicit:
+        return TaskRouteSpec(
+            task=normalized_task,
+            resolved_model=explicit,
+            provider_hint=None,
+            source="explicit",
+        )
+
+    health_payload = await _cached_ai_health_payload()
+    llm_info = health_payload.get("llm") if isinstance(health_payload.get("llm"), dict) else {}
+    provider_hint = str(llm_info.get("provider_mode") or "").strip() or None
+    for key in ("task_routing", "local_task_models"):
+        resolved = _mapping_lookup(llm_info.get(key), normalized_task)
+        if resolved:
+            return TaskRouteSpec(
+                task=normalized_task,
+                resolved_model=resolved,
+                provider_hint=provider_hint,
+                source="ai_health",
+            )
+
+    local_payload = await _cached_local_routing_payload()
+    resolved = _route_from_local_config(normalized_task, local_payload)
+    return TaskRouteSpec(
+        task=normalized_task,
+        resolved_model=resolved,
+        provider_hint=provider_hint,
+        source="config",
+    )

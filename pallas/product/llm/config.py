@@ -166,6 +166,16 @@ def resolve_conversation_feature_level_raw() -> str:
     return ""
 
 
+class LlmMcpServerConfig(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="ignore")
+
+    id: str
+    transport: str = Field(default="stdio")
+    command: list[str] = Field(default_factory=list)
+    enabled_tools: list[str] = Field(default_factory=list)
+    url: str = Field(default="")
+
+
 class LlmConfig(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="ignore")
 
@@ -227,6 +237,7 @@ class LlmConfig(BaseModel):
     llm_session_summary_enabled: bool = Field(default=True)
     llm_session_summary_threshold: int = Field(default=40, ge=8, le=200)
     llm_session_summary_keep_messages: int = Field(default=16, ge=4, le=120)
+    mcp_servers: list[LlmMcpServerConfig] = Field(default_factory=list)
 
 
 def _env_str_list(key: str) -> list[str]:
@@ -243,6 +254,27 @@ def _env_str_list(key: str) -> list[str]:
             return [str(item).strip() for item in data if str(item).strip()]
         return []
     return [part.strip() for part in text.replace(";", ",").split(",") if part.strip()]
+
+
+def _env_mcp_server_list(key: str) -> list[LlmMcpServerConfig]:
+    raw = repo_env_raw_value(key)
+    if raw is None or not raw.strip():
+        return []
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(payload, list):
+        return []
+    items: list[LlmMcpServerConfig] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        try:
+            items.append(LlmMcpServerConfig.model_validate(item))
+        except Exception:
+            continue
+    return items
 
 
 def get_llm_config() -> LlmConfig:
@@ -316,6 +348,7 @@ def get_llm_config() -> LlmConfig:
             llm_session_summary_enabled=_env_bool("LLM_SESSION_SUMMARY_ENABLED", True),
             llm_session_summary_threshold=_env_int("LLM_SESSION_SUMMARY_THRESHOLD", 40),
             llm_session_summary_keep_messages=_env_int("LLM_SESSION_SUMMARY_KEEP_MESSAGES", 16),
+            mcp_servers=_env_mcp_server_list("LLM_MCP_SERVERS"),
         )
         return _cached_llm_config
 

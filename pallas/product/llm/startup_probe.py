@@ -4,6 +4,8 @@ from typing import Any
 
 from nonebot import get_driver, logger
 
+from pallas.core.foundation.startup_report import register_startup_fact, register_startup_warning
+
 _hook_installed = False
 _ai_service_reachable: bool | None = None
 MIN_AI_API_VERSION = (4, 0, 0)
@@ -131,6 +133,10 @@ def install_llm_startup_probe() -> None:
                     provider_mode = str(llm_info.get("provider_mode") or "").strip()
             if version and provider_mode:
                 if not ai_api_version_compatible(version):
+                    register_startup_warning(
+                        "llm",
+                        f"version<{MIN_AI_API_VERSION[0]}.{MIN_AI_API_VERSION[1]}.{MIN_AI_API_VERSION[2]}",
+                    )
                     logger.warning(
                         "LLM：v={} 低于最低 {}.{}.{}, 部分 4.0 API 可能不可用",
                         version,
@@ -138,15 +144,16 @@ def install_llm_startup_probe() -> None:
                         MIN_AI_API_VERSION[1],
                         MIN_AI_API_VERSION[2],
                     )
-                logger.info(
-                    "LLM：可达 {} v={} provider={} switches={}",
-                    url,
-                    version,
-                    provider_mode,
-                    flag_text,
+                register_startup_fact(
+                    "llm",
+                    f"ok v={version} provider={provider_mode} switches={flag_text}",
                 )
             elif version:
                 if not ai_api_version_compatible(version):
+                    register_startup_warning(
+                        "llm",
+                        f"version<{MIN_AI_API_VERSION[0]}.{MIN_AI_API_VERSION[1]}.{MIN_AI_API_VERSION[2]}",
+                    )
                     logger.warning(
                         "LLM：v={} 低于最低 {}.{}.{}",
                         version,
@@ -154,9 +161,9 @@ def install_llm_startup_probe() -> None:
                         MIN_AI_API_VERSION[1],
                         MIN_AI_API_VERSION[2],
                     )
-                logger.info("LLM：可达 {} v={} switches={}", url, version, flag_text)
+                register_startup_fact("llm", f"ok v={version} switches={flag_text}")
             else:
-                logger.info("LLM：可达 {} switches={}", url, flag_text)
+                register_startup_fact("llm", f"ok switches={flag_text}")
             return
 
         llm_switches_on = (
@@ -167,6 +174,10 @@ def install_llm_startup_probe() -> None:
             or cfg.llm_polish_lite_enabled
         )
         if llm_switches_on:
+            register_startup_warning(
+                "llm",
+                f"unreachable err={result.get('error') or 'unknown'} switches={flag_text}",
+            )
             logger.warning(
                 "LLM：不可达 {} err={} switches={}",
                 url,

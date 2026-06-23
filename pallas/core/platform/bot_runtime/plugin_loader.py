@@ -14,6 +14,7 @@ from pallas.core.foundation.config.repo_settings import (
     resolve_extra_plugin_dirs,
 )
 from pallas.core.foundation.paths import PROJECT_ROOT
+from pallas.core.foundation.startup_report import register_startup_fact
 from pallas.core.platform.bot_runtime.load_policy import merge_startup_skip_plugins
 from pallas.core.platform.bot_runtime.plugin_matrix import (
     installed_extra_plugin_modules,
@@ -285,7 +286,11 @@ def load_plugins_for_role() -> None:
             skip_short=unified_skip,
             loaded_short=loaded_short,
         )
-        logger.info(
+        register_startup_fact(
+            "plugins",
+            f"local={bootstrap_loaded} src={loaded} pip={pip_extra} extra={extra} skip={len(unified_skip)}",
+        )
+        logger.debug(
             "启动：unified local={} src={} pip={} extra={} skip={}",
             bootstrap_loaded,
             loaded,
@@ -331,11 +336,16 @@ def load_plugins_for_role() -> None:
             loaded_short=loaded_short,
             include_extra_dirs=False,
         )
-        logger.info(
+        bundled_total = len(resolve_hub_bundled_module_paths())
+        register_startup_fact(
+            "plugins",
+            f"local={bootstrap_loaded} modules={loaded}/{bundled_total} pip={pip_extra} extra={extra}",
+        )
+        logger.debug(
             "启动：hub local={} modules={}/{} pip={} extra={}",
             bootstrap_loaded,
             loaded,
-            len(resolve_hub_bundled_module_paths()),
+            bundled_total,
             pip_extra,
             extra,
         )
@@ -377,7 +387,11 @@ def load_plugins_for_role() -> None:
     from pallas.core.platform.shard.registry.config import get_shard_registry_settings
 
     s = get_shard_registry_settings()
-    logger.info(
+    register_startup_fact(
+        "plugins",
+        f"local={bootstrap_loaded} src={loaded} pip={pip_extra} extra={extra} skip={len(worker_skip)}",
+    )
+    logger.debug(
         "启动：worker shard={} local={} src={} pip={} extra={} skip={}",
         s.shard_id,
         bootstrap_loaded,

@@ -8,6 +8,7 @@ from pallas.console.webui.console_login import (
     install_pallas_http_request_context_middleware,
     prime_shared_console_login,
 )
+from pallas.core.foundation.startup_report import register_startup_fact, register_startup_warning
 from pallas.core.platform.bot_runtime.roles import is_sharded_worker
 from pallas.core.shared.utils.format_exception import format_exception_for_log
 
@@ -104,7 +105,9 @@ if not is_sharded_worker():
             host=getattr(dconf, "host", None),
             port=getattr(dconf, "port", None),
         )
-        logger.info("控制台：{}{}/", open_base, base)
+        register_startup_fact("console", f"{open_base}{base}/")
+        if plugin_config.pallas_webui_dev_mode:
+            register_startup_warning("console", "dev-mode")
 
         async def bootstrap_webui_dist() -> None:
             if check_webui_exists(public):
@@ -150,6 +153,7 @@ if not is_sharded_worker():
                     errors.append(f"{candidate} -> {err_msg}")
             if errors:
                 logger.error("控制台：dist 下载/解压失败: {}", " | ".join(errors))
+                register_startup_warning("console", "dist-bootstrap-failed")
             elif succeeded_url:
                 try:
                     tag = str(getattr(plugin_config, "pallas_webui_dist_zip_tag", "") or "").strip()
