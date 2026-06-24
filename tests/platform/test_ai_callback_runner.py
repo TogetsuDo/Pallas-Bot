@@ -530,7 +530,7 @@ async def test_run_ai_callback_repeater_fallback_failed_is_silent(monkeypatch: p
 
 
 @pytest.mark.asyncio
-async def test_run_ai_callback_repeater_polish_failed_uses_fallback_text(
+async def test_run_ai_callback_repeater_polish_failed_is_silent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bot = MagicMock()
@@ -555,10 +555,7 @@ async def test_run_ai_callback_repeater_polish_failed_uses_fallback_text(
     result = await ai_callback_runner.run_ai_callback("task-1", status="failed")
 
     assert result == {"message": "ok"}
-    bot.call_api.assert_awaited_once()
-    call_kwargs = bot.call_api.await_args.kwargs
-    assert call_kwargs["group_id"] == 222
-    assert call_kwargs["message"] == "语料原文"
+    bot.call_api.assert_not_awaited()
     remove_task.assert_awaited_once_with("task-1")
 
 

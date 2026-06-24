@@ -9,6 +9,12 @@ REPEATER_POLISH_TASK_TYPE = "repeater_polish"
 REPEATER_POLISH_LITE_TASK_TYPE = "repeater_polish_lite"
 REPEATER_SELECT_TASK_TYPE = "repeater_select"
 REPEATER_FALLBACK_TASK_TYPE = "repeater_fallback"
+REPEATER_LLM_TASK_TYPES = frozenset({
+    REPEATER_FALLBACK_TASK_TYPE,
+    REPEATER_POLISH_TASK_TYPE,
+    REPEATER_POLISH_LITE_TASK_TYPE,
+    REPEATER_SELECT_TASK_TYPE,
+})
 DRAW_IMAGE_TASK_TYPE = "draw"
 SING_TASK_TYPES = frozenset({"sing", "play", "request"})
 

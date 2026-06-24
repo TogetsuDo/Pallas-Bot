@@ -9,10 +9,7 @@ from pallas.core.platform.ai_callback.task_types import (
     DRAW_IMAGE_TASK_TYPE,
     LEGACY_LLM_CHAT_TASK_TYPES,
     LLM_SESSION_TASK_TYPES,
-    REPEATER_FALLBACK_TASK_TYPE,
-    REPEATER_POLISH_LITE_TASK_TYPE,
-    REPEATER_POLISH_TASK_TYPE,
-    REPEATER_SELECT_TASK_TYPE,
+    REPEATER_LLM_TASK_TYPES,
 )
 
 _TAIL_FRAGMENT_SPLIT_RE = re.compile(r"[。！？!?~～\n\r]+")
@@ -67,21 +64,12 @@ def should_suppress_llm_duplicate_reply(task: dict, reply_text: str) -> bool:
 def failure_reply_for_task(task: dict) -> str | None:
     """失败时发往群的消息；None 表示静默失败。"""
     task_type = task.get("task_type")
-    if task_type == REPEATER_FALLBACK_TASK_TYPE:
+    if task_type in REPEATER_LLM_TASK_TYPES:
         return None
     if task_type in LEGACY_LLM_CHAT_TASK_TYPES:
         from packages.llm_chat.replies import LLM_CHAT_FAILED_REPLY
 
         return LLM_CHAT_FAILED_REPLY
-    if task_type == REPEATER_POLISH_TASK_TYPE:
-        fallback = str(task.get("fallback_text") or "").strip()
-        return fallback or DEFAULT_FAIL_REPLY
-    if task_type == REPEATER_POLISH_LITE_TASK_TYPE:
-        fallback = str(task.get("fallback_text") or "").strip()
-        return fallback or None
-    if task_type == REPEATER_SELECT_TASK_TYPE:
-        fallback = str(task.get("fallback_text") or "").strip()
-        return fallback or None
     if task_type == DRAW_IMAGE_TASK_TYPE:
         from pallas.core.platform.plugin_runtime.resolve import import_plugin_submodule
 
