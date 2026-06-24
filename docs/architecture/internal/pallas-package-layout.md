@@ -401,13 +401,13 @@ if __name__ == "__main__":
 
 ### 待完成 ❌
 
-- [ ] PyPI 可安装 `pallas-core==4.0.0`（§9 P6，wheel 已可构建）
+- [ ] PyPI 可安装 `pallas-core==4.0.0`（§9 P6，**预发布 wheel 已可构建**；PyPI 正式发布随 GA tag）
 - [x] Cookbook 示例插件仅 `pallas.api.*`，零 `src.` import（§9 P5）
 - [x] 全部 Skill reference 使用 `pallas.api.*`（§9 P5）
 - [x] 扩展模板 `pyproject.toml` 声明 `pallas-core>=4.0.0` 依赖（§9 P6）
 - [x] pre-commit / CI 覆盖 `local/plugins/`（ruff + import 检查）（§9 P4）
 - [x] `community_plugin_author.py check --profile L1` 对违规 `pallas.*` import 报错（§9 P4）
-- [ ] 4.x → 4.0 layout migration 段落写入 [FAQ](../../FAQ.md)（§9 P7+）
+- [x] 4.x → 4.0 layout migration 段落写入 [FAQ](../../FAQ.md)（§9 P7+）→ [FAQ §4.0 布局与迁移](../../FAQ.md#faq-40-layout)
 - [x] `pallas.api` 新增子模块（media、messages、platform、probe、safety）登记到 §5 白名单
 
 ## 13. 相关文档（同步进度）

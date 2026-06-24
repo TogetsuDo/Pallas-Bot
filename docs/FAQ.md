@@ -180,3 +180,19 @@ A: Compose 把宿主机 **`./pallas-bot/config/pallas.toml`** 挂到容器 **`/a
 ### Q: 协议端管理里反向 WebSocket 要不要写成「主机为 `pallasbot`」？和 Compose 的 `pallasbot` 是什么关系？
 
 A: **`pallasbot` 只是 Compose 服务名**，DNS 只在**同一 Compose 网络里的容器**之间有效。协议端在 **Linux Docker 模式**下用 `docker run` 起的 NapCat **默认不在**该网络里；若把客户端地址写成 **`ws://pallasbot:<PORT>/onebot/v11/ws`**（明文 WebSocket、主机填服务名），在默认桥接场景下**往往连不上**。插件会把 **主机** 改成解析后的 **`PALLAS_PROTOCOL_DOCKER_ONEBOT_HOST`**（留空时 Linux **`bridge`** 多为**默认网关 IP** 或 **`172.17.0.1`**；**`host` 网络为 `127.0.0.1`**）再写入 **`onebot*.json`**，**不会**自动替你填 `pallasbot`。一般不必为此去「取消」Compose 自定义网络；只有当你**自行**把 NapCat 做成与 Bot **同一 Compose 网络**的 service 时，才适合继续用 **`ws://pallasbot:<PORT>/onebot/v11/ws`** 这类内网写法。详见 [Docker 部署](DockerDeployment.md) 与 [`pb_protocol` 插件说明](plugins/pb_protocol/README.md) 中「Docker 与反向 WebSocket」一节。
+
+## 4.0 布局与迁移
+
+<a id="faq-40-layout"></a>
+
+### Q: 3.x 的 `src/plugins` 插件在 4.0 还能用吗？
+
+A: **不能沿用旧路径。** 4.0 已移除 `src/` 目录；内置玩法迁至 **`packages/`** 与 **`pallas-plugin-*` 官方扩展**，社区插件应使用 **`pallas.api.*`** 与 **`packages/<name>/` 或 `local/plugins/`** 布局。从 3.x 升级请读 [4.0 迁移指南](guide/4.0-migration.md)。
+
+### Q: 社区作者如何只依赖内核、不克隆整仓？
+
+A: 使用 PyPI 包 **`pallas-core`**（GA 前可本地构建 wheel：`./scripts/build_core.sh`），在扩展 `pyproject.toml` 声明 `pallas-core>=4.0.0,<5.0.0`，业务代码只 `import pallas.api.*`。示例见 [pallas.api Cookbook](developer/plugin-development/pallas-api-cookbook.md) 与 `templates/pallas-plugin-extension/`。
+
+### Q: WebUI 首次登录为什么要走 Setup Wizard？
+
+A: 默认口令仅用于首次启动；改密后 `setup_state.json` 标记完成，路由守卫才放行其它页面。向导还引导配置**协议端**与 **AI 体检**（可选）。详见 WebUI「首次 Setup Wizard」页。
