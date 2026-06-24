@@ -3960,6 +3960,12 @@ class _PluginConfigUpdateBody(BaseModel):
     values: dict[str, Any] = Field(default_factory=dict)
 
 
+class _PluginConfigRawBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    toml: str = ""
+
+
 class _ApiOkResponse[T](BaseModel):
     ok: Literal[True] = True
     data: T
@@ -5195,6 +5201,46 @@ def register_extended_api(
             logger.exception("Pallas-Bot 控制台: 安装官方扩展失败")
             raise HTTPException(status_code=500, detail=format_exception_for_log(e)) from e
 
+    @router.post(f"{x}/plugins/official-extensions/install-async", include_in_schema=True)
+    async def _plugins_official_extensions_install_async(
+        body: _OfficialExtensionPackageBody,
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        import asyncio
+
+        from pallas.console.cli.extension_ops import install_official_extension_with_options
+        from pallas.console.webui.extension_install_progress import (
+            create_extension_install_job,
+            run_extension_install_job,
+        )
+
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        job = await create_extension_install_job(body.package, "install")
+
+        async def runner(package: str) -> dict[str, Any]:
+            return await install_official_extension_with_options(package, restart=bool(body.restart))
+
+        asyncio.create_task(run_extension_install_job(job, runner))
+        return JSONResponse({"ok": True, "data": {"job_id": job.job_id, "package": job.package}})
+
+    @router.get(
+        f"{x}/plugins/official-extensions/install-jobs/{{job_id}}/stream",
+        include_in_schema=True,
+    )
+    async def _plugins_official_extensions_install_job_stream(job_id: str) -> StreamingResponse:
+        from pallas.console.webui.extension_install_progress import iter_extension_install_job_sse
+
+        return StreamingResponse(
+            iter_extension_install_job_sse(job_id),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
     @router.post(f"{x}/plugins/official-extensions/uninstall", include_in_schema=True)
     async def _plugins_official_extensions_uninstall(
         body: _OfficialExtensionPackageBody,
@@ -5594,9 +5640,35 @@ def register_extended_api(
             data = plugin_config_payload(plugin_name)
         except ValueError:
             # 无 config.py 或配置模型不可用时返回空配置，前端以“不可编辑”展示
-            data = {"plugin": plugin_name, "module": "", "fields": []}
+            data = {"plugin": plugin_name, "module": "", "fields": [], "unexpected_keys": []}
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": data})
+
+    @router.get(f"{x}/plugins/{{plugin_name}}/config/raw", include_in_schema=True)
+    async def _plugin_config_raw_get(plugin_name: str) -> JSONResponse:
+        from pallas.console.webui.plugin_api import plugin_config_raw_toml
+
+        try:
+            text = plugin_config_raw_toml(plugin_name)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": {"toml": text}})
+
+    @router.put(f"{x}/plugins/{{plugin_name}}/config/raw", include_in_schema=True)
+    async def _plugin_config_raw_put(
+        plugin_name: str,
+        body: _PluginConfigRawBody,
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        from pallas.console.webui.plugin_api import apply_plugin_config_raw_toml
+
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        try:
+            data = apply_plugin_config_raw_toml(plugin_name, str(body.toml or ""))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": data})
 
     @router.put(f"{x}/plugins/{{plugin_name}}/config", include_in_schema=True)
@@ -6497,13 +6569,19 @@ def register_extended_api(
             default=None,
             description="分片来源：all|hub|worker-N（与 GET /logs 一致）",
         ),
+        last_event_id: int | None = Query(
+            default=None,
+            description="断点续传：仅发送 id 大于该值的日志条目",
+        ),
+        last_event_id_header: int | None = Header(default=None, alias="Last-Event-ID"),
     ) -> StreamingResponse:
         _ensure_log_sink()
         from pallas.console.web import iter_nonebot_log_sse
 
         src = (source or "all").strip() or "all"
+        resume_id = last_event_id if last_event_id is not None else last_event_id_header
         return StreamingResponse(
-            iter_nonebot_log_sse(scope, source=src),
+            iter_nonebot_log_sse(scope, source=src, last_event_id=resume_id),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",

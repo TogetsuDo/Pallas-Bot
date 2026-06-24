@@ -10,6 +10,21 @@
 
 **中央入站调度**在 **unified** 与 **worker** 进程内，于 NoneBot 原生 matcher 之上做预筛选、并发预算与出站整形，把单进程可承载的牛数尽量拉高。仍不足时，按 [多进程分片](../bot_process_sharding.md) 拆 hub + worker，不再维护额外的轻量多 unified 方案。
 
+## Maintainer 速查（阶段序）
+
+单条群消息在 unified/worker 内的推荐阅读顺序：
+
+```text
+ingress_gate（牛级 claim / fanout）
+  → route_index（命令倒排缩小候选）
+  → matcher_activation + matcher_rule_prefilter
+  → patch handle_event + dispatch_lanes（并发预算）
+  → matcher handler
+  → send_queue（出站整形）
+```
+
+环境变量与默认阈值见下文「Matcher 预筛选」「命令路由索引」各表；分片 hub 不接牛牛 WebSocket，不经过上述链路。
+
 ## 挂载范围
 
 入站调度与 APScheduler、数据库初始化同级：**凡承接牛牛 OneBot 消息的进程必须挂载**，不依赖某个业务插件是否加载。

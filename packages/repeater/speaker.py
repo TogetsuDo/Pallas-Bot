@@ -235,6 +235,16 @@ class Speaker:
             if random.random() < Speaker.SPEAK_POKE_PROBABILITY:
                 target_id = random.choice(group_msgs).user_id
 
+            from pallas.product.llm.proactive_emitter import ProactiveEmitContext, emit_proactive
+
+            await emit_proactive(
+                ProactiveEmitContext(
+                    source="repeater.speak",
+                    group_id=group_id,
+                    metadata={"bot_id": bot_id},
+                )
+            )
+
             return (bot_id, group_id, speak_list, target_id)
 
         return None

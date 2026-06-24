@@ -32,6 +32,7 @@ async def test_resolve_task_route_explicit_model_wins(monkeypatch: pytest.Monkey
         resolved_model="qwen3:32b",
         provider_hint=None,
         source="explicit",
+        fallback_models=(),
     )
 
 
@@ -64,6 +65,7 @@ async def test_resolve_task_route_prefers_ai_health(monkeypatch: pytest.MonkeyPa
         resolved_model="qwen3:14b",
         provider_hint="local",
         source="ai_health",
+        fallback_models=(),
     )
 
 
@@ -93,10 +95,37 @@ async def test_resolve_task_route_falls_back_to_local_config(monkeypatch: pytest
         resolved_model="qwen3:14b",
         provider_hint=None,
         source="config",
+        fallback_models=(),
     )
     assert chat_route == TaskRouteSpec(
         task="llm_chat",
         resolved_model="qwen3:8b",
         provider_hint=None,
         source="config",
+        fallback_models=(),
     )
+
+
+@pytest.mark.asyncio
+async def test_resolve_task_route_chain_expands_fallbacks(monkeypatch: pytest.MonkeyPatch) -> None:
+    clear_task_route_cache()
+
+    async def fake_health(**_kwargs):
+        return {"ok": False, "body": None}
+
+    async def fake_local(**_kwargs):
+        return {
+            "llm_model": "primary",
+            "task_models": {"llm_chat": "primary"},
+            "task_fallback_chains": {"llm_chat": ["fb-1", "fb-2"]},
+        }
+
+    monkeypatch.setattr("pallas.product.llm.task_routing.probe_ai_service_health", fake_health)
+    monkeypatch.setattr("pallas.product.llm.task_routing.fetch_local_routing_config", fake_local)
+
+    from pallas.product.llm.task_routing import resolve_task_route_chain
+
+    chain = await resolve_task_route_chain("llm_chat")
+    assert [item.resolved_model for item in chain] == ["primary", "fb-1", "fb-2"]
+    assert chain[0].source == "config"
+    assert chain[1].source == "fallback"

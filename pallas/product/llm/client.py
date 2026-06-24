@@ -20,7 +20,7 @@ from .repeater_limit import (
     try_acquire_repeater_llm_slot,
 )
 from .session_store import build_llm_chat_messages, format_legacy_transcript, is_llm_session_store_available
-from .task_routing import resolve_submit_task_name, resolve_task_route, serialize_task_route
+from .task_routing import resolve_submit_task_name, resolve_task_route_chain, serialize_task_route
 
 
 def chat_endpoint_path(cfg: LlmConfig | None = None) -> str:
@@ -82,7 +82,8 @@ async def submit_chat_task(request: ChatSubmitRequest, *, cfg: LlmConfig | None 
     url = f"{base}{endpoint}/{request.request_id}"
 
     if c.use_unified_chat_api:
-        task_route = await resolve_task_route(task_name, explicit_model=request.model)
+        route_chain = await resolve_task_route_chain(task_name, explicit_model=request.model)
+        task_route = route_chain[0]
         metadata = {
             "bot_id": request.bot_id,
             "group_id": request.group_id,
@@ -92,6 +93,7 @@ async def submit_chat_task(request: ChatSubmitRequest, *, cfg: LlmConfig | None 
             "mode": str(request.mode or "normal"),
             "task": task_name,
             "task_route": serialize_task_route(task_route),
+            "task_route_chain": [serialize_task_route(item) for item in route_chain],
         }
         if task_route.resolved_model:
             metadata["resolved_model"] = task_route.resolved_model

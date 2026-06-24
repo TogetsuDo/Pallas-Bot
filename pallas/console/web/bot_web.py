@@ -29,7 +29,9 @@ _MAX = 20000
 _lines: deque[str] = deque(maxlen=_MAX)
 _lines_webui: deque[str] = deque(maxlen=_MAX)
 _lines_protocol: deque[str] = deque(maxlen=_MAX)
+_entry_ring: deque[dict[str, Any]] = deque(maxlen=4000)
 _lock = threading.Lock()
+_entries_lock = threading.Lock()
 _installed: bool = False
 
 _stream_id_lock = threading.Lock()
@@ -170,6 +172,39 @@ def _mmdd_hms_to_iso(mmdd_hms: str) -> str:
         return datetime.now().isoformat(timespec="seconds")
 
 
+def _remember_log_entry(entry: dict[str, Any]) -> None:
+    with _entries_lock:
+        _entry_ring.append(dict(entry))
+
+
+def replay_log_entries_after(
+    last_event_id: int,
+    scope: LogScope,
+    *,
+    source: str | None = None,
+    limit: int = 500,
+) -> list[dict[str, Any]]:
+    with _entries_lock:
+        items = list(_entry_ring)
+    out: list[dict[str, Any]] = []
+    for entry in items:
+        eid = int(entry.get("id") or 0)
+        if eid <= last_event_id:
+            continue
+        if scope == "webui" and not str(entry.get("scope") or "").startswith(("pb_webui", "pallas_webui")):
+            if "[pallas-webui]" not in str(entry.get("message") or ""):
+                continue
+        if scope == "protocol" and not str(entry.get("scope") or "").startswith(("pb_protocol", "pallas_protocol")):
+            if "[pallas-protocol]" not in str(entry.get("message") or ""):
+                continue
+        if not _entry_matches_log_source(entry, source):
+            continue
+        out.append(dict(entry))
+        if len(out) >= limit:
+            break
+    return fill_missing_log_entry_times(out)
+
+
 def fill_missing_log_entry_times(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     last_time = ""
     for e in entries:
@@ -261,8 +296,13 @@ async def iter_nonebot_log_sse(
     scope: LogScope,
     *,
     source: str | None = None,
+    last_event_id: int | None = None,
 ) -> AsyncIterator[str]:
-    """SSE：首包 ``ready``，随后 JSON 条目"""
+    """SSE：首包 ``ready``，随后 JSON 条目；支持 Last-Event-ID 断点续传。"""
+    replay_from = int(last_event_id or 0)
+    if replay_from > 0:
+        for entry in replay_log_entries_after(replay_from, scope, source=source):
+            yield f"id: {entry.get('id')}\ndata: {json.dumps(entry, ensure_ascii=False)}\n\n"
     q, unsub = subscribe_nonebot_log_stream()
     shard_tailer = None
     try:
@@ -294,7 +334,10 @@ async def iter_nonebot_log_sse(
                         entry = payload.get("entry")
                         if isinstance(entry, dict) and _entry_matches_log_source(entry, source):
                             filled = fill_missing_log_entry_times([dict(entry)])
-                            yield f"data: {json.dumps(filled[0], ensure_ascii=False)}\n\n"
+                            payload_entry = filled[0]
+                            entry_id = payload_entry.get("id")
+                            entry_json = json.dumps(payload_entry, ensure_ascii=False)
+                            yield f"id: {entry_id}\ndata: {entry_json}\n\n"
                             hub_sent = True
 
             shard_sent = False
@@ -315,7 +358,7 @@ async def iter_nonebot_log_sse(
                         last_time = t
                     elif last_time:
                         e["time"] = last_time
-                    yield f"data: {json.dumps(e, ensure_ascii=False)}\n\n"
+                    yield f"id: {e.get('id')}\ndata: {json.dumps(e, ensure_ascii=False)}\n\n"
                     shard_sent = True
 
             if not hub_sent and not shard_sent:
@@ -354,6 +397,7 @@ def _sink_dispatch(message: object) -> None:
         return
     record = getattr(message, "record", None)
     entry = parse_nonebot_log_line(text)
+    _remember_log_entry(entry)
     in_webui = bool(record is not None and nonebot_log_record_matches_http_facet(record, "webui"))
     in_protocol = bool(record is not None and nonebot_log_record_matches_http_facet(record, "protocol"))
     payload = {

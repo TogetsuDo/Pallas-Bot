@@ -51,8 +51,9 @@ def _tool_name(server_id: str, tool_row: dict[str, Any]) -> str:
 
 
 def _spawn_stdio_server(server: LlmMcpServerConfig) -> subprocess.Popen[str]:
-    if server.transport != "stdio":
-        raise RuntimeError(f"unsupported mcp transport: {server.transport}")
+    transport = (server.transport or "stdio").strip().lower()
+    if transport not in ("stdio", ""):
+        raise RuntimeError(f"use http transport helper for: {server.transport}")
     if not server.command:
         raise RuntimeError(f"mcp server {server.id} missing command")
     proc = subprocess.Popen(
@@ -125,12 +126,50 @@ def _initialize_server(proc: subprocess.Popen[str]) -> None:
     _send_json_line(proc, {"jsonrpc": "2.0", "method": "notifications/initialized"})
 
 
+def _mcp_http_allowed(url: str) -> bool:
+    from pallas.core.foundation.config.repo_settings import repo_env_raw_value
+
+    allow = str(repo_env_raw_value("LLM_MCP_HTTP_ALLOWLIST") or "").strip()
+    if not allow:
+        return False
+    allowed = {item.strip().rstrip("/") for item in allow.split(",") if item.strip()}
+    normalized = url.strip().rstrip("/")
+    return any(normalized.startswith(prefix) for prefix in allowed)
+
+
+def _call_mcp_http(server: LlmMcpServerConfig, *, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    url = str(server.url or "").strip()
+    if not url:
+        raise RuntimeError(f"mcp server {server.id} missing url")
+    if not _mcp_http_allowed(url):
+        raise RuntimeError(f"mcp http url not in LLM_MCP_HTTP_ALLOWLIST: {url}")
+    import httpx
+
+    payload = {"jsonrpc": "2.0", "id": 2, "method": method}
+    if params is not None:
+        payload["params"] = params
+    with httpx.Client(timeout=30.0) as client:
+        response = client.post(url, json=payload)
+        response.raise_for_status()
+        body = response.json()
+    if not isinstance(body, dict):
+        raise RuntimeError("invalid mcp http response")
+    return body
+
+
 def _call_mcp_method(
     server: LlmMcpServerConfig,
     *,
     method: str,
     params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    transport = (server.transport or "stdio").strip().lower()
+    if transport in ("http", "sse"):
+        response = _call_mcp_http(server, method=method, params=params)
+        error = response.get("error")
+        if isinstance(error, dict):
+            raise RuntimeError(str(error.get("message") or "mcp call failed"))
+        return response.get("result") if isinstance(response.get("result"), dict) else {}
     proc = _spawn_stdio_server(server)
     try:
         _initialize_server(proc)

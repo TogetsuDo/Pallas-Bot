@@ -124,4 +124,8 @@ def field_meta_for_model_field(*, key: str, field: Any, env_key: str, cur: Any, 
             row["secret"] = True
         if is_multiline_field(field):
             row["multiline"] = True
+    extra = _extra_dict(field)
+    for ui_key in ("ui_group", "ui_order", "ui_hidden"):
+        if ui_key in extra:
+            row[ui_key] = extra[ui_key]
     return row

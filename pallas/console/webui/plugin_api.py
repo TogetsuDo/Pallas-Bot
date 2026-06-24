@@ -193,7 +193,77 @@ def plugin_config_payload(
         "plugin": str(getattr(p, "name", "") or plugin_name) if p is not None else plugin_name,
         "module": module_name,
         "fields": fields,
+        "unexpected_keys": plugin_unexpected_env_keys(plugin_name, cfg_cls),
     }
+
+
+def plugin_config_env_keys(plugin_name: str, cfg_cls: type[BaseModel]) -> set[str]:
+    return {plugin_field_env_key(plugin_name, key) for key in cfg_cls.model_fields}
+
+
+def plugin_unexpected_env_keys(plugin_name: str, cfg_cls: type[BaseModel]) -> list[dict[str, str]]:
+    from pallas.core.foundation.config.repo_settings import _load_webui_json_upper
+
+    allowed = plugin_config_env_keys(plugin_name, cfg_cls)
+    prefix = f"{plugin_name.upper().replace('-', '_')}_"
+    env = _load_webui_json_upper()
+    rows: list[dict[str, str]] = []
+    for key, value in sorted(env.items()):
+        upper = str(key).upper()
+        if upper in allowed:
+            continue
+        if not (upper.startswith(prefix) or upper in allowed):
+            continue
+        preview = str(value)
+        if len(preview) > 120:
+            preview = preview[:119] + "…"
+        rows.append({"env_key": upper, "value_preview": preview})
+    return rows
+
+
+def plugin_config_raw_toml(plugin_name: str) -> str:
+    import json
+
+    _, _, cfg_cls = plugin_config_model_by_name(plugin_name)
+    from pallas.core.foundation.config.repo_settings import _load_webui_json_upper
+
+    env = _load_webui_json_upper()
+    lines = [f"# plugin: {plugin_name}", "", "[env]"]
+    for field_key in cfg_cls.model_fields:
+        env_key = plugin_field_env_key(plugin_name, field_key)
+        if env_key in env:
+            lines.append(f"{env_key} = {json.dumps(str(env[env_key]), ensure_ascii=False)}")
+    for row in plugin_unexpected_env_keys(plugin_name, cfg_cls):
+        ek = row["env_key"]
+        if ek in env:
+            lines.append(f"{ek} = {json.dumps(str(env[ek]), ensure_ascii=False)}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def apply_plugin_config_raw_toml(plugin_name: str, text: str) -> dict[str, Any]:
+    import tomllib
+
+    raw = (text or "").strip()
+    if not raw:
+        raise ValueError("TOML 内容为空")
+    try:
+        doc = tomllib.loads(raw.encode("utf-8"))
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(f"TOML 解析失败: {exc}") from exc
+    env_block = doc.get("env") if isinstance(doc.get("env"), dict) else doc
+    if not isinstance(env_block, dict):
+        raise ValueError("缺少 [env] 表")
+    _, _, cfg_cls = plugin_config_model_by_name(plugin_name)
+    reverse = {plugin_field_env_key(plugin_name, key): key for key in cfg_cls.model_fields}
+    patch: dict[str, Any] = {}
+    for env_key, value in env_block.items():
+        field_key = reverse.get(str(env_key).upper())
+        if field_key:
+            patch[field_key] = value
+    if not patch:
+        raise ValueError("没有可识别的插件配置键")
+    return apply_plugin_config_patch(plugin_name, patch)
 
 
 def apply_plugin_config_patch(

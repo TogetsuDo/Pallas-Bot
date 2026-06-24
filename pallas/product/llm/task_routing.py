@@ -19,7 +19,8 @@ class TaskRouteSpec:
     task: str
     resolved_model: str | None
     provider_hint: str | None
-    source: Literal["config", "ai_health", "explicit"]
+    source: Literal["config", "ai_health", "explicit", "fallback"]
+    fallback_models: tuple[str, ...] = ()
 
 
 def resolve_submit_task_name(task: str | None, mode: str | None = None) -> str:
@@ -31,8 +32,10 @@ def resolve_submit_task_name(task: str | None, mode: str | None = None) -> str:
     return "llm_chat"
 
 
-def serialize_task_route(spec: TaskRouteSpec) -> dict[str, str | None]:
-    return asdict(spec)
+def serialize_task_route(spec: TaskRouteSpec) -> dict[str, Any]:
+    payload = asdict(spec)
+    payload["fallback_models"] = list(spec.fallback_models)
+    return payload
 
 
 def clear_task_route_cache() -> None:
@@ -89,6 +92,24 @@ async def _cached_local_routing_payload() -> dict[str, Any]:
     return payload
 
 
+def _fallback_models_from_payload(payload: dict[str, Any], task: str) -> tuple[str, ...]:
+    chains = payload.get("task_fallback_chains")
+    if isinstance(chains, dict):
+        raw = chains.get(task)
+        if isinstance(raw, list):
+            out = [str(x).strip() for x in raw if str(x).strip()]
+            if out:
+                return tuple(out)
+    fallback = payload.get("task_fallback") or payload.get("llm_model_fallback")
+    if isinstance(fallback, dict):
+        raw = fallback.get(task) or fallback.get("default")
+        if isinstance(raw, list):
+            return tuple(str(x).strip() for x in raw if str(x).strip())
+        if isinstance(raw, str) and raw.strip():
+            return (raw.strip(),)
+    return ()
+
+
 async def resolve_task_route(task: str, *, explicit_model: str | None = None) -> TaskRouteSpec:
     normalized_task = resolve_submit_task_name(task)
     explicit = str(explicit_model or "").strip()
@@ -98,11 +119,13 @@ async def resolve_task_route(task: str, *, explicit_model: str | None = None) ->
             resolved_model=explicit,
             provider_hint=None,
             source="explicit",
+            fallback_models=(),
         )
 
     health_payload = await _cached_ai_health_payload()
     llm_info = health_payload.get("llm") if isinstance(health_payload.get("llm"), dict) else {}
     provider_hint = str(llm_info.get("provider_mode") or "").strip() or None
+    fallbacks = _fallback_models_from_payload(llm_info, normalized_task)
     for key in ("task_routing", "local_task_models"):
         resolved = _mapping_lookup(llm_info.get(key), normalized_task)
         if resolved:
@@ -111,13 +134,49 @@ async def resolve_task_route(task: str, *, explicit_model: str | None = None) ->
                 resolved_model=resolved,
                 provider_hint=provider_hint,
                 source="ai_health",
+                fallback_models=fallbacks,
             )
 
     local_payload = await _cached_local_routing_payload()
     resolved = _route_from_local_config(normalized_task, local_payload)
+    local_fallbacks = _fallback_models_from_payload(local_payload, normalized_task) or fallbacks
+    if resolved:
+        return TaskRouteSpec(
+            task=normalized_task,
+            resolved_model=resolved,
+            provider_hint=provider_hint,
+            source="config" if not fallbacks else "fallback",
+            fallback_models=local_fallbacks,
+        )
+    if local_fallbacks:
+        return TaskRouteSpec(
+            task=normalized_task,
+            resolved_model=local_fallbacks[0],
+            provider_hint=provider_hint,
+            source="fallback",
+            fallback_models=local_fallbacks[1:],
+        )
     return TaskRouteSpec(
         task=normalized_task,
-        resolved_model=resolved,
+        resolved_model=None,
         provider_hint=provider_hint,
         source="config",
+        fallback_models=(),
     )
+
+
+async def resolve_task_route_chain(task: str, *, explicit_model: str | None = None) -> list[TaskRouteSpec]:
+    """显式 fallback 链：主模型失败时可依次尝试 fallback_models。"""
+    primary = await resolve_task_route(task, explicit_model=explicit_model)
+    chain = [primary]
+    chain.extend(
+        TaskRouteSpec(
+            task=primary.task,
+            resolved_model=model,
+            provider_hint=primary.provider_hint,
+            source="fallback",
+            fallback_models=(),
+        )
+        for model in primary.fallback_models
+    )
+    return chain
