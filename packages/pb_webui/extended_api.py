@@ -5009,6 +5009,32 @@ def register_extended_api(
         data = await cached_read(key="plugins-capabilities", loader=_load, ttl_sec=2.0, stale_sec=30.0)
         return JSONResponse({"ok": True, "data": data})
 
+    @router.get(f"{x}/plugins/store/readme", include_in_schema=True)
+    async def _plugins_store_readme(
+        kind: str = Query(..., description="official 或 community"),
+        target_id: str = Query(..., alias="id", description="官方包名或社区 plugin_id"),
+        repository_url: str | None = Query(default=None, description="仓库地址，缓存未命中时按需拉取 README"),
+    ) -> JSONResponse:
+        from pallas.console.webui.plugin_store_assets import (
+            fetch_and_cache_readme_markdown,
+            get_cached_readme_markdown,
+            resolve_readme_request_id,
+        )
+
+        if kind not in {"official", "community"}:
+            raise HTTPException(status_code=400, detail="kind must be official or community")
+        resolved_id = resolve_readme_request_id(kind, target_id)
+        markdown = get_cached_readme_markdown(kind, resolved_id)
+        if markdown is None:
+            markdown = await fetch_and_cache_readme_markdown(
+                kind,
+                resolved_id,
+                repository_url=repository_url,
+            )
+        if markdown is None:
+            raise HTTPException(status_code=404, detail="README not available")
+        return JSONResponse({"ok": True, "data": {"kind": kind, "id": resolved_id, "markdown": markdown}})
+
     @router.get(f"{x}/plugins/{{plugin_name}}/readme", include_in_schema=True)
     async def _plugin_bundled_readme(plugin_name: str) -> JSONResponse:
         from pallas.console.webui.plugin_docs_readme import read_bundled_plugin_readme
@@ -5029,25 +5055,31 @@ def register_extended_api(
     async def _plugin_governance_get(plugin_name: str) -> dict[str, Any]:
         from packages.help.global_disable import load_global_disabled_plugins
         from packages.help.visibility import load_help_hidden_plugins
+        from pallas.console.webui.plugin_governance import (
+            canonical_plugin_name,
+            find_capability_plugin_row,
+            find_catalog_plugin_row,
+            governance_row_from_catalog,
+        )
         from pallas.core.limits.config import get_command_limits_config, normalize_command_limit_overrides
         from pallas.core.limits.schema import build_command_limits_ui
         from pallas.core.perm.config import get_cmd_perm_config
         from pallas.core.perm.schema import build_command_perm_ui
         from pallas.core.plugin_capabilities import build_plugin_capabilities_ui
 
-        target = (plugin_name or "").strip()
+        target = canonical_plugin_name(plugin_name)
         if not target:
             raise HTTPException(status_code=400, detail="plugin_name required")
 
         capabilities = build_plugin_capabilities_ui()
-        plugin_row = next(
-            (row for row in (capabilities.get("plugins") or []) if str(row.get("plugin") or "") == target),
-            None,
-        )
+        catalog_rows = _list_plugins_dict()
+        plugin_row = find_capability_plugin_row(capabilities, target)
+        plugin_meta = find_catalog_plugin_row(catalog_rows, target) or {}
         if plugin_row is None:
-            raise HTTPException(status_code=404, detail=f"unknown plugin: {target}")
+            if not plugin_meta:
+                raise HTTPException(status_code=404, detail=f"unknown plugin: {target}")
+            plugin_row = governance_row_from_catalog(target, plugin_meta)
 
-        plugin_meta = next((row for row in _list_plugins_dict() if str(row.get("name") or "") == target), {})
         metadata = plugin_meta.get("metadata") if isinstance(plugin_meta, dict) else {}
         extra = metadata.get("extra") if isinstance(metadata, dict) else {}
         menu_items = list(extra.get("menu_data") or []) if isinstance(extra, dict) else []
@@ -5056,17 +5088,20 @@ def register_extended_api(
         perm_ui = build_command_perm_ui(
             {str(k): str(v) for k, v in (perm_cfg.command_permission_overrides or {}).items()},
         )
-        perm_row = next((row for row in (perm_ui.get("plugins") or []) if str(row.get("plugin") or "") == target), {})
+        perm_row = find_capability_plugin_row(perm_ui, target) or {}
 
         limits_cfg = get_command_limits_config()
         limits_ui = build_command_limits_ui(
             normalize_command_limit_overrides(limits_cfg.command_limit_overrides or {}),
         )
-        limits_row = next(
-            (row for row in (limits_ui.get("plugins") or []) if str(row.get("plugin") or "") == target),
-            {},
-        )
+        limits_row = find_capability_plugin_row(limits_ui, target) or {}
 
+        runtime_ids = {target}
+        for key in ("name", "resolved_plugin_id", "nb_plugin_name"):
+            value = str(plugin_meta.get(key) or "").strip()
+            if value:
+                runtime_ids.add(value)
+                runtime_ids.add(canonical_plugin_name(value))
         hidden = {str(x).strip() for x in load_help_hidden_plugins() if str(x).strip()}
         disabled = {str(x).strip() for x in load_global_disabled_plugins() if str(x).strip()}
         return {
@@ -5077,8 +5112,8 @@ def register_extended_api(
                 "commands": list(plugin_row.get("commands") or []),
                 "menu_items": menu_items,
                 "runtime": {
-                    "global_disable": target in disabled,
-                    "help_hidden": target in hidden,
+                    "global_disable": any(item in disabled for item in runtime_ids),
+                    "help_hidden": any(item in hidden for item in runtime_ids),
                     "global_disable_protected": bool(plugin_meta.get("global_disable_protected")),
                     "help_ignored": bool(plugin_meta.get("help_ignored")),
                 },
@@ -5103,7 +5138,9 @@ def register_extended_api(
     ) -> JSONResponse:
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
 
-        target = (plugin_name or "").strip()
+        from pallas.console.webui.plugin_governance import canonical_plugin_name
+
+        target = canonical_plugin_name(plugin_name)
         if not target:
             raise HTTPException(status_code=400, detail="plugin_name required")
 
@@ -5436,27 +5473,6 @@ def register_extended_api(
         except Exception as e:  # noqa: BLE001
             logger.exception("Pallas-Bot 控制台: 刷新插件更新快照失败")
             raise HTTPException(status_code=500, detail=format_exception_for_log(e)) from e
-
-    @router.get(f"{x}/plugins/store/readme", include_in_schema=True)
-    async def _plugins_store_readme(
-        kind: str = Query(..., description="official 或 community"),
-        target_id: str = Query(..., alias="id", description="官方包名或社区 plugin_id"),
-    ) -> JSONResponse:
-        from pallas.console.webui.plugin_store_assets import (
-            fetch_and_cache_readme_markdown,
-            get_cached_readme_markdown,
-            resolve_readme_request_id,
-        )
-
-        if kind not in {"official", "community"}:
-            raise HTTPException(status_code=400, detail="kind must be official or community")
-        resolved_id = resolve_readme_request_id(kind, target_id)
-        markdown = get_cached_readme_markdown(kind, resolved_id)
-        if markdown is None:
-            markdown = await fetch_and_cache_readme_markdown(kind, resolved_id)
-        if markdown is None:
-            raise HTTPException(status_code=404, detail="README not cached")
-        return JSONResponse({"ok": True, "data": {"kind": kind, "id": resolved_id, "markdown": markdown}})
 
     @router.post(f"{x}/plugins/store-assets/refresh", include_in_schema=True)
     async def _plugins_store_assets_refresh(

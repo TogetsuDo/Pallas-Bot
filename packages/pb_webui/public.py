@@ -233,6 +233,17 @@ def register_routes(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no favicon")
         return FileResponse(ico)
 
+    readme_brand_avatar = Path(__file__).resolve().parent / "static" / "brand-avatar.png"
+
+    @router.get(f"{base}/assets/brand-avatar.png", include_in_schema=False, response_model=None)
+    async def _readme_brand_avatar() -> FileResponse:
+        if readme_brand_avatar.is_file():
+            return FileResponse(readme_brand_avatar)
+        fallback = public_dir / "assets" / "brand-avatar.png"
+        if fallback.is_file():
+            return FileResponse(fallback)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="brand avatar not found")
+
     @router.get(
         f"{base}/" + "{path:path}",
         include_in_schema=False,

@@ -9,6 +9,7 @@ from nonebot import get_loaded_plugins
 
 from pallas.console.webui.plugin_catalog import discover_extra_plugin_packages, discover_plugin_packages
 from pallas.core.foundation.paths import PROJECT_ROOT
+from pallas.core.platform.bot_runtime.plugin_package_aliases import canonical_plugin_package
 
 from .metadata import command_permissions_from_metadata, parse_command_permissions_stub
 from .registry import DEFAULT_COMMAND_PERMISSIONS, VALID_LEVELS, canonical_command_id
@@ -132,6 +133,7 @@ def build_command_perm_ui(overrides: dict[str, str]) -> dict[str, Any]:
             pname = plugin_name_for_command_id(cid)
             ptitle = plugin_title_for_name(pname)
             label = command_label_for_id(cid)
+        pname = canonical_plugin_package(pname) or pname
         g = groups.setdefault(pname, {"plugin": pname, "title": ptitle, "commands": []})
         if cid in meta_rows and g["title"] == g["plugin"]:
             g["title"] = ptitle

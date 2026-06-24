@@ -12,6 +12,7 @@ from pallas.core.limits.schema import build_command_limits_ui
 from pallas.core.perm.config import get_cmd_perm_config
 from pallas.core.perm.schema import build_command_perm_ui
 from pallas.core.platform.bot_runtime.plugin_matrix import activation_policy_for_plugin
+from pallas.core.platform.bot_runtime.plugin_package_aliases import canonical_plugin_package
 from pallas.core.plugin_reload import reload_policy_from_metadata
 from pallas.core.storage.schema import build_plugin_storage_ui
 from pallas.product.llm.knowledge.metadata import iter_loaded_plugin_knowledge_sources
@@ -32,11 +33,14 @@ def build_plugin_capabilities_ui() -> dict[str, Any]:
     plugins: dict[str, dict[str, Any]] = {}
 
     def ensure_plugin(plugin: str, title: str) -> dict[str, Any]:
-        bucket = plugins.get(plugin)
+        key = canonical_plugin_package((plugin or "").strip()) or (plugin or "").strip()
+        if not key:
+            key = (plugin or "").strip()
+        bucket = plugins.get(key)
         if bucket is None:
             bucket = {
-                "plugin": plugin,
-                "title": title or plugin,
+                "plugin": key,
+                "title": title or key,
                 "commands": {},
                 "llm_tools": [],
                 "knowledge_sources": [],
@@ -44,7 +48,7 @@ def build_plugin_capabilities_ui() -> dict[str, Any]:
                 "reload_policy": None,
                 "activation_policy": None,
             }
-            plugins[plugin] = bucket
+            plugins[key] = bucket
         elif title and bucket["title"] == bucket["plugin"]:
             bucket["title"] = title
         return bucket
@@ -103,9 +107,10 @@ def build_plugin_capabilities_ui() -> dict[str, Any]:
         from nonebot import get_loaded_plugins
 
         for plugin in get_loaded_plugins():
-            name = str(getattr(plugin, "name", "") or "").strip()
-            if not name:
+            raw_name = str(getattr(plugin, "name", "") or "").strip()
+            if not raw_name:
                 continue
+            name = canonical_plugin_package(raw_name) or raw_name
             meta = getattr(plugin, "metadata", None)
             title = str(getattr(meta, "name", "") or name).strip() if meta else name
             bucket = ensure_plugin(name, title)

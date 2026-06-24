@@ -22,9 +22,11 @@ def bundled_plugin_readme_relative_path(plugin_id: str) -> str | None:
         if rel and (PROJECT_ROOT / rel).is_file():
             return rel
 
+    candidates: list[str] = []
     for candidate in (clean, (plugin_id or "").strip()):
-        if not candidate:
-            continue
+        if candidate and candidate not in candidates:
+            candidates.append(candidate)
+    for candidate in candidates:
         rel = f"docs/plugins/{candidate}/README.md"
         if (PROJECT_ROOT / rel).is_file():
             return rel

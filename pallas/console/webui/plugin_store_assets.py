@@ -427,11 +427,23 @@ async def refresh_store_asset_snapshot() -> dict[str, Any]:
     return snapshot
 
 
-async def fetch_and_cache_readme_markdown(kind: str, target_id: str) -> str | None:
+async def fetch_and_cache_readme_markdown(
+    kind: str,
+    target_id: str,
+    *,
+    repository_url: str | None = None,
+) -> str | None:
     resolved_id = resolve_readme_request_id(kind, target_id)
     if not resolved_id:
         return None
-    target = _find_target(kind, resolved_id)
+    target = _find_target(kind, resolved_id) or _find_target(kind, target_id)
+    if target is None and repository_url:
+        target = {
+            "id": resolved_id,
+            "repository_url": str(repository_url or "").strip() or None,
+            "assets": {},
+            "readme_urls": _github_readme_urls(repository_url),
+        }
     if not target:
         return None
     previous_bucket = load_snapshot().get(kind) or {}

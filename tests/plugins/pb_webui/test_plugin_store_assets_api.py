@@ -63,7 +63,7 @@ def test_plugin_store_readme_fetches_on_cache_miss(monkeypatch) -> None:
         lambda kind, target_id: None,
     )
 
-    async def fake_fetch(kind: str, target_id: str) -> str | None:
+    async def fake_fetch(kind: str, target_id: str, **kwargs) -> str | None:
         if kind == "official" and target_id == "pallas-plugin-draw":
             return "# Draw fetched\n"
         return None
