@@ -26,6 +26,11 @@
 
 深层设计与契约（[`internal/`](internal/)）：核心契约、内核插件统一化、AI 终态架构与实施、包布局、中央入站调度。这些更像“为什么要这样设计”的底稿，按需再读。
 
+对标前辈 bot 的优化路线（4.0 收口）：
+
+- [前辈对标分析与优化路线图](internal/benchmark-peer-bots-roadmap.md) — 结论、全量实施清单、时间线（与 Notion 任务双线同步）
+- [逐文件 diff 补充](internal/benchmark-peer-bots-file-diff.md) — WebUI / LLM / 架构路径级对照
+
 ::: tip
 旧路线图、阶段验收类文档已经从这里清掉。剩下的内容只作素材，不代表它们仍是推荐入口。
 :::

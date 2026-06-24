@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, Request
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from nonebot import get_bots, get_driver, logger
 from nonebot.adapters import Bot as BaseBot  # noqa: TC002
@@ -31,6 +32,7 @@ from pydantic_core import PydanticUndefined
 from pallas.console.web.bot_web import LogScope  # noqa: TC001  # FastAPI/OpenAPI 需在运行时解析注解
 from pallas.console.webui import apply_plugin_config_patch, plugin_config_payload
 from pallas.console.webui.console_login import (
+    console_setup_status,
     current_http_request,
     extract_session_from_request,
     is_console_auth_configured,
@@ -39,6 +41,7 @@ from pallas.console.webui.console_login import (
     set_shared_console_login_token,
     verify_console_password,
 )
+from pallas.core.foundation.bot_version import get_pallas_bot_version_for_health
 from pallas.core.platform.shard import context as shard_ctx
 from pallas.product.llm.behavior import BehaviorPattern, BehaviorScene
 from pallas.product.llm.behavior_store import (
@@ -198,6 +201,30 @@ def _ensure_log_sink() -> None:
         return
     _INIT_LOG_SINK = True
     logger.info("控制台：日志环已接入 /pallas/api/logs")
+
+
+def build_console_openapi_schema(app: Any, *, api_base: str) -> dict[str, Any]:
+    """导出仅包含控制台 API 前缀的 OpenAPI schema。"""
+    x = (api_base or "/pallas/api").strip()
+    if not x.startswith("/"):
+        x = "/" + x
+    x = x.rstrip("/")
+    schema = get_openapi(
+        title="Pallas-Bot 控制台 API",
+        version=get_pallas_bot_version_for_health(),
+        routes=app.routes,
+    )
+    schema["paths"] = {
+        path: item for path, item in (schema.get("paths") or {}).items() if str(path).startswith(f"{x}/")
+    }
+    schema["info"] = {
+        **dict(schema.get("info") or {}),
+        "title": "Pallas-Bot 控制台 API",
+        "version": get_pallas_bot_version_for_health(),
+        "description": "仅包含控制台 API 前缀下的接口。",
+    }
+    schema["servers"] = [{"url": x}]
+    return schema
 
 
 # 审批写操作后：好友/群 OneBot 列表与按 Bot 群配置合并视图一并失效
@@ -3933,6 +3960,182 @@ class _PluginConfigUpdateBody(BaseModel):
     values: dict[str, Any] = Field(default_factory=dict)
 
 
+class _ApiOkResponse[T](BaseModel):
+    ok: Literal[True] = True
+    data: T
+
+
+class _ConsoleSetupStatusData(BaseModel):
+    auth_configured: bool
+    setup_completed: bool
+    default_password_active: bool
+    requires_setup: bool
+    first_completed_at: str | None = None
+    updated_at: str | None = None
+
+
+class _ConsoleLoginChangeData(BaseModel):
+    message: str
+
+
+class _LlmWizardCheckRow(BaseModel):
+    id: str
+    label: str
+    ok: bool
+    detail: str = ""
+
+
+class _LlmWizardStatusData(BaseModel):
+    ai_reachable: bool
+    health_url: str = ""
+    model: str = ""
+    provider_mode: str = ""
+    llm_chat_enabled: bool
+    llm_tools_enabled: bool = False
+    providers_configured: int = 0
+    providers_reachable: int = 0
+    checks: list[_LlmWizardCheckRow] = Field(default_factory=list)
+    next_step: str = ""
+
+
+class _LlmHealthProviderRow(BaseModel):
+    id: str
+    kind: str = ""
+    enabled: bool = False
+    configured: bool = False
+    reachable: bool | None = None
+    health_state: str | None = None
+    circuit_state: str | None = None
+
+
+class _LlmHealthSummaryData(BaseModel):
+    health_state: str | None = None
+    degraded_state: str | None = None
+    circuit_state: str | None = None
+    recent_failure_class: str | None = None
+    provider_status: list[_LlmHealthProviderRow] = Field(default_factory=list)
+
+
+class _LlmImageHealthData(BaseModel):
+    circuit_state: str | None = None
+    consecutive_failures: int | None = None
+    recent_failure_class: str | None = None
+    health_state: str | None = None
+    degraded_state: str | None = None
+
+
+class _LlmTtsHealthData(BaseModel):
+    capability: str | None = None
+    health_state: str | None = None
+    degraded_state: str | None = None
+    circuit_state: str | None = None
+    celery_enabled: bool | None = None
+
+
+class _LlmMediaTaskCapabilityRow(BaseModel):
+    capability: str
+    queue_depth: int = 0
+    active_tasks: int = 0
+    health_state: str | None = None
+
+
+class _LlmMediaTasksHealthData(BaseModel):
+    queue_depth: int = 0
+    active_tasks: int = 0
+    total_tasks: int = 0
+    health_state: str | None = None
+    degraded_state: str | None = None
+    circuit_state: str | None = None
+    recent_failure_class: str | None = None
+    capabilities: list[_LlmMediaTaskCapabilityRow] = Field(default_factory=list)
+
+
+class _LlmRuntimeOverviewHealthData(BaseModel):
+    ok: bool
+    url: str = ""
+    status_code: int | None = None
+    error: str = ""
+    llm_runtime_detail: str | None = None
+    llm_health: _LlmHealthSummaryData | None = None
+    image_health: _LlmImageHealthData | None = None
+    tts_health: _LlmTtsHealthData | None = None
+    media_tasks: _LlmMediaTasksHealthData | None = None
+
+
+class _LlmRuntimeOverviewData(BaseModel):
+    health: _LlmRuntimeOverviewHealthData
+    model_admin: dict[str, Any] = Field(default_factory=dict)
+    task_stats: dict[str, Any] = Field(default_factory=dict)
+    conversation_kernel: dict[str, Any] = Field(default_factory=dict)
+
+
+class _ServiceProbeResultData(BaseModel):
+    category: str
+    site: str
+    ok: bool
+    latency_ms: int | None = None
+    status_code: int | None = None
+    error: str | None = None
+    runtime_state: str | None = None
+    runtime_detail: str | None = None
+    capability_id: str | None = None
+    capability_group: str | None = None
+    runtime_type: str | None = None
+    failure_class: str | None = None
+    health_state: str | None = None
+    circuit_state: str | None = None
+    consecutive_failures: int | None = None
+    recent_failure_class: str | None = None
+    queue_load_hint: str | None = None
+
+
+class _ServiceGatewaysConnectivityCheckData(BaseModel):
+    lines: list[str] = Field(default_factory=list)
+    results: list[_ServiceProbeResultData] = Field(default_factory=list)
+
+
+class _LlmProviderConfigRowData(BaseModel):
+    id: str
+    kind: str
+    base_url: str = ""
+    api_key_env: str = ""
+    default_model: str = ""
+    enabled: bool = False
+    task_models: dict[str, str] = Field(default_factory=dict)
+
+
+class _LlmProvidersRoutingData(BaseModel):
+    chain_fallback: list[str] = Field(default_factory=list)
+    tasks: dict[str, str] = Field(default_factory=dict)
+
+
+class _LlmProvidersConfigData(BaseModel):
+    providers: list[_LlmProviderConfigRowData] = Field(default_factory=list)
+    routing: _LlmProvidersRoutingData = Field(default_factory=_LlmProvidersRoutingData)
+    providers_file: str = ""
+    file_exists: bool = False
+
+
+class _LlmProviderTestData(BaseModel):
+    provider_id: str
+    reachable: bool
+    latency_ms: int | None = None
+    error: str | None = None
+
+
+class _AiExtensionTestData(BaseModel):
+    ok: bool
+    status_code: int | None = None
+    health_url: str = ""
+    tried_urls: list[str] = Field(default_factory=list)
+    error: str | None = None
+    media_tasks: _LlmMediaTasksHealthData | None = None
+    llm_detail: str | None = None
+    image_circuit: _LlmImageHealthData | None = None
+    llm_health: _LlmHealthSummaryData | None = None
+    tts_health: _LlmTtsHealthData | None = None
+
+
 class _ChangeConsoleLoginBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -4434,8 +4637,10 @@ def register_extended_api(
     *,
     api_base: str,
     plugin_config: Config,
+    enable_runtime_hooks: bool = True,
 ) -> None:
-    ensure_console_metrics_hooks()
+    if enable_runtime_hooks:
+        ensure_console_metrics_hooks()
     x = (api_base or "/pallas/api").strip()
     if not x.startswith("/"):
         x = "/" + x
@@ -4478,6 +4683,18 @@ def register_extended_api(
         )
         clear_extended_read_cache()
         return resp
+
+    @router_pub.get(
+        f"{x}/auth/setup-status",
+        include_in_schema=True,
+        response_model=_ApiOkResponse[_ConsoleSetupStatusData],
+    )
+    async def _auth_setup_status() -> dict[str, Any]:
+        return {"ok": True, "data": console_setup_status()}
+
+    @router_pub.get(f"{x}/openapi.json", include_in_schema=False)
+    async def _console_openapi_json() -> JSONResponse:
+        return JSONResponse(build_console_openapi_schema(app, api_base=x))
 
     router = APIRouter(tags=["Pallas-Bot 控制台"], dependencies=[Depends(_pallas_token_dep)])
 
@@ -5467,12 +5684,13 @@ def register_extended_api(
     @router.post(
         f"{x}/common-config/service_gateways/connectivity-check",
         include_in_schema=True,
+        response_model=_ApiOkResponse[_ServiceGatewaysConnectivityCheckData],
     )
     async def _service_gateways_connectivity_check(
         body: _PluginConfigUpdateBody,
         token: str | None = Query(default=None),
         x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
-    ) -> JSONResponse:
+    ) -> dict[str, Any]:
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
         from pallas.core.shared.service_probe import format_probe_lines
         from pallas.product.service_gateways.collect import probe_all_connectivity_from_draft
@@ -5482,13 +5700,13 @@ def register_extended_api(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
         lines = format_probe_lines(results)
-        return JSONResponse({
+        return {
             "ok": True,
             "data": {
                 "lines": lines,
                 "results": [r.to_dict() for r in results],
             },
-        })
+        }
 
     @router.get(f"{x}/common-config/llm/model-admin", include_in_schema=True)
     async def _llm_model_admin_get() -> JSONResponse:
@@ -5586,15 +5804,19 @@ def register_extended_api(
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": {"status": "ok"}})
 
-    @router.get(f"{x}/common-config/llm/providers", include_in_schema=True)
-    async def _llm_providers_get() -> JSONResponse:
+    @router.get(
+        f"{x}/common-config/llm/providers",
+        include_in_schema=True,
+        response_model=_ApiOkResponse[_LlmProvidersConfigData],
+    )
+    async def _llm_providers_get() -> dict[str, Any]:
         from pallas.product.llm.model_admin import fetch_providers_config
 
         try:
             data = await fetch_providers_config()
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
-        return JSONResponse({"ok": True, "data": data})
+        return {"ok": True, "data": data}
 
     @router.get(f"{x}/common-config/llm/local-routing", include_in_schema=True)
     async def _llm_local_routing_get() -> JSONResponse:
@@ -5646,12 +5868,16 @@ def register_extended_api(
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": data})
 
-    @router.post(f"{x}/common-config/llm/providers/{{provider_id}}/test", include_in_schema=True)
+    @router.post(
+        f"{x}/common-config/llm/providers/{{provider_id}}/test",
+        include_in_schema=True,
+        response_model=_ApiOkResponse[_LlmProviderTestData],
+    )
     async def _llm_provider_test_post(
         provider_id: str,
         token: str | None = Query(default=None),
         x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
-    ) -> JSONResponse:
+    ) -> dict[str, Any]:
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
         from pallas.product.llm.model_admin import probe_provider
 
@@ -5659,7 +5885,7 @@ def register_extended_api(
             data = await probe_provider(provider_id)
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
-        return JSONResponse({"ok": True, "data": data})
+        return {"ok": True, "data": data}
 
     @router.get(f"{x}/common-config/llm/task-stats", include_in_schema=True)
     async def _llm_task_stats_get(
@@ -5673,6 +5899,107 @@ def register_extended_api(
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": data})
+
+    @router.get(
+        f"{x}/common-config/llm/runtime-overview",
+        include_in_schema=True,
+        response_model=_ApiOkResponse[_LlmRuntimeOverviewData],
+    )
+    async def _llm_runtime_overview_get() -> dict[str, Any]:
+        from pallas.product.llm.ai_health_parse import (
+            image_health_circuit,
+            llm_health_runtime_detail,
+            llm_health_summary,
+            parse_media_tasks,
+            tts_health_summary,
+        )
+        from pallas.product.llm.model_admin import fetch_llm_task_stats, fetch_model_admin_status
+        from pallas.product.llm.startup_probe import probe_ai_service_health
+
+        async def _load() -> dict[str, Any]:
+            health, model_admin, task_stats = await asyncio.gather(
+                probe_ai_service_health(timeout_sec=8.0),
+                fetch_model_admin_status(timeout_sec=12.0),
+                fetch_llm_task_stats(timeout_sec=8.0),
+            )
+            body = health.get("body") if isinstance(health.get("body"), dict) else None
+            return {
+                "health": {
+                    "ok": bool(health.get("ok")),
+                    "url": str(health.get("url") or ""),
+                    "status_code": health.get("status_code"),
+                    "error": str(health.get("error") or ""),
+                    "llm_runtime_detail": llm_health_runtime_detail(body),
+                    "llm_health": llm_health_summary(body),
+                    "image_health": image_health_circuit(body),
+                    "tts_health": tts_health_summary(body),
+                    "media_tasks": parse_media_tasks(body),
+                },
+                "model_admin": model_admin,
+                "task_stats": task_stats,
+                "conversation_kernel": build_conversation_kernel_status(),
+            }
+
+        data = await cached_read(key="llm-runtime-overview", loader=_load, ttl_sec=2.0, stale_sec=8.0)
+        return {"ok": True, "data": data}
+
+    @router.get(
+        f"{x}/common-config/llm/wizard/status",
+        include_in_schema=True,
+        response_model=_ApiOkResponse[_LlmWizardStatusData],
+    )
+    async def _llm_wizard_status_get() -> dict[str, Any]:
+        from pallas.product.llm.model_admin import fetch_model_admin_status
+        from pallas.product.llm.webui_config import get_llm_webui_config
+
+        async def _load() -> dict[str, Any]:
+            cfg = get_llm_webui_config()
+            status = await fetch_model_admin_status(timeout_sec=12.0)
+            provider_rows = status.get("provider_status") if isinstance(status.get("provider_status"), list) else []
+            configured_count = sum(1 for row in provider_rows if isinstance(row, dict) and bool(row.get("configured")))
+            reachable_count = sum(1 for row in provider_rows if isinstance(row, dict) and row.get("reachable") is True)
+            checks = [
+                {
+                    "id": "ai_service",
+                    "label": "AI 服务可达",
+                    "ok": bool(status.get("ai_reachable")),
+                    "detail": str(status.get("error") or "") or str(status.get("health_url") or ""),
+                },
+                {
+                    "id": "provider_configured",
+                    "label": "至少存在一个已配置提供方",
+                    "ok": configured_count > 0,
+                    "detail": f"已配置 {configured_count} 个",
+                },
+                {
+                    "id": "provider_reachable",
+                    "label": "至少存在一个可达提供方",
+                    "ok": reachable_count > 0,
+                    "detail": f"可达 {reachable_count} 个",
+                },
+                {
+                    "id": "llm_chat_enabled",
+                    "label": "已开启智能对话总闸",
+                    "ok": bool(cfg.llm_chat_enabled),
+                    "detail": "LLM_CHAT_ENABLED",
+                },
+            ]
+            next_step = next((row["label"] for row in checks if not row["ok"]), "")
+            return {
+                "ai_reachable": bool(status.get("ai_reachable")),
+                "health_url": str(status.get("health_url") or ""),
+                "model": str(status.get("model") or ""),
+                "provider_mode": str(status.get("provider_mode") or ""),
+                "llm_chat_enabled": bool(cfg.llm_chat_enabled),
+                "llm_tools_enabled": bool(cfg.llm_tools_enabled),
+                "providers_configured": configured_count,
+                "providers_reachable": reachable_count,
+                "checks": checks,
+                "next_step": next_step,
+            }
+
+        data = await cached_read(key="llm-wizard-status", loader=_load, ttl_sec=2.0, stale_sec=8.0)
+        return {"ok": True, "data": data}
 
     @router.get(f"{x}/common-config/llm/history/sessions", include_in_schema=True)
     async def _llm_history_sessions_get(
@@ -6733,8 +7060,12 @@ def register_extended_api(
         clean = _save_ai_extension_config(body.model_dump())
         return JSONResponse({"ok": True, "data": clean})
 
-    @router.post(f"{x}/ai-extension/test", include_in_schema=True)
-    async def _ai_extension_test() -> JSONResponse:
+    @router.post(
+        f"{x}/ai-extension/test",
+        include_in_schema=True,
+        response_model=_ApiOkResponse[_AiExtensionTestData],
+    )
+    async def _ai_extension_test() -> dict[str, Any]:
         import json
         import urllib.error
         import urllib.request
@@ -6824,23 +7155,21 @@ def register_extended_api(
                     llm_health,
                     tts_health,
                 ) = await asyncio.to_thread(_do_request)
-                return JSONResponse(
-                    {
-                        "ok": True,
-                        "data": {
-                            "ok": 200 <= status_code < 300,
-                            "status_code": status_code,
-                            "health_url": health_url,
-                            "tried_urls": tried_urls,
-                            "error": None,
-                            "media_tasks": media_tasks,
-                            "llm_detail": llm_detail,
-                            "image_circuit": image_circuit,
-                            "llm_health": llm_health,
-                            "tts_health": tts_health,
-                        },
+                return {
+                    "ok": True,
+                    "data": {
+                        "ok": 200 <= status_code < 300,
+                        "status_code": status_code,
+                        "health_url": health_url,
+                        "tried_urls": tried_urls,
+                        "error": None,
+                        "media_tasks": media_tasks,
+                        "llm_detail": llm_detail,
+                        "image_circuit": image_circuit,
+                        "llm_health": llm_health,
+                        "tts_health": tts_health,
                     },
-                )
+                }
             except urllib.error.HTTPError as e:
                 last_status = int(getattr(e, "code", 0) or 0)
                 last_error = str(e)
@@ -6864,23 +7193,21 @@ def register_extended_api(
                 last_status = None
                 last_error = str(e)
                 last_url = health_url
-        return JSONResponse(
-            {
-                "ok": True,
-                "data": {
-                    "ok": False,
-                    "status_code": last_status,
-                    "health_url": last_url,
-                    "tried_urls": tried_urls,
-                    "error": last_error,
-                    "media_tasks": last_media_tasks,
-                    "llm_detail": last_llm_detail,
-                    "image_circuit": last_image_circuit,
-                    "llm_health": last_llm_health,
-                    "tts_health": last_tts_health,
-                },
+        return {
+            "ok": True,
+            "data": {
+                "ok": False,
+                "status_code": last_status,
+                "health_url": last_url,
+                "tried_urls": tried_urls,
+                "error": last_error,
+                "media_tasks": last_media_tasks,
+                "llm_detail": last_llm_detail,
+                "image_circuit": last_image_circuit,
+                "llm_health": last_llm_health,
+                "tts_health": last_tts_health,
             },
-        )
+        }
 
     async def _ai_extension_http_json(
         *,
@@ -7520,18 +7847,22 @@ def register_extended_api(
             logger.exception("Pallas-Bot 控制台: WebUI 更新失败")
             raise HTTPException(status_code=500, detail=format_exception_for_log(e)) from e
 
-    @router.post(f"{x}/security/console-login", include_in_schema=False)
+    @router.post(
+        f"{x}/security/console-login",
+        include_in_schema=True,
+        response_model=_ApiOkResponse[_ConsoleLoginChangeData],
+    )
     async def _security_console_login(
         body: _ChangeConsoleLoginBody,
         token: str | None = Query(default=None),
         x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
-    ) -> JSONResponse:
+    ) -> dict[str, Any]:
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
         try:
             set_shared_console_login_token(body.new_password)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
-        return JSONResponse({"ok": True, "data": {"message": "已保存"}})
+        return {"ok": True, "data": {"message": "已保存"}}
 
     async def _warm_console_read_caches_impl() -> None:
         from pallas.product.community_stats.public_stats import fetch_community_public_stats

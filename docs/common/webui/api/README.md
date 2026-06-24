@@ -13,7 +13,8 @@
 | 默认控制台基址 | `/pallas/` |
 | API 前缀 | `/pallas/api`（与 `pallas.toml` / WebUI 配置中的 `base` 一致时为 `{base}/api`） |
 | 响应信封 | `{"ok": true, "data": ...}` 或 HTTP 4xx/5xx + `detail` |
-| 在线 Schema | Bot 运行时可访问 `/pallas/api/openapi.json`（FastAPI 自动生成，与本文互补） |
+| 在线 Schema | Bot 运行时可访问 `/pallas/api/openapi.json`（仅控制台前缀下接口） |
+| 离线导出 | `uv run python tools/export_pb_webui_openapi.py` → 默认生成 `openspec/pallas-console-v1.json` |
 
 前端类型定义见 WebUI 仓库 `src/api/pallasTypes.ts`；请求封装见 `src/api/consoleApi.ts`。
 
@@ -60,5 +61,11 @@
 2. 写操作使用 `_check_pallas_write_token`
 3. 在本目录补充对应域文档或新增分域文件
 4. WebUI：在 `consoleApi.ts` + `pallasTypes.ts` 增加类型与请求函数
+
+如需更新离线 schema：
+
+```bash
+uv run python tools/export_pb_webui_openapi.py
+```
 
 协议端（NapCat/Snowluma）另有独立 HTTP API，由 `pallas_protocol` 挂载，不在 `/pallas/api` 下；见 [pallas_protocol 文档](../../../plugins/pb_protocol/README.md)。

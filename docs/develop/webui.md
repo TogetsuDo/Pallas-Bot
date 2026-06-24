@@ -42,6 +42,27 @@ unzip -d data/pb_webui dist.zip
 
 自动更新默认从 **`PallasBot/Pallas-Bot`** Release 下载 `dist.zip`（配置项 `pallas_webui_dist_zip_repo`）。
 
+## OpenAPI 契约
+
+控制台后端可在线提供：
+
+```text
+/pallas/api/openapi.json
+```
+
+如需离线导出给前端 codegen 或评审：
+
+```bash
+cd Pallas-Bot
+uv run python tools/export_pb_webui_openapi.py
+```
+
+默认输出到：
+
+```text
+openspec/pallas-console-v1.json
+```
+
 ## 代码约定
 
 | 项 | 约定 |

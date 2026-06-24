@@ -26,6 +26,7 @@ _http_request_var: ContextVar[Any] = ContextVar("_pallas_http_request", default=
 _SESSION_INVALIDATION_HOOKS: list[Callable[[], None]] = []
 
 _AUTH_STATE = "auth_state.json"
+_SETUP_STATE = "setup_state.json"
 _DEFAULT_LOGIN_PASSWORD_FILE = "default_login_password.txt"
 _SESSION_SECRET = "session_secret.bin"
 SESSION_COOKIE_NAME = "pallas_console_session"
@@ -43,6 +44,10 @@ def console_auth_dir() -> Path:
 
 def auth_state_path() -> Path:
     return console_auth_dir() / _AUTH_STATE
+
+
+def setup_state_path() -> Path:
+    return console_auth_dir() / _SETUP_STATE
 
 
 def default_login_password_path() -> Path:
@@ -154,6 +159,31 @@ def _write_auth_state(password_hash: bytes, password_salt: bytes) -> None:
     _atomic_write_text(auth_state_path(), json.dumps(state, ensure_ascii=False, indent=2))
 
 
+def _load_setup_state() -> dict[str, Any] | None:
+    p = setup_state_path()
+    if not p.is_file():
+        return None
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return raw if isinstance(raw, dict) else None
+
+
+def _write_setup_state(*, completed: bool) -> dict[str, Any]:
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    prev = _load_setup_state() or {}
+    first_completed_at = str(prev.get("first_completed_at") or "").strip()
+    state = {
+        "v": 1,
+        "setup_completed": bool(completed),
+        "updated_at": now,
+        "first_completed_at": first_completed_at or (now if completed else ""),
+    }
+    _atomic_write_text(setup_state_path(), json.dumps(state, ensure_ascii=False, indent=2))
+    return state
+
+
 def verify_console_password(plain: str) -> bool:
     st = _load_auth_state()
     if not st:
@@ -176,6 +206,8 @@ def set_console_password_plain(new_plain: str, *, keep_default_password_plaintex
     salt = secrets.token_bytes(16)
     pw_hash = _hash_password(s, salt)
     _write_auth_state(pw_hash, salt)
+    if not keep_default_password_plaintext:
+        _write_setup_state(completed=True)
     invalidate_console_sessions()
 
 
@@ -220,6 +252,27 @@ def prime_shared_console_login() -> None:
 
 def is_console_auth_configured() -> bool:
     return _load_auth_state() is not None
+
+
+def is_console_setup_completed() -> bool:
+    state = _load_setup_state()
+    return bool(state and state.get("setup_completed"))
+
+
+def console_setup_status() -> dict[str, Any]:
+    state = _load_setup_state() or {}
+    default_password = _read_default_login_password_plain()
+    default_password_active = bool(default_password and verify_console_password(default_password))
+    auth_configured = is_console_auth_configured()
+    setup_completed = is_console_setup_completed()
+    return {
+        "auth_configured": auth_configured,
+        "setup_completed": setup_completed,
+        "default_password_active": default_password_active,
+        "requires_setup": bool(auth_configured and not setup_completed),
+        "first_completed_at": str(state.get("first_completed_at") or "").strip() or None,
+        "updated_at": str(state.get("updated_at") or "").strip() or None,
+    }
 
 
 def register_console_session_invalidation_hook(fn: Callable[[], None]) -> None:

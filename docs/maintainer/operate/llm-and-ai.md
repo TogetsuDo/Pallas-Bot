@@ -54,6 +54,23 @@
 - Bot 到 AI 的地址配置是否正确
 - 网络和端口是否可达
 
+## 控制台里先看哪几个接口
+
+如果你在排前端或反代问题，也可以直接访问控制台 API：
+
+- `/pallas/api/auth/setup-status`
+  - 看是否还停留在默认口令 / 首次引导阶段
+- `/pallas/api/common-config/llm/wizard/status`
+  - 看 AI 服务、provider、LLM 总闸哪个环节还没就绪
+- `/pallas/api/common-config/llm/runtime-overview`
+  - 一屏看 health、模型、任务统计、conversation kernel
+
+这三者的关系：
+
+- `setup-status` 解决“控制台是否该先引导改密”
+- `wizard/status` 解决“AI 配置还差哪一步”
+- `runtime-overview` 解决“现在到底是哪一层在异常”
+
 ## callback 的判断思路
 
 你不用搞懂所有内部实现，但要记住一件事：

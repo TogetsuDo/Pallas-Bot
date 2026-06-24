@@ -61,6 +61,35 @@ def test_default_password_plain_file_and_clear_on_user_change(
     assert not plain_path.is_file()
     assert m.verify_console_password("user-chosen-password")
     assert not m.verify_console_password(boot)
+    status = m.console_setup_status()
+    assert status["auth_configured"] is True
+    assert status["setup_completed"] is True
+    assert status["default_password_active"] is False
+    assert status["requires_setup"] is False
+
+
+def test_console_setup_status_requires_setup_until_password_changed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    from pallas.console.webui import console_login as m
+
+    root = tmp_path / "pc_setup"
+    monkeypatch.setattr(m, "console_auth_dir", lambda: root)
+
+    m.prime_shared_console_login()
+    before = m.console_setup_status()
+    assert before["auth_configured"] is True
+    assert before["setup_completed"] is False
+    assert before["default_password_active"] is True
+    assert before["requires_setup"] is True
+
+    m.set_console_password_plain("new-password")
+    after = m.console_setup_status()
+    assert after["setup_completed"] is True
+    assert after["default_password_active"] is False
+    assert after["requires_setup"] is False
+    assert after["first_completed_at"]
 
 
 def test_orphan_default_password_file_removed_when_mismatch(
