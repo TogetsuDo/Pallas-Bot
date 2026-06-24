@@ -190,6 +190,7 @@ class LlmConfig(BaseModel):
     llm_polish_lite_enabled: bool = Field(default=False)
     llm_polish_lite_sample_rate: float = Field(default=0.12, ge=0.0, le=1.0)
     use_unified_chat_api: bool = Field(default=True)
+    legacy_chat_allowed: bool = Field(default=False)
     legacy_chat_endpoint: str = Field(default="/api/llm/chat")
     legacy_del_session_endpoint: str = Field(default="/api/llm/del_session")
     unified_chat_endpoint: str = Field(default="/api/v1/chat/completions")
@@ -298,6 +299,7 @@ def get_llm_config() -> LlmConfig:
             llm_polish_lite_enabled=resolve_llm_polish_lite_enabled(),
             llm_polish_lite_sample_rate=_env_float("LLM_POLISH_LITE_SAMPLE_RATE", 0.12),
             use_unified_chat_api=_env_bool("LLM_USE_UNIFIED_CHAT_API", True),
+            legacy_chat_allowed=_env_bool("LLM_LEGACY_CHAT_ALLOWED", False),
             legacy_chat_endpoint=_env_str("LLM_LEGACY_CHAT_ENDPOINT", "/api/llm/chat"),
             legacy_del_session_endpoint=_env_str("LLM_LEGACY_DEL_SESSION_ENDPOINT", "/api/llm/del_session"),
             unified_chat_endpoint=_env_str("LLM_UNIFIED_CHAT_ENDPOINT", "/api/v1/chat/completions"),

@@ -56,6 +56,7 @@ async def test_submit_chat_task_legacy_payload(monkeypatch: pytest.MonkeyPatch) 
         llm_chat_enabled=True,
         llm_governance_enabled=False,
         legacy_chat_endpoint="/api/llm/chat",
+        legacy_chat_allowed=True,
         use_unified_chat_api=False,
     )
     result = await submit_chat_task(

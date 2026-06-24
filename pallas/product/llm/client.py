@@ -10,6 +10,7 @@ from .budget import trim_messages_to_char_budget
 from .config import LlmConfig, get_llm_config, llm_server_base_url
 from .governance import LlmChatGovernance
 from .kernel.memory_governance import can_write_runtime_state_summary, runtime_state_summary_metadata
+from .legacy_guard import assess_legacy_chat_submit
 from .message_guard import format_user_turn
 from .models import ChatCompletionMessage, ChatSubmitRequest, ChatSubmitResult
 from .repeater_limit import (
@@ -81,6 +82,11 @@ async def submit_chat_task(request: ChatSubmitRequest, *, cfg: LlmConfig | None 
     base = llm_server_base_url(c)
     endpoint = chat_endpoint_path(c)
     url = f"{base}{endpoint}/{request.request_id}"
+
+    legacy_reject = assess_legacy_chat_submit(c)
+    if legacy_reject:
+        timer.finish(status=legacy_reject, request_id=request.request_id)
+        return ChatSubmitResult(status=legacy_reject, ok=False)
 
     if c.use_unified_chat_api:
         gate = await assess_llm_submit_gate()
@@ -171,13 +177,6 @@ async def submit_chat_task(request: ChatSubmitRequest, *, cfg: LlmConfig | None 
             timeout_sec=c.chat_timeout_sec,
         )
     else:
-        if "/ollama/" in endpoint.lower():
-            logger.warning(
-                "LLM legacy endpoint 含 /ollama/ 路径，请迁移到统一 capability API: {}",
-                endpoint,
-            )
-        else:
-            logger.warning("LLM legacy chat endpoint 已弃用，请启用 LLM_USE_UNIFIED_CHAT_API")
         legacy_text = format_legacy_transcript(messages) if use_pg_session else messages[-1].content
         payload = {
             "session": request.request_id if use_pg_session else request.session_id,

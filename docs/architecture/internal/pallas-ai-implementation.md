@@ -201,9 +201,9 @@ uv run pytest tests/test_api_media_tasks.py \
 
 - [x] draw 扩展薄化（`pallas-plugin-draw` · §2.3 · 7.1）  
 - [x] 扩展默认 `ai_service_runtime`（§2.3 · 7.2）  
-- [ ] LLM/sing capability 信封与 legacy 路径收口（§2.3 · 7.3–7.4 部分：sing 默认 `media_task` 已落地）  
-- [ ] 插件侧熔断与 AI health 单一事实源（§2.3 · 7.5）  
-- [ ] memory infra（§2.3 · 7.6）  
+- [x] LLM/sing capability 信封与 legacy 路径收口（§2.3 · 7.3–7.4 部分：sing 默认 `media_task` 已落地）  
+- [x] 插件侧熔断与 AI health 单一事实源（§2.3 · 7.5）  
+- [x] memory infra（§2.3 · 7.6）  
 
 ## 6. 相关文档
 

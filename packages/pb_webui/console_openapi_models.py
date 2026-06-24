@@ -209,6 +209,10 @@ class PluginConfigData(BaseModel):
     unexpected_keys: list[dict[str, str]] = Field(default_factory=list)
 
 
+class PluginConfigRawData(BaseModel):
+    toml: str = ""
+
+
 class ShardObservabilityData(BaseModel):
     model_config = ConfigDict(extra="allow")
 

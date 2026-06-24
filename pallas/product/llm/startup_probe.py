@@ -106,6 +106,9 @@ def install_llm_startup_probe() -> None:
         from pallas.product.llm.config import get_llm_config
 
         cfg = get_llm_config()
+        from pallas.product.llm.legacy_guard import log_legacy_chat_config_warnings
+
+        log_legacy_chat_config_warnings(cfg)
         flags = []
         if cfg.llm_chat_enabled:
             flags.append("LLM_CHAT")

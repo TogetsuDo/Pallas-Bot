@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Pallas-Bot 控制台 API",
-    "version": "v3.9.0-72-g7bb5e8b6-dirty",
+    "version": "v3.9.0-73-g4c4c2d27-dirty",
     "description": "仅包含控制台 API 前缀下的接口。"
   },
   "paths": {
@@ -3383,7 +3383,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/_ApiOkResponse_PluginConfigRawData_"
+                }
               }
             }
           },
@@ -3463,7 +3465,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/_ApiOkResponse_PluginConfigData_"
+                }
               }
             }
           },
@@ -3832,7 +3836,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/_ApiOkResponse_PluginConfigRawData_"
+                }
               }
             }
           },
@@ -3912,7 +3918,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/_ApiOkResponse_PluginConfigData_"
+                }
               }
             }
           },
@@ -11145,6 +11153,17 @@
         ],
         "title": "PluginConfigData"
       },
+      "PluginConfigRawData": {
+        "properties": {
+          "toml": {
+            "type": "string",
+            "title": "Toml",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "PluginConfigRawData"
+      },
       "PluginGovernanceData": {
         "properties": {
           "plugin": {
@@ -11633,6 +11652,24 @@
           "data"
         ],
         "title": "_ApiOkResponse[PluginConfigData]"
+      },
+      "_ApiOkResponse_PluginConfigRawData_": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true,
+            "title": "Ok",
+            "default": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/PluginConfigRawData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "_ApiOkResponse[PluginConfigRawData]"
       },
       "_ApiOkResponse_PluginGovernanceData_": {
         "properties": {

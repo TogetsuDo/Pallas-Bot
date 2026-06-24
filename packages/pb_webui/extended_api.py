@@ -39,6 +39,9 @@ from packages.pb_webui.console_openapi_models import (
     PluginConfigData as _PluginConfigData,
 )
 from packages.pb_webui.console_openapi_models import (
+    PluginConfigRawData as _PluginConfigRawData,
+)
+from packages.pb_webui.console_openapi_models import (
     PluginGovernanceData as _PluginGovernanceData,
 )
 from packages.pb_webui.console_openapi_models import (
@@ -5728,23 +5731,31 @@ def register_extended_api(
             raise HTTPException(status_code=500, detail=str(e)) from e
         return {"ok": True, "data": data}
 
-    @router.get(f"{x}/plugins/{{plugin_name}}/config/raw", include_in_schema=True)
-    async def _plugin_config_raw_get(plugin_name: str) -> JSONResponse:
+    @router.get(
+        f"{x}/plugins/{{plugin_name}}/config/raw",
+        include_in_schema=True,
+        response_model=_ApiOkResponse[_PluginConfigRawData],
+    )
+    async def _plugin_config_raw_get(plugin_name: str) -> dict[str, Any]:
         from pallas.console.webui.plugin_api import plugin_config_raw_toml
 
         try:
             text = plugin_config_raw_toml(plugin_name)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
-        return JSONResponse({"ok": True, "data": {"toml": text}})
+        return {"ok": True, "data": {"toml": text}}
 
-    @router.put(f"{x}/plugins/{{plugin_name}}/config/raw", include_in_schema=True)
+    @router.put(
+        f"{x}/plugins/{{plugin_name}}/config/raw",
+        include_in_schema=True,
+        response_model=_ApiOkResponse[_PluginConfigData],
+    )
     async def _plugin_config_raw_put(
         plugin_name: str,
         body: _PluginConfigRawBody,
         token: str | None = Query(default=None),
         x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
-    ) -> JSONResponse:
+    ) -> dict[str, Any]:
         from pallas.console.webui.plugin_api import apply_plugin_config_raw_toml
 
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
@@ -5752,7 +5763,7 @@ def register_extended_api(
             data = apply_plugin_config_raw_toml(plugin_name, str(body.toml or ""))
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
-        return JSONResponse({"ok": True, "data": data})
+        return {"ok": True, "data": data}
 
     @router.put(f"{x}/plugins/{{plugin_name}}/config", include_in_schema=True)
     async def _plugin_config_put(
@@ -5836,23 +5847,31 @@ def register_extended_api(
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": data})
 
-    @router.get(f"{x}/common-config/{{section_id}}/raw", include_in_schema=True)
-    async def _common_config_raw_get(section_id: str) -> JSONResponse:
+    @router.get(
+        f"{x}/common-config/{{section_id}}/raw",
+        include_in_schema=True,
+        response_model=_ApiOkResponse[_PluginConfigRawData],
+    )
+    async def _common_config_raw_get(section_id: str) -> dict[str, Any]:
         from pallas.console.webui.env_sections import webui_env_section_raw_toml
 
         try:
             text = webui_env_section_raw_toml(section_id)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
-        return JSONResponse({"ok": True, "data": {"toml": text}})
+        return {"ok": True, "data": {"toml": text}}
 
-    @router.put(f"{x}/common-config/{{section_id}}/raw", include_in_schema=True)
+    @router.put(
+        f"{x}/common-config/{{section_id}}/raw",
+        include_in_schema=True,
+        response_model=_ApiOkResponse[_PluginConfigData],
+    )
     async def _common_config_raw_put(
         section_id: str,
         body: _PluginConfigRawBody,
         token: str | None = Query(default=None),
         x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
-    ) -> JSONResponse:
+    ) -> dict[str, Any]:
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
         from pallas.console.webui.env_sections import apply_webui_env_section_raw_toml
 
@@ -5860,7 +5879,7 @@ def register_extended_api(
             data = apply_webui_env_section_raw_toml(section_id, str(body.toml or ""))
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
-        return JSONResponse({"ok": True, "data": data})
+        return {"ok": True, "data": data}
 
     @router.post(
         f"{x}/common-config/service_gateways/connectivity-check",
@@ -8104,6 +8123,10 @@ def register_extended_api(
 
     app.include_router(router_pub)
     app.include_router(router)
+
+    from packages.pb_webui.console_api_errors import register_console_api_exception_handlers
+
+    register_console_api_exception_handlers(app, api_prefix=x)
 
     try:
         from nonebot_plugin_apscheduler import scheduler
