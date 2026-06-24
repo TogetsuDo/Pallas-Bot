@@ -26,6 +26,38 @@ _CHANNEL_ALIASES = (
     ("httpcore", "httpx"),
 )
 
+_QUIET_LIBRARY_LOGGER_NAMES = (
+    "uvicorn",
+    "uvicorn.access",
+    "uvicorn.error",
+    "uvicorn.asgi",
+    "celery",
+    "celery.worker",
+    "celery.worker.strategy",
+    "celery.worker.consumer",
+    "kombu",
+    "amqp",
+    "billiard",
+    "asyncio",
+    "httpx",
+    "httpcore",
+    "aiohttp",
+    "aiohttp.access",
+    "aiohttp.client",
+    "aiohttp.server",
+    "aiohttp.web",
+    "apscheduler",
+    "apscheduler.scheduler",
+    "PIL",
+    "PIL.PngImagePlugin",
+    "urllib3",
+    "urllib3.connectionpool",
+    "multipart",
+    "fontTools",
+    "aiosqlite",
+    "watchfiles",
+)
+
 
 def _stdlib_logger_channel_label(logger_name: str) -> str:
     """把 stdlib logger 名收成简短标签；``.error`` 易被误认为级别，故单独映射。"""
@@ -56,6 +88,16 @@ def apply_stdlib_logging_channel_prefix() -> None:
     import nonebot.log as nb_log
 
     nb_log.LoguruHandler = ChannelLoguruHandler  # type: ignore[misc, assignment]
+
+
+def configure_quiet_library_loggers() -> None:
+    """启动早期压制第三方库刷屏；DEBUG/TRACE 时不压制。"""
+    level_name = resolve_repo_log_level()
+    if level_name in {"TRACE", "DEBUG"}:
+        return
+    quiet_level = logging.WARNING
+    for name in _QUIET_LIBRARY_LOGGER_NAMES:
+        logging.getLogger(name).setLevel(quiet_level)
 
 
 _VALID_LOG_LEVELS = frozenset({"TRACE", "DEBUG", "INFO", "SUCCESS", "WARNING", "ERROR", "CRITICAL"})

@@ -9,7 +9,11 @@ from nonebot.log import logger
 from pallas.console.web import install_nonebot_log_sink
 from pallas.core.foundation.config.dotenv import apply_repo_settings_to_environ
 from pallas.core.foundation.db import init_db
-from pallas.core.foundation.logging import apply_stdlib_logging_channel_prefix, resolve_repo_log_level
+from pallas.core.foundation.logging import (
+    apply_stdlib_logging_channel_prefix,
+    configure_quiet_library_loggers,
+    resolve_repo_log_level,
+)
 from pallas.core.foundation.paths import plugin_data_dir
 from pallas.core.foundation.startup_report import emit_startup_summary
 from pallas.core.platform.bot_runtime import load_plugins_for_role
@@ -26,6 +30,7 @@ def apply_repo_settings() -> None:
 
 def boot() -> nonebot.Driver:
     apply_stdlib_logging_channel_prefix()
+    configure_quiet_library_loggers()
     file_log_level = resolve_repo_log_level()
     nonebot.init()
     bot_log_dir = plugin_data_dir("bot", create=True)
