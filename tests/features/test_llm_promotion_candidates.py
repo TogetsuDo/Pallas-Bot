@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
+
 from pallas.product.llm.config import clear_llm_config_cache
 from pallas.product.llm.promotion_candidates import (
     PROMOTION_SUPPORT_THRESHOLD,
@@ -7,6 +12,7 @@ from pallas.product.llm.promotion_candidates import (
     list_promotion_candidates,
     refresh_promotion_candidates_for_group,
     resolve_promotion_candidate,
+    resolve_promotion_candidate_with_writeback,
 )
 from pallas.product.llm.repeater_feedback import (
     append_feedback_entry,
@@ -154,3 +160,46 @@ def test_resolve_promotion_candidate_promote_and_reject(tmp_path, monkeypatch) -
 
     pending_rows = list_promotion_candidates(group_id=123, refresh=False)
     assert all(row.reply_text != "行吧。" for row in pending_rows)
+
+
+@pytest.mark.asyncio
+async def test_resolve_promotion_candidate_with_writeback_persists_status(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PALLAS_DATA_DIR", str(tmp_path))
+    enable_writeback_env(monkeypatch)
+
+    for idx in range(PROMOTION_SUPPORT_THRESHOLD):
+        append_feedback_entry(
+            build_feedback_entry(
+                bot_id=10001,
+                group_id=123,
+                user_id=456 + idx,
+                request_id=f"req-{idx}",
+                user_text="你又来这套",
+                reply_text="少来。",
+                behavior_scene="banter",
+            )
+        )
+    rows = list_promotion_candidates(group_id=123, refresh=False)
+    candidate_id = rows[0].candidate_id
+
+    fake_repo = SimpleNamespace(
+        learn_answer=AsyncMock(),
+        context_exists_by_keywords=AsyncMock(return_value=False),
+        upsert_answer=AsyncMock(),
+        insert=AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "pallas.core.foundation.db.context_repo_access.get_shared_context_repository",
+        lambda: fake_repo,
+    )
+
+    updated = await resolve_promotion_candidate_with_writeback(candidate_id, action="promote")
+
+    assert updated is not None
+    assert updated.promoted is True
+    assert updated.writeback_status == "written"
+    assert updated.writeback_at > 0
+    fake_repo.learn_answer.assert_awaited_once()
+
+    resolved = list_promotion_candidates(group_id=123, include_resolved=True, refresh=False)[0]
+    assert resolved.writeback_status == "written"

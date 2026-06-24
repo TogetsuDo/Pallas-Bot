@@ -21,6 +21,12 @@ def test_runtime_debug_snapshot_and_trace_roundtrip(tmp_path, monkeypatch) -> No
         metadata={
             "agent_stage_plan": ["plan", "tool_loop", "generate"],
             "tool_catalog": {"version": "tool_catalog/v1"},
+            "hybrid_retrieval_trace": {
+                "sources": ["memory", "knowledge"],
+                "memory": {"hit_count": 1},
+                "knowledge": {"hit_count": 2},
+                "relationship": {"hit_count": 0},
+            },
         },
     )
     append_runtime_trace(
@@ -29,7 +35,10 @@ def test_runtime_debug_snapshot_and_trace_roundtrip(tmp_path, monkeypatch) -> No
     )
     bundle = load_runtime_debug_bundle(request_id="req-1")
     assert bundle["snapshot"]["request_snapshot_id"] == snapshot_id
+    assert bundle["snapshot"]["stage_inputs"]["plan"]["agent_stage_plan"] == ["plan", "tool_loop", "generate"]
+    assert bundle["snapshot"]["stage_inputs"]["retrieve"]["sources"] == ["memory", "knowledge"]
     assert bundle["trace"]["tool_call_count"] == 1
     replay = build_replay_payload(request_id="req-1")
     assert replay["request_snapshot_id"] == snapshot_id
     assert replay["mode"] == "mock_tools"
+    assert replay["stage_inputs"]["retrieve"]["memory"]["hit_count"] == 1

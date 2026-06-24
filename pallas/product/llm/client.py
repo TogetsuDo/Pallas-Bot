@@ -129,9 +129,9 @@ async def submit_chat_task(request: ChatSubmitRequest, *, cfg: LlmConfig | None 
         if request.knowledge_retrieval_trace is not None:
             from pallas.product.llm.knowledge.registry import knowledge_metadata_payload
 
-            metadata.update(
-                knowledge_metadata_payload(request.knowledge_retrieval_trace, cfg=c)
-            )
+            metadata.update(knowledge_metadata_payload(request.knowledge_retrieval_trace, cfg=c))
+        if request.hybrid_retrieval_trace is not None:
+            metadata["hybrid_retrieval_trace"] = request.hybrid_retrieval_trace
         from pallas.product.llm.runtime_debug import append_request_snapshot
 
         snapshot_id = append_request_snapshot(

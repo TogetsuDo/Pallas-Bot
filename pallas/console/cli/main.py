@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import argparse  # noqa: TC003
-from importlib import import_module
 import sys
+from importlib import import_module
 
 from pallas.console.cli import CLI_VERSION
 

@@ -223,3 +223,54 @@ def test_llm_runtime_debug_api_returns_snapshot_and_trace(tmp_path, monkeypatch)
     assert replay_payload["ok"] is True
     assert replay_payload["data"]["request_snapshot_id"] == snapshot_id
     assert replay_payload["data"]["mode"] == "mock_tools"
+
+
+def test_llm_runtime_replay_run_api_proxies_to_ai_extension(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "pallas.product.llm.runtime_debug.build_replay_payload",
+        lambda *, request_id, mode="mock_tools": {
+            "request_id": request_id,
+            "request_snapshot_id": "snap-1",
+            "mode": mode,
+            "task": "llm_chat",
+            "system_prompt": "你是牛牛",
+            "messages": [{"role": "user", "content": "查一下银灰"}],
+            "agent_stage_plan": ["plan", "tool_loop", "generate"],
+            "tool_catalog": {"version": "tool_catalog/v1", "tools": []},
+            "metadata_subset": {"task": "llm_chat", "bot_id": 10001, "group_id": 20002, "user_id": 30003},
+        },
+    )
+
+    async def fake_ai_http_json(*, method, path, body=None):
+        assert method == "POST"
+        assert path == "/v1/chat/replay"
+        assert body["request_id"] == "req-1"
+        assert body["mode"] == "mock_tools"
+        return {
+            "ok": True,
+            "status_code": 200,
+            "url": "http://ai/api/v1/chat/replay",
+            "data": {
+                "request_id": "req-1",
+                "mode": "mock_tools",
+                "task": "llm_chat",
+                "reply": "查到了",
+                "trace": {"tool_call_count": 1},
+                "assistant_message": {"role": "assistant", "content": "查到了"},
+            },
+            "error": None,
+        }
+
+    monkeypatch.setattr(mod, "ai_extension_http_json", fake_ai_http_json)
+
+    client = _build_client(monkeypatch)
+    response = client.post(
+        "/pallas/api/common-config/llm/runtime-debug/req-1/replay/run",
+        json={"mode": "mock_tools"},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["data"]["reply"] == "查到了"
+    assert payload["data"]["trace"]["tool_call_count"] == 1

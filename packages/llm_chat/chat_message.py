@@ -31,8 +31,8 @@ from pallas.product.llm.kernel import (
 )
 from pallas.product.llm.knowledge.inject import enrich_system_with_knowledge_sources
 from pallas.product.llm.memory import (
-    append_memory_context,
-    append_relationship_context,
+    enrich_system_with_memory_context,
+    enrich_system_with_relationship_context,
     extract_at_target,
     parse_memory_teach,
     parse_relationship_teach,
@@ -336,13 +336,14 @@ async def handle_llm_chat(bot: Bot, event: Event):
         await llm_chat_msg.send(LLM_CHAT_VAGUE_REPLY)
         return
 
-    system_prompt = await append_memory_context(
+    memory_result = await enrich_system_with_memory_context(
         system_prompt,
         bot_id=int(bot.self_id),
         group_id=group_id,
         query_text=plain or msg,
         cfg=llm_cfg,
     )
+    system_prompt = memory_result.system_prompt
 
     knowledge_result = await enrich_system_with_knowledge_sources(
         system_prompt,
@@ -355,13 +356,28 @@ async def handle_llm_chat(bot: Bot, event: Event):
     system_prompt = knowledge_result.system_prompt
     knowledge_retrieval_trace = knowledge_result.trace
 
-    system_prompt = await append_relationship_context(
+    relationship_result = await enrich_system_with_relationship_context(
         system_prompt,
         bot_id=int(bot.self_id),
         group_id=group_id,
         user_id=user_id,
         cfg=llm_cfg,
     )
+    system_prompt = relationship_result.system_prompt
+    hybrid_retrieval_trace = {
+        "sources": [
+            source
+            for source, trace in (
+                ("memory", memory_result.trace),
+                ("knowledge", knowledge_retrieval_trace),
+                ("relationship", relationship_result.trace),
+            )
+            if int(trace.get("hit_count") or 0) > 0
+        ],
+        "memory": memory_result.trace,
+        "knowledge": knowledge_retrieval_trace,
+        "relationship": relationship_result.trace,
+    }
     expression_suffix = await build_llm_chat_expression_suffix(group_id)
     if expression_suffix:
         system_prompt = f"{system_prompt.rstrip()}\n{expression_suffix}"
@@ -547,6 +563,7 @@ async def handle_llm_chat(bot: Bot, event: Event):
             token_count=token_count,
             temperature=temperature,
             knowledge_retrieval_trace=knowledge_retrieval_trace,
+            hybrid_retrieval_trace=hybrid_retrieval_trace,
         ),
         cfg=llm_cfg,
     )

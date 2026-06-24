@@ -15,12 +15,26 @@ _TRANSIENT_UVICORN_MESSAGES = (
     "data transfer failed",
 )
 
+_CHANNEL_ALIASES = (
+    ("pallas.core.", "pallas.core"),
+    ("pallas.product.", "pallas.product"),
+    ("packages.repeater.", "repeater"),
+    ("packages.llm_chat.", "llm_chat"),
+    ("uvicorn.", "uvicorn"),
+    ("celery.", "celery"),
+    ("httpx", "httpx"),
+    ("httpcore", "httpx"),
+)
+
 
 def _stdlib_logger_channel_label(logger_name: str) -> str:
     """把 stdlib logger 名收成简短标签；``.error`` 易被误认为级别，故单独映射。"""
     name = (logger_name or "").strip()
     if name == "uvicorn.error":
         return "uvicorn"
+    for prefix, alias in _CHANNEL_ALIASES:
+        if name == prefix.rstrip(".") or name.startswith(prefix):
+            return alias
     return name
 
 

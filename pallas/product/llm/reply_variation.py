@@ -143,9 +143,7 @@ def build_recent_reply_variation_hint(turns: list[LlmChatTurn]) -> str:
         structural_texts = assistant_texts[-3:]
         if min(len(text) for text in structural_texts) >= 14:
             shared_markers = sum(
-                1
-                for marker in _STRUCTURE_MARKERS
-                if sum(1 for text in structural_texts if marker in text) >= 2
+                1 for marker in _STRUCTURE_MARKERS if sum(1 for text in structural_texts if marker in text) >= 2
             )
             if shared_markers >= 3:
                 hints.append("最近解释偏满，这轮优先短一点，像顺手接一句")
@@ -153,9 +151,7 @@ def build_recent_reply_variation_hint(turns: list[LlmChatTurn]) -> str:
     if len(assistant_texts) >= 3:
         structural_texts = assistant_texts[-3:]
         shared_markers = [
-            marker
-            for marker in _STRUCTURE_MARKERS
-            if sum(1 for text in structural_texts if marker in text) >= 2
+            marker for marker in _STRUCTURE_MARKERS if sum(1 for text in structural_texts if marker in text) >= 2
         ]
         if len(shared_markers) >= 4:
             hints.append("最近句式有点一个模子，少用“先判断一下、再补解释”的答法")

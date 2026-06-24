@@ -155,3 +155,73 @@ async def trim_relationship_notes(bot_id: int, group_id: int | None, *, cfg: Llm
             await session.execute(delete(LlmRelationshipNoteRow).where(LlmRelationshipNoteRow.id.in_(stale_ids)))
             await session.commit()
     return len(stale_ids)
+
+
+async def list_relationship_notes(
+    bot_id: int,
+    group_id: int | None,
+    *,
+    query: str = "",
+    limit: int = 50,
+) -> list[dict[str, object]]:
+    if not is_relationship_store_available():
+        return []
+    scope_gid = normalize_group_scope(group_id)
+    max_limit = max(1, min(int(limit), 200))
+    async with get_session(read_only=True) as session:
+        rows = (
+            (
+                await session.execute(
+                    select(LlmRelationshipNoteRow)
+                    .where(
+                        LlmRelationshipNoteRow.bot_id == int(bot_id),
+                        LlmRelationshipNoteRow.group_id == scope_gid,
+                    )
+                    .order_by(LlmRelationshipNoteRow.updated_at.desc(), LlmRelationshipNoteRow.id.desc())
+                    .limit(max_limit * 4)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    needle = str(query or "").strip().casefold()
+    items: list[dict[str, object]] = []
+    for row in rows:
+        content = str(row.content or "").strip()
+        source = str(row.source or "").strip() or "teach"
+        if needle and needle not in content.casefold() and needle not in source.casefold():
+            continue
+        items.append({
+            "id": int(row.id),
+            "bot_id": int(row.bot_id),
+            "group_id": int(row.group_id),
+            "user_id": int(row.user_id),
+            "content": content,
+            "source": source,
+            "weight": float(row.weight or 0.0),
+            "created_at": int(row.created_at or 0),
+            "updated_at": int(row.updated_at or 0),
+        })
+        if len(items) >= max_limit:
+            break
+    return items
+
+
+async def delete_relationship_note(note_id: int, *, bot_id: int | None = None) -> bool:
+    if not is_relationship_store_available():
+        return False
+    async with get_session() as session:
+        row = (
+            await session.execute(
+                select(LlmRelationshipNoteRow).where(
+                    LlmRelationshipNoteRow.id == int(note_id),
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return False
+        if bot_id is not None and int(row.bot_id or 0) != int(bot_id):
+            return False
+        await session.delete(row)
+        await session.commit()
+    return True

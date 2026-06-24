@@ -25,6 +25,75 @@ def runtime_trace_path() -> Path:
     return runtime_debug_dir() / "runtime_traces.jsonl"
 
 
+def _preview_text(text: str, *, limit: int = 160) -> str:
+    plain = str(text or "").strip()
+    if len(plain) <= limit:
+        return plain
+    return plain[: limit - 1].rstrip() + "…"
+
+
+def _last_user_message(messages: list[dict[str, Any]]) -> str:
+    for item in reversed(messages):
+        if str(item.get("role") or "").strip().lower() == "user":
+            return str(item.get("content") or "").strip()
+    return ""
+
+
+def build_stage_inputs(
+    *,
+    system_prompt: str,
+    messages: list[dict[str, Any]],
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    tool_catalog = metadata.get("tool_catalog") if isinstance(metadata.get("tool_catalog"), dict) else {}
+    tools = tool_catalog.get("tools") if isinstance(tool_catalog.get("tools"), list) else []
+    hybrid_trace = (
+        metadata.get("hybrid_retrieval_trace") if isinstance(metadata.get("hybrid_retrieval_trace"), dict) else {}
+    )
+    last_user_text = _last_user_message(messages)
+    base = {
+        "message_count": len(messages),
+        "last_user_message": _preview_text(last_user_text),
+        "system_prompt_preview": _preview_text(system_prompt, limit=220),
+    }
+    return {
+        "plan": {
+            **base,
+            "agent_stage_plan": list(metadata.get("agent_stage_plan") or []),
+        },
+        "retrieve": {
+            "query_text": _preview_text(last_user_text),
+            "sources": list(hybrid_trace.get("sources") or []),
+            "memory": hybrid_trace.get("memory") or {},
+            "knowledge": hybrid_trace.get("knowledge") or {},
+            "relationship": hybrid_trace.get("relationship") or {},
+        },
+        "tool_loop": {
+            "tools_enabled": bool(metadata.get("tools_enabled")),
+            "tool_schema_count": int(metadata.get("tool_schema_count") or len(tools)),
+            "tool_names": [
+                str(
+                    item.get("name")
+                    or ((item.get("function") or {}).get("name") if isinstance(item.get("function"), dict) else "")
+                    or ""
+                ).strip()
+                for item in tools
+                if isinstance(item, dict)
+                and str(
+                    item.get("name")
+                    or ((item.get("function") or {}).get("name") if isinstance(item.get("function"), dict) else "")
+                    or ""
+                ).strip()
+            ][:24],
+        },
+        "generate": {
+            **base,
+            "mode": metadata.get("mode"),
+            "task": metadata.get("task"),
+        },
+    }
+
+
 def append_request_snapshot(
     *,
     request_id: str,
@@ -42,6 +111,11 @@ def append_request_snapshot(
         "system_prompt": system_prompt,
         "messages": messages,
         "agent_stage_plan": list(metadata.get("agent_stage_plan") or []),
+        "stage_inputs": build_stage_inputs(
+            system_prompt=system_prompt,
+            messages=messages,
+            metadata=metadata,
+        ),
         "tool_catalog": metadata.get("tool_catalog") or {},
         "metadata_subset": {
             "task": metadata.get("task"),
@@ -90,6 +164,7 @@ def build_replay_payload(*, request_id: str, mode: str = "mock_tools") -> dict[s
         "system_prompt": snapshot.get("system_prompt"),
         "messages": snapshot.get("messages"),
         "agent_stage_plan": snapshot.get("agent_stage_plan"),
+        "stage_inputs": snapshot.get("stage_inputs") or {},
         "tool_catalog": snapshot.get("tool_catalog"),
         "metadata_subset": snapshot.get("metadata_subset"),
         "trace": bundle.get("trace"),

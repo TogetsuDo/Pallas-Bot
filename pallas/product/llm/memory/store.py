@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import operator
 import time
+from typing import Any
 
 from sqlalchemy import delete, func, select
 
@@ -199,6 +199,22 @@ async def retrieve_memory_entries(
     *,
     cfg: LlmConfig | None = None,
 ) -> list[str]:
+    hits = await retrieve_memory_hits(
+        bot_id,
+        group_id,
+        query_text,
+        cfg=cfg,
+    )
+    return [str(item.get("content") or "").strip() for item in hits]
+
+
+async def retrieve_memory_hits(
+    bot_id: int,
+    group_id: int | None,
+    query_text: str,
+    *,
+    cfg: LlmConfig | None = None,
+) -> list[dict[str, Any]]:
     if not is_llm_memory_store_available():
         return []
     c = cfg or get_llm_config()
@@ -220,7 +236,7 @@ async def retrieve_memory_entries(
             .scalars()
             .all()
         )
-    scored: list[tuple[int, str]] = []
+    scored: list[dict[str, Any]] = []
     for row in rows:
         score = memory_relevance_score(
             query_text,
@@ -229,15 +245,91 @@ async def retrieve_memory_entries(
         )
         if score <= 0:
             continue
-        scored.append((score, str(row.content or "").strip()))
-    scored.sort(key=operator.itemgetter(0), reverse=True)
+        scored.append({
+            "score": score,
+            "content": str(row.content or "").strip(),
+            "keywords": str(row.keywords or "").strip(),
+            "source": str(row.source or "").strip() or "memory",
+            "group_id": int(row.group_id or 0),
+        })
+    scored.sort(key=lambda item: int(item.get("score") or 0), reverse=True)
     seen: set[str] = set()
-    out: list[str] = []
-    for _, content in scored:
+    out: list[dict[str, Any]] = []
+    for item in scored:
+        content = str(item.get("content") or "").strip()
         if not content or content in seen:
             continue
         seen.add(content)
-        out.append(content)
+        out.append(item)
         if len(out) >= min(top_k, 3):
             break
     return out
+
+
+async def list_memory_entries(
+    bot_id: int,
+    group_id: int | None,
+    *,
+    query: str = "",
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    if not is_llm_memory_store_available():
+        return []
+    scope_gid = normalize_group_scope(group_id)
+    max_limit = max(1, min(int(limit), 200))
+    async with get_session(read_only=True) as session:
+        rows = (
+            (
+                await session.execute(
+                    select(LlmMemoryEntryRow)
+                    .where(
+                        LlmMemoryEntryRow.bot_id == int(bot_id),
+                        LlmMemoryEntryRow.group_id == scope_gid,
+                    )
+                    .order_by(LlmMemoryEntryRow.updated_at.desc(), LlmMemoryEntryRow.id.desc())
+                    .limit(max_limit * 4)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    needle = str(query or "").strip().casefold()
+    items: list[dict[str, Any]] = []
+    for row in rows:
+        content = str(row.content or "").strip()
+        keywords = str(row.keywords or "").strip()
+        if needle and needle not in content.casefold() and needle not in keywords.casefold():
+            continue
+        items.append({
+            "id": int(row.id),
+            "bot_id": int(row.bot_id),
+            "group_id": int(row.group_id),
+            "keywords": keywords,
+            "content": content,
+            "source": str(row.source or "").strip() or "teach",
+            "created_at": int(row.created_at or 0),
+            "updated_at": int(row.updated_at or 0),
+        })
+        if len(items) >= max_limit:
+            break
+    return items
+
+
+async def delete_memory_entry(entry_id: int, *, bot_id: int | None = None) -> bool:
+    if not is_llm_memory_store_available():
+        return False
+    async with get_session() as session:
+        row = (
+            await session.execute(
+                select(LlmMemoryEntryRow).where(
+                    LlmMemoryEntryRow.id == int(entry_id),
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return False
+        if bot_id is not None and int(row.bot_id or 0) != int(bot_id):
+            return False
+        await session.delete(row)
+        await session.commit()
+    return True

@@ -496,6 +496,7 @@ async def test_handle_llm_chat_records_route_and_fallback_meta(monkeypatch: pyte
         lambda: SimpleNamespace(
             llm_memory_rag_enabled=False,
             llm_relationship_notes_enabled=False,
+            llm_chat_enabled=True,
             llm_select_enabled=True,
             llm_polish_lite_enabled=False,
             llm_polish_enabled=False,
@@ -514,8 +515,21 @@ async def test_handle_llm_chat_records_route_and_fallback_meta(monkeypatch: pyte
             )
         ),
     )
-    monkeypatch.setattr(mod, "append_memory_context", AsyncMock(side_effect=lambda prompt, **_: prompt))
-    monkeypatch.setattr(mod, "append_relationship_context", AsyncMock(side_effect=lambda prompt, **_: prompt))
+    monkeypatch.setattr(
+        mod,
+        "enrich_system_with_memory_context",
+        AsyncMock(side_effect=lambda prompt, **_: SimpleNamespace(system_prompt=prompt, trace={"hit_count": 1})),
+    )
+    monkeypatch.setattr(
+        mod,
+        "enrich_system_with_knowledge_sources",
+        AsyncMock(side_effect=lambda prompt, **_: SimpleNamespace(system_prompt=prompt, trace={"hit_count": 0})),
+    )
+    monkeypatch.setattr(
+        mod,
+        "enrich_system_with_relationship_context",
+        AsyncMock(side_effect=lambda prompt, **_: SimpleNamespace(system_prompt=prompt, trace={"hit_count": 0})),
+    )
     monkeypatch.setattr(
         mod,
         "build_llm_chat_expression_suffix",
@@ -550,6 +564,8 @@ async def test_handle_llm_chat_records_route_and_fallback_meta(monkeypatch: pyte
         ],
     )
     monkeypatch.setattr(mod, "GroupMessageEvent", SimpleNamespace)
+    monkeypatch.setattr(mod, "resolve_conversation_feature_level", lambda *_args, **_kwargs: "full_conversation_kernel")
+    monkeypatch.setattr(mod, "can_read_behavioral_learning", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(mod, "evaluate_llm_reply_gate", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(mod, "check_llm_chat_gate", AsyncMock(return_value=None))
     monkeypatch.setattr(mod, "refresh_llm_chat_cooldown", AsyncMock())
@@ -601,14 +617,13 @@ async def test_handle_llm_chat_records_route_and_fallback_meta(monkeypatch: pyte
     assert payload["behavior_scene"] == "provocation"
     assert payload["behavior_pattern_ids"] == ["p1"]
     assert payload["behavior_actions"] == ["light_tease_and_close"]
-    assert "本轮行为参考" in payload["behavior_hint"]
+    assert payload["behavior_hint"] == ""
     submit_request = submit_mock.await_args.args[0]
     assert "【本轮表达去重】" in submit_request.system_prompt
-    assert "【群聊注意】" in submit_request.system_prompt
-    assert "【本轮行为参考】" in submit_request.system_prompt
     assert "【表达习惯参考】" in submit_request.system_prompt
     assert "【收尾变化参考】" in submit_request.system_prompt
     assert "【语料收尾参考】" in submit_request.system_prompt
+    assert submit_request.hybrid_retrieval_trace["sources"] == ["memory"]
 
 
 @pytest.mark.asyncio
@@ -644,6 +659,7 @@ async def test_handle_llm_chat_defers_when_user_likely_not_finished(monkeypatch:
         lambda: SimpleNamespace(
             llm_memory_rag_enabled=False,
             llm_relationship_notes_enabled=False,
+            llm_chat_enabled=True,
             llm_select_enabled=False,
             llm_polish_lite_enabled=False,
             llm_polish_enabled=False,
@@ -662,9 +678,24 @@ async def test_handle_llm_chat_defers_when_user_likely_not_finished(monkeypatch:
             )
         ),
     )
-    monkeypatch.setattr(mod, "append_memory_context", AsyncMock(side_effect=lambda prompt, **_: prompt))
-    monkeypatch.setattr(mod, "append_relationship_context", AsyncMock(side_effect=lambda prompt, **_: prompt))
+    monkeypatch.setattr(
+        mod,
+        "enrich_system_with_memory_context",
+        AsyncMock(side_effect=lambda prompt, **_: SimpleNamespace(system_prompt=prompt, trace={"hit_count": 0})),
+    )
+    monkeypatch.setattr(
+        mod,
+        "enrich_system_with_knowledge_sources",
+        AsyncMock(side_effect=lambda prompt, **_: SimpleNamespace(system_prompt=prompt, trace={"hit_count": 0})),
+    )
+    monkeypatch.setattr(
+        mod,
+        "enrich_system_with_relationship_context",
+        AsyncMock(side_effect=lambda prompt, **_: SimpleNamespace(system_prompt=prompt, trace={"hit_count": 0})),
+    )
     monkeypatch.setattr(mod, "build_llm_chat_expression_suffix", AsyncMock(return_value=""))
+    monkeypatch.setattr(mod, "resolve_conversation_feature_level", lambda *_args, **_kwargs: "full_conversation_kernel")
+    monkeypatch.setattr(mod, "can_read_behavioral_learning", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(mod, "evaluate_llm_reply_gate", lambda *_args, **_kwargs: None)
     submit_mock = AsyncMock(return_value=SimpleNamespace(ok=True, task_id="ai-task-1", status="queued"))
     monkeypatch.setattr(mod, "submit_chat_task", submit_mock)

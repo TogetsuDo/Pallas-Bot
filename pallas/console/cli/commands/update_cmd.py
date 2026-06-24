@@ -19,8 +19,8 @@ def register(sub: argparse._SubParsersAction) -> None:
 
 def run_bot(args: argparse.Namespace) -> int:
     async def work() -> int:
-        from pallas.console.cli.update_ops import apply_bot_update
         from packages.pb_webui.manager import BotGitUpdateError
+        from pallas.console.cli.update_ops import apply_bot_update
 
         try:
             data = await apply_bot_update(restart=bool(args.restart))

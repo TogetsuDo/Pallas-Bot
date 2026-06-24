@@ -31,10 +31,7 @@ def _hot_load_package_modules(package: str) -> bool:
 
 def activation_pending_note(policy: str | None) -> str:
     if policy == "hot-reloadable":
-        return (
-            "理论支持热加载；当前环境仍需重启生效，"
-            "可选择「安装并重启」尝试立即加载。"
-        )
+        return "理论支持热加载；当前环境仍需重启生效，可选择「安装并重启」尝试立即加载。"
     if policy == "workers-restart":
         return "需重启 Worker（分片部署）或 Bot 进程后生效。"
     if policy == "full-restart":

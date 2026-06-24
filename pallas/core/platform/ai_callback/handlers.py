@@ -15,7 +15,6 @@ from pallas.core.platform.ai_callback.task_types import (
     REPEATER_SELECT_TASK_TYPE,
 )
 
-
 _TAIL_FRAGMENT_SPLIT_RE = re.compile(r"[。！？!?~～\n\r]+")
 
 

@@ -153,6 +153,7 @@ async def test_submit_chat_task_unified_llm_chat_payload_includes_agent_stage_pl
             group_id=20002,
             user_id=30003,
             task="llm_chat",
+            hybrid_retrieval_trace={"sources": ["memory"], "memory": {"hit_count": 1}},
         ),
         cfg=cfg,
     )
@@ -163,6 +164,7 @@ async def test_submit_chat_task_unified_llm_chat_payload_includes_agent_stage_pl
     assert metadata["tools_enabled"] is True
     assert metadata["agent_stage_plan"] == ["plan", "tool_loop", "generate"]
     assert metadata["tool_schema_count"] == 2
+    assert metadata["hybrid_retrieval_trace"]["memory"]["hit_count"] == 1
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,9 @@
-from .inject import append_memory_context, append_relationship_context
+from .inject import (
+    append_memory_context,
+    append_relationship_context,
+    enrich_system_with_memory_context,
+    enrich_system_with_relationship_context,
+)
 from .relationship import extract_at_target, parse_relationship_teach
 from .relationship_store import (
     is_relationship_store_available,
@@ -11,6 +16,8 @@ from .teach import parse_memory_teach
 __all__ = [
     "append_memory_context",
     "append_relationship_context",
+    "enrich_system_with_memory_context",
+    "enrich_system_with_relationship_context",
     "extract_at_target",
     "is_llm_memory_store_available",
     "is_relationship_store_available",

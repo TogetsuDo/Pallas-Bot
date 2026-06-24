@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -135,7 +137,7 @@ def test_llm_repeater_feedback_promotion_candidates_api(monkeypatch) -> None:
 def test_llm_repeater_feedback_promotion_candidates_resolve_api(monkeypatch) -> None:
     from pallas.product.llm.kernel.feedback_models import PromotionCandidate
 
-    def fake_resolve_promotion_candidate(candidate_id: str, *, action: str, reason: str = ""):
+    async def fake_resolve_promotion_candidate(candidate_id: str, *, action: str, reason: str = ""):
         assert candidate_id == "cand-1"
         assert action == "promote"
         return PromotionCandidate(
@@ -145,12 +147,13 @@ def test_llm_repeater_feedback_promotion_candidates_resolve_api(monkeypatch) -> 
             reply_text="少来。",
             support_count=2,
             promoted=True,
+            writeback_status="written",
         )
 
     monkeypatch.setattr(
         mod,
-        "resolve_promotion_candidate",
-        fake_resolve_promotion_candidate,
+        "resolve_promotion_candidate_with_writeback",
+        AsyncMock(side_effect=fake_resolve_promotion_candidate),
         raising=False,
     )
 
@@ -164,3 +167,4 @@ def test_llm_repeater_feedback_promotion_candidates_resolve_api(monkeypatch) -> 
     payload = response.json()
     assert payload["ok"] is True
     assert payload["data"]["promoted"] is True
+    assert payload["data"]["writeback_status"] == "written"

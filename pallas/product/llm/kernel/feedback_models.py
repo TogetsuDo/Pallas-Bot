@@ -16,6 +16,9 @@ class PromotionCandidate(BaseModel):
     last_seen_at: int = 0
     promoted: bool = False
     rejected_reason: str = ""
+    writeback_status: str = ""
+    writeback_message: str = ""
+    writeback_at: int = 0
     behavior_scene: str = ""
     source_request_id: str = ""
 

@@ -7,6 +7,7 @@ import json
 import time
 from typing import Literal
 
+from pallas.core.foundation.db.modules import Answer, Context
 from pallas.product.llm.kernel.feedback_models import PromotionCandidate
 from pallas.product.llm.repeater_feedback import (
     LlmRepeaterFeedbackEntry,
@@ -160,6 +161,103 @@ def resolve_promotion_candidate(
     rows[key] = item
     _write_candidates_index(rows)
     return item
+
+
+def _chat_keywords(text: str, *, group_id: int) -> str:
+    try:
+        from packages.repeater.model import ChatData
+
+        chat = ChatData(
+            group_id=int(group_id),
+            user_id=0,
+            raw_message=str(text or "").strip(),
+            plain_text=str(text or "").strip(),
+            time=0,
+            bot_id=0,
+        )
+        return str(chat.keywords or "").strip() or str(text or "").strip()
+    except Exception:
+        return str(text or "").strip()
+
+
+async def writeback_promotion_candidate(candidate: PromotionCandidate) -> PromotionCandidate:
+    from pallas.core.foundation.db.context_repo_access import get_shared_context_repository
+
+    now = int(time.time())
+    trigger_keywords = _chat_keywords(candidate.trigger_text, group_id=int(candidate.group_id))
+    answer_keywords = _chat_keywords(candidate.reply_text, group_id=int(candidate.group_id))
+    if not trigger_keywords or not candidate.reply_text:
+        candidate.writeback_status = "failed"
+        candidate.writeback_message = "empty trigger or reply"
+        candidate.writeback_at = now
+        return candidate
+    repo = get_shared_context_repository()
+    learn_answer = getattr(repo, "learn_answer", None)
+    if callable(learn_answer):
+        await learn_answer(
+            keywords=trigger_keywords,
+            group_id=int(candidate.group_id),
+            answer_keywords=answer_keywords,
+            answer_time=now,
+            message=str(candidate.reply_text),
+            append_on_existing=True,
+        )
+    elif await repo.context_exists_by_keywords(trigger_keywords):
+        await repo.upsert_answer(
+            keywords=trigger_keywords,
+            group_id=int(candidate.group_id),
+            answer_keywords=answer_keywords,
+            answer_time=now,
+            message=str(candidate.reply_text),
+            append_on_existing=True,
+        )
+    else:
+        context = Context.model_construct(
+            keywords=trigger_keywords,
+            time=now,
+            trigger_count=1,
+            answers=[
+                Answer(
+                    keywords=answer_keywords,
+                    group_id=int(candidate.group_id),
+                    count=1,
+                    time=now,
+                    messages=[str(candidate.reply_text)],
+                )
+            ],
+            ban=[],
+            clear_time=0,
+        )
+        await repo.insert(context)
+    candidate.writeback_status = "written"
+    candidate.writeback_message = "context_repository"
+    candidate.writeback_at = now
+    return candidate
+
+
+async def resolve_promotion_candidate_with_writeback(
+    candidate_id: str,
+    *,
+    action: ResolveAction,
+    reason: str = "",
+) -> PromotionCandidate | None:
+    item = resolve_promotion_candidate(candidate_id, action=action, reason=reason)
+    if item is None or action != "promote":
+        return item
+    try:
+        updated = await writeback_promotion_candidate(item)
+        rows = _load_candidates_index()
+        rows[str(updated.candidate_id).strip()] = updated
+        _write_candidates_index(rows)
+        return updated
+    except Exception as exc:  # noqa: BLE001
+        item.writeback_status = "failed"
+        item.writeback_message = str(exc)
+        item.writeback_at = int(time.time())
+        rows = _load_candidates_index()
+        rows[str(item.candidate_id).strip()] = item
+        _write_candidates_index(rows)
+        return item
 
 
 def note_feedback_entry_for_promotion(entry: LlmRepeaterFeedbackEntry) -> None:

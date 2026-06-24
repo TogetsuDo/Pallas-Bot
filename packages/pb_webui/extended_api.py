@@ -19,7 +19,7 @@ from operator import itemgetter
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from nonebot import get_bots, get_driver, logger
 from nonebot.adapters import Bot as BaseBot  # noqa: TC002
@@ -51,9 +51,15 @@ from pallas.product.llm.kernel.observability import (
     build_conversation_kernel_status,
     list_recent_conversation_traces,
 )
+from pallas.product.llm.knowledge.registry import list_active_knowledge_sources
+from pallas.product.llm.memory.relationship_store import (
+    delete_relationship_note,
+    list_relationship_notes,
+)
+from pallas.product.llm.memory.store import delete_memory_entry, list_memory_entries
 from pallas.product.llm.promotion_candidates import (
     list_promotion_candidates,
-    resolve_promotion_candidate,
+    resolve_promotion_candidate_with_writeback,
 )
 from pallas.product.llm.repeater_feedback import (
     group_feedback_bias_snapshot,
@@ -527,6 +533,60 @@ def _save_ai_extension_config(data: dict[str, Any]) -> dict[str, Any]:
     path = _ai_extension_config_path()
     path.write_text(json.dumps(clean, ensure_ascii=False, indent=2), encoding="utf-8")
     return clean
+
+
+async def ai_extension_http_json(
+    *,
+    method: Literal["GET", "POST"],
+    path: str,
+    body: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    import urllib.error
+    import urllib.request
+
+    cfg = _load_ai_extension_config()
+    base = str(cfg["base_url"]).rstrip("/")
+    api_prefix = str(cfg.get("api_prefix", "/api")).strip() or "/api"
+    if not api_prefix.startswith("/"):
+        api_prefix = "/" + api_prefix
+    merged_path = f"{api_prefix.rstrip('/')}/{path.lstrip('/')}"
+    p = merged_path if merged_path.startswith("/") else f"/{merged_path}"
+    url = f"{base}{p}"
+    headers = {"Content-Type": "application/json"}
+    if cfg.get("token"):
+        headers["Authorization"] = f"Bearer {cfg['token']}"
+    data_b = json.dumps(body or {}).encode("utf-8") if method == "POST" else None
+    req = urllib.request.Request(url, method=method, headers=headers, data=data_b)
+
+    def _do() -> tuple[int, str]:
+        with urllib.request.urlopen(req, timeout=float(cfg["timeout_sec"])) as resp:
+            status_code = int(getattr(resp, "status", 200) or 200)
+            txt = resp.read().decode("utf-8", errors="ignore")
+            return status_code, txt
+
+    try:
+        status_code, txt = await asyncio.to_thread(_do)
+        try:
+            data = json.loads(txt) if txt else {}
+        except Exception:  # noqa: BLE001
+            data = {"raw": txt}
+        return {"ok": 200 <= status_code < 300, "status_code": status_code, "url": url, "data": data, "error": None}
+    except urllib.error.HTTPError as e:
+        return {
+            "ok": False,
+            "status_code": int(getattr(e, "code", 0) or 0),
+            "url": url,
+            "data": {},
+            "error": str(e),
+        }
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "status_code": None, "url": url, "data": {}, "error": str(e)}
+
+
+class LlmReplayRunBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: str = "mock_tools"
 
 
 def _find_online_onebot_v11_bot(self_id: str) -> tuple[str, object]:
@@ -5593,10 +5653,10 @@ def register_extended_api(
         x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
     ) -> JSONResponse:
         _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
-        from pallas.product.llm.model_admin import test_provider
+        from pallas.product.llm.model_admin import probe_provider
 
         try:
-            data = await test_provider(provider_id)
+            data = await probe_provider(provider_id)
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": data})
@@ -5726,7 +5786,7 @@ def register_extended_api(
         if action not in {"promote", "reject"}:
             raise HTTPException(status_code=400, detail="action must be promote or reject")
         try:
-            updated = resolve_promotion_candidate(
+            updated = await resolve_promotion_candidate_with_writeback(
                 candidate_id,
                 action=action,  # type: ignore[arg-type]
                 reason=str(body.get("reason") or "").strip(),
@@ -5765,6 +5825,102 @@ def register_extended_api(
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": {"items": items, "limit": limit}})
+
+    @router.get(f"{x}/llm/conversation-kernel/memory", include_in_schema=True)
+    async def _llm_conversation_kernel_memory_get(
+        bot_id: int = Query(..., ge=1, description="Bot QQ"),
+        group_id: int | None = Query(default=None, ge=1, description="群号"),
+        query: str | None = Query(default=None, description="内容/关键词搜索"),
+        limit: int = Query(default=50, ge=1, le=200),
+    ) -> JSONResponse:
+        try:
+            items = await list_memory_entries(
+                int(bot_id),
+                group_id,
+                query=str(query or "").strip(),
+                limit=limit,
+            )
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": {"items": items, "count": len(items), "limit": limit}})
+
+    @router.post(f"{x}/llm/conversation-kernel/memory/delete", include_in_schema=True)
+    async def _llm_conversation_kernel_memory_delete(
+        body: dict[str, Any],
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        entry_id = int(body.get("id") or 0)
+        bot_id = int(body.get("bot_id") or 0)
+        if entry_id <= 0 or bot_id <= 0:
+            raise HTTPException(status_code=400, detail="id and bot_id required")
+        try:
+            ok = await delete_memory_entry(entry_id, bot_id=bot_id)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        if not ok:
+            raise HTTPException(status_code=404, detail="未找到该记忆条目")
+        return JSONResponse({"ok": True, "data": {"id": entry_id}})
+
+    @router.get(f"{x}/llm/conversation-kernel/relationship-notes", include_in_schema=True)
+    async def _llm_conversation_kernel_relationship_notes_get(
+        bot_id: int = Query(..., ge=1, description="Bot QQ"),
+        group_id: int | None = Query(default=None, ge=1, description="群号"),
+        query: str | None = Query(default=None, description="内容搜索"),
+        limit: int = Query(default=50, ge=1, le=200),
+    ) -> JSONResponse:
+        try:
+            items = await list_relationship_notes(
+                int(bot_id),
+                group_id,
+                query=str(query or "").strip(),
+                limit=limit,
+            )
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": {"items": items, "count": len(items), "limit": limit}})
+
+    @router.post(f"{x}/llm/conversation-kernel/relationship-notes/delete", include_in_schema=True)
+    async def _llm_conversation_kernel_relationship_notes_delete(
+        body: dict[str, Any],
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        note_id = int(body.get("id") or 0)
+        bot_id = int(body.get("bot_id") or 0)
+        if note_id <= 0 or bot_id <= 0:
+            raise HTTPException(status_code=400, detail="id and bot_id required")
+        try:
+            ok = await delete_relationship_note(note_id, bot_id=bot_id)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        if not ok:
+            raise HTTPException(status_code=404, detail="未找到该关系备注")
+        return JSONResponse({"ok": True, "data": {"id": note_id}})
+
+    @router.get(f"{x}/llm/conversation-kernel/knowledge-sources", include_in_schema=True)
+    async def _llm_conversation_kernel_knowledge_sources_get() -> JSONResponse:
+        try:
+            items = [
+                {
+                    "source_id": row.source_id,
+                    "title": row.decl.title,
+                    "description": row.decl.description,
+                    "scope": row.decl.scope.value,
+                    "retrieval_mode": row.decl.retrieval_mode.value,
+                    "origin": row.origin.value,
+                    "plugin_name": row.plugin_name,
+                    "plugin_title": row.plugin_title,
+                    "default": bool(row.decl.default),
+                    "chunk_count": len(row.decl.chunks),
+                }
+                for row in list_active_knowledge_sources()
+            ]
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": {"items": items, "count": len(items)}})
 
     @router.post(f"{x}/common-config/llm/history/behavior/annotate", include_in_schema=True)
     async def _llm_history_behavior_annotate(body: dict[str, Any]) -> JSONResponse:
@@ -5805,9 +5961,7 @@ def register_extended_api(
             if group_id is not None:
                 target_group_id = int(group_id)
                 items = [
-                    item
-                    for item in items
-                    if item.scope_group_id is None or int(item.scope_group_id) == target_group_id
+                    item for item in items if item.scope_group_id is None or int(item.scope_group_id) == target_group_id
                 ]
             if not include_disabled:
                 items = [item for item in items if not item.disabled]
@@ -5912,6 +6066,25 @@ def register_extended_api(
         if payload.get("error") == "snapshot_not_found":
             raise HTTPException(status_code=404, detail="未找到 request snapshot")
         return JSONResponse({"ok": True, "data": payload})
+
+    @router.post(f"{x}/common-config/llm/runtime-debug/{{request_id}}/replay/run", include_in_schema=True)
+    async def _llm_runtime_replay_run_post(
+        request_id: str,
+        body: Annotated[LlmReplayRunBody, Body()],
+    ) -> JSONResponse:
+        from pallas.product.llm.runtime_debug import build_replay_payload
+
+        rid = str(request_id or "").strip()
+        if not rid:
+            raise HTTPException(status_code=400, detail="缺少 request_id")
+        payload = build_replay_payload(request_id=rid, mode=str(body.mode or "mock_tools"))
+        if payload.get("error") == "snapshot_not_found":
+            raise HTTPException(status_code=404, detail="未找到 request snapshot")
+        replay_result = await ai_extension_http_json(method="POST", path="/v1/chat/replay", body=payload)
+        if not replay_result.get("ok"):
+            detail = replay_result.get("error") or replay_result.get("data") or "AI replay failed"
+            raise HTTPException(status_code=int(replay_result.get("status_code") or 502), detail=detail)
+        return JSONResponse({"ok": True, "data": replay_result.get("data") or {}})
 
     @router.get(f"{x}/common-config/llm/persona-observe", include_in_schema=True)
     async def _llm_persona_observe_get(

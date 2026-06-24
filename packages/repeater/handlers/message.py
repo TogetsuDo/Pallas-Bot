@@ -141,12 +141,11 @@ async def handle_group_message(bot: Bot, event: GroupMessageEvent):
         if getattr(msg, "user_id", None) is not None
     ]
     bot_recently_replied = any(
-        int(getattr(reply, "user_id", 0) or 0) == int(event.self_id)
-        for reply in recent_group_messages[-2:]
+        int(getattr(reply, "user_id", 0) or 0) == int(event.self_id) for reply in recent_group_messages[-2:]
     )
-    has_recent_back_and_forth = len({
-        user_id for user_id in recent_human_user_ids[-4:] if user_id and user_id != int(event.self_id)
-    }) >= 2
+    has_recent_back_and_forth = (
+        len({user_id for user_id in recent_human_user_ids[-4:] if user_id and user_id != int(event.self_id)}) >= 2
+    )
     plan = build_repeater_llm_plan(
         bundle,
         llm_enabled=llm_cfg.llm_chat_enabled,

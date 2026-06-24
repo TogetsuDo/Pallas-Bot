@@ -105,9 +105,7 @@ def _normalize_historical_ai_snapshot(snapshot: dict[str, Any] | None) -> dict[s
     return {
         **normalized,
         "failure_counts": (
-            dict(classification.get("failure_counts"))
-            if isinstance(classification.get("failure_counts"), dict)
-            else {}
+            dict(classification.get("failure_counts")) if isinstance(classification.get("failure_counts"), dict) else {}
         ),
         "provider_stats": _normalized_classification_table(classification.get("provider_stats")),
         "model_stats": _normalized_classification_table(classification.get("model_stats")),
@@ -355,9 +353,7 @@ async def fetch_provider_models(
 
     c = cfg or get_llm_config()
     pid = quote(str(provider_id), safe="")
-    response = await HTTPXClient.get(
-        f"{ai_llm_api_base(c)}/providers/{pid}/models", timeout=timeout_sec
-    )
+    response = await HTTPXClient.get(f"{ai_llm_api_base(c)}/providers/{pid}/models", timeout=timeout_sec)
     if response is None:
         raise RuntimeError("拉取模型列表失败")
     if response.status_code != 200:
@@ -411,7 +407,7 @@ async def save_local_routing_config(
     return payload
 
 
-async def test_provider(
+async def probe_provider(
     provider_id: str,
     *,
     cfg: LlmConfig | None = None,
@@ -421,9 +417,7 @@ async def test_provider(
 
     c = cfg or get_llm_config()
     pid = quote(str(provider_id), safe="")
-    response = await HTTPXClient.post(
-        f"{ai_llm_api_base(c)}/providers/{pid}/test", json={}, timeout=timeout_sec
-    )
+    response = await HTTPXClient.post(f"{ai_llm_api_base(c)}/providers/{pid}/test", json={}, timeout=timeout_sec)
     if response is None:
         raise RuntimeError("连通性测试失败")
     if response.status_code != 200:
