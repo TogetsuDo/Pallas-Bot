@@ -20,6 +20,7 @@ from .repeater_limit import (
     try_acquire_repeater_llm_slot,
 )
 from .session_store import build_llm_chat_messages, format_legacy_transcript, is_llm_session_store_available
+from .submit_gate import assess_llm_submit_gate
 from .task_routing import resolve_submit_task_name, resolve_task_route_chain, serialize_task_route
 
 
@@ -82,6 +83,11 @@ async def submit_chat_task(request: ChatSubmitRequest, *, cfg: LlmConfig | None 
     url = f"{base}{endpoint}/{request.request_id}"
 
     if c.use_unified_chat_api:
+        gate = await assess_llm_submit_gate()
+        if not gate.allowed:
+            timer.finish(status=gate.status, request_id=request.request_id)
+            return ChatSubmitResult(status=gate.status, ok=False)
+
         route_chain = await resolve_task_route_chain(task_name, explicit_model=request.model)
         task_route = route_chain[0]
         metadata = {

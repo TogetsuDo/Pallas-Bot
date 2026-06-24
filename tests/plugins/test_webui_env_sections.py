@@ -335,6 +335,35 @@ def test_pb_webui_patch_writes_uppercase_env(tmp_path, monkeypatch):
     assert data["env"]["PALLAS_WEBUI_HTTP_BASE"] == "/pallas-test"
 
 
+def test_common_config_raw_toml_roundtrip(tmp_path, monkeypatch):
+    import json
+
+    from pallas.console.webui.env_sections import (
+        apply_webui_env_section_raw_toml,
+        webui_env_section_raw_toml,
+    )
+    from pallas.core.foundation.config import repo_settings as rs
+
+    webui_file = tmp_path / "webui.json"
+    monkeypatch.setattr(rs, "repo_webui_settings_path", lambda: webui_file)
+    text = webui_env_section_raw_toml("pb_webui")
+    assert "[env]" in text
+    assert "# common-config: pb_webui" in text
+    patched = f'{text.rstrip()}\nPALLAS_WEBUI_HTTP_BASE = "/from-raw"\n'
+    apply_webui_env_section_raw_toml("pb_webui", patched)
+    data = json.loads(webui_file.read_text(encoding="utf-8"))
+    assert data["env"]["PALLAS_WEBUI_HTTP_BASE"] == "/from-raw"
+
+
+def test_common_config_raw_unsupported_section():
+    import pytest
+
+    from pallas.console.webui.env_sections import webui_env_section_raw_toml
+
+    with pytest.raises(ValueError, match="不支持"):
+        webui_env_section_raw_toml("service_gateways")
+
+
 @skip_no_message_scrub
 def test_message_scrub_payload_shape(monkeypatch: pytest.MonkeyPatch):
     from pallas.console.webui import webui_env_section_payload

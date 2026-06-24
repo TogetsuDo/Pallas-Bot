@@ -39,6 +39,21 @@ def llm_health_configuration_ok(body: object) -> bool | None:
     return bool(llm.get("configuration_ok"))
 
 
+def llm_health_circuit(body: object) -> dict[str, Any] | None:
+    llm = health_section(body, "llm")
+    if not llm:
+        return None
+    circuit_state = str(llm.get("circuit_state") or "").strip().lower() or None
+    recent = llm.get("recent_failure_class")
+    return {
+        "circuit_state": circuit_state,
+        "consecutive_failures": int(llm.get("consecutive_failures") or 0),
+        "recent_failure_class": str(recent).strip() if recent else None,
+        "health_state": str(llm.get("health_state") or "").strip().lower() or None,
+        "degraded_state": str(llm.get("degraded_state") or "").strip().lower() or None,
+    }
+
+
 def image_health_circuit(body: object) -> dict[str, Any] | None:
     image = health_section(body, "image")
     if not image:
@@ -135,6 +150,10 @@ def llm_health_summary(body: object) -> dict[str, Any] | None:
     if not llm:
         return None
     summary: dict[str, Any] = {}
+    circuit = llm_health_circuit(body)
+    if circuit:
+        if circuit.get("consecutive_failures"):
+            summary["consecutive_failures"] = int(circuit["consecutive_failures"])
     for key in ("health_state", "degraded_state", "circuit_state", "recent_failure_class"):
         raw = llm.get(key)
         if raw is not None and str(raw).strip():

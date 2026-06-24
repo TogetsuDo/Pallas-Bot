@@ -29,6 +29,21 @@ from nonebot.matcher import Matcher  # noqa: TC002
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_core import PydanticUndefined
 
+from packages.pb_webui.console_openapi_models import (
+    IngressDispatchData as _IngressDispatchData,
+)
+from packages.pb_webui.console_openapi_models import (
+    LogsData as _LogsData,
+)
+from packages.pb_webui.console_openapi_models import (
+    PluginConfigData as _PluginConfigData,
+)
+from packages.pb_webui.console_openapi_models import (
+    PluginGovernanceData as _PluginGovernanceData,
+)
+from packages.pb_webui.console_openapi_models import (
+    ShardObservabilityData as _ShardObservabilityData,
+)
 from pallas.console.web.bot_web import LogScope  # noqa: TC001  # FastAPI/OpenAPI 需在运行时解析注解
 from pallas.console.webui import apply_plugin_config_patch, plugin_config_payload
 from pallas.console.webui.console_login import (
@@ -4019,6 +4034,7 @@ class _LlmHealthSummaryData(BaseModel):
     degraded_state: str | None = None
     circuit_state: str | None = None
     recent_failure_class: str | None = None
+    consecutive_failures: int | None = None
     provider_status: list[_LlmHealthProviderRow] = Field(default_factory=list)
 
 
@@ -4063,9 +4079,11 @@ class _LlmRuntimeOverviewHealthData(BaseModel):
     error: str = ""
     llm_runtime_detail: str | None = None
     llm_health: _LlmHealthSummaryData | None = None
+    llm_circuit: dict[str, Any] | None = None
     image_health: _LlmImageHealthData | None = None
     tts_health: _LlmTtsHealthData | None = None
     media_tasks: _LlmMediaTasksHealthData | None = None
+    submit_gate: dict[str, Any] | None = None
 
 
 class _LlmRuntimeOverviewData(BaseModel):
@@ -4073,6 +4091,7 @@ class _LlmRuntimeOverviewData(BaseModel):
     model_admin: dict[str, Any] = Field(default_factory=dict)
     task_stats: dict[str, Any] = Field(default_factory=dict)
     conversation_kernel: dict[str, Any] = Field(default_factory=dict)
+    task_routing_preview: dict[str, Any] = Field(default_factory=dict)
 
 
 class _ServiceProbeResultData(BaseModel):
@@ -4250,6 +4269,24 @@ class _RequestActionsBatchBody(BaseModel):
     action: Literal["approve", "reject"] = "approve"
     friends: list[_RequestBatchFriendRow] = Field(default_factory=list, max_length=500)
     groups: list[_RequestBatchGroupRow] = Field(default_factory=list, max_length=500)
+
+
+async def _resolve_community_plugin_target(body: _CommunityPluginActionBody) -> tuple[str, str, str]:
+    plugin_id = body.plugin_id.strip()
+    repo_url = (body.repository_url or "").strip()
+    ref = (body.ref or "main").strip() or "main"
+    if not repo_url:
+        from pallas.console.webui.community_plugin_index import load_community_plugin_index_safe
+
+        index = await load_community_plugin_index_safe()
+        for entry in index.get("plugins") or []:
+            if str(entry.get("plugin_id")) == plugin_id:
+                repo_url = str(entry.get("repository_url") or "").strip()
+                ref = str(entry.get("ref") or ref).strip() or "main"
+                break
+    if not repo_url:
+        raise HTTPException(status_code=400, detail="缺少 repository_url，且索引中无该插件")
+    return plugin_id, repo_url, ref
 
 
 async def _apply_bot_config_patch(account: int, body: _BotConfigPatch) -> dict[str, Any]:
@@ -4770,15 +4807,19 @@ def register_extended_api(
             },
         })
 
-    @router.get(f"{x}/shard-observability", include_in_schema=True)
-    async def _shard_observability() -> JSONResponse:
+    @router.get(
+        f"{x}/shard-observability",
+        include_in_schema=True,
+        response_model=_ApiOkResponse[_ShardObservabilityData],
+    )
+    async def _shard_observability() -> dict[str, Any]:
         from pallas.core.platform.shard.observability import aggregate_shard_observability
 
         async def _load() -> dict[str, Any]:
             return aggregate_shard_observability()
 
         data = await cached_read(key="shard-observability", loader=_load, ttl_sec=2.0, stale_sec=8.0)
-        return JSONResponse({"ok": True, "data": data})
+        return {"ok": True, "data": data}
 
     @router.get(f"{x}/repeater-metrics/history", include_in_schema=True)
     async def _repeater_metrics_history(limit: int = Query(default=168, ge=1, le=24 * 30)) -> JSONResponse:
@@ -4795,15 +4836,19 @@ def register_extended_api(
         )
         return JSONResponse({"ok": True, "data": data})
 
-    @router.get(f"{x}/ingress-dispatch", include_in_schema=True)
-    async def _ingress_dispatch_metrics() -> JSONResponse:
+    @router.get(
+        f"{x}/ingress-dispatch",
+        include_in_schema=True,
+        response_model=_ApiOkResponse[_IngressDispatchData],
+    )
+    async def _ingress_dispatch_metrics() -> dict[str, Any]:
         from pallas.core.platform.shard.dispatch_observability import aggregate_ingress_dispatch
 
         async def _load() -> dict[str, Any]:
             return aggregate_ingress_dispatch()
 
         data = await cached_read(key="ingress-dispatch", loader=_load, ttl_sec=2.0, stale_sec=8.0)
-        return JSONResponse({"ok": True, "data": data})
+        return {"ok": True, "data": data}
 
     @router.get(f"{x}/message-stats", include_in_schema=True)
     async def _message_stats(
@@ -4973,8 +5018,12 @@ def register_extended_api(
             raise HTTPException(status_code=404, detail=f"README not found for plugin: {target}")
         return JSONResponse({"ok": True, "data": payload})
 
-    @router.get(f"{x}/plugins/{{plugin_name}}/governance", include_in_schema=True)
-    async def _plugin_governance_get(plugin_name: str) -> JSONResponse:
+    @router.get(
+        f"{x}/plugins/{{plugin_name}}/governance",
+        include_in_schema=True,
+        response_model=_ApiOkResponse[_PluginGovernanceData],
+    )
+    async def _plugin_governance_get(plugin_name: str) -> dict[str, Any]:
         from packages.help.global_disable import load_global_disabled_plugins
         from packages.help.visibility import load_help_hidden_plugins
         from pallas.core.limits.config import get_command_limits_config, normalize_command_limit_overrides
@@ -5017,7 +5066,7 @@ def register_extended_api(
 
         hidden = {str(x).strip() for x in load_help_hidden_plugins() if str(x).strip()}
         disabled = {str(x).strip() for x in load_global_disabled_plugins() if str(x).strip()}
-        return JSONResponse({
+        return {
             "ok": True,
             "data": {
                 "plugin": target,
@@ -5040,7 +5089,7 @@ def register_extended_api(
                 "reload_policy": plugin_row.get("reload_policy"),
                 "activation_policy": plugin_row.get("activation_policy"),
             },
-        })
+        }
 
     @router.put(f"{x}/plugins/{{plugin_name}}/governance", include_in_schema=True)
     async def _plugin_governance_put(
@@ -5224,11 +5273,7 @@ def register_extended_api(
         asyncio.create_task(run_extension_install_job(job, runner))
         return JSONResponse({"ok": True, "data": {"job_id": job.job_id, "package": job.package}})
 
-    @router.get(
-        f"{x}/plugins/official-extensions/install-jobs/{{job_id}}/stream",
-        include_in_schema=True,
-    )
-    async def _plugins_official_extensions_install_job_stream(job_id: str) -> StreamingResponse:
+    def _install_job_stream_response(job_id: str) -> StreamingResponse:
         from pallas.console.webui.extension_install_progress import iter_extension_install_job_sse
 
         return StreamingResponse(
@@ -5240,6 +5285,20 @@ def register_extended_api(
                 "X-Accel-Buffering": "no",
             },
         )
+
+    @router.get(
+        f"{x}/plugins/official-extensions/install-jobs/{{job_id}}/stream",
+        include_in_schema=True,
+    )
+    async def _plugins_official_extensions_install_job_stream(job_id: str) -> StreamingResponse:
+        return _install_job_stream_response(job_id)
+
+    @router.get(
+        f"{x}/plugins/install-jobs/{{job_id}}/stream",
+        include_in_schema=True,
+    )
+    async def _plugins_install_job_stream(job_id: str) -> StreamingResponse:
+        return _install_job_stream_response(job_id)
 
     @router.post(f"{x}/plugins/official-extensions/uninstall", include_in_schema=True)
     async def _plugins_official_extensions_uninstall(
@@ -5431,23 +5490,12 @@ def register_extended_api(
             CommunityPluginInstallError,
             install_community_plugin_with_options,
         )
-        from pallas.console.webui.community_plugin_index import load_community_plugin_index_safe
         from pallas.core.shared.utils.format_exception import format_exception_for_log
 
-        repo_url = (body.repository_url or "").strip()
-        ref = (body.ref or "main").strip() or "main"
-        if not repo_url:
-            index = await load_community_plugin_index_safe()
-            for entry in index.get("plugins") or []:
-                if str(entry.get("plugin_id")) == body.plugin_id.strip():
-                    repo_url = str(entry.get("repository_url") or "").strip()
-                    ref = str(entry.get("ref") or ref).strip() or "main"
-                    break
-        if not repo_url:
-            raise HTTPException(status_code=400, detail="缺少 repository_url，且索引中无该插件")
         try:
+            plugin_id, repo_url, ref = await _resolve_community_plugin_target(body)
             data = await install_community_plugin_with_options(
-                body.plugin_id,
+                plugin_id,
                 repository_url=repo_url,
                 ref=ref,
                 restart=bool(body.restart),
@@ -5459,6 +5507,37 @@ def register_extended_api(
         except Exception as e:  # noqa: BLE001
             logger.exception("Pallas-Bot 控制台: 安装社区插件失败")
             raise HTTPException(status_code=500, detail=format_exception_for_log(e)) from e
+
+    @router.post(f"{x}/plugins/community-plugins/install-async", include_in_schema=True)
+    async def _plugins_community_plugins_install_async(
+        body: _CommunityPluginActionBody,
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        import asyncio
+
+        from pallas.console.cli.community_plugin_ops import install_community_plugin_with_options
+        from pallas.console.webui.extension_install_progress import (
+            create_extension_install_job,
+            run_extension_install_job,
+        )
+
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        plugin_id, repo_url, ref = await _resolve_community_plugin_target(body)
+        job = await create_extension_install_job(plugin_id, "install")
+
+        async def runner(_package: str) -> dict[str, Any]:
+            data = await install_community_plugin_with_options(
+                _package,
+                repository_url=repo_url,
+                ref=ref,
+                restart=bool(body.restart),
+            )
+            drop_read_cache(("plugins-community-store", "plugins"))
+            return data
+
+        asyncio.create_task(run_extension_install_job(job, runner))
+        return JSONResponse({"ok": True, "data": {"job_id": job.job_id, "package": plugin_id}})
 
     @router.post(f"{x}/plugins/community-plugins/uninstall", include_in_schema=True)
     async def _plugins_community_plugins_uninstall(
@@ -5634,8 +5713,12 @@ def register_extended_api(
             },
         })
 
-    @router.get(f"{x}/plugins/{{plugin_name}}/config", include_in_schema=True)
-    async def _plugin_config_get(plugin_name: str) -> JSONResponse:
+    @router.get(
+        f"{x}/plugins/{{plugin_name}}/config",
+        include_in_schema=True,
+        response_model=_ApiOkResponse[_PluginConfigData],
+    )
+    async def _plugin_config_get(plugin_name: str) -> dict[str, Any]:
         try:
             data = plugin_config_payload(plugin_name)
         except ValueError:
@@ -5643,7 +5726,7 @@ def register_extended_api(
             data = {"plugin": plugin_name, "module": "", "fields": [], "unexpected_keys": []}
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
-        return JSONResponse({"ok": True, "data": data})
+        return {"ok": True, "data": data}
 
     @router.get(f"{x}/plugins/{{plugin_name}}/config/raw", include_in_schema=True)
     async def _plugin_config_raw_get(plugin_name: str) -> JSONResponse:
@@ -5751,6 +5834,32 @@ def register_extended_api(
             raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": data})
+
+    @router.get(f"{x}/common-config/{{section_id}}/raw", include_in_schema=True)
+    async def _common_config_raw_get(section_id: str) -> JSONResponse:
+        from pallas.console.webui.env_sections import webui_env_section_raw_toml
+
+        try:
+            text = webui_env_section_raw_toml(section_id)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": {"toml": text}})
+
+    @router.put(f"{x}/common-config/{{section_id}}/raw", include_in_schema=True)
+    async def _common_config_raw_put(
+        section_id: str,
+        body: _PluginConfigRawBody,
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        from pallas.console.webui.env_sections import apply_webui_env_section_raw_toml
+
+        try:
+            data = apply_webui_env_section_raw_toml(section_id, str(body.toml or ""))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": data})
 
     @router.post(
@@ -5980,6 +6089,7 @@ def register_extended_api(
     async def _llm_runtime_overview_get() -> dict[str, Any]:
         from pallas.product.llm.ai_health_parse import (
             image_health_circuit,
+            llm_health_circuit,
             llm_health_runtime_detail,
             llm_health_summary,
             parse_media_tasks,
@@ -5987,6 +6097,8 @@ def register_extended_api(
         )
         from pallas.product.llm.model_admin import fetch_llm_task_stats, fetch_model_admin_status
         from pallas.product.llm.startup_probe import probe_ai_service_health
+        from pallas.product.llm.submit_gate import assess_llm_submit_gate_from_body
+        from pallas.product.llm.task_routing import build_task_routing_preview
 
         async def _load() -> dict[str, Any]:
             health, model_admin, task_stats = await asyncio.gather(
@@ -5995,6 +6107,7 @@ def register_extended_api(
                 fetch_llm_task_stats(timeout_sec=8.0),
             )
             body = health.get("body") if isinstance(health.get("body"), dict) else None
+            submit_gate = assess_llm_submit_gate_from_body(body)
             return {
                 "health": {
                     "ok": bool(health.get("ok")),
@@ -6003,13 +6116,19 @@ def register_extended_api(
                     "error": str(health.get("error") or ""),
                     "llm_runtime_detail": llm_health_runtime_detail(body),
                     "llm_health": llm_health_summary(body),
+                    "llm_circuit": llm_health_circuit(body),
                     "image_health": image_health_circuit(body),
                     "tts_health": tts_health_summary(body),
                     "media_tasks": parse_media_tasks(body),
+                    "submit_gate": {
+                        "allowed": submit_gate.allowed,
+                        "status": submit_gate.status or None,
+                    },
                 },
                 "model_admin": model_admin,
                 "task_stats": task_stats,
                 "conversation_kernel": build_conversation_kernel_status(),
+                "task_routing_preview": await build_task_routing_preview(),
             }
 
         data = await cached_read(key="llm-runtime-overview", loader=_load, ttl_sec=2.0, stale_sec=8.0)
@@ -6509,7 +6628,11 @@ def register_extended_api(
         data = await cached_read(key="bots", loader=_load, ttl_sec=0.9, stale_sec=15.0)
         return JSONResponse({"ok": True, "data": data})
 
-    @router.get(f"{x}/logs", include_in_schema=True)
+    @router.get(
+        f"{x}/logs",
+        include_in_schema=True,
+        response_model=_ApiOkResponse[_LogsData],
+    )
     async def _logs(
         n: int = Query(default=200, ge=1, le=plugin_config.pallas_webui_log_lines_max),
         scope: Annotated[
@@ -6526,7 +6649,7 @@ def register_extended_api(
             default=None,
             description="分片来源：all|hub|worker-0|worker-1…（默认 all，不含 bootstrap）",
         ),
-    ) -> JSONResponse:
+    ) -> dict[str, Any]:
         _ensure_log_sink()
         from pallas.console.web import tail_nonebot_log_entries_scoped, tail_nonebot_log_lines_scoped
 
@@ -6541,7 +6664,7 @@ def register_extended_api(
         except Exception:
             pass
         src = (source or "all").strip() or "all"
-        return JSONResponse({
+        return {
             "ok": True,
             "data": {
                 "lines": tail_nonebot_log_lines_scoped(n, scope, source=src),
@@ -6552,7 +6675,7 @@ def register_extended_api(
                 "sharded_logs": sharded_logs,
                 "log_sources": log_sources,
             },
-        })
+        }
 
     @router.get(
         f"{x}/logs/stream",

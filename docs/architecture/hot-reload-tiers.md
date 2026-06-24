@@ -74,4 +74,5 @@ extra={
 - [插件热重载与分级无痛重启 — 实现计划](plugin-hot-reload-implementation.md)
 - [WebUI 配置与热重载](../common/webui/README.md)
 - [settings-storage.md](settings-storage.md)
+- [热重载前检查清单](../maintainer/operate/hot-reload-pre-reload-checklist.md)
 - [开发者侧插件治理概览](../developer/architecture/plugin-governance.md)

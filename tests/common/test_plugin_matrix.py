@@ -181,5 +181,5 @@ def test_official_extension_description_falls_back_for_multi_plugin_package():
 def test_official_extension_visuals_use_official_repo_assets() -> None:
     visuals = official_extension_visuals("pallas-plugin-draw")
     assert visuals["avatar"] is None
-    assert visuals["icon"] == "/pallas/official-extensions/pallas-plugin-draw.svg"
+    assert visuals["icon"] == visuals["cover"]
     assert visuals["cover"] == "https://raw.githubusercontent.com/TogetsuDo/pallas-plugin-draw/main/assets/brand-avatar.png"

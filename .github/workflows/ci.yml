@@ -59,6 +59,10 @@ jobs:
             tests/common/test_shard_coord_spy_group.py \
             -q
 
+      - name: Check console OpenAPI spec drift
+        run: |
+          uv run python tools/check_console_openapi_drift.py
+
       - name: Type check with mypy
         run: |
           # uv run mypy src/

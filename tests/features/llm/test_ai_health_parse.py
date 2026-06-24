@@ -29,6 +29,23 @@ def test_llm_health_configuration_ok() -> None:
     assert llm_health_configuration_ok({"status": "ok"}) is None
 
 
+def test_llm_health_circuit() -> None:
+    from pallas.product.llm.ai_health_parse import llm_health_circuit
+
+    body = {
+        "llm": {
+            "circuit_state": "open",
+            "consecutive_failures": 4,
+            "recent_failure_class": "timeout",
+            "health_state": "unhealthy",
+        }
+    }
+    circuit = llm_health_circuit(body)
+    assert circuit is not None
+    assert circuit["circuit_state"] == "open"
+    assert circuit["consecutive_failures"] == 4
+
+
 def test_image_health_circuit() -> None:
     body = {
         "image": {

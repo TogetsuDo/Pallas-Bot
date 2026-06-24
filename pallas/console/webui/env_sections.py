@@ -804,3 +804,71 @@ def apply_webui_env_section_patch(section_id: str, patch: dict[str, Any]) -> dic
             except Exception:
                 pass
     return webui_env_section_payload(section_id, current_values=validated)
+
+
+_COMMON_CONFIG_RAW_UNSUPPORTED = frozenset({
+    "corpus_federation",
+    "community_stats",
+    "service_gateways",
+    "control_plane",
+})
+
+
+def common_config_section_supports_raw(section_id: str) -> bool:
+    sid = (section_id or "").strip()
+    if sid in _COMMON_CONFIG_RAW_UNSUPPORTED:
+        return False
+    try:
+        get_webui_env_section(sid)
+    except ValueError:
+        return False
+    return True
+
+
+def webui_env_section_raw_toml(section_id: str) -> str:
+    import json
+
+    if not common_config_section_supports_raw(section_id):
+        raise ValueError(f"{section_id} 不支持 Raw TOML 编辑")
+    s = get_webui_env_section(section_id)
+    from pallas.core.foundation.config.repo_settings import _load_webui_json_upper
+
+    env = _load_webui_json_upper()
+    lines = [f"# common-config: {section_id}", f"# module: {s.module_label}", "", "[env]"]
+    allowed = set(s.field_to_env.keys()) - set(s.skip_fields)
+    for field_key in sorted(allowed):
+        env_key = s.field_to_env[field_key]
+        if env_key in env:
+            lines.append(f"{env_key} = {json.dumps(str(env[env_key]), ensure_ascii=False)}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def apply_webui_env_section_raw_toml(section_id: str, text: str) -> dict[str, Any]:
+    import tomllib
+
+    from .plugin_api import normalize_patch_value
+
+    if not common_config_section_supports_raw(section_id):
+        raise ValueError(f"{section_id} 不支持 Raw TOML 编辑")
+    raw = (text or "").strip()
+    if not raw:
+        raise ValueError("TOML 内容为空")
+    try:
+        doc = tomllib.loads(raw)
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(f"TOML 解析失败: {exc}") from exc
+    env_block = doc.get("env") if isinstance(doc.get("env"), dict) else doc
+    if not isinstance(env_block, dict):
+        raise ValueError("缺少 [env] 表")
+    s = get_webui_env_section(section_id)
+    reverse = {str(v).upper(): k for k, v in s.field_to_env.items()}
+    allowed = set(s.field_to_env.keys()) - set(s.skip_fields)
+    patch: dict[str, Any] = {}
+    for env_key, value in env_block.items():
+        field_key = reverse.get(str(env_key).upper())
+        if field_key and field_key in allowed:
+            patch[field_key] = normalize_patch_value(s.model_cls.model_fields[field_key], value)
+    if not patch:
+        raise ValueError("没有可识别的配置键")
+    return apply_webui_env_section_patch(section_id, patch)

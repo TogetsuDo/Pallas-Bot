@@ -41,14 +41,12 @@ class ExtensionInstallJob:
         if error:
             self.error = error
         self.updated_at = time.time()
-        self.events.append(
-            {
-                "phase": phase,
-                "message": message or self.message,
-                "error": error,
-                "ts": self.updated_at,
-            }
-        )
+        self.events.append({
+            "phase": phase,
+            "message": message or self.message,
+            "error": error,
+            "ts": self.updated_at,
+        })
 
 
 _jobs: dict[str, ExtensionInstallJob] = {}

@@ -180,3 +180,23 @@ async def resolve_task_route_chain(task: str, *, explicit_model: str | None = No
         for model in primary.fallback_models
     )
     return chain
+
+
+_TASK_ROUTING_PREVIEW_TASKS: tuple[str, ...] = (
+    "llm_chat",
+    "repeater_fallback",
+    "repeater_select",
+    "repeater_polish",
+)
+
+
+async def build_task_routing_preview() -> dict[str, Any]:
+    preview: dict[str, Any] = {}
+    for task in _TASK_ROUTING_PREVIEW_TASKS:
+        chain = await resolve_task_route_chain(task)
+        preview[task] = {
+            "chain": [serialize_task_route(item) for item in chain],
+            "primary_model": chain[0].resolved_model if chain else None,
+            "fallback_count": max(0, len(chain) - 1),
+        }
+    return preview

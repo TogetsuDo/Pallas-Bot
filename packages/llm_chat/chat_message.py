@@ -83,6 +83,11 @@ llm_chat_msg = on_message(
 
 
 def user_reply_for_submit_failure(status: str) -> str | None:
+    from pallas.product.llm.submit_gate import user_message_for_submit_status
+
+    mapped = user_message_for_submit_status(status)
+    if mapped:
+        return mapped
     if status == "busy":
         return LLM_CHAT_BUSY_REPLY
     if status in {"request_failed", "empty_response", "invalid_response"}:

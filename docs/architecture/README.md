@@ -30,6 +30,7 @@
 
 - [前辈对标分析与优化路线图](internal/benchmark-peer-bots-roadmap.md) — 结论、全量实施清单、时间线（与 Notion 任务双线同步）
 - [逐文件 diff 补充](internal/benchmark-peer-bots-file-diff.md) — WebUI / LLM / 架构路径级对照
+- [Ingress 入站管线](ingress-pipeline.md) — gate → route_index → lanes → send_queue 维护者一页图
 
 ::: tip
 旧路线图、阶段验收类文档已经从这里清掉。剩下的内容只作素材，不代表它们仍是推荐入口。

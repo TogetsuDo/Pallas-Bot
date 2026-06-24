@@ -19,7 +19,12 @@
 | `tool-backed KB` | 否 | 如方舟干员查询，走 `llm_tools` |
 | `generic knowledge source` | 是 | 插件声明的 FAQ / 规则集 / 静态文档 |
 
-首版仅支持**文本块关键词检索 + prompt 注入**；embedding / vector store / rerank 通过接口预留，不在本阶段实现。
+首版支持**文本块关键词检索 + prompt 注入**；`LLM_VECTOR_RETRIEVE=embedding`/`hybrid`/`vector` 时 Bot 调用 AI 仓 `POST /api/v1/embeddings` 做向量相似度排序；API 失败时自动回落关键词路径。
+
+| 环境变量 | 含义 |
+| --- | --- |
+| `LLM_VECTOR_RETRIEVE` | `keyword`（默认）、`embedding`、`hybrid` 或 `vector`（同 embedding） |
+| `LLM_EMBEDDING_MODEL` | 传给 AI embeddings 的模型名（默认 `stub`） |
 
 ## Bot 职责
 

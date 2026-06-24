@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Pallas-Bot 控制台 API",
-    "version": "v3.9.0-66-g91be9d79-dirty",
+    "version": "v3.9.0-72-g7bb5e8b6-dirty",
     "description": "仅包含控制台 API 前缀下的接口。"
   },
   "paths": {
@@ -291,7 +291,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/_ApiOkResponse_ShardObservabilityData_"
+                }
               }
             }
           },
@@ -429,7 +431,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/_ApiOkResponse_IngressDispatchData_"
+                }
               }
             }
           },
@@ -1456,7 +1460,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/_ApiOkResponse_PluginGovernanceData_"
+                }
               }
             }
           },
@@ -1739,6 +1745,223 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pallas/api/plugins/official-extensions/install-async": {
+      "post": {
+        "tags": [
+          "Pallas-Bot 控制台"
+        ],
+        "summary": " Plugins Official Extensions Install Async",
+        "operationId": "_plugins_official_extensions_install_async_pallas_api_plugins_official_extensions_install_async_post",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
+          },
+          {
+            "name": "X-Pallas-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Pallas-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_OfficialExtensionPackageBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pallas/api/plugins/official-extensions/install-jobs/{job_id}/stream": {
+      "get": {
+        "tags": [
+          "Pallas-Bot 控制台"
+        ],
+        "summary": " Plugins Official Extensions Install Job Stream",
+        "operationId": "_plugins_official_extensions_install_job_stream_pallas_api_plugins_official_extensions_install_jobs__job_id__stream_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
+          },
+          {
+            "name": "X-Pallas-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Pallas-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pallas/api/plugins/install-jobs/{job_id}/stream": {
+      "get": {
+        "tags": [
+          "Pallas-Bot 控制台"
+        ],
+        "summary": " Plugins Install Job Stream",
+        "operationId": "_plugins_install_job_stream_pallas_api_plugins_install_jobs__job_id__stream_get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
+          },
+          {
+            "name": "X-Pallas-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Pallas-Token"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2264,6 +2487,79 @@
         ],
         "summary": " Plugins Community Plugins Install",
         "operationId": "_plugins_community_plugins_install_pallas_api_plugins_community_plugins_install_post",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
+          },
+          {
+            "name": "X-Pallas-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Pallas-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_CommunityPluginActionBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pallas/api/plugins/community-plugins/install-async": {
+      "post": {
+        "tags": [
+          "Pallas-Bot 控制台"
+        ],
+        "summary": " Plugins Community Plugins Install Async",
+        "operationId": "_plugins_community_plugins_install_async_pallas_api_plugins_community_plugins_install_async_post",
         "parameters": [
           {
             "name": "token",
@@ -2933,7 +3229,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/_ApiOkResponse_PluginConfigData_"
+                }
               }
             }
           },
@@ -3004,6 +3302,158 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/_PluginConfigUpdateBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pallas/api/plugins/{plugin_name}/config/raw": {
+      "get": {
+        "tags": [
+          "Pallas-Bot 控制台"
+        ],
+        "summary": " Plugin Config Raw Get",
+        "operationId": "_plugin_config_raw_get_pallas_api_plugins__plugin_name__config_raw_get",
+        "parameters": [
+          {
+            "name": "plugin_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plugin Name"
+            }
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
+          },
+          {
+            "name": "X-Pallas-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Pallas-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Pallas-Bot 控制台"
+        ],
+        "summary": " Plugin Config Raw Put",
+        "operationId": "_plugin_config_raw_put_pallas_api_plugins__plugin_name__config_raw_put",
+        "parameters": [
+          {
+            "name": "plugin_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plugin Name"
+            }
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
+          },
+          {
+            "name": "X-Pallas-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Pallas-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_PluginConfigRawBody"
               }
             }
           }
@@ -3301,6 +3751,158 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/_PluginConfigUpdateBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pallas/api/common-config/{section_id}/raw": {
+      "get": {
+        "tags": [
+          "Pallas-Bot 控制台"
+        ],
+        "summary": " Common Config Raw Get",
+        "operationId": "_common_config_raw_get_pallas_api_common_config__section_id__raw_get",
+        "parameters": [
+          {
+            "name": "section_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Section Id"
+            }
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
+          },
+          {
+            "name": "X-Pallas-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Pallas-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Pallas-Bot 控制台"
+        ],
+        "summary": " Common Config Raw Put",
+        "operationId": "_common_config_raw_put_pallas_api_common_config__section_id__raw_put",
+        "parameters": [
+          {
+            "name": "section_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Section Id"
+            }
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
+          },
+          {
+            "name": "X-Pallas-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Pallas-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_PluginConfigRawBody"
               }
             }
           }
@@ -6749,7 +7351,9 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/_ApiOkResponse_LogsData_"
+                }
               }
             }
           },
@@ -6810,6 +7414,24 @@
             "description": "分片来源：all|hub|worker-N（与 GET /logs 一致）"
           },
           {
+            "name": "last_event_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "断点续传：仅发送 id 大于该值的日志条目",
+              "title": "Last Event Id"
+            },
+            "description": "断点续传：仅发送 id 大于该值的日志条目"
+          },
+          {
             "name": "token",
             "in": "query",
             "required": false,
@@ -6823,6 +7445,22 @@
                 }
               ],
               "title": "Token"
+            }
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
             }
           },
           {
@@ -10347,6 +10985,26 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "IngressDispatchData": {
+        "properties": {
+          "sharded": {
+            "type": "boolean",
+            "title": "Sharded",
+            "default": false
+          },
+          "workers": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Workers"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "IngressDispatchData"
+      },
       "LlmReplayRunBody": {
         "properties": {
           "mode": {
@@ -10358,6 +11016,322 @@
         "additionalProperties": false,
         "type": "object",
         "title": "LlmReplayRunBody"
+      },
+      "LogEntryData": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "time": {
+            "type": "string",
+            "title": "Time",
+            "default": ""
+          },
+          "level": {
+            "type": "string",
+            "title": "Level",
+            "default": "info"
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope",
+            "default": ""
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "title": "LogEntryData"
+      },
+      "LogsData": {
+        "properties": {
+          "lines": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Lines"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/LogEntryData"
+            },
+            "type": "array",
+            "title": "Entries"
+          },
+          "max": {
+            "type": "integer",
+            "title": "Max",
+            "default": 0
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "sharded_logs": {
+            "type": "boolean",
+            "title": "Sharded Logs",
+            "default": false
+          },
+          "log_sources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Log Sources"
+          }
+        },
+        "type": "object",
+        "title": "LogsData"
+      },
+      "PluginConfigData": {
+        "properties": {
+          "plugin": {
+            "type": "string",
+            "title": "Plugin"
+          },
+          "module": {
+            "type": "string",
+            "title": "Module",
+            "default": ""
+          },
+          "fields": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Fields"
+          },
+          "unexpected_keys": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Unexpected Keys"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plugin"
+        ],
+        "title": "PluginConfigData"
+      },
+      "PluginGovernanceData": {
+        "properties": {
+          "plugin": {
+            "type": "string",
+            "title": "Plugin"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "default": ""
+          },
+          "commands": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Commands"
+          },
+          "menu_items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Menu Items"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/PluginGovernanceRuntimeData"
+          },
+          "perm_ui_filtered": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Perm Ui Filtered"
+          },
+          "limits_ui_filtered": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Limits Ui Filtered"
+          },
+          "reload_policy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reload Policy"
+          },
+          "activation_policy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activation Policy"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plugin",
+          "runtime"
+        ],
+        "title": "PluginGovernanceData"
+      },
+      "PluginGovernanceRuntimeData": {
+        "properties": {
+          "global_disable": {
+            "type": "boolean",
+            "title": "Global Disable",
+            "default": false
+          },
+          "help_hidden": {
+            "type": "boolean",
+            "title": "Help Hidden",
+            "default": false
+          },
+          "global_disable_protected": {
+            "type": "boolean",
+            "title": "Global Disable Protected",
+            "default": false
+          },
+          "help_ignored": {
+            "type": "boolean",
+            "title": "Help Ignored",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "PluginGovernanceRuntimeData"
+      },
+      "ShardObservabilityData": {
+        "properties": {
+          "sharded": {
+            "type": "boolean",
+            "title": "Sharded",
+            "default": false
+          },
+          "ingress_cluster": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingress Cluster"
+          },
+          "ingress_process": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingress Process"
+          },
+          "repeater_ingress_cluster": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repeater Ingress Cluster"
+          },
+          "repeater_ingress_process": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repeater Ingress Process"
+          },
+          "coord_pending_live": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coord Pending Live"
+          },
+          "workers": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Workers"
+          },
+          "pg_pool": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pg Pool"
+          }
+        },
+        "additionalProperties": true,
+        "type": "object",
+        "title": "ShardObservabilityData"
       },
       "ValidationError": {
         "properties": {
@@ -10605,6 +11579,96 @@
           "captcha"
         ],
         "title": "_AiNcmVerifySmsBody"
+      },
+      "_ApiOkResponse_IngressDispatchData_": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true,
+            "title": "Ok",
+            "default": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/IngressDispatchData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "_ApiOkResponse[IngressDispatchData]"
+      },
+      "_ApiOkResponse_LogsData_": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true,
+            "title": "Ok",
+            "default": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/LogsData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "_ApiOkResponse[LogsData]"
+      },
+      "_ApiOkResponse_PluginConfigData_": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true,
+            "title": "Ok",
+            "default": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/PluginConfigData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "_ApiOkResponse[PluginConfigData]"
+      },
+      "_ApiOkResponse_PluginGovernanceData_": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true,
+            "title": "Ok",
+            "default": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/PluginGovernanceData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "_ApiOkResponse[PluginGovernanceData]"
+      },
+      "_ApiOkResponse_ShardObservabilityData_": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true,
+            "title": "Ok",
+            "default": true
+          },
+          "data": {
+            "$ref": "#/components/schemas/ShardObservabilityData"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "_ApiOkResponse[ShardObservabilityData]"
       },
       "_ApiOkResponse__AiExtensionTestData_": {
         "properties": {
@@ -11363,6 +12427,17 @@
             ],
             "title": "Recent Failure Class"
           },
+          "consecutive_failures": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consecutive Failures"
+          },
           "provider_status": {
             "items": {
               "$ref": "#/components/schemas/_LlmHealthProviderRow"
@@ -11910,6 +12985,11 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Conversation Kernel"
+          },
+          "task_routing_preview": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Task Routing Preview"
           }
         },
         "type": "object",
@@ -11966,6 +13046,18 @@
               }
             ]
           },
+          "llm_circuit": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Circuit"
+          },
           "image_health": {
             "anyOf": [
               {
@@ -11995,6 +13087,18 @@
                 "type": "null"
               }
             ]
+          },
+          "submit_gate": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submit Gate"
           }
         },
         "type": "object",
@@ -12194,6 +13298,18 @@
           "package"
         ],
         "title": "_OfficialExtensionPackageBody"
+      },
+      "_PluginConfigRawBody": {
+        "properties": {
+          "toml": {
+            "type": "string",
+            "title": "Toml",
+            "default": ""
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "_PluginConfigRawBody"
       },
       "_PluginConfigUpdateBody": {
         "properties": {

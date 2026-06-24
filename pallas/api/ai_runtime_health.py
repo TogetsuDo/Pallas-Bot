@@ -41,3 +41,16 @@ def image_runtime_circuit_snapshot() -> ImageRuntimeCircuitSnapshot:
 
 def sing_health_circuit_from_cache() -> dict[str, Any] | None:
     return capability_health_circuit(cached_ai_health_body(), "media.sing")
+
+
+def llm_health_circuit_from_cache() -> dict[str, Any] | None:
+    from pallas.product.llm.ai_health_parse import llm_health_circuit
+
+    return llm_health_circuit(cached_ai_health_body())
+
+
+def llm_runtime_circuit_is_open() -> bool:
+    circuit = llm_health_circuit_from_cache()
+    if not circuit:
+        return False
+    return str(circuit.get("circuit_state") or "").strip().lower() == "open"

@@ -205,7 +205,7 @@ async def collect_store_asset_targets() -> dict[str, list[dict[str, Any]]]:
                 "cover": visuals.get("cover"),
                 "avatar": visuals.get("avatar"),
             },
-            "readme_url": _github_readme_url(repo_url),
+            "readme_urls": _github_readme_urls(repo_url),
         })
 
     index = await load_community_plugin_index_safe()
@@ -221,7 +221,7 @@ async def collect_store_asset_targets() -> dict[str, list[dict[str, Any]]]:
                 "cover": row.get("cover"),
                 "avatar": resolve_community_plugin_avatar(row),
             },
-            "readme_url": _github_readme_url(row.get("repository_url")),
+            "readme_urls": _github_readme_urls(row.get("repository_url")),
         })
     return {"official": official, "community": community}
 
@@ -236,12 +236,17 @@ def _find_target(kind: str, target_id: str) -> dict[str, Any] | None:
     return None
 
 
-def _github_readme_url(repository_url: str | None) -> str | None:
+def _github_readme_urls(repository_url: str | None) -> list[str]:
     parsed = _parse_repo(repository_url)
     if not parsed:
-        return None
+        return []
     owner, repo = parsed
-    return f"https://raw.githubusercontent.com/{owner}/{repo}/refs/heads/main/README.md"
+    return [
+        f"https://raw.githubusercontent.com/{owner}/{repo}/refs/heads/main/README.md",
+        f"https://raw.githubusercontent.com/{owner}/{repo}/refs/heads/master/README.md",
+        f"https://raw.githubusercontent.com/{owner}/{repo}/main/README.md",
+        f"https://raw.githubusercontent.com/{owner}/{repo}/master/README.md",
+    ]
 
 
 async def _download_binary(url: str) -> tuple[bytes, str]:
@@ -251,11 +256,28 @@ async def _download_binary(url: str) -> tuple[bytes, str]:
         return resp.content, str(resp.headers.get("content-type") or "")
 
 
+async def _download_text_first(urls: list[str]) -> tuple[str, str]:
+    last_exc: Exception | None = None
+    for url in urls:
+        raw = str(url or "").strip()
+        if not raw:
+            continue
+        try:
+            async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, follow_redirects=True) as client:
+                resp = await client.get(raw)
+                resp.raise_for_status()
+                return resp.text, raw
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            continue
+    if last_exc is not None:
+        raise last_exc
+    raise ValueError("no readme urls")
+
+
 async def _download_text(url: str) -> str:
-    async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT, follow_redirects=True) as client:
-        resp = await client.get(url)
-        resp.raise_for_status()
-        return resp.text
+    text, _source = await _download_text_first([url])
+    return text
 
 
 def _write_bytes(relative_path: str, content: bytes) -> None:
@@ -345,15 +367,19 @@ async def _refresh_one(kind: str, target: dict[str, Any], previous: dict[str, An
                     "error": str(exc),
                 }
 
-    readme_url = str(target.get("readme_url") or "").strip()
+    readme_urls = target.get("readme_urls")
+    if not isinstance(readme_urls, list):
+        legacy = str(target.get("readme_url") or "").strip()
+        readme_urls = [legacy] if legacy else []
+    readme_urls = [str(url or "").strip() for url in readme_urls if str(url or "").strip()]
     prev_readme = previous.get("readme") if isinstance(previous.get("readme"), dict) else None
-    if readme_url:
+    if readme_urls:
         try:
-            markdown = await _download_text(readme_url)
+            markdown, source_url = await _download_text_first(readme_urls)
             rel = _readme_public_rel(kind, target_id)
             _write_text(rel, markdown)
             entry["readme"] = {
-                "source_url": readme_url,
+                "source_url": source_url,
                 "public_url": _public_url_from_rel(rel),
                 "relative_path": rel,
                 "updated_at": time.time(),
@@ -367,7 +393,7 @@ async def _refresh_one(kind: str, target: dict[str, Any], previous: dict[str, An
                 }
             else:
                 entry["readme"] = {
-                    "source_url": readme_url,
+                    "source_url": readme_urls[0],
                     "public_url": None,
                     "relative_path": None,
                     "updated_at": None,

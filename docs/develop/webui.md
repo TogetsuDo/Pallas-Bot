@@ -63,6 +63,36 @@ uv run python tools/export_pb_webui_openapi.py
 openspec/pallas-console-v1.json
 ```
 
+双仓同步与 drift 门禁：
+
+```bash
+# Bot：导出并提交 openspec
+cd Pallas-Bot
+uv run python tools/export_pb_webui_openapi.py
+uv run python tools/check_console_openapi_drift.py
+
+# WebUI：从主仓 openspec 生成类型并校验
+cd Pallas-Bot-WebUI
+npm run gen:console-openapi-types
+npm run check:console-openapi-types
+```
+
+CI 分别在两仓执行上述 check。
+
+### DynamicConfigPanel（插件 config 元数据）
+
+插件 `config.py` 的 Pydantic 字段可通过 `Field(..., json_schema_extra={...})` 驱动 WebUI 表单：
+
+| 键 | 作用 |
+| --- | --- |
+| `ui_group` | 分组标题（DynamicConfigPanel 折叠卡片） |
+| `ui_order` | 组内排序，越小越靠前 |
+| `ui_hidden` | 进阶项，默认折叠在「高级」组 |
+| `secret` | 字符串打码 + 眼睛切换 |
+| `multiline` | 多行 textarea |
+
+未在 schema 声明但写入 `webui.json` 的键会在面板底部「未声明的环境键」列出；需改 Raw TOML 模式编辑。
+
 ## 代码约定
 
 | 项 | 约定 |

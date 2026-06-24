@@ -104,6 +104,36 @@ def test_export_console_openapi_matches_console_prefix(monkeypatch) -> None:
     assert extension_test_schema["$ref"].endswith("_ApiOkResponse__AiExtensionTestData_")
     assert password_schema["$ref"].endswith("_ApiOkResponse__ConsoleLoginChangeData_")
 
+    wave2_paths = (
+        "/pallas/api/shard-observability",
+        "/pallas/api/ingress-dispatch",
+        "/pallas/api/logs",
+        "/pallas/api/plugins/{plugin_name}/governance",
+        "/pallas/api/plugins/{plugin_name}/config",
+    )
+    for path in wave2_paths:
+        assert path in payload["paths"], path
+    shard_schema = payload["paths"]["/pallas/api/shard-observability"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+    ingress_schema = payload["paths"]["/pallas/api/ingress-dispatch"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+    logs_schema = payload["paths"]["/pallas/api/logs"]["get"]["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ]
+    governance_schema = payload["paths"]["/pallas/api/plugins/{plugin_name}/governance"]["get"]["responses"]["200"][
+        "content"
+    ]["application/json"]["schema"]
+    config_schema = payload["paths"]["/pallas/api/plugins/{plugin_name}/config"]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+    assert shard_schema["$ref"].endswith("_ApiOkResponse_ShardObservabilityData_")
+    assert ingress_schema["$ref"].endswith("_ApiOkResponse_IngressDispatchData_")
+    assert logs_schema["$ref"].endswith("_ApiOkResponse_LogsData_")
+    assert governance_schema["$ref"].endswith("_ApiOkResponse_PluginGovernanceData_")
+    assert config_schema["$ref"].endswith("_ApiOkResponse_PluginConfigData_")
+
 
 def test_llm_runtime_overview_returns_aggregated_fields(monkeypatch) -> None:
     async def fake_health(*, timeout_sec: float = 0.0):
@@ -162,6 +192,19 @@ def test_llm_runtime_overview_returns_aggregated_fields(monkeypatch) -> None:
     monkeypatch.setattr("pallas.product.llm.startup_probe.probe_ai_service_health", fake_health)
     monkeypatch.setattr("pallas.product.llm.model_admin.fetch_model_admin_status", fake_model_admin)
     monkeypatch.setattr("pallas.product.llm.model_admin.fetch_llm_task_stats", fake_task_stats)
+    async def fake_task_routing_preview():
+        return {
+            "llm_chat": {
+                "primary_model": "qwen",
+                "fallback_count": 1,
+                "chain": [
+                    {"task": "llm_chat", "resolved_model": "qwen", "source": "config", "fallback_models": ["fb"]},
+                    {"task": "llm_chat", "resolved_model": "fb", "source": "fallback", "fallback_models": []},
+                ],
+            }
+        }
+
+    monkeypatch.setattr("pallas.product.llm.task_routing.build_task_routing_preview", fake_task_routing_preview)
     monkeypatch.setattr(
         mod,
         "build_conversation_kernel_status",
@@ -182,6 +225,45 @@ def test_llm_runtime_overview_returns_aggregated_fields(monkeypatch) -> None:
     assert data["model_admin"]["model"] == "qwen"
     assert data["task_stats"]["ai_reachable"] is True
     assert data["conversation_kernel"]["feature_level"] == "full_conversation_kernel"
+    assert data["health"]["submit_gate"]["allowed"] is True
+    assert data["task_routing_preview"]["llm_chat"]["primary_model"] == "qwen"
+
+
+def test_ai_extension_test_returns_payload_without_validation_error(monkeypatch) -> None:
+    import urllib.request
+
+    class _FakeHTTPResponse:
+        status = 200
+
+        def read(self) -> bytes:
+            return b"{}"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    monkeypatch.setattr(
+        mod,
+        "_load_ai_extension_config",
+        lambda: {
+            "base_url": "http://127.0.0.1:9099",
+            "api_prefix": "/api",
+            "token": "",
+            "health_paths": ["/health"],
+        },
+    )
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *_a, **_k: _FakeHTTPResponse())
+
+    client = _build_client(monkeypatch)
+    response = client.post("/pallas/api/ai-extension/test")
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["ok"] is True
+    assert "status_code" in payload["data"]
+    assert "tried_urls" in payload["data"]
 
 
 def test_llm_wizard_status_summarizes_next_step(monkeypatch) -> None:

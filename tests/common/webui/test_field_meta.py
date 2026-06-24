@@ -7,8 +7,8 @@ from pydantic import BaseModel, Field
 from pallas.console.webui.field_meta import (
     field_kind_from_annotation,
     field_meta_for_model_field,
-    is_secret_field,
     is_multiline_field,
+    is_secret_field,
     literal_choices,
     numeric_bounds,
 )
@@ -189,3 +189,21 @@ def test_field_meta_multiline_flag():
         default_value="",
     )
     assert row["multiline"] is True
+
+
+class _UiGroup(BaseModel):
+    timeout_sec: int = Field(default=30, json_schema_extra={"ui_group": "高级", "ui_order": 10, "ui_hidden": True})
+
+
+def test_field_meta_json_schema_ui_hints():
+    f = _UiGroup.model_fields["timeout_sec"]
+    row = field_meta_for_model_field(
+        key="timeout_sec",
+        field=f,
+        env_key="TIMEOUT_SEC",
+        cur=30,
+        default_value=30,
+    )
+    assert row["ui_group"] == "高级"
+    assert row["ui_order"] == 10
+    assert row["ui_hidden"] is True

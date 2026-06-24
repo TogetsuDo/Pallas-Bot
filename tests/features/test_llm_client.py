@@ -14,16 +14,24 @@ from pallas.product.llm.task_routing import TaskRouteSpec
 
 @pytest.fixture(autouse=True)
 def stub_task_route(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def fake_resolve(task: str, *, explicit_model: str | None = None) -> TaskRouteSpec:
-        task_name = str(task or "").strip().lower() or "llm_chat"
-        return TaskRouteSpec(
-            task=task_name,
-            resolved_model=str(explicit_model or "").strip() or None,
-            provider_hint=None,
-            source="explicit" if explicit_model else "config",
-        )
+    from pallas.product.llm.submit_gate import LlmSubmitGateResult
 
-    monkeypatch.setattr("pallas.product.llm.client.resolve_task_route", fake_resolve)
+    async def allow_gate() -> LlmSubmitGateResult:
+        return LlmSubmitGateResult(allowed=True)
+
+    async def fake_resolve_chain(task: str, *, explicit_model: str | None = None) -> list[TaskRouteSpec]:
+        task_name = str(task or "").strip().lower() or "llm_chat"
+        return [
+            TaskRouteSpec(
+                task=task_name,
+                resolved_model=str(explicit_model or "").strip() or None,
+                provider_hint=None,
+                source="explicit" if explicit_model else "config",
+            )
+        ]
+
+    monkeypatch.setattr("pallas.product.llm.client.assess_llm_submit_gate", allow_gate)
+    monkeypatch.setattr("pallas.product.llm.client.resolve_task_route_chain", fake_resolve_chain)
 
 
 @pytest.mark.asyncio
@@ -377,16 +385,18 @@ async def test_submit_chat_task_repeater_payload_has_single_message(monkeypatch:
     slot = MagicMock(acquired=True)
     monkeypatch.setattr("pallas.product.llm.client.try_acquire_repeater_llm_slot", AsyncMock(return_value=slot))
 
-    async def fake_route(task: str, *, explicit_model: str | None = None) -> TaskRouteSpec:
+    async def fake_route_chain(task: str, *, explicit_model: str | None = None) -> list[TaskRouteSpec]:
         _ = explicit_model
-        return TaskRouteSpec(
-            task=task,
-            resolved_model="qwen3:14b",
-            provider_hint="local",
-            source="ai_health",
-        )
+        return [
+            TaskRouteSpec(
+                task=task,
+                resolved_model="qwen3:14b",
+                provider_hint="local",
+                source="ai_health",
+            )
+        ]
 
-    monkeypatch.setattr("pallas.product.llm.client.resolve_task_route", fake_route)
+    monkeypatch.setattr("pallas.product.llm.client.resolve_task_route_chain", fake_route_chain)
 
     cfg = LlmConfig(use_unified_chat_api=True, llm_chat_enabled=True, llm_governance_enabled=False)
     result = await submit_chat_task(

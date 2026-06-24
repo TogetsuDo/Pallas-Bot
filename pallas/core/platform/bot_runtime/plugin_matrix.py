@@ -263,10 +263,10 @@ def official_extension_visuals(package: str) -> dict[str, str | None]:
     pkg = (package or "").strip()
     if pkg not in OFFICIAL_EXTENSION_REPOS:
         return {"icon": None, "cover": None, "avatar": None}
-    icon = f"/pallas/official-extensions/{pkg}.svg"
+    cover = official_extension_cover(pkg)
     return {
-        "icon": icon,
-        "cover": official_extension_cover(pkg),
+        "icon": cover or "/pallas/assets/brand-avatar.png",
+        "cover": cover,
         "avatar": None,
     }
 
