@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, master, dev ]
+    branches: [ main, master, dev, dev-v2 ]
   pull_request:
-    branches: [ main, master, dev ]
+    branches: [ main, master, dev, dev-v2 ]
   workflow_dispatch:
 
 jobs:
@@ -42,6 +42,11 @@ jobs:
       - name: Check plugin imports (packages)
         run: |
           uv run python tools/check_plugin_imports.py --scope packages
+
+      - name: Build pallas-core wheel
+        run: |
+          ./scripts/build_core.sh
+          test -f build/pallas-core/dist/pallas_core-*.whl
 
       - name: Run core plugin matrix tests
         run: |

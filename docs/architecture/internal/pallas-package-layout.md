@@ -200,7 +200,20 @@ from pallas.api.config import install_hot_reload_config
 
 Cookbook 与 L1 模板优先 **子模块 import**，便于静态检查与白名单对齐。
 
-### 5.9 明确不在 api 内
+### 5.9 扩展面（4.0 登记）
+
+| 子模块 | 用途 | 受众 |
+| --- | --- | --- |
+| `pallas.api.media` | 参考图解析与下载 | 画图 / 多媒体扩展 |
+| `pallas.api.messages` | 用户可见错误脱敏 | 通用 |
+| `pallas.api.platform` | 舰队 / 分片 / callback 钩子 | 官方扩展、内置 |
+| `pallas.api.probe` | 连通探测格式化 | WebUI 健康页 |
+| `pallas.api.safety` | 消息审查 | 聊天 / 画图类 |
+| `pallas.api.ai_runtime_health` | AI `/health` 只读熔断 | 依赖 AI 的扩展 |
+
+Cookbook：[pallas-api-cookbook.md](../../developer/plugin-development/pallas-api-cookbook.md)。
+
+### 5.10 明确不在 api 内
 
 | 区域 | 原因 | 替代 |
 | --- | --- | --- |
@@ -313,8 +326,8 @@ dependencies = [
 | **P2** | 目录搬迁 `src/{foundation,platform}` → `pallas/core` | 4.0 | ✅ 完成 |
 | **P3** | `src/features` 拆入 `pallas/product` + `pallas/api`；`src/plugins` → `packages/` | 4.0 | ✅ 完成 |
 | **P4** | CI import 检查、`community_plugin_author check` 对齐 api 白名单 | 4.0 | ✅ pre-commit ruff + import 检查已覆盖 `local/plugins/` |
-| **P5** | Cookbook、Skill、扩展模板、站点 migration 指南 | **待办** | ❌ 开发者文档仍使用 `src.*` 旧路径 |
-| **P6** | 发布 `pallas-core` 到 PyPI（主仓可直接依赖 wheel） | **待办** | ❌ PyPI 未发布；扩展模板未声明依赖 |
+| **P5** | Cookbook、Skill、扩展模板、站点 migration 指南 | 4.0 | ✅ Cookbook + 迁移指南就位 |
+| **P6** | 发布 `pallas-core` 到 PyPI（主仓可直接依赖 wheel） | **预发布** | ✅ wheel 可构建；PyPI 待 GA tag |
 | **P7**（可选） | 独立 `Pallas-Bot-Core` 仓库，主仓仅依赖 wheel | 远期 | 待评估 |
 
 ### 剩余工作（按优先级）
@@ -388,14 +401,14 @@ if __name__ == "__main__":
 
 ### 待完成 ❌
 
-- [ ] PyPI 可安装 `pallas-core==4.0.0`（§9 P6）
-- [ ] Cookbook 示例插件仅 `pallas.api.*`，零 `src.` import（§9 P5）
-- [ ] 全部 Skill reference 使用 `pallas.api.*`（§9 P5）
-- [ ] 扩展模板 `pyproject.toml` 声明 `pallas-core>=4.0.0` 依赖（§9 P6）
+- [ ] PyPI 可安装 `pallas-core==4.0.0`（§9 P6，wheel 已可构建）
+- [x] Cookbook 示例插件仅 `pallas.api.*`，零 `src.` import（§9 P5）
+- [x] 全部 Skill reference 使用 `pallas.api.*`（§9 P5）
+- [x] 扩展模板 `pyproject.toml` 声明 `pallas-core>=4.0.0` 依赖（§9 P6）
 - [x] pre-commit / CI 覆盖 `local/plugins/`（ruff + import 检查）（§9 P4）
 - [x] `community_plugin_author.py check --profile L1` 对违规 `pallas.*` import 报错（§9 P4）
 - [ ] 4.x → 4.0 layout migration 段落写入 [FAQ](../../FAQ.md)（§9 P7+）
-- [ ] `pallas.api` 新增子模块（media、messages、platform、probe、safety）登记到 §5 白名单
+- [x] `pallas.api` 新增子模块（media、messages、platform、probe、safety）登记到 §5 白名单
 
 ## 13. 相关文档（同步进度）
 
@@ -410,7 +423,9 @@ if __name__ == "__main__":
 | [skills/pallas-plugin-development/SKILL.md](../../skills/pallas-plugin-development/SKILL.md) | 关键概念 + 插件位置 | ✅ 已更新 |
 | [skills/pallas-plugin-development/references/01-05,08](../../skills/pallas-plugin-development/SKILL.md) | 全部 reference 改用 `pallas.api.*` | ✅ 已更新 |
 | [AGENTS.md](../../../AGENTS.md) | 主代码目录 `pallas/` + `packages/` | ✅ 已更新 |
-| 扩展模板 `templates/pallas-plugin-extension/` | 依赖 `pallas-core` + 示例 import | ✅ 已加依赖 |
+| 扩展模板 `templates/pallas-plugin-extension/` | 依赖 `pallas-core` + 示例 import | ✅ 已声明 `pallas-core>=4.0.0` |
+| [pallas-api-cookbook.md](../../developer/plugin-development/pallas-api-cookbook.md) | 扩展作者 api 入口 | ✅ 已建立 |
+| [4.0-migration.md](../../guide/4.0-migration.md) | 站点迁移 + dev→main | ✅ 已建立 |
 
 ---
 

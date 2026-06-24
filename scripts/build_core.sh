@@ -24,7 +24,7 @@ version = "$VERSION"
 description = "Pallas Bot 内核框架 —— 基于 NoneBot2 的社区机器人 SDK"
 readme = "README.md"
 requires-python = ">=3.12,<4.0"
-license = { text = "AGPL-3.0-or-later" }
+license = "AGPL-3.0-or-later"
 authors = [{ name = "MistEO" }]
 maintainers = [
     { name = "mxcoras", email = "mxcoras@outlook.com" },
@@ -33,9 +33,7 @@ maintainers = [
 keywords = ["nonebot", "nonebot2", "pallas", "bot", "qq"]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "Framework :: NoneBot",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPL-3.0-or-later)",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Topic :: Communications :: Chat",

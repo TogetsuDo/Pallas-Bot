@@ -35,8 +35,9 @@ Pallas 里常见的插件来源有三类：
 
 1. [Golden Plugin](golden-plugin.md)
 2. [配置与 WebUI](config-and-webui.md)
-3. [测试](testing.md)
-4. [元数据](metadata.md)
+3. [pallas.api Cookbook](pallas-api-cookbook.md)
+4. [测试](testing.md)
+5. [元数据](metadata.md)
 
 想要一个从零跟做的例子，先按 [Golden Plugin](golden-plugin.md) 和 [配置与 WebUI](config-and-webui.md) 这条主线继续补。
 
