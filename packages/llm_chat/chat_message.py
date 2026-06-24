@@ -7,7 +7,6 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.rule import Rule
 from ulid import ULID
 
-from packages.repeater.opportunity_trace import append_conversation_decision_trace
 from pallas.core.foundation.config import TaskManager
 from pallas.core.foundation.db import make_message_repository
 from pallas.core.perm import group_message_permission_for_command
@@ -493,6 +492,8 @@ async def handle_llm_chat(bot: Bot, event: Event):
         tools_enabled=bool(tool_meta.get("tools_enabled")),
     )
     if group_id is not None:
+        from packages.repeater.opportunity_trace import append_conversation_decision_trace
+
         append_conversation_decision_trace({
             "group_id": int(group_id),
             "bot_id": int(bot.self_id),

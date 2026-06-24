@@ -90,7 +90,7 @@ def build_runtime_probe_result(
                 category=category,
                 site=site,
                 ok=ok,
-                latency_ms=int(latency_ms) if isinstance(latency_ms, float) and latency_ms.is_integer() else latency_ms,
+                latency_ms=int(round(latency_ms)) if isinstance(latency_ms, float) else latency_ms,
                 status_code=status_code,
                 error=error,
                 runtime_state=runtime_state,
