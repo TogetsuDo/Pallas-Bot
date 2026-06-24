@@ -71,6 +71,21 @@
 - `wizard/status` 解决“AI 配置还差哪一步”
 - `runtime-overview` 解决“现在到底是哪一层在异常”
 
+## 记忆与 session 分层（7.6 最小集）
+
+运行时 **session / task state** 以 **Pallas-Bot-AI** 为执行面：多轮上下文、队列中的任务状态、超长会话摘要写入等由 AI 仓承载；Bot 通过 `runtime-overview` 与 `/health` 观测，不在插件内重复维护 parallel 状态机。
+
+**Bot 侧产品记忆**（策略与注入，非 runtime 执行）：
+
+| 层级 | 位置 | 用途 |
+|------|------|------|
+| 会话窗口 | Bot `session_store` + AI 回调 | 群内多轮可见历史 |
+| 超长摘要 | metadata `session_summary` → AI | 窗口外压缩上下文 |
+| 关系便签 `relationship_notes` | Bot PG（**二级来源**） | 轻量好感/关系线索；注入时服从 `LLM_RELATIONSHIP_NOTES_ENABLED` 与群策略 |
+| 知识源 / hybrid RAG | Bot `features/llm` | 业务检索与 trace，非 AI 仓 session 替代品 |
+
+排障时：会话「记不住了」先查 AI 任务与 callback；关系便签不生效再查 Bot PG 与 `relationship_notes` 开关，不要与 AI session backend 混为一谈。
+
 ## callback 的判断思路
 
 你不用搞懂所有内部实现，但要记住一件事：
