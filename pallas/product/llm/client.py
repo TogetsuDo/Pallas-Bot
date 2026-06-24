@@ -3,6 +3,7 @@ from __future__ import annotations
 from nonebot import logger
 
 from pallas.core.platform.observability import SlowPathTimer, slow_path_threshold_ms
+from pallas.core.shared.ai_capability_request import build_llm_chat_capability_body
 from pallas.core.shared.utils import HTTPXClient
 
 from .budget import trim_messages_to_char_budget
@@ -145,14 +146,30 @@ async def submit_chat_task(request: ChatSubmitRequest, *, cfg: LlmConfig | None 
         metadata["runtime_debug"]["request_snapshot_id"] = snapshot_id
         metadata["runtime_debug"]["replay_enabled"] = True
         metadata["runtime_debug"]["trace_level"] = "standard"
-        payload = {
+        chat_payload = {
             "session_id": request.session_id if not use_pg_session else request.request_id,
             "model": request.model,
             "system": request.system_prompt,
             "messages": [{"role": item.role, "content": item.content} for item in messages],
             "metadata": metadata,
         }
+        payload = build_llm_chat_capability_body(
+            request_id=request.request_id,
+            payload=chat_payload,
+            bot_id=request.bot_id,
+            group_id=request.group_id,
+            user_id=request.user_id,
+            session_id=chat_payload["session_id"],
+            timeout_sec=c.chat_timeout_sec,
+        )
     else:
+        if "/ollama/" in endpoint.lower():
+            logger.warning(
+                "LLM legacy endpoint 含 /ollama/ 路径，请迁移到统一 capability API: {}",
+                endpoint,
+            )
+        else:
+            logger.warning("LLM legacy chat endpoint 已弃用，请启用 LLM_USE_UNIFIED_CHAT_API")
         legacy_text = format_legacy_transcript(messages) if use_pg_session else messages[-1].content
         payload = {
             "session": request.request_id if use_pg_session else request.session_id,

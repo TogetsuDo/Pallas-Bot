@@ -58,6 +58,42 @@ def image_health_circuit(body: object) -> dict[str, Any] | None:
     }
 
 
+def capability_health_circuit(body: object, capability_id: str) -> dict[str, Any] | None:
+    section = health_section(body, "media_tasks")
+    if not section:
+        return None
+    target = str(capability_id or "").strip()
+    if not target:
+        return None
+    raw_caps = section.get("capabilities")
+    if isinstance(raw_caps, list):
+        for item in raw_caps:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("capability") or "").strip() != target:
+                continue
+            circuit_state = str(item.get("circuit_state") or "").strip().lower() or None
+            recent = item.get("recent_failure_class")
+            return {
+                "capability": target,
+                "circuit_state": circuit_state,
+                "consecutive_failures": int(item.get("consecutive_failures") or 0),
+                "recent_failure_class": str(recent).strip() if recent else None,
+                "health_state": str(item.get("health_state") or "").strip().lower() or None,
+            }
+    if str(section.get("capability") or "").strip() == target:
+        circuit_state = str(section.get("circuit_state") or "").strip().lower() or None
+        recent = section.get("recent_failure_class")
+        return {
+            "capability": target,
+            "circuit_state": circuit_state,
+            "consecutive_failures": int(section.get("consecutive_failures") or 0),
+            "recent_failure_class": str(recent).strip() if recent else None,
+            "health_state": str(section.get("health_state") or "").strip().lower() or None,
+        }
+    return None
+
+
 def parse_media_tasks(body: object) -> dict[str, Any] | None:
     section = health_section(body, "media_tasks")
     if not section:

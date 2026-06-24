@@ -46,11 +46,11 @@
 |---|-----|----------|------|
 | 7.1 | **draw 扩展薄化** | 官方扩展 [`pallas-plugin-draw`](https://github.com/TogetsuDo/pallas-plugin-draw)：`ai_execute` / `plugin_gateway` 分路径；AI 路径不 Bot 侧下载参考图 | 已落地（主仓 `src/plugins/draw` 已移除） |
 | 7.2 | **默认 AI runtime** | 扩展默认 `ai_service_runtime`；`plugin_runtime` 仅紧急兜底 | 已落地（扩展仓 `4.0.2`） |
-| 7.3 | **LLM legacy 收口** | Bot→AI 全面 capability 信封；弃用或隔离 `/ollama/*` 等 path-only 路径 | 未开始 |
+| 7.3 | **LLM legacy 收口** | Bot→AI 全面 capability 信封；弃用或隔离 `/ollama/*` 等 path-only 路径 | 已落地（统一 chat capability 外壳；legacy/ollama 弃用日志；AI 端点支持 envelope 解包） |
 | 7.4 | **sing 统一 media task** | 默认 `media_task`；legacy  singing HTTP 仅兼容期 | 已落地（bundled 默认） |
-| 7.5 | **插件侧熔断去重** | draw/sing 以 AI `/health` + probe 为事实源；削减插件内 parallel circuit 状态机 | 未开始 |
+| 7.5 | **插件侧熔断去重** | draw/sing 以 AI `/health` + probe 为事实源；削减插件内 parallel circuit 状态机 | 已落地（probe 与 draw 扩展只读 AI health 缓存；LLM probe 本就只读 `/health`） |
 | 7.6 | **memory infra** | 运行时 session / task state 在 AI 仓；产品记忆策略仍在 Bot（final §2.4） | 进行中（session backend、超长摘要与 health 可观测已落；task state / 更深层 runtime memory 仍待收口） |
-| 7.7 | **strict 门禁（可选）** | `PALLAS_DUPLICATE_PREFIX_STRICT=true` 等硬失败策略 | 未开始 |
+| 7.7 | **strict 门禁（可选）** | `PALLAS_DUPLICATE_PREFIX_STRICT=true` 等硬失败策略 | 已落地（实现见 `duplicate_prefix_check`；生产推荐见 [站点定制 §strict](site-customization-and-updates.md)） |
 
 **L2 完成标志**（摘自 final 意图）：
 

@@ -1,4 +1,5 @@
 from pallas.product.llm.ai_health_parse import (
+    capability_health_circuit,
     image_health_circuit,
     llm_health_configuration_ok,
     llm_health_runtime_detail,
@@ -99,3 +100,21 @@ def test_tts_health_summary() -> None:
     summary = tts_health_summary(body)
     assert summary is not None
     assert summary["health_state"] == "healthy"
+
+
+def test_capability_health_circuit_from_media_tasks() -> None:
+    body = {
+        "media_tasks": {
+            "capabilities": [
+                {
+                    "capability": "media.sing",
+                    "circuit_state": "open",
+                    "consecutive_failures": 2,
+                    "recent_failure_class": "timeout",
+                },
+            ],
+        },
+    }
+    circuit = capability_health_circuit(body, "media.sing")
+    assert circuit is not None
+    assert circuit["circuit_state"] == "open"

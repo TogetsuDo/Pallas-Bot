@@ -33,5 +33,6 @@ db = "PallasBot"
 
 # [env]
 # REDIS_URL = "redis://127.0.0.1:6379/0"   # 分片多进程 claim；需 uv sync --extra coord-redis
+# PALLAS_DUPLICATE_PREFIX_STRICT = "true"  # 生产推荐：重复命令 prefix 冲突时阻断启动
 
 # 多机协同、语料联邦、PG 连接池等进阶项见 docs/Config.md，一般无需写进 pallas.toml。

@@ -104,14 +104,16 @@ async def test_submit_chat_task_unified_payload(monkeypatch: pytest.MonkeyPatch)
     assert result.ok is True
     assert captured["url"] == "http://127.0.0.1:9099/api/v1/chat/completions/req-u1"
     payload = captured["json"]
-    assert payload["session_id"] == "sess-u1"
-    assert payload["system"] == "system"
-    assert payload["metadata"]["mode"] == "drunk"
-    assert payload["metadata"]["task"] == "drunk"
-    assert payload["metadata"]["task_route"]["task"] == "drunk"
-    assert payload["metadata"]["task_route"]["source"] == "config"
-    assert payload["metadata"]["token_count"] == 50
-    assert payload["messages"][-1]["content"].startswith("【用户消息")
+    assert payload["capability"] == "llm.chat"
+    assert payload["caller"]["plugin"] == "llm_chat"
+    assert payload["payload"]["session_id"] == "sess-u1"
+    assert payload["payload"]["system"] == "system"
+    assert payload["payload"]["metadata"]["mode"] == "drunk"
+    assert payload["payload"]["metadata"]["task"] == "drunk"
+    assert payload["payload"]["metadata"]["task_route"]["task"] == "drunk"
+    assert payload["payload"]["metadata"]["task_route"]["source"] == "config"
+    assert payload["payload"]["metadata"]["token_count"] == 50
+    assert payload["payload"]["messages"][-1]["content"].startswith("【用户消息")
 
 
 @pytest.mark.asyncio
@@ -158,7 +160,7 @@ async def test_submit_chat_task_unified_llm_chat_payload_includes_agent_stage_pl
         cfg=cfg,
     )
     assert result.ok is True
-    metadata = captured["json"]["metadata"]
+    metadata = captured["json"]["payload"]["metadata"]
     assert metadata["task"] == "llm_chat"
     assert metadata["task_route"]["task"] == "llm_chat"
     assert metadata["tools_enabled"] is True
@@ -207,7 +209,7 @@ async def test_submit_chat_task_unified_pg_session_payload(monkeypatch: pytest.M
         cfg=cfg,
     )
     assert result.ok is True
-    payload = captured["json"]
+    payload = captured["json"]["payload"]
     assert payload["session_id"] == "req-pg"
     assert payload["metadata"]["pg_session"] is True
     assert len(payload["messages"]) == 3
@@ -250,7 +252,7 @@ async def test_submit_chat_task_metadata_includes_runtime_state_summary_gate(mon
         cfg=cfg,
     )
     assert result.ok is True
-    metadata = captured["json"]["metadata"]
+    metadata = captured["json"]["payload"]["metadata"]
     assert metadata["runtime_state_summary_enabled"] is True
     assert metadata["session_summary"] == {
         "enabled": True,
@@ -292,7 +294,7 @@ async def test_submit_chat_task_metadata_disables_summary_when_session_off(monke
         ),
         cfg=cfg,
     )
-    metadata = captured["json"]["metadata"]
+    metadata = captured["json"]["payload"]["metadata"]
     assert metadata["runtime_state_summary_enabled"] is False
     assert "session_summary" not in metadata
 
@@ -401,9 +403,9 @@ async def test_submit_chat_task_repeater_payload_has_single_message(monkeypatch:
         cfg=cfg,
     )
     assert result.ok is True
-    assert len(captured["json"]["messages"]) == 1
-    assert captured["json"]["metadata"]["resolved_model"] == "qwen3:14b"
-    assert captured["json"]["metadata"]["task_route"]["task"] == "repeater_polish"
+    assert len(captured["json"]["payload"]["messages"]) == 1
+    assert captured["json"]["payload"]["metadata"]["resolved_model"] == "qwen3:14b"
+    assert captured["json"]["payload"]["metadata"]["task_route"]["task"] == "repeater_polish"
 
 
 @pytest.mark.asyncio

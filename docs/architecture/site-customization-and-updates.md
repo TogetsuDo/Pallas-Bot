@@ -64,6 +64,19 @@ NoneBot **不能**两个目录各加载一半同名插件；要么整包 overrid
 
 整包 override 时，内核仍可能 hardcode `src.plugins.<名>`（AI callback、WebUI、probe），与 local 行为分裂；见 **[AI 终态架构 §6](internal/pallas-final-ai-shape.md)**、**[AI 实施 §4](internal/pallas-ai-implementation.md)**。
 
+## 生产门禁：重复命令 prefix（strict）
+
+站点若同时使用 **`local/plugins/` 整包覆盖**与官方扩展，或 fork 后保留了相同口令，可能出现**同一命令被多个插件模块注册**。启动时内核会扫描并打 **ERROR** 日志；默认**不阻断**启动。
+
+生产环境建议开启硬失败，避免「命令走 local、callback 走 src」等隐性分裂：
+
+```toml
+[env]
+PALLAS_DUPLICATE_PREFIX_STRICT = "true"
+```
+
+或 WebUI / `webui.json` 的 `env` 段写入同名键。值为 `1` / `true` / `yes` / `on` 时，检测到冲突将 **`RuntimeError` 阻断启动**。详见 [pallas-ai-implementation.md §7.7](internal/pallas-ai-implementation.md)。
+
 ## 相关实现
 
 - `resolve_extra_plugin_dirs()` / `read_bootstrap_extra_plugin_dirs()`：`src/foundation/config/repo_settings.py`

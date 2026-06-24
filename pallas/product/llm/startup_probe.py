@@ -73,6 +73,10 @@ async def probe_ai_service_health(*, timeout_sec: float = 5.0) -> dict[str, Any]
         body = (response.text or "")[:200]
     status_ok = 200 <= response.status_code < 300
     payload_ok = isinstance(body, dict) and str(body.get("status", "")).lower() in ("ok", "healthy")
+    if isinstance(body, dict):
+        from pallas.core.shared.ai_health_cache import update_ai_health_cache
+
+        update_ai_health_cache(body)
     return {
         "ok": status_ok and (payload_ok or body is None),
         "url": url,

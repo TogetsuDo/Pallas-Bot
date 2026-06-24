@@ -139,24 +139,11 @@ def test_probe_sing_success_sets_runtime_state(monkeypatch) -> None:
     assert results[0].health_state == "healthy"
 
 
-def test_probe_draw_ai_runtime_enabled(monkeypatch) -> None:
-    class _Cfg:
-        runtime_mode = "ai_service_runtime"
-        ai_runtime_fallback_to_plugin = True
-
-    class _State:
-        consecutive_failures = 0
-        recent_failure_reason = ""
-
-    _patch_draw_import_plugin_submodule(
-        monkeypatch,
-        settings_factory=lambda: _Cfg(),
-        runtime_factory=lambda: SimpleNamespace(
-            ai_runtime_circuit_status=lambda: _State(),
-            ai_runtime_circuit_is_open=lambda: False,
-        ),
+def test_probe_draw_ai_runtime_enabled() -> None:
+    result = probe_draw_ai_runtime(
+        type("Cfg", (), {"runtime_mode": "ai_service_runtime", "ai_runtime_fallback_to_plugin": True})(),
+        ai_health={"image": {"backends": [{"circuit_state": "closed", "consecutive_failures": 0}]}},
     )
-    result = probe_draw_ai_runtime()
     assert result.category == "牛牛画画"
     assert result.site == "AI runtime"
     assert result.ok is True
@@ -168,6 +155,14 @@ def test_probe_draw_ai_runtime_enabled(monkeypatch) -> None:
     assert result.health_state == "healthy"
     assert result.circuit_state == "closed"
     assert result.consecutive_failures == 0
+
+
+def test_probe_draw_ai_runtime_without_ai_health_is_unknown() -> None:
+    result = probe_draw_ai_runtime(
+        type("Cfg", (), {"runtime_mode": "ai_service_runtime", "ai_runtime_fallback_to_plugin": True})(),
+    )
+    assert result.health_state == "unknown"
+    assert "AI 健康未探活" in (result.error or "")
 
 
 def test_probe_draw_ai_runtime_prefers_ai_health_circuit() -> None:
@@ -190,27 +185,24 @@ def test_probe_draw_ai_runtime_prefers_ai_health_circuit() -> None:
     assert "AI 服务熔断中" in (result.error or "")
 
 
-def test_probe_draw_ai_runtime_circuit_open(monkeypatch) -> None:
-    class _Cfg:
-        runtime_mode = "ai_service_runtime"
-        ai_runtime_fallback_to_plugin = False
-
-    class _State:
-        consecutive_failures = 3
-        recent_failure_reason = "超时"
-
-    _patch_draw_import_plugin_submodule(
-        monkeypatch,
-        settings_factory=lambda: _Cfg(),
-        runtime_factory=lambda: SimpleNamespace(
-            ai_runtime_circuit_status=lambda: _State(),
-            ai_runtime_circuit_is_open=lambda: True,
-        ),
+def test_probe_draw_ai_runtime_circuit_open() -> None:
+    result = probe_draw_ai_runtime(
+        type("Cfg", (), {"runtime_mode": "ai_service_runtime", "ai_runtime_fallback_to_plugin": False})(),
+        ai_health={
+            "image": {
+                "backends": [
+                    {
+                        "circuit_state": "open",
+                        "consecutive_failures": 3,
+                        "recent_failure_class": "timeout",
+                    },
+                ],
+            },
+        },
     )
-    result = probe_draw_ai_runtime()
     assert result.ok is False
     assert result.runtime_state == "degraded"
-    assert result.error == "熔断中（连续失败 3 次，不回退）"
+    assert "AI 服务熔断中" in (result.error or "")
     assert result.capability_id == "image.generate"
     assert result.capability_group == "media"
     assert result.runtime_type == "image"

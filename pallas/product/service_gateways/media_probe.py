@@ -14,6 +14,7 @@ from pallas.core.shared.ai_runtime_failure import (
     CIRCUIT_CLOSED,
     CIRCUIT_HALF_OPEN,
     CIRCUIT_OPEN,
+    FAILURE_RUNTIME_DEGRADED,
     FAILURE_RUNTIME_DISABLED,
     FAILURE_RUNTIME_UNAVAILABLE,
     HEALTH_DEGRADED,
@@ -114,7 +115,7 @@ async def probe_image_gateways(*, draft_values: dict[str, Any] | None = None) ->
             ),
         ]
     try:
-        results = [*await probe_all_backends(settings), probe_draw_ai_runtime(settings)]
+        backend_results = await probe_all_backends(settings)
         if settings.runtime_mode == "ai_service_runtime":
             from pallas.product.llm.startup_probe import probe_ai_service_health
 
@@ -122,11 +123,15 @@ async def probe_image_gateways(*, draft_values: dict[str, Any] | None = None) ->
             health = await probe_ai_service_health(timeout_sec=10.0)
             if isinstance(health.get("body"), dict):
                 ai_health_body = health["body"]
-            results[-1] = probe_draw_ai_runtime(settings, ai_health=ai_health_body)
+            results = [
+                *backend_results,
+                probe_draw_ai_runtime(settings, ai_health=ai_health_body),
+            ]
             media_task_probe = await probe_ai_media_task_runtime()
             if media_task_probe is not None:
                 results.append(media_task_probe)
-        return results
+            return results
+        return [*backend_results, probe_draw_ai_runtime(settings)]
     except Exception as e:  # noqa: BLE001
         logger.debug("service_gateways image probe failed: {}", e)
         return [
@@ -148,10 +153,7 @@ def probe_draw_ai_runtime(settings=None, *, ai_health: dict | None = None) -> Se
     from pallas.product.llm.ai_health_parse import image_health_circuit
 
     draw_config = import_plugin_submodule("draw", "config")
-    draw_runtime = import_plugin_submodule("draw", "runtime_state")
     active_image_gen_settings = draw_config.active_image_gen_settings
-    ai_runtime_circuit_is_open = draw_runtime.ai_runtime_circuit_is_open
-    ai_runtime_circuit_status = draw_runtime.ai_runtime_circuit_status
 
     cfg = settings or active_image_gen_settings()
     fallback_text = "开启回退" if cfg.ai_runtime_fallback_to_plugin else "不回退"
@@ -163,52 +165,55 @@ def probe_draw_ai_runtime(settings=None, *, ai_health: dict | None = None) -> Se
             disabled_message=f"未启用（当前为插件直连，{fallback_text}）",
         )
 
-    ai_circuit = image_health_circuit(ai_health) if ai_health else None
-    if ai_circuit:
-        circuit_state = str(ai_circuit.get("circuit_state") or "closed").strip().lower()
-        consecutive_failures = int(ai_circuit.get("consecutive_failures") or 0)
-        recent_failure = ai_circuit.get("recent_failure_class")
-        if circuit_state == CIRCUIT_OPEN:
-            return runtime_result_from_circuit_state(
-                category=IMAGE_CATEGORY,
-                site="AI runtime",
-                capability=IMAGE_GENERATE,
-                degraded_message=f"AI 服务熔断中（连续失败 {consecutive_failures} 次，{fallback_text}）",
-                circuit_state=CIRCUIT_OPEN,
-                consecutive_failures=consecutive_failures,
-                recent_failure_reason=str(recent_failure or ""),
-            )
-        if circuit_state == CIRCUIT_HALF_OPEN or consecutive_failures > 0:
-            return runtime_result_from_circuit_state(
-                category=IMAGE_CATEGORY,
-                site="AI runtime",
-                capability=IMAGE_GENERATE,
-                degraded_message=f"AI 服务降级观察中（连续失败 {consecutive_failures} 次，{fallback_text}）",
-                circuit_state=CIRCUIT_HALF_OPEN,
-                consecutive_failures=consecutive_failures,
-                recent_failure_reason=str(recent_failure or ""),
-            )
-
-    state = ai_runtime_circuit_status()
-    if ai_runtime_circuit_is_open():
-        return runtime_result_from_circuit_state(
+    if ai_health is None:
+        return build_runtime_probe_result(
+            IMAGE_GENERATE,
             category=IMAGE_CATEGORY,
             site="AI runtime",
-            capability=IMAGE_GENERATE,
-            degraded_message=f"熔断中（连续失败 {state.consecutive_failures} 次，{fallback_text}）",
-            circuit_state=CIRCUIT_OPEN,
-            consecutive_failures=state.consecutive_failures,
-            recent_failure_reason=state.recent_failure_reason,
+            ok=False,
+            latency_ms=None,
+            status_code=None,
+            error=f"AI 健康未探活（{fallback_text}）",
+            runtime_state=RUNTIME_DEGRADED,
+            runtime_detail=f"AI 健康未探活（{fallback_text}）",
+            failure_class=FAILURE_RUNTIME_DEGRADED,
+            health_state=HEALTH_UNKNOWN,
+            circuit_state=CIRCUIT_CLOSED,
+            consecutive_failures=0,
         )
-    if state.consecutive_failures > 0:
+
+    ai_circuit = image_health_circuit(ai_health)
+    if not ai_circuit:
         return runtime_result_from_circuit_state(
             category=IMAGE_CATEGORY,
             site="AI runtime",
             capability=IMAGE_GENERATE,
-            degraded_message=f"降级观察中（连续失败 {state.consecutive_failures} 次，{fallback_text}）",
+            healthy_message=f"正常（{fallback_text}）",
+            consecutive_failures=0,
+        )
+
+    circuit_state = str(ai_circuit.get("circuit_state") or "closed").strip().lower()
+    consecutive_failures = int(ai_circuit.get("consecutive_failures") or 0)
+    recent_failure = ai_circuit.get("recent_failure_class")
+    if circuit_state == CIRCUIT_OPEN:
+        return runtime_result_from_circuit_state(
+            category=IMAGE_CATEGORY,
+            site="AI runtime",
+            capability=IMAGE_GENERATE,
+            degraded_message=f"AI 服务熔断中（连续失败 {consecutive_failures} 次，{fallback_text}）",
+            circuit_state=CIRCUIT_OPEN,
+            consecutive_failures=consecutive_failures,
+            recent_failure_reason=str(recent_failure or ""),
+        )
+    if circuit_state == CIRCUIT_HALF_OPEN or consecutive_failures > 0:
+        return runtime_result_from_circuit_state(
+            category=IMAGE_CATEGORY,
+            site="AI runtime",
+            capability=IMAGE_GENERATE,
+            degraded_message=f"AI 服务降级观察中（连续失败 {consecutive_failures} 次，{fallback_text}）",
             circuit_state=CIRCUIT_HALF_OPEN,
-            consecutive_failures=state.consecutive_failures,
-            recent_failure_reason=state.recent_failure_reason,
+            consecutive_failures=consecutive_failures,
+            recent_failure_reason=str(recent_failure or ""),
         )
     return runtime_result_from_circuit_state(
         category=IMAGE_CATEGORY,
