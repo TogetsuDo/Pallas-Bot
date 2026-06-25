@@ -153,7 +153,12 @@ def build_command_perm_ui(overrides: dict[str, str]) -> dict[str, Any]:
             "default_level": default,
             "effective_level": effective,
         })
+    from .menu_display import enrich_commands_with_menu_triggers, menu_data_for_loaded_plugin
+
     for g in groups.values():
+        menu = menu_data_for_loaded_plugin(str(g.get("plugin") or ""))
+        if menu:
+            g["commands"] = enrich_commands_with_menu_triggers(g["commands"], menu)
         g["commands"].sort(key=itemgetter("label", "command_id"))
     plugins_out = sorted(groups.values(), key=itemgetter("plugin"))
     return {

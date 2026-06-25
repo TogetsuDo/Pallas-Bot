@@ -26,6 +26,25 @@ def test_command_perm_ui_level_labels_chinese():
     ]
 
 
+def test_command_perm_ui_includes_trigger_condition_from_menu(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from packages.help import __plugin_meta__ as help_meta
+    from pallas.core.perm.schema import build_command_perm_ui, clear_merged_defaults_cache
+
+    clear_merged_defaults_cache()
+    plugins = [SimpleNamespace(name="help", metadata=help_meta)]
+    monkeypatch.setattr("pallas.core.perm.schema.get_loaded_plugins", lambda: plugins)
+    monkeypatch.setattr("nonebot.get_loaded_plugins", lambda: plugins)
+    monkeypatch.setattr("pallas.core.perm.schema.discover_plugin_packages", lambda: ["help"])
+    monkeypatch.setattr("pallas.core.perm.schema.discover_extra_plugin_packages", dict)
+
+    ui = build_command_perm_ui({})
+    by_plugin = {row["plugin"]: row for row in ui["plugins"]}
+    commands = {cmd["command_id"]: cmd for cmd in by_plugin["help"]["commands"]}
+    assert "牛牛帮助" in commands["help.help"]["trigger_condition"]
+
+
 def test_command_perm_ui_includes_worker_plugins_from_disk_when_hub_loaded_plugins_are_partial(monkeypatch):
     from pathlib import Path
     from types import SimpleNamespace

@@ -5136,6 +5136,23 @@ def register_extended_api(
             normalize_command_limit_overrides(limits_cfg.command_limit_overrides or {}),
         )
         limits_row = find_capability_plugin_row(limits_ui, target) or {}
+        if menu_items:
+            if perm_row:
+                perm_row = {
+                    **perm_row,
+                    "commands": enrich_commands_with_menu_triggers(
+                        list(perm_row.get("commands") or []),
+                        menu_items,
+                    ),
+                }
+            if limits_row:
+                limits_row = {
+                    **limits_row,
+                    "commands": enrich_commands_with_menu_triggers(
+                        list(limits_row.get("commands") or []),
+                        menu_items,
+                    ),
+                }
 
         runtime_ids = {target}
         for key in ("name", "resolved_plugin_id", "nb_plugin_name"):

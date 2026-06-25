@@ -121,7 +121,12 @@ def build_command_limits_ui(overrides: dict[str, int]) -> dict[str, Any]:
             "default_cd_sec": default_cd,
             "effective_cd_sec": effective_cd,
         })
+    from pallas.core.perm.menu_display import enrich_commands_with_menu_triggers, menu_data_for_loaded_plugin
+
     for group in groups.values():
+        menu = menu_data_for_loaded_plugin(str(group.get("plugin") or ""))
+        if menu:
+            group["commands"] = enrich_commands_with_menu_triggers(group["commands"], menu)
         group["commands"].sort(key=itemgetter("label", "command_id"))
     plugins_out = sorted(groups.values(), key=itemgetter("plugin"))
     commands_out = [

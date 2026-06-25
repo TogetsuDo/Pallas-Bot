@@ -70,6 +70,30 @@ def enrich_commands_with_menu_triggers(
     return enriched
 
 
+def menu_data_for_loaded_plugin(plugin_name: str) -> list[dict[str, Any]]:
+    """读取已加载插件 metadata.extra.menu_data。"""
+    try:
+        from nonebot import get_loaded_plugins
+
+        from pallas.core.platform.bot_runtime.plugin_package_aliases import canonical_plugin_package
+    except ImportError:
+        return []
+    target = canonical_plugin_package((plugin_name or "").strip()) or (plugin_name or "").strip()
+    if not target:
+        return []
+    for plugin in get_loaded_plugins():
+        raw = str(getattr(plugin, "name", "") or "").strip()
+        if not raw:
+            continue
+        if raw == plugin_name or canonical_plugin_package(raw) == target:
+            meta = getattr(plugin, "metadata", None)
+            extra = getattr(meta, "extra", None) or {}
+            menu = extra.get("menu_data") if isinstance(extra, dict) else []
+            if isinstance(menu, list):
+                return [item for item in menu if isinstance(item, dict)]
+    return []
+
+
 def raw_trigger_condition(item: dict[str, Any]) -> str:
     """metadata 中的触发条件原文。"""
     return str(item.get("trigger_condition", "未知") or "未知").strip() or "未知"
