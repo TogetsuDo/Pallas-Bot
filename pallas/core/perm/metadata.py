@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ast
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -58,45 +57,19 @@ def command_permissions_from_metadata(meta: PluginMetadata | None) -> list[Comma
 
 def parse_command_permissions_stub(init_path: Path) -> dict[str, Any] | None:
     """从插件 ``__init__.py`` 的 ``__plugin_meta__`` 字面量里提取名称与 command_permissions。"""
-    try:
-        text = init_path.read_text(encoding="utf-8")
-    except OSError:
+    from pallas.core.commands.metadata_stub import parse_plugin_metadata_extra_stub
+
+    stub = parse_plugin_metadata_extra_stub(init_path)
+    if not stub:
         return None
-    try:
-        tree = ast.parse(text)
-    except SyntaxError:
+    decls: list[CommandPermissionDecl] = []
+    for raw in stub.get("command_permissions") or []:
+        if not isinstance(raw, dict):
+            continue
+        decl = parse_command_permission_decl(raw)
+        if decl is not None:
+            decls.append(decl)
+    plugin_name = str(stub.get("name") or "").strip()
+    if not plugin_name and not decls:
         return None
-    for node in tree.body:
-        if not isinstance(node, ast.Assign):
-            continue
-        if not any(isinstance(target, ast.Name) and target.id == "__plugin_meta__" for target in node.targets):
-            continue
-        if not isinstance(node.value, ast.Call):
-            continue
-        plugin_name = ""
-        decls: list[CommandPermissionDecl] = []
-        for kw in node.value.keywords:
-            if kw.arg == "name" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
-                plugin_name = kw.value.value
-            if kw.arg != "extra" or not isinstance(kw.value, ast.Dict):
-                continue
-            for key_node, value_node in zip(kw.value.keys, kw.value.values, strict=False):
-                if not isinstance(key_node, ast.Constant) or key_node.value != "command_permissions":
-                    continue
-                if not isinstance(value_node, ast.List):
-                    continue
-                for item in value_node.elts:
-                    if not isinstance(item, ast.Dict):
-                        continue
-                    raw: dict[str, Any] = {}
-                    for ikey, ival in zip(item.keys, item.values, strict=False):
-                        if not isinstance(ikey, ast.Constant) or not isinstance(ikey.value, str):
-                            continue
-                        if isinstance(ival, ast.Constant):
-                            raw[ikey.value] = ival.value
-                    decl = parse_command_permission_decl(raw)
-                    if decl is not None:
-                        decls.append(decl)
-        if plugin_name or decls:
-            return {"name": plugin_name, "command_permissions": decls}
-    return None
+    return {"name": plugin_name, "command_permissions": decls}

@@ -36,8 +36,10 @@ def test_command_perm_ui_includes_trigger_condition_from_menu(monkeypatch) -> No
     plugins = [SimpleNamespace(name="help", metadata=help_meta)]
     monkeypatch.setattr("pallas.core.perm.schema.get_loaded_plugins", lambda: plugins)
     monkeypatch.setattr("nonebot.get_loaded_plugins", lambda: plugins)
-    monkeypatch.setattr("pallas.core.perm.schema.discover_plugin_packages", lambda: ["help"])
-    monkeypatch.setattr("pallas.core.perm.schema.discover_extra_plugin_packages", dict)
+    monkeypatch.setattr(
+        "pallas.core.commands.metadata_stub.iter_plugin_init_paths_for_disk_scan",
+        list,
+    )
 
     ui = build_command_perm_ui({})
     by_plugin = {row["plugin"]: row for row in ui["plugins"]}
@@ -72,12 +74,11 @@ def test_command_perm_ui_includes_worker_plugins_from_disk_when_hub_loaded_plugi
         lambda: [SimpleNamespace(name="help", metadata=packages.help.__plugin_meta__)],
     )
     monkeypatch.setattr(
-        "pallas.core.perm.schema.discover_plugin_packages",
-        lambda: ["help", "sing", "chat"],
-    )
-    monkeypatch.setattr(
-        "pallas.core.perm.schema.discover_extra_plugin_packages",
-        dict,
+        "pallas.core.commands.metadata_stub.iter_plugin_init_paths_for_disk_scan",
+        lambda: [
+            ("sing", Path("packages/sing/__init__.py")),
+            ("chat", Path("packages/chat/__init__.py")),
+        ],
     )
     monkeypatch.setattr(
         "pallas.core.perm.schema.parse_command_permissions_stub",

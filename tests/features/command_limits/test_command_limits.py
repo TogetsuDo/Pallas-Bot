@@ -95,6 +95,7 @@ def test_existing_plugin_metadata_declares_command_limits():
     assert [item.id for item in command_limits_from_metadata(bot_status_meta)] == [
         "bot_status.status",
         "bot_status.count",
+        "bot_status.test_mail",
     ]
     assert [item.id for item in command_limits_from_metadata(connectivity_meta)] == ["connectivity.probe"]
     assert [item.id for item in command_limits_from_metadata(help_meta)] == [
@@ -147,8 +148,10 @@ def test_command_limits_ui_label_prefers_chinese_name(monkeypatch):
         "pallas.core.limits.schema.get_loaded_plugins",
         lambda: [SimpleNamespace(name="maa", metadata=maa_meta)],
     )
-    monkeypatch.setattr("pallas.core.limits.schema.discover_plugin_packages", list)
-    monkeypatch.setattr("pallas.core.limits.schema.discover_extra_plugin_packages", dict)
+    monkeypatch.setattr(
+        "pallas.core.commands.metadata_stub.iter_plugin_init_paths_for_disk_scan",
+        list,
+    )
     # command_permissions 声明的 label 优先于集中映射
     monkeypatch.setattr(
         "pallas.core.perm.schema.command_labels_from_permissions",
@@ -188,12 +191,11 @@ def test_command_limits_ui_includes_worker_plugins_from_disk_when_hub_loaded_plu
         lambda: [SimpleNamespace(name="help", metadata=help_meta)],
     )
     monkeypatch.setattr(
-        "pallas.core.limits.schema.discover_plugin_packages",
-        lambda: ["help", "maa", "sing"],
-    )
-    monkeypatch.setattr(
-        "pallas.core.limits.schema.discover_extra_plugin_packages",
-        dict,
+        "pallas.core.commands.metadata_stub.iter_plugin_init_paths_for_disk_scan",
+        lambda: [
+            ("maa", Path("packages/maa/__init__.py")),
+            ("sing", Path("packages/sing/__init__.py")),
+        ],
     )
     monkeypatch.setattr(
         "pallas.core.limits.schema.parse_command_limits_stub",

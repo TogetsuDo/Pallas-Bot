@@ -7,8 +7,6 @@ from typing import Any
 
 from nonebot import get_loaded_plugins
 
-from pallas.console.webui.plugin_catalog import discover_extra_plugin_packages, discover_plugin_packages
-from pallas.core.foundation.paths import PROJECT_ROOT
 from pallas.core.platform.bot_runtime.plugin_package_aliases import canonical_plugin_package
 
 from .metadata import command_permissions_from_metadata, parse_command_permissions_stub
@@ -63,18 +61,13 @@ def _loaded_plugin_rows() -> list[tuple[str, str, list[Any]]]:
 
 
 def _disk_plugin_rows() -> list[tuple[str, str, list[Any]]]:
-    loaded_names = {name for name, _title, _decls in _loaded_plugin_rows()}
-    extra_pkgs = discover_extra_plugin_packages()
-    roots = [(package, PROJECT_ROOT / "packages" / package) for package in discover_plugin_packages()]
-    roots.extend(extra_pkgs.items())
+    from pallas.core.commands.metadata_stub import iter_plugin_init_paths_for_disk_scan
 
+    loaded_names = {name for name, _title, _decls in _loaded_plugin_rows()}
     rows: list[tuple[str, str, list[Any]]] = []
     seen: set[str] = set()
-    for package, root in roots:
+    for package, init_path in iter_plugin_init_paths_for_disk_scan():
         if package in loaded_names or package in seen:
-            continue
-        init_path = root / "__init__.py"
-        if not init_path.is_file():
             continue
         stub = parse_command_permissions_stub(init_path)
         if not stub:
