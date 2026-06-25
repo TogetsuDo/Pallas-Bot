@@ -47,6 +47,14 @@ def schedule_bot_restart(
 ) -> bool:
     if not PALLAS_SCRIPT.is_file():
         return False
+    try:
+        from packages.pb_webui.api import invalidate_health_snapshot
+        from packages.pb_webui.restart_state import mark_restart_requested
+
+        mark_restart_requested(workers_only=workers_only)
+        invalidate_health_snapshot()
+    except Exception:
+        pass
     resolved = resolve_bot_mode(mode)
     cmd = f"sleep {delay_s} && exec {PALLAS_SCRIPT} restart --mode {resolved}"
     if workers_only and resolved == "shard":

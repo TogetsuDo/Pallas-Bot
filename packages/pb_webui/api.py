@@ -14,6 +14,7 @@ from nonebot import get_driver, logger
 from pallas.core.foundation.bot_version import get_pallas_bot_version_for_health
 
 from .console_meta_store import get_console_meta, merge_console_version_from_disk
+from .restart_state import restart_runtime_fields
 
 _HEALTH_REFRESH_SEC = 30.0
 _health_snapshot: dict[str, Any] | None = None
@@ -126,6 +127,7 @@ def register_api(
                 static_root=static_root,
                 pallas_ver=pallas_ver,
             )
-        return JSONResponse(snap, status_code=status.HTTP_200_OK)
+        payload = {**snap, **restart_runtime_fields()}
+        return JSONResponse(payload, status_code=status.HTTP_200_OK)
 
     app.include_router(router)
