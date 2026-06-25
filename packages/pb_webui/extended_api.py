@@ -173,8 +173,11 @@ _PLUGIN_RUN_STATS: dict[str, dict[str, Any]] = {}
 _PLUGIN_RUN_TRACKING_INIT = False
 _WORKER_STATS_SYNC_STARTED = False
 _UNIFIED_STATS_SYNC_STARTED = False
+_REPEATER_HISTORY_SYNC_STARTED = False
 _WORKER_STATS_FAST_FLUSH_SEC = 3.0
 _WORKER_STATS_HIST_FLUSH_SEC = 30.0
+# repeater 指标历史按小时落盘；与 repeater_metrics_history._MAX_LINES(24*14) 的 14 天窗口对齐
+_REPEATER_HISTORY_FLUSH_SEC = 3600.0
 _EMPTY_MATCHER_HIST_SERIES: dict[str, list[Any]] = {
     "matcher_runs_by_plugin": [],
     "matcher_errors_by_plugin": [],
@@ -1571,16 +1574,11 @@ def flush_unified_console_live_stats_sync(*, include_hist: bool = False) -> None
     if not _unified_console_live_stats_enabled():
         return
     from packages.pb_webui import console_live_stats
-    from pallas.core.platform.shard.repeater_ingress_metrics import repeater_ingress_metrics_snapshot
-
-    from .repeater_metrics_history import append_repeater_metrics_history
 
     console_live_stats.write_bots_sync(
         _collect_worker_console_stats_snapshot(include_hist=include_hist),
         preserve_matcher_hist=not include_hist,
     )
-    snap = repeater_ingress_metrics_snapshot()
-    append_repeater_metrics_history(cluster=snap, process=snap, sharded=False)
 
 
 async def flush_unified_console_live_stats_async(*, include_hist: bool = False) -> None:
@@ -1601,8 +1599,6 @@ def flush_worker_shard_console_stats_sync(*, include_hist: bool = False) -> None
     from pallas.core.platform.shard.registry.config import get_shard_registry_settings
     from pallas.core.platform.shard.repeater_ingress_metrics import repeater_ingress_metrics_snapshot
     from pallas.product.llm.task_metrics import llm_task_metrics_snapshot
-
-    from .repeater_metrics_history import append_repeater_metrics_history
 
     if not _shard_worker_console():
         return
@@ -1628,15 +1624,38 @@ def flush_worker_shard_console_stats_sync(*, include_hist: bool = False) -> None
             "llm_task": llm_task_metrics_snapshot(),
         },
     )
-    append_repeater_metrics_history(
-        cluster=repeater_ingress_metrics_snapshot(),
-        process=repeater_ingress_metrics_snapshot(),
-        sharded=True,
-    )
 
 
 async def flush_worker_shard_console_stats_async(*, include_hist: bool = False) -> None:
     await asyncio.to_thread(flush_worker_shard_console_stats_sync, include_hist=include_hist)
+
+
+def flush_repeater_metrics_history_sync() -> bool:
+    """单点写 repeater 指标历史：仅 hub / 单进程执行，写真实集群聚合而非单 worker 快照。
+
+    分片下各 worker 不再各自追加（会刷爆 14 天保留窗口），改由 hub 用
+    aggregate_shard_observability() 的跨 worker 聚合按小时落一行。
+    """
+    if _shard_worker_console():
+        return False
+    from pallas.core.platform.shard.observability import aggregate_shard_observability
+    from pallas.core.platform.shard.repeater_ingress_metrics import repeater_ingress_metrics_snapshot
+
+    from .repeater_metrics_history import append_repeater_metrics_history
+
+    obs = aggregate_shard_observability()
+    cluster = obs.get("repeater_ingress_cluster")
+    if not isinstance(cluster, dict) or not cluster:
+        return False
+    return append_repeater_metrics_history(
+        cluster=cluster,
+        process=repeater_ingress_metrics_snapshot(),
+        sharded=bool(obs.get("sharded")),
+    )
+
+
+async def flush_repeater_metrics_history_async() -> bool:
+    return await asyncio.to_thread(flush_repeater_metrics_history_sync)
 
 
 def _apply_console_stats_boot_snapshot(bots: dict[str, dict[str, Any]]) -> bool:
@@ -1790,12 +1809,33 @@ def start_unified_console_stats_sync() -> None:
     asyncio.create_task(_hist_loop())
 
 
+def start_repeater_metrics_history_sync() -> None:
+    """hub / 单进程按小时落 repeater 指标历史；分片 worker 不参与（由 hub 聚合）。"""
+    global _REPEATER_HISTORY_SYNC_STARTED
+    if _REPEATER_HISTORY_SYNC_STARTED:
+        return
+    if _shard_worker_console():
+        return
+    _REPEATER_HISTORY_SYNC_STARTED = True
+
+    async def _loop() -> None:
+        while True:
+            try:
+                await flush_repeater_metrics_history_async()
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(_REPEATER_HISTORY_FLUSH_SEC)
+
+    asyncio.create_task(_loop())
+
+
 def ensure_console_metrics_hooks() -> None:
     """单进程 / hub WebUI 与分片 worker共用。"""
     _ensure_bot_session_hooks()
     _init_message_tracking()
     _init_plugin_run_tracking()
     start_unified_console_stats_sync()
+    start_repeater_metrics_history_sync()
 
 
 def _msg_stats_get_mut(sid: str) -> dict[str, Any]:

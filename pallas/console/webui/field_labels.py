@@ -180,6 +180,7 @@ FIELD_LABELS: dict[str, str] = {
     "pallas_image_draw_max_pending": "排队上限",
     "pallas_image_draw_per_user_limit": "每日次数上限",
     "pallas_image_draw_total_timeout": "总超时（秒）",
+    "pallas_image_backend_attempt_timeout": "备用网关超时（秒）",
     "pallas_image_draw_unlimited_group_ids": "无限次数群",
     "pallas_image_draw_unlimited_user_ids": "无限次数用户",
     "pallas_image_http_transport": "HTTP 客户端",
