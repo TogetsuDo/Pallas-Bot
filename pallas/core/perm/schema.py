@@ -110,6 +110,16 @@ def default_level_for(command_id: str) -> str:
     return merged_default_levels().get(cid, "everyone")
 
 
+def command_labels_from_permissions() -> dict[str, str]:
+    """命令 ID -> command_permissions 声明的中文名，供冷却等其他面板复用同一 label。"""
+    labels: dict[str, str] = {}
+    for _plugin_name, _title, decls in _all_command_permission_rows():
+        for row in decls:
+            if row.label and row.label != row.id:
+                labels[row.id] = row.label
+    return labels
+
+
 def build_command_perm_ui(overrides: dict[str, str]) -> dict[str, Any]:
     """供 WebUI 渲染：按插件分组 + 每命令当前生效等级。"""
     defaults = merged_default_levels()

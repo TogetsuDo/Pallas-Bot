@@ -89,27 +89,30 @@ def effective_command_limit_for(command_id: str, overrides: dict[str, int] | Non
 
 
 def build_command_limits_ui(overrides: dict[str, int]) -> dict[str, Any]:
+    from pallas.core.perm.schema import command_labels_from_permissions
+    from pallas.core.perm.ui_labels import (
+        command_label_for_id,
+        plugin_name_for_command_id,
+        plugin_title_for_name,
+    )
+
     defaults = merged_default_command_limits()
-    meta_rows: dict[str, tuple[str, str, str]] = {}
+    # CommandLimitDecl 无 label，复用 command_permissions 声明的中文名，再回退到集中映射 / 裸 id。
+    perm_labels = command_labels_from_permissions()
+    meta_rows: dict[str, tuple[str, str]] = {}
     for plugin_name, title, decls in _all_command_limit_rows():
         for row in decls:
-            meta_rows[row.id] = (plugin_name, title, row.id)
+            meta_rows[row.id] = (plugin_name, title)
 
     groups: dict[str, dict[str, Any]] = {}
     for cid, default_cd in sorted(defaults.items(), key=itemgetter(0)):
         effective_cd = overrides.get(cid, default_cd)
         if cid in meta_rows:
-            pname, ptitle, label = meta_rows[cid]
+            pname, ptitle = meta_rows[cid]
         else:
-            from pallas.core.perm.ui_labels import (
-                command_label_for_id,
-                plugin_name_for_command_id,
-                plugin_title_for_name,
-            )
-
             pname = plugin_name_for_command_id(cid)
             ptitle = plugin_title_for_name(pname)
-            label = command_label_for_id(cid)
+        label = perm_labels.get(cid) or command_label_for_id(cid)
         pname = canonical_plugin_package(pname) or pname
         group = groups.setdefault(pname, {"plugin": pname, "title": ptitle, "commands": []})
         group["commands"].append({
