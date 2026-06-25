@@ -120,6 +120,7 @@ def test_plugin_governance_get_returns_commands_and_runtime(monkeypatch) -> None
     payload = response.json()
     assert payload["ok"] is True
     assert payload["data"]["commands"][0]["command_id"] == "sing.play"
+    assert payload["data"]["commands"][0]["trigger_condition"] == "牛牛唱歌 xxx"
     assert payload["data"]["menu_items"][0]["command_permission"] == "sing.play"
     assert payload["data"]["runtime"]["global_disable"] is True
     assert payload["data"]["runtime"]["help_hidden"] is True

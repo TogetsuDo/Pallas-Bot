@@ -5097,6 +5097,7 @@ def register_extended_api(
         from packages.help.visibility import load_help_hidden_plugins
         from pallas.console.webui.plugin_governance import (
             canonical_plugin_name,
+            enrich_commands_with_menu_triggers,
             find_capability_plugin_row,
             find_catalog_plugin_row,
             governance_row_from_catalog,
@@ -5144,12 +5145,16 @@ def register_extended_api(
                 runtime_ids.add(canonical_plugin_name(value))
         hidden = {str(x).strip() for x in load_help_hidden_plugins() if str(x).strip()}
         disabled = {str(x).strip() for x in load_global_disabled_plugins() if str(x).strip()}
+        commands = enrich_commands_with_menu_triggers(
+            list(plugin_row.get("commands") or []),
+            menu_items,
+        )
         return {
             "ok": True,
             "data": {
                 "plugin": target,
                 "title": str(plugin_row.get("title") or target),
-                "commands": list(plugin_row.get("commands") or []),
+                "commands": commands,
                 "menu_items": menu_items,
                 "runtime": {
                     "global_disable": any(item in disabled for item in runtime_ids),

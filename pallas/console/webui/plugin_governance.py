@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from pallas.core.perm.menu_display import enrich_commands_with_menu_triggers
 from pallas.core.platform.bot_runtime.plugin_package_aliases import canonical_plugin_package
 
 
@@ -53,3 +54,12 @@ def governance_row_from_catalog(target: str, catalog_row: dict[str, Any]) -> dic
         "reload_policy": None,
         "activation_policy": None,
     }
+
+
+__all__ = [
+    "canonical_plugin_name",
+    "enrich_commands_with_menu_triggers",
+    "find_capability_plugin_row",
+    "find_catalog_plugin_row",
+    "governance_row_from_catalog",
+]

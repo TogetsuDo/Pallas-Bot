@@ -116,6 +116,16 @@ def build_plugin_capabilities_ui() -> dict[str, Any]:
             bucket = ensure_plugin(name, title)
             bucket["reload_policy"] = reload_policy_from_metadata(meta)
             bucket["activation_policy"] = activation_policy_for_plugin(name)
+            extra = getattr(meta, "extra", None) or {}
+            menu_items = extra.get("menu_data") if isinstance(extra, dict) else []
+            if isinstance(menu_items, list) and menu_items and bucket["commands"]:
+                from pallas.core.perm.menu_display import enrich_commands_with_menu_triggers
+
+                enriched = enrich_commands_with_menu_triggers(
+                    list(bucket["commands"].values()),
+                    menu_items,
+                )
+                bucket["commands"] = {str(row["command_id"]): row for row in enriched if row.get("command_id")}
     except ImportError:
         pass
     except Exception:
