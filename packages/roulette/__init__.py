@@ -62,6 +62,15 @@ __plugin_meta__ = PluginMetadata(
                 "detail_des": "可选踢人或禁言模式；轮到谁中弹，就按当前模式执行结果。",
             },
             {
+                "func": "切换轮盘模式",
+                "trigger_method": "on_message",
+                "trigger_scene": SCENE_GROUP,
+                "trigger_condition": "牛牛轮盘踢人 / 牛牛轮盘禁言 / 牛牛踢人轮盘 / 牛牛禁言轮盘",
+                "command_permission": "roulette.mode_switch",
+                "brief_des": "切换踢人/禁言模式",
+                "detail_des": "用「牛牛轮盘踢人」或「牛牛轮盘禁言」指定本局模式；默认禁言。",
+            },
+            {
                 "func": "参与轮盘",
                 "trigger_method": "on_message",
                 "trigger_scene": SCENE_GROUP,

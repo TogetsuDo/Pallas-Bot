@@ -41,6 +41,7 @@ __plugin_meta__ = PluginMetadata(
         ),
         "command_limits": command_limit_list(
             command_limit_row("llm_chat.chat", 3),
+            command_limit_row("llm_chat.clear", 2),
         ),
         "llm_tools": [
             llm_command_tool_row(
@@ -108,6 +109,26 @@ __plugin_meta__ = PluginMetadata(
                 "command_permission": "llm_chat.clear",
                 "brief_des": "清空这轮聊天记录",
                 "detail_des": "让牛牛忘掉这轮刚聊过的话，但不会改掉它本来的说话风格。",
+            },
+            {
+                "func": "换模型",
+                "trigger_method": "on_cmd",
+                "trigger_scene": SCENE_PRIVATE,
+                "trigger_condition": "换模型 / 牛牛换模型 [模型名]",
+                "help_audience": "superuser",
+                "command_permission": "llm_chat.switch_model",
+                "brief_des": "切换本地对话模型",
+                "detail_des": "私聊发送可查看当前模型；带模型名则切换，无需重启 Celery，旧权重自动卸载。",
+            },
+            {
+                "func": "卸模型",
+                "trigger_method": "on_cmd",
+                "trigger_scene": SCENE_PRIVATE,
+                "trigger_condition": "卸模型 / 牛牛卸模型",
+                "help_audience": "superuser",
+                "command_permission": "llm_chat.unload_model",
+                "brief_des": "卸载当前本地模型",
+                "detail_des": "释放当前本地模型权重；下次对话按新配置重新加载。",
             },
         ],
     },
