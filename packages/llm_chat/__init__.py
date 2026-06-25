@@ -42,6 +42,9 @@ __plugin_meta__ = PluginMetadata(
         "command_limits": command_limit_list(
             command_limit_row("llm_chat.chat", 3),
             command_limit_row("llm_chat.clear", 2),
+            command_limit_row("llm_chat.status", 5),
+            command_limit_row("llm_chat.switch_model", 10),
+            command_limit_row("llm_chat.unload_model", 10),
         ),
         "llm_tools": [
             llm_command_tool_row(

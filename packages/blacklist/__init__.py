@@ -1,6 +1,6 @@
 from nonebot.plugin import PluginMetadata
 
-from pallas.core.commands import command_perm_list, command_perm_row
+from pallas.core.commands import command_limit_list, command_limit_row, command_perm_list, command_perm_row
 from pallas.core.perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
@@ -62,6 +62,11 @@ __plugin_meta__ = PluginMetadata(
             command_perm_row("blacklist.add", "牛牛拉黑 / 牛牛屏蔽 / 牛牛拉黑群", "staff"),
             command_perm_row("blacklist.remove", "牛牛解禁 / 牛牛解禁群", "staff"),
             command_perm_row("blacklist.list", "牛牛黑名单 / 牛牛查看黑名单", "staff"),
+        ),
+        "command_limits": command_limit_list(
+            command_limit_row("blacklist.add", 3),
+            command_limit_row("blacklist.remove", 3),
+            command_limit_row("blacklist.list", 3),
         ),
         "menu_data": [
             {

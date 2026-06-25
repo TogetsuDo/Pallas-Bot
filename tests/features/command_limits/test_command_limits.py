@@ -97,7 +97,13 @@ def test_existing_plugin_metadata_declares_command_limits():
         "bot_status.count",
     ]
     assert [item.id for item in command_limits_from_metadata(connectivity_meta)] == ["connectivity.probe"]
-    assert [item.id for item in command_limits_from_metadata(help_meta)] == ["help.help"]
+    assert [item.id for item in command_limits_from_metadata(help_meta)] == [
+        "help.help",
+        "help.plugin_enable",
+        "help.plugin_disable",
+        "help.plugin_enable_all",
+        "help.plugin_disable_all",
+    ]
     assert [item.id for item in command_limits_from_metadata(sing_meta)] == [
         "sing.sing",
         "sing.play",

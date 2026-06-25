@@ -1,7 +1,7 @@
 from nonebot import get_bot
 from nonebot.plugin import PluginMetadata
 
-from pallas.core.commands import command_perm_list, command_perm_row
+from pallas.core.commands import command_limit_list, command_limit_row, command_perm_list, command_perm_row
 from pallas.core.perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
@@ -32,6 +32,12 @@ __plugin_meta__ = PluginMetadata(
             command_perm_row("greeting.clear_friend_welcome", "清除好友欢迎", "bot_moderator"),
             command_perm_row("greeting.set_group_welcome", "设置群欢迎", "group_moderator"),
             command_perm_row("greeting.clear_group_welcome", "清除群欢迎", "group_moderator"),
+        ),
+        "command_limits": command_limit_list(
+            command_limit_row("greeting.set_friend_welcome", 5),
+            command_limit_row("greeting.clear_friend_welcome", 5),
+            command_limit_row("greeting.set_group_welcome", 5),
+            command_limit_row("greeting.clear_group_welcome", 5),
         ),
         "menu_data": [
             {

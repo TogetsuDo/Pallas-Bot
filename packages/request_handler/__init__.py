@@ -1,6 +1,6 @@
 from nonebot.plugin import PluginMetadata
 
-from pallas.core.commands import command_perm_list, command_perm_row
+from pallas.core.commands import command_limit_list, command_limit_row, command_perm_list, command_perm_row
 from pallas.core.perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
@@ -46,6 +46,26 @@ __plugin_meta__ = PluginMetadata(
             command_perm_row("request.enable_auto_group", "开启自动同意入群", "bot_moderator"),
             command_perm_row("request.disable_auto_group", "关闭自动同意入群", "bot_moderator"),
             command_perm_row("request.approval_reply", "引用审批消息快捷同意/拒绝", "bot_moderator"),
+        ),
+        "command_limits": command_limit_list(
+            command_limit_row("request.list_friends", 2),
+            command_limit_row("request.list_groups", 2),
+            command_limit_row("request.approve_latest", 2),
+            command_limit_row("request.reject_latest", 2),
+            command_limit_row("request.approve_friend", 3),
+            command_limit_row("request.reject_friend", 3),
+            command_limit_row("request.approve_group", 3),
+            command_limit_row("request.reject_group", 3),
+            command_limit_row("request.approve_all_friends", 10),
+            command_limit_row("request.reject_all_friends", 10),
+            command_limit_row("request.approve_all_groups", 10),
+            command_limit_row("request.reject_all_groups", 10),
+            command_limit_row("request.auto_accept_status", 2),
+            command_limit_row("request.enable_auto_friend", 5),
+            command_limit_row("request.disable_auto_friend", 5),
+            command_limit_row("request.enable_auto_group", 5),
+            command_limit_row("request.disable_auto_group", 5),
+            command_limit_row("request.approval_reply", 2),
         ),
         "menu_data": [
             {

@@ -1,6 +1,6 @@
 from nonebot.plugin import PluginMetadata
 
-from pallas.core.commands import command_perm_list, command_perm_row
+from pallas.core.commands import command_limit_list, command_limit_row, command_perm_list, command_perm_row
 from pallas.core.perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
@@ -29,6 +29,10 @@ __plugin_meta__ = PluginMetadata(
         "command_permissions": command_perm_list(
             command_perm_row("repeater.ban", "复读「不可以」", "staff"),
             command_perm_row("repeater.ban_latest", "复读「不可以发这个」", "staff"),
+        ),
+        "command_limits": command_limit_list(
+            command_limit_row("repeater.ban", 3),
+            command_limit_row("repeater.ban_latest", 3),
         ),
         "menu_data": [
             {

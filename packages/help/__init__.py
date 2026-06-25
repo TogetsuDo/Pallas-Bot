@@ -56,6 +56,10 @@ __plugin_meta__ = PluginMetadata(
         ),
         "command_limits": command_limit_list(
             command_limit_row("help.help", 3),
+            command_limit_row("help.plugin_enable", 5),
+            command_limit_row("help.plugin_disable", 5),
+            command_limit_row("help.plugin_enable_all", 15),
+            command_limit_row("help.plugin_disable_all", 15),
         ),
         "menu_data": [
             {

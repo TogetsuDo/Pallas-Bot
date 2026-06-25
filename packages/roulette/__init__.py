@@ -1,6 +1,6 @@
 from nonebot.plugin import PluginMetadata
 
-from pallas.core.commands import command_perm_list, command_perm_row
+from pallas.core.commands import command_limit_list, command_limit_row, command_perm_list, command_perm_row
 from pallas.core.perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
@@ -51,6 +51,9 @@ __plugin_meta__ = PluginMetadata(
         },
         "command_permissions": command_perm_list(
             command_perm_row("roulette.mode_switch", "牛牛轮盘切换模式", "staff"),
+        ),
+        "command_limits": command_limit_list(
+            command_limit_row("roulette.mode_switch", 5),
         ),
         "menu_data": [
             {
