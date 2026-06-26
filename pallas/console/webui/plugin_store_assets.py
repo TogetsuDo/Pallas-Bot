@@ -110,6 +110,10 @@ def _readme_public_rel(kind: str, target_id: str) -> str:
     return f"readme/{kind}-{_safe_name(target_id)}.md"
 
 
+def _changelog_public_rel(kind: str, target_id: str) -> str:
+    return f"changelog/{kind}-{_safe_name(target_id)}.md"
+
+
 def _asset_public_rel(kind: str, asset_type: str, target_id: str, suffix: str) -> str:
     clean_suffix = suffix if suffix.startswith(".") else f".{suffix}"
     return f"{asset_type}/{kind}-{_safe_name(target_id)}{clean_suffix}"
@@ -174,6 +178,25 @@ def get_cached_readme_markdown(kind: str, target_id: str) -> str | None:
     return text or None
 
 
+def get_cached_changelog_markdown(kind: str, target_id: str) -> str | None:
+    snapshot = load_snapshot()
+    entry = (snapshot.get(kind) or {}).get(target_id) or {}
+    if not isinstance(entry, dict):
+        return None
+    changelog = entry.get("changelog") or {}
+    if not isinstance(changelog, dict):
+        return None
+    relative_path = str(changelog.get("relative_path") or "").strip()
+    if not relative_path:
+        return None
+    path = _resolve_path(relative_path)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError):
+        return None
+    return text or None
+
+
 def resolve_readme_request_id(kind: str, target_id: str) -> str:
     clean_kind = (kind or "").strip()
     clean_id = (target_id or "").strip()
@@ -206,6 +229,7 @@ async def collect_store_asset_targets() -> dict[str, list[dict[str, Any]]]:
                 "avatar": visuals.get("avatar"),
             },
             "readme_urls": _github_readme_urls(repo_url),
+            "changelog_urls": _github_changelog_urls(repo_url),
         })
 
     index = await load_community_plugin_index_safe()
@@ -222,6 +246,7 @@ async def collect_store_asset_targets() -> dict[str, list[dict[str, Any]]]:
                 "avatar": resolve_community_plugin_avatar(row),
             },
             "readme_urls": _github_readme_urls(row.get("repository_url")),
+            "changelog_urls": _github_changelog_urls(row.get("repository_url")),
         })
     return {"official": official, "community": community}
 
@@ -247,6 +272,25 @@ def _github_readme_urls(repository_url: str | None) -> list[str]:
         f"https://raw.githubusercontent.com/{owner}/{repo}/main/README.md",
         f"https://raw.githubusercontent.com/{owner}/{repo}/master/README.md",
     ]
+
+
+# 约定优先：CHANGELOG.md（Keep a Changelog）置于仓库根目录；docs/ 作为次选。
+_CHANGELOG_FILENAMES = ("CHANGELOG.md", "docs/CHANGELOG.md", "CHANGELOG.MD", "changelog.md")
+
+
+def _github_changelog_urls(repository_url: str | None) -> list[str]:
+    parsed = _parse_repo(repository_url)
+    if not parsed:
+        return []
+    owner, repo = parsed
+    urls: list[str] = []
+    for branch in ("main", "master"):
+        for name in _CHANGELOG_FILENAMES:
+            urls.extend((
+                f"https://raw.githubusercontent.com/{owner}/{repo}/refs/heads/{branch}/{name}",
+                f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{name}",
+            ))
+    return urls
 
 
 async def _download_binary(url: str) -> tuple[bytes, str]:
@@ -323,6 +367,7 @@ async def _refresh_one(kind: str, target: dict[str, Any], previous: dict[str, An
         "repository_url": str(target.get("repository_url") or "").strip() or None,
         "assets": {},
         "readme": None,
+        "changelog": None,
     }
     prev_assets = previous.get("assets") if isinstance(previous.get("assets"), dict) else {}
     for asset_type, source_url in (target.get("assets") or {}).items():
@@ -401,6 +446,34 @@ async def _refresh_one(kind: str, target: dict[str, Any], previous: dict[str, An
                 }
     elif prev_readme:
         entry["readme"] = prev_readme
+
+    changelog_urls = target.get("changelog_urls")
+    if not isinstance(changelog_urls, list):
+        changelog_urls = []
+    changelog_urls = [str(url or "").strip() for url in changelog_urls if str(url or "").strip()]
+    prev_changelog = previous.get("changelog") if isinstance(previous.get("changelog"), dict) else None
+    if changelog_urls:
+        try:
+            markdown, source_url = await _download_text_first(changelog_urls)
+            rel = _changelog_public_rel(kind, target_id)
+            _write_text(rel, markdown)
+            entry["changelog"] = {
+                "source_url": source_url,
+                "public_url": _public_url_from_rel(rel),
+                "relative_path": rel,
+                "updated_at": time.time(),
+                "error": None,
+            }
+        except Exception as exc:  # noqa: BLE001
+            # 仓库未提供 CHANGELOG.md 属正常情况；保留旧缓存（若有）。
+            if prev_changelog:
+                entry["changelog"] = {**prev_changelog, "error": str(exc)}
+            else:
+                entry["changelog"] = None
+    elif prev_changelog:
+        entry["changelog"] = prev_changelog
+    else:
+        entry["changelog"] = None
     return target_id, entry
 
 
@@ -457,6 +530,52 @@ async def fetch_and_cache_readme_markdown(
     snapshot["checked_at"] = time.time()
     save_snapshot(snapshot)
     return get_cached_readme_markdown(kind, resolved_id)
+
+
+async def fetch_and_cache_changelog_markdown(
+    kind: str,
+    target_id: str,
+    *,
+    repository_url: str | None = None,
+) -> str | None:
+    resolved_id = resolve_readme_request_id(kind, target_id)
+    if not resolved_id:
+        return None
+    target = _find_target(kind, resolved_id) or _find_target(kind, target_id)
+    if target is None and repository_url:
+        target = {
+            "id": resolved_id,
+            "repository_url": str(repository_url or "").strip() or None,
+            "assets": {},
+            "readme_urls": [],
+            "changelog_urls": _github_changelog_urls(repository_url),
+        }
+    if not target:
+        return None
+    previous_bucket = load_snapshot().get(kind) or {}
+    previous = previous_bucket.get(resolved_id) or {}
+    if not isinstance(previous, dict):
+        previous = {}
+    # 仅刷新 changelog，避免无谓重抓 README/图标；复用旧 entry 的其余字段。
+    refresh_target = {
+        "id": resolved_id,
+        "repository_url": target.get("repository_url"),
+        "assets": {},
+        "readme_urls": [],
+        "changelog_urls": target.get("changelog_urls") or _github_changelog_urls(target.get("repository_url")),
+    }
+    _, fresh = await _refresh_one(kind, refresh_target, previous)
+    snapshot = load_snapshot()
+    bucket = snapshot.setdefault(kind, {})
+    existing = bucket.get(resolved_id) if isinstance(bucket.get(resolved_id), dict) else {}
+    merged = dict(existing) if isinstance(existing, dict) else {}
+    merged["changelog"] = fresh.get("changelog")
+    if not merged.get("repository_url"):
+        merged["repository_url"] = fresh.get("repository_url")
+    bucket[resolved_id] = merged
+    snapshot["checked_at"] = time.time()
+    save_snapshot(snapshot)
+    return get_cached_changelog_markdown(kind, resolved_id)
 
 
 def run_async(awaitable):

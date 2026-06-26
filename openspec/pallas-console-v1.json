@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Pallas-Bot 控制台 API",
-    "version": "v3.9.0-73-g4c4c2d27-dirty",
+    "version": "v3.9.0-88-g01e4473d-dirty",
     "description": "仅包含控制台 API 前缀下的接口。"
   },
   "paths": {
@@ -1333,6 +1333,212 @@
         }
       }
     },
+    "/pallas/api/plugins/store/readme": {
+      "get": {
+        "tags": [
+          "Pallas-Bot 控制台"
+        ],
+        "summary": " Plugins Store Readme",
+        "operationId": "_plugins_store_readme_pallas_api_plugins_store_readme_get",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "official 或 community",
+              "title": "Kind"
+            },
+            "description": "official 或 community"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "官方包名或社区 plugin_id",
+              "title": "Id"
+            },
+            "description": "官方包名或社区 plugin_id"
+          },
+          {
+            "name": "repository_url",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "仓库地址，缓存未命中时按需拉取 README",
+              "title": "Repository Url"
+            },
+            "description": "仓库地址，缓存未命中时按需拉取 README"
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
+          },
+          {
+            "name": "X-Pallas-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Pallas-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/pallas/api/plugins/store/changelog": {
+      "get": {
+        "tags": [
+          "Pallas-Bot 控制台"
+        ],
+        "summary": " Plugins Store Changelog",
+        "operationId": "_plugins_store_changelog_pallas_api_plugins_store_changelog_get",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "official 或 community",
+              "title": "Kind"
+            },
+            "description": "official 或 community"
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "官方包名或社区 plugin_id",
+              "title": "Id"
+            },
+            "description": "官方包名或社区 plugin_id"
+          },
+          {
+            "name": "repository_url",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "仓库地址，缓存未命中时按需拉取 CHANGELOG.md",
+              "title": "Repository Url"
+            },
+            "description": "仓库地址，缓存未命中时按需拉取 CHANGELOG.md"
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Token"
+            }
+          },
+          {
+            "name": "X-Pallas-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Pallas-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/pallas/api/plugins/{plugin_name}/readme": {
       "get": {
         "tags": [
@@ -2277,91 +2483,6 @@
         "description": "手动比对全部插件版本，刷新「有无新版本」快照。",
         "operationId": "_plugins_update_snapshot_refresh_pallas_api_plugins_update_snapshot_refresh_post",
         "parameters": [
-          {
-            "name": "token",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Token"
-            }
-          },
-          {
-            "name": "X-Pallas-Token",
-            "in": "header",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Pallas-Token"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/pallas/api/plugins/store/readme": {
-      "get": {
-        "tags": [
-          "Pallas-Bot 控制台"
-        ],
-        "summary": " Plugins Store Readme",
-        "operationId": "_plugins_store_readme_pallas_api_plugins_store_readme_get",
-        "parameters": [
-          {
-            "name": "kind",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "official 或 community",
-              "title": "Kind"
-            },
-            "description": "official 或 community"
-          },
-          {
-            "name": "id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "官方包名或社区 plugin_id",
-              "title": "Id"
-            },
-            "description": "官方包名或社区 plugin_id"
-          },
           {
             "name": "token",
             "in": "query",

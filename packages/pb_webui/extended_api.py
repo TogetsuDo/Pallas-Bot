@@ -5075,6 +5075,44 @@ def register_extended_api(
             raise HTTPException(status_code=404, detail="README not available")
         return JSONResponse({"ok": True, "data": {"kind": kind, "id": resolved_id, "markdown": markdown}})
 
+    @router.get(f"{x}/plugins/store/changelog", include_in_schema=True)
+    async def _plugins_store_changelog(
+        kind: str = Query(..., description="official 或 community"),
+        target_id: str = Query(..., alias="id", description="官方包名或社区 plugin_id"),
+        repository_url: str | None = Query(default=None, description="仓库地址，缓存未命中时按需拉取 CHANGELOG.md"),
+    ) -> JSONResponse:
+        from pallas.console.webui.plugin_store_assets import (
+            fetch_and_cache_changelog_markdown,
+            get_cached_changelog_markdown,
+            resolve_readme_request_id,
+        )
+
+        if kind not in {"official", "community"}:
+            raise HTTPException(status_code=400, detail="kind must be official or community")
+        resolved_id = resolve_readme_request_id(kind, target_id)
+        markdown = get_cached_changelog_markdown(kind, resolved_id)
+        source = "changelog"
+        if markdown is None:
+            markdown = await fetch_and_cache_changelog_markdown(
+                kind,
+                resolved_id,
+                repository_url=repository_url,
+            )
+        if markdown is None and kind == "community":
+            # 社区插件未提供 CHANGELOG.md 时，回退到本地 git 提交历史自动生成。
+            from pallas.console.webui.community_plugin_changelog import (
+                generate_community_changelog_from_git,
+            )
+
+            markdown = await generate_community_changelog_from_git(resolved_id)
+            if markdown is not None:
+                source = "git"
+        if markdown is None:
+            raise HTTPException(status_code=404, detail="Changelog not available")
+        return JSONResponse(
+            {"ok": True, "data": {"kind": kind, "id": resolved_id, "markdown": markdown, "source": source}},
+        )
+
     @router.get(f"{x}/plugins/{{plugin_name}}/readme", include_in_schema=True)
     async def _plugin_bundled_readme(plugin_name: str) -> JSONResponse:
         from pallas.console.webui.plugin_docs_readme import read_bundled_plugin_readme
