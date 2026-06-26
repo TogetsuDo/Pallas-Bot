@@ -212,6 +212,39 @@ def test_probe_draw_ai_runtime_circuit_open() -> None:
     assert result.consecutive_failures == 3
 
 
+def test_probe_image_gateways_plugin_runtime_skips_ai_runtime(monkeypatch) -> None:
+    from pallas.core.shared.service_probe import ServiceProbeResult
+
+    class _Settings:
+        runtime_mode = "plugin_runtime"
+        ai_runtime_fallback_to_plugin = True
+
+        def api_backends(self):
+            return [object()]
+
+    backend_result = ServiceProbeResult("牛牛画画", "主网关", True, 42, 200, None)
+
+    fake_probe = SimpleNamespace(
+        image_gen_settings_from_draft=lambda _draft: _Settings(),
+        probe_all_backends=AsyncMock(return_value=[backend_result]),
+    )
+
+    def fake_import(plugin_id: str, submodule: str):
+        if plugin_id == "draw" and submodule == "config":
+            return SimpleNamespace(active_image_gen_settings=lambda: _Settings())
+        if plugin_id == "draw" and submodule == "gateway_probe":
+            return fake_probe
+        raise AssertionError(f"unexpected import_plugin_submodule({plugin_id!r}, {submodule!r})")
+
+    monkeypatch.setattr(
+        "pallas.product.service_gateways.media_probe.import_plugin_submodule",
+        fake_import,
+    )
+    results = asyncio.run(probe_image_gateways())
+    assert results == [backend_result]
+    assert all(item.site != "AI runtime" for item in results)
+
+
 def test_probe_image_gateways_unconfigured_capability_metadata(monkeypatch) -> None:
     class _Settings:
         def api_backends(self):

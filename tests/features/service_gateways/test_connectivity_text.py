@@ -11,6 +11,15 @@ def test_connectivity_text_keeps_latency_for_users() -> None:
     assert "· 健康检查：连接失败" in text
 
 
+def test_connectivity_text_omits_draw_ai_runtime_when_plugin_direct() -> None:
+    text = format_connectivity_probe_text([
+        ServiceProbeResult("牛牛画画", "主网关", True, 88, 200, None),
+    ])
+    assert "· 主网关：88ms" in text
+    assert "AI runtime" not in text
+    assert "插件直连" not in text
+
+
 def test_connectivity_text_hides_runtime_detail_for_users() -> None:
     text = format_connectivity_probe_text([
         ServiceProbeResult(

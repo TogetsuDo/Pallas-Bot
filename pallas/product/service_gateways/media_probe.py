@@ -131,7 +131,7 @@ async def probe_image_gateways(*, draft_values: dict[str, Any] | None = None) ->
             if media_task_probe is not None:
                 results.append(media_task_probe)
             return results
-        return [*backend_results, probe_draw_ai_runtime(settings)]
+        return backend_results
     except Exception as e:  # noqa: BLE001
         logger.debug("service_gateways image probe failed: {}", e)
         return [
