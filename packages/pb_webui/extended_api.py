@@ -8467,6 +8467,10 @@ def register_extended_api(
     app.include_router(router_pub)
     app.include_router(router)
 
+    from packages.help.console_routes import register_help_preview_routes
+
+    register_help_preview_routes(router, api_base=x)
+
     from packages.pb_webui.console_api_errors import register_console_api_exception_handlers
 
     register_console_api_exception_handlers(app, api_prefix=x)

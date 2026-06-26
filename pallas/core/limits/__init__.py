@@ -8,6 +8,7 @@ from .cooldown import (
     is_command_cooldown_ready,
     refresh_command_cooldown,
 )
+from .menu_display import effective_command_cooldown_text
 from .metadata import (
     CommandLimitDecl,
     command_limit_for_id,
@@ -31,6 +32,7 @@ __all__ = [
     "command_limit_for_id",
     "command_limits_from_metadata",
     "config_for_message_event",
+    "effective_command_cooldown_text",
     "effective_command_limit_for",
     "get_command_cooldown_sec",
     "get_command_limits_config",

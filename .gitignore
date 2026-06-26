@@ -222,6 +222,8 @@ resource/*
 !resource/styles/**
 !resource/persona/
 !resource/persona/**
+!resource/fonts/
+!resource/fonts/**
 resource/styles/**/__pycache__/
 accounts
 mixed_data

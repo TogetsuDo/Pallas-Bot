@@ -266,3 +266,42 @@ def test_zero_command_cooldown_disables_limit(monkeypatch):
     _patch_loaded_plugins(monkeypatch)
     monkeypatch.setattr("pallas.core.limits.cooldown.get_command_limits_config", lambda: DummyCfg())
     assert get_command_cooldown_sec("help.help") == 0
+
+
+def test_effective_command_cooldown_text(monkeypatch):
+    from pallas.core.limits.menu_display import effective_command_cooldown_text
+
+    _import_command_limit_plugins()
+    _patch_loaded_plugins(monkeypatch)
+
+    assert effective_command_cooldown_text({"command_permission": "help.help"}) == "冷却 3 秒"
+    assert (
+        effective_command_cooldown_text({"command_permissions": ["help.plugin_enable", "help.plugin_disable"]})
+        == "冷却 5 秒"
+    )
+    assert effective_command_cooldown_text({}) == ""
+    assert effective_command_cooldown_text({"command_permission": "unknown.cmd"}) == ""
+
+
+def test_effective_command_cooldown_text_respects_override(monkeypatch):
+    from pallas.core.limits.menu_display import effective_command_cooldown_text
+
+    class DummyCfg:
+        command_limit_overrides = {"help.help": 9}
+
+    _import_command_limit_plugins()
+    _patch_loaded_plugins(monkeypatch)
+    monkeypatch.setattr("pallas.core.limits.menu_display.get_command_limits_config", lambda: DummyCfg())
+    assert effective_command_cooldown_text({"command_permission": "help.help"}) == "冷却 9 秒"
+
+
+def test_effective_command_cooldown_text_zero(monkeypatch):
+    from pallas.core.limits.menu_display import effective_command_cooldown_text
+
+    class DummyCfg:
+        command_limit_overrides = {"help.help": 0}
+
+    _import_command_limit_plugins()
+    _patch_loaded_plugins(monkeypatch)
+    monkeypatch.setattr("pallas.core.limits.menu_display.get_command_limits_config", lambda: DummyCfg())
+    assert effective_command_cooldown_text({"command_permission": "help.help"}) == "无冷却"

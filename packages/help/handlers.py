@@ -2,15 +2,11 @@ from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, PrivateMessageEv
 from nonebot.permission import SUPERUSER
 from nonebot.typing import T_State
 
-from .help_args import parse_help_args
-from .markdown_generator import (
-    HelpMarkdownIssue,
-    generate_function_detail_markdown,
-    generate_plugin_functions_markdown,
-    generate_plugins_markdown,
-)
+from .help_args import parse_help_args, parse_help_page_token
+from .markdown_generator import HelpMarkdownIssue
+from .menu_rows import build_help_menu_rows, paginate_menu_rows
+from .plugin_detail_data import build_function_detail_data, build_plugin_detail_data
 from .plugin_manager import (
-    fill_plugin_status,
     find_plugin,
     find_plugin_by_identifier,
     get_help_menu_plugins,
@@ -18,7 +14,7 @@ from .plugin_manager import (
     plugin_display_name,
     toggle_plugin,
 )
-from .renderer import send_markdown_as_image
+from .renderer import send_function_detail_image, send_plugin_detail_image, send_plugin_menu_image
 
 
 def get_context_info(bot: Bot, event: GroupMessageEvent | PrivateMessageEvent):
@@ -48,7 +44,6 @@ async def handle_help_command(
     """统一处理帮助命令，支持群聊和私聊"""
 
     bot_id, group_id = get_context_info(bot, event)
-    style_name = default_style_name
 
     is_superuser = await SUPERUSER(bot, event)
     is_private = isinstance(event, PrivateMessageEvent)
@@ -61,15 +56,49 @@ async def handle_help_command(
     args = parse_help_args(event.get_plaintext() or "", plugin_count=len(menu_plugins))
 
     if len(args) == 0:
-        markdown_content = generate_plugins_markdown(
-            plugin_config,
+        all_rows = await build_help_menu_rows(
+            bot_id=bot_id,
+            group_id=group_id,
             show_ignored=show_ignored,
-            ignored_plugins=plugin_config.ignored_plugins if plugin_config else [],
-            filtered_plugins=menu_plugins,
         )
-        markdown_content = await fill_plugin_status(markdown_content, bot_id, group_id, show_ignored)
-        await send_markdown_as_image(markdown_content, style_name, available_styles, matcher, group_id)
+        page_rows, page, total_pages = paginate_menu_rows(all_rows, page=1)
+        enabled_count = sum(1 for row in all_rows if row.enabled)
+        await send_plugin_menu_image(
+            page_rows,
+            show_ignored=show_ignored,
+            matcher=matcher,
+            group_id=group_id,
+            page=page,
+            total_pages=total_pages,
+            total_plugin_count=len(all_rows),
+            total_enabled_count=enabled_count,
+        )
         return
+
+    if len(args) == 1:
+        page_token = parse_help_page_token(args[0])
+        if page_token is not None:
+            all_rows = await build_help_menu_rows(
+                bot_id=bot_id,
+                group_id=group_id,
+                show_ignored=show_ignored,
+            )
+            page_rows, page, total_pages = paginate_menu_rows(all_rows, page=page_token)
+            if page_token > total_pages:
+                await matcher.finish(f"博士，帮助总览只有 {total_pages} 页哦")
+                return
+            enabled_count = sum(1 for row in all_rows if row.enabled)
+            await send_plugin_menu_image(
+                page_rows,
+                show_ignored=show_ignored,
+                matcher=matcher,
+                group_id=group_id,
+                page=page,
+                total_pages=total_pages,
+                total_plugin_count=len(all_rows),
+                total_enabled_count=enabled_count,
+            )
+            return
 
     plugin_identifier = args[0]
     plugin_name, error_message = await find_plugin_by_identifier(
@@ -93,16 +122,17 @@ async def handle_help_command(
             bot=bot,
             event=event,
         )
-        markdown_content, issue = generate_plugin_functions_markdown(plugin_name, plugin_enabled=not is_disabled)
+        detail_data, issue = build_plugin_detail_data(plugin_name, plugin_enabled=not is_disabled)
         if issue is HelpMarkdownIssue.PLUGIN_NOT_FOUND:
             await matcher.finish(f"博士，你说的'{resolved_plugin_display(plugin_name)}'是什么呀？")
             return
-        await send_markdown_as_image(markdown_content, style_name, available_styles, matcher, group_id)
+        assert detail_data is not None
+        await send_plugin_detail_image(detail_data, matcher=matcher, group_id=group_id)
         return
 
     if len(args) == 2:
         function_identifier = args[1]
-        markdown_content, issue = generate_function_detail_markdown(plugin_name, function_identifier)
+        detail_data, issue = build_function_detail_data(plugin_name, function_identifier)
 
         if issue is HelpMarkdownIssue.PLUGIN_NOT_FOUND:
             await matcher.finish(f"博士，你说的'{resolved_plugin_display(plugin_name)}'是什么呀？")
@@ -113,8 +143,8 @@ async def handle_help_command(
         if issue is HelpMarkdownIssue.METADATA_MISSING:
             await matcher.finish(f"博士，'{resolved_plugin_display(plugin_name)}'只有这么多信息了")
             return
-
-        await send_markdown_as_image(markdown_content, style_name, available_styles, matcher, group_id)
+        assert detail_data is not None
+        await send_function_detail_image(detail_data, matcher=matcher, group_id=group_id)
         return
 
     await matcher.finish("博士，你说的太多了，我跟不上了...")

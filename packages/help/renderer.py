@@ -53,14 +53,23 @@ def _help_style_files_revision() -> str:
 
 def _compute_help_image_cache_suffix() -> str:
     from .config import get_help_config
+    from .help_theme import resolve_help_font_path
 
     cfg = get_help_config()
+    font_path = resolve_help_font_path()
+    font_part = f"font={font_path.name}:0"
+    try:
+        if font_path.is_file():
+            font_part = f"font={font_path.name}:{int(font_path.stat().st_mtime)}"
+    except OSError:
+        pass
     base = (
         f"spaint={int(cfg.side_paint_enabled)}"
         f"|fn={cfg.side_paint_filename}"
         f"|sc={cfg.side_paint_scale:.4f}"
         f"|ap={int(cfg.side_paint_auto_page)}"
         f"|enc=v3"
+        f"|{font_part}"
         f"|sty={_help_style_files_revision()}"
     )
     if not cfg.side_paint_enabled:
@@ -301,6 +310,133 @@ async def render_markdown_to_image(
     save_image_to_cache(image_data, markdown_content, style_name, group_id)
 
     return image_data
+
+
+async def render_v3_image_bytes(
+    cache_key: str,
+    image: Image.Image,
+    *,
+    group_id: int | None,
+    style_name: str,
+) -> bytes:
+    cached = load_cached_image(cache_key, style_name, group_id)
+    if cached:
+        if len(cached) > _HELP_IMAGE_MAX_SEND_BYTES:
+            with Image.open(io.BytesIO(cached)) as im:
+                fixed = encode_help_image_for_send(im.convert("RGBA"))
+            save_image_to_cache(fixed, cache_key, style_name, group_id)
+            return fixed
+        return cached
+
+    work = resize_image_if_needed(image)
+    encoded = encode_help_image_for_send(work.convert("RGBA"))
+    save_image_to_cache(encoded, cache_key, style_name, group_id)
+    return encoded
+
+
+async def send_plugin_menu_image(
+    menu_rows: list,
+    *,
+    show_ignored: bool,
+    matcher: Matcher,
+    group_id: int | None = None,
+    page: int = 1,
+    total_pages: int = 1,
+    total_plugin_count: int | None = None,
+    total_enabled_count: int | None = None,
+) -> None:
+    image_data = await render_plugin_menu_to_image(
+        menu_rows,
+        show_ignored=show_ignored,
+        group_id=group_id,
+        page=page,
+        total_pages=total_pages,
+        total_plugin_count=total_plugin_count,
+        total_enabled_count=total_enabled_count,
+    )
+    await matcher.finish(MessageSegment.image(image_data))
+
+
+def menu_image_cache_key(
+    menu_rows: list,
+    *,
+    show_ignored: bool,
+    page: int,
+    total_pages: int,
+    total_plugin_count: int,
+) -> str:
+    row_parts = [f"{row.index}:{row.display_name}:{int(row.enabled)}" for row in menu_rows]
+    parts = [
+        f"menu_v1|ignored={int(show_ignored)}|page={page}/{total_pages}|total={total_plugin_count}",
+        f"suffix={_help_image_cache_suffix()}",
+        *row_parts,
+    ]
+    return "|".join(parts)
+
+
+async def render_plugin_menu_to_image(
+    menu_rows: list,
+    *,
+    show_ignored: bool,
+    group_id: int | None = None,
+    page: int = 1,
+    total_pages: int = 1,
+    total_plugin_count: int | None = None,
+    total_enabled_count: int | None = None,
+) -> bytes:
+    from .draw_plugin_menu import draw_plugin_menu_image
+
+    total_count = total_plugin_count if total_plugin_count is not None else len(menu_rows)
+    enabled_count = (
+        total_enabled_count if total_enabled_count is not None else sum(1 for row in menu_rows if row.enabled)
+    )
+    cache_key = menu_image_cache_key(
+        menu_rows,
+        show_ignored=show_ignored,
+        page=page,
+        total_pages=total_pages,
+        total_plugin_count=total_count,
+    )
+    image = draw_plugin_menu_image(
+        menu_rows,
+        show_ignored=show_ignored,
+        page=page,
+        total_pages=total_pages,
+        total_plugin_count=total_count,
+        total_enabled_count=enabled_count,
+    )
+    return await render_v3_image_bytes(cache_key, image, group_id=group_id, style_name="menu_v1")
+
+
+async def send_plugin_detail_image(
+    data,
+    *,
+    matcher: Matcher,
+    group_id: int | None = None,
+) -> None:
+    from .draw_plugin_detail import draw_plugin_detail_image
+
+    cache_key = (
+        f"plugin_v1|{data.display_name}|enabled={data.enabled}|funcs={len(data.functions)}"
+        f"|suffix={_help_image_cache_suffix()}"
+    )
+    image = draw_plugin_detail_image(data)
+    image_data = await render_v3_image_bytes(cache_key, image, group_id=group_id, style_name="detail_v1")
+    await matcher.finish(MessageSegment.image(image_data))
+
+
+async def send_function_detail_image(
+    data,
+    *,
+    matcher: Matcher,
+    group_id: int | None = None,
+) -> None:
+    from .draw_function_detail import draw_function_detail_image
+
+    cache_key = f"function_v1|{data.display_name}|{data.index}/{data.total}|{data.func_name}|suffix={_help_image_cache_suffix()}"
+    image = draw_function_detail_image(data)
+    image_data = await render_v3_image_bytes(cache_key, image, group_id=group_id, style_name="detail_v1")
+    await matcher.finish(MessageSegment.image(image_data))
 
 
 async def send_markdown_as_image(
