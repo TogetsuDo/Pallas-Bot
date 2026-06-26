@@ -2912,7 +2912,7 @@ def _cleanup_log_errors_manual_sync() -> dict[str, Any]:
             sharded_errors = True
     except Exception:
         pass
-    drop_read_cache(("plugin-run-stats:", "log-errors:"))
+    drop_read_cache(("plugin-run-stats:", "log-errors:", "home-overview"))
     return {"cleared": True, "sharded_errors": sharded_errors}
 
 
@@ -2953,7 +2953,7 @@ async def _scheduled_cleanup_matcher_error_logs() -> None:
                 trim_worker_duration_logs_sync(shard_id=wid, cap=0)
     except Exception:
         pass
-    drop_read_cache(("plugin-run-stats:", "log-errors:"))
+    drop_read_cache(("plugin-run-stats:", "log-errors:", "home-overview"))
     logger.info(
         "Pallas-Bot 控制台: 控制台异常记录已按计划清理（每日 4:00，"
         "matcher_errors.jsonl、matcher_durations.jsonl、log_errors.jsonl、分片 errors/*.jsonl 与进程内缓冲）"
@@ -3719,6 +3719,133 @@ async def _friend_requests_overview(
             "doubt_friend_requests": doubt,
         })
     return {"bots": rows}
+
+
+async def _instances_payload() -> dict[str, Any]:
+    from pallas.core.foundation.db.pallas_console_data import list_all_bot_configs_public, pallas_protocol_snapshot
+    from pallas.core.platform.bot_runtime.plugin_matrix import protocol_extension_status
+
+    db_bots = await list_all_bot_configs_public()
+    snap = pallas_protocol_snapshot()
+    bot_profiles = await _collect_online_bot_profiles()
+    payload: dict[str, Any] = {
+        "nonebot_bots": _list_bots_dict(),
+        "db_bot_configs": db_bots,
+        "pallas_protocol": snap,
+        "protocol_extension": protocol_extension_status(),
+        "bot_profiles": bot_profiles,
+    }
+    if snap is not None:
+        payload["napcat"] = snap
+    return payload
+
+
+def _home_overview_slice(result: Any, label: str) -> Any:
+    if isinstance(result, BaseException):
+        logger.warning("Pallas-Bot 控制台: home/overview {} 失败: {}", label, result)
+        return None
+    return result
+
+
+async def _home_overview_payload() -> dict[str, Any]:
+    from .api import read_current_health_payload
+
+    async def load_system() -> dict[str, Any]:
+        return await cached_read(
+            key="system",
+            loader=lambda: asyncio.to_thread(_system_dict),
+            ttl_sec=0.8,
+            stale_sec=8.0,
+        )
+
+    async def load_bots() -> list[dict[str, Any]]:
+        return await cached_read(
+            key="bots",
+            loader=lambda: asyncio.to_thread(_list_bots_dict),
+            ttl_sec=0.9,
+            stale_sec=15.0,
+        )
+
+    async def load_instances() -> dict[str, Any]:
+        return await cached_read(
+            key="instances",
+            loader=_instances_payload,
+            ttl_sec=1.0,
+            stale_sec=20.0,
+        )
+
+    async def load_plugins() -> list[dict[str, Any]]:
+        return await cached_read(
+            key="plugins",
+            loader=lambda: asyncio.to_thread(_list_plugins_dict),
+            ttl_sec=1.6,
+            stale_sec=25.0,
+        )
+
+    async def load_message_stats() -> dict[str, Any]:
+        return await cached_read(
+            key="message-stats:all",
+            loader=lambda: _message_stats_overview(self_id=None),
+            ttl_sec=2.0,
+            stale_sec=10.0,
+        )
+
+    async def load_plugin_run_stats() -> dict[str, Any]:
+        return await cached_read(
+            key="plugin-run-stats:all:logsrc:all:tbl:0:view:full",
+            loader=lambda: asyncio.to_thread(
+                _plugin_run_stats_overview,
+                self_id=None,
+                log_source="all",
+                tb_limit=0,
+                include_log_errors=False,
+            ),
+            ttl_sec=2.0,
+            stale_sec=10.0,
+        )
+
+    async def load_community_stats() -> dict[str, Any]:
+        from pallas.product.community_stats.public_stats import fetch_community_public_stats
+
+        return await cached_read(
+            key="community-stats",
+            loader=fetch_community_public_stats,
+            ttl_sec=30.0,
+            stale_sec=120.0,
+        )
+
+    (
+        health_res,
+        system_res,
+        bots_res,
+        instances_res,
+        plugins_res,
+        message_stats_res,
+        plugin_run_stats_res,
+        community_stats_res,
+    ) = await asyncio.gather(
+        read_current_health_payload(),
+        load_system(),
+        load_bots(),
+        load_instances(),
+        load_plugins(),
+        load_message_stats(),
+        load_plugin_run_stats(),
+        load_community_stats(),
+        return_exceptions=True,
+    )
+    bots_data = _home_overview_slice(bots_res, "bots")
+    plugins_data = _home_overview_slice(plugins_res, "plugins")
+    return {
+        "health": _home_overview_slice(health_res, "health"),
+        "system": _home_overview_slice(system_res, "system"),
+        "bots": bots_data if isinstance(bots_data, list) else [],
+        "instances": _home_overview_slice(instances_res, "instances"),
+        "plugins": plugins_data if isinstance(plugins_data, list) else [],
+        "message_stats": _home_overview_slice(message_stats_res, "message_stats"),
+        "plugin_run_stats": _home_overview_slice(plugin_run_stats_res, "plugin_run_stats"),
+        "community_stats": _home_overview_slice(community_stats_res, "community_stats"),
+    }
 
 
 def _system_dict() -> dict[str, Any]:
@@ -4844,6 +4971,14 @@ def register_extended_api(
         data = await cached_read(key="system", loader=_load, ttl_sec=0.8, stale_sec=8.0)
         return JSONResponse({"ok": True, "data": data})
 
+    @router.get(f"{x}/home/overview", include_in_schema=True)
+    async def _home_overview() -> JSONResponse:
+        async def _load() -> dict[str, Any]:
+            return await _home_overview_payload()
+
+        data = await cached_read(key="home-overview", loader=_load, ttl_sec=0.6, stale_sec=6.0)
+        return JSONResponse({"ok": True, "data": data})
+
     @router.post(f"{x}/system/restart", include_in_schema=True)
     async def _system_restart(
         body: _SystemRestartBody,
@@ -5412,7 +5547,7 @@ def register_extended_api(
         disabled_saved = save_global_disabled_plugins(sorted(disabled))
         await invalidate_disabled_plugin_gate_cache(clear_all=True)
 
-        drop_read_cache(("plugins", "plugins-capabilities"))
+        drop_read_cache(("plugins", "plugins-capabilities", "home-overview"))
         return JSONResponse({
             "ok": True,
             "data": {
@@ -5444,7 +5579,7 @@ def register_extended_api(
         except PluginReloadError as e:
             raise HTTPException(status_code=e.status_code, detail=e.detail) from e
 
-        drop_read_cache(("plugins", "plugins-capabilities"))
+        drop_read_cache(("plugins", "plugins-capabilities", "home-overview"))
         status = 200 if data.get("ok") else 409
         return JSONResponse({"ok": bool(data.get("ok")), "data": data}, status_code=status)
 
@@ -5846,7 +5981,7 @@ def register_extended_api(
             hidden = save_help_hidden_plugins(body.hidden_plugins)
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
-        drop_read_cache(("plugins",))
+        drop_read_cache(("plugins", "home-overview"))
         return JSONResponse({"ok": True, "data": {"hidden_plugins": hidden}})
 
     @router.get(f"{x}/plugins/global-disable", include_in_schema=True)
@@ -5883,7 +6018,7 @@ def register_extended_api(
             await invalidate_disabled_plugin_gate_cache(clear_all=True)
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
-        drop_read_cache(("plugins",))
+        drop_read_cache(("plugins", "home-overview"))
         return JSONResponse({
             "ok": True,
             "data": {
@@ -5924,7 +6059,7 @@ def register_extended_api(
             await invalidate_disabled_plugin_gate_cache(clear_all=True)
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
-        drop_read_cache(("plugins",))
+        drop_read_cache(("plugins", "home-overview"))
         return JSONResponse({
             "ok": True,
             "data": {
@@ -7246,28 +7381,10 @@ def register_extended_api(
 
     @router.get(f"{x}/instances", include_in_schema=True)
     async def _instances() -> JSONResponse:
-        from pallas.core.foundation.db.pallas_console_data import list_all_bot_configs_public, pallas_protocol_snapshot
-        from pallas.core.platform.bot_runtime.plugin_matrix import protocol_extension_status
-
-        async def _load() -> dict[str, Any]:
-            db_bots = await list_all_bot_configs_public()
-            snap = pallas_protocol_snapshot()
-            bot_profiles = await _collect_online_bot_profiles()
-            payload: dict[str, Any] = {
-                "nonebot_bots": _list_bots_dict(),
-                "db_bot_configs": db_bots,
-                "pallas_protocol": snap,
-                "protocol_extension": protocol_extension_status(),
-                "bot_profiles": bot_profiles,
-            }
-            if snap is not None:
-                payload["napcat"] = snap
-            return payload
-
         try:
             payload = await cached_read(
                 key="instances",
-                loader=_load,
+                loader=_instances_payload,
                 ttl_sec=1.0,
                 stale_sec=20.0,
             )
@@ -7321,7 +7438,7 @@ def register_extended_api(
         except Exception as e:  # noqa: BLE001
             logger.exception("Pallas-Bot 控制台: 更新 Bot 配置失败")
             raise HTTPException(status_code=500, detail=str(e)) from e
-        drop_read_cache(("instances", "bot_configs_list", "db_overview"))
+        drop_read_cache(("instances", "bot_configs_list", "db_overview", "home-overview"))
         return JSONResponse({"ok": True, "data": data})
 
     @router.get(f"{x}/group-configs", include_in_schema=True)

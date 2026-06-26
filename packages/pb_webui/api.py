@@ -14,11 +14,11 @@ from nonebot import get_driver, logger
 from pallas.core.foundation.bot_version import get_pallas_bot_version_for_health
 
 from .console_meta_store import get_console_meta, merge_console_version_from_disk
-from .restart_state import restart_runtime_fields
 
 _HEALTH_REFRESH_SEC = 30.0
 _health_snapshot: dict[str, Any] | None = None
 _health_refresh_task: asyncio.Task[None] | None = None
+_health_register_ctx: tuple[dict[str, Any], Path | None, str] | None = None
 
 
 def _build_health_payload(
@@ -60,6 +60,24 @@ def invalidate_health_snapshot() -> None:
     _health_snapshot = None
 
 
+async def read_current_health_payload() -> dict[str, Any]:
+    """供 /health 与 /home/overview 共用的健康快照。"""
+    from .restart_state import restart_runtime_fields
+
+    ctx = _health_register_ctx
+    if ctx is None:
+        raise RuntimeError("pallas_webui health API 尚未注册")
+    console_meta, static_root, pallas_ver = ctx
+    snap = _health_snapshot
+    if snap is None:
+        snap = await refresh_health_snapshot(
+            console_meta=console_meta,
+            static_root=static_root,
+            pallas_ver=pallas_ver,
+        )
+    return {**snap, **restart_runtime_fields()}
+
+
 def register_api(
     app,
     *,
@@ -78,7 +96,9 @@ def register_api(
     static_root = Path(str(console_meta.get("static_root", "")).strip()) if console_meta.get("static_root") else None
     merge_console_version_from_disk(console_meta, static_root)
 
+    global _health_register_ctx
     pallas_ver = get_pallas_bot_version_for_health()
+    _health_register_ctx = (console_meta, static_root, pallas_ver)
     driver = get_driver()
 
     async def health_refresh_loop() -> None:
@@ -120,14 +140,7 @@ def register_api(
 
     @router.get(f"{x}/health", include_in_schema=True)
     async def _health() -> JSONResponse:  # pragma: no cover - 路由注册
-        snap = _health_snapshot
-        if snap is None:
-            snap = await refresh_health_snapshot(
-                console_meta=console_meta,
-                static_root=static_root,
-                pallas_ver=pallas_ver,
-            )
-        payload = {**snap, **restart_runtime_fields()}
+        payload = await read_current_health_payload()
         return JSONResponse(payload, status_code=status.HTTP_200_OK)
 
     app.include_router(router)
