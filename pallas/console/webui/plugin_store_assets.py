@@ -138,23 +138,70 @@ def _snapshot_entry(snapshot: dict[str, Any], kind: str, target_id: str) -> dict
     return entry
 
 
+def resolve_store_cached_visual_urls(kind: str, target_id: str) -> dict[str, str | None]:
+    """从商店资源快照读取已缓存的 cover/icon/avatar URL。"""
+    clean_kind = (kind or "").strip()
+    clean_id = (target_id or "").strip()
+    if not clean_kind or not clean_id:
+        return {"cover": None, "icon": None, "avatar": None}
+    entry = (load_snapshot().get(clean_kind) or {}).get(clean_id) or {}
+    if not isinstance(entry, dict):
+        return {"cover": None, "icon": None, "avatar": None}
+    assets = entry.get("assets")
+    if not isinstance(assets, dict):
+        return {"cover": None, "icon": None, "avatar": None}
+    result: dict[str, str | None] = {"cover": None, "icon": None, "avatar": None}
+    for asset_type in ("cover", "icon", "avatar"):
+        asset = assets.get(asset_type)
+        if not isinstance(asset, dict):
+            continue
+        public_url = str(asset.get("public_url") or "").strip()
+        if public_url:
+            result[asset_type] = public_url
+    return result
+
+
+def resolve_store_cached_visual_urls_for_plugin(plugin_id: str) -> dict[str, str | None]:
+    pid = (plugin_id or "").strip()
+    if not pid:
+        return {"cover": None, "icon": None, "avatar": None}
+    community = resolve_store_cached_visual_urls("community", pid)
+    if community.get("cover") or community.get("icon") or community.get("avatar"):
+        return community
+    from pallas.core.platform.bot_runtime.plugin_matrix import extra_package_for_plugin
+
+    package = extra_package_for_plugin(pid)
+    if package:
+        official = resolve_store_cached_visual_urls("official", package)
+        if official.get("cover") or official.get("icon") or official.get("avatar"):
+            return official
+    return {"cover": None, "icon": None, "avatar": None}
+
+
 def apply_asset_snapshot_to_rows(kind: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    snapshot = load_snapshot()
-    bucket = snapshot.get(kind) or {}
+    from pallas.console.webui.plugin_catalog import resolve_catalog_visuals
+
     out: list[dict[str, Any]] = []
     for row in rows:
         copied = dict(row)
-        target_id = _asset_target_id(kind, copied)
-        entry = bucket.get(target_id)
-        if isinstance(entry, dict):
-            assets = entry.get("assets") or {}
-            if isinstance(assets, dict):
-                for asset_type in ("icon", "cover", "avatar"):
-                    asset = assets.get(asset_type)
-                    if isinstance(asset, dict):
-                        public_url = str(asset.get("public_url") or "").strip()
-                        if public_url:
-                            copied[asset_type] = public_url
+        if kind == "official":
+            plugin_ids = copied.get("plugin_ids") or []
+            plugin_id = str(plugin_ids[0] if plugin_ids else copied.get("package") or "").strip()
+            plugin_source = "extra"
+        else:
+            plugin_id = str(copied.get("plugin_id") or "").strip()
+            plugin_source = "local" if copied.get("local_installed") else "pip"
+        if not plugin_id:
+            out.append(copied)
+            continue
+        visuals = resolve_catalog_visuals(
+            plugin_id=plugin_id,
+            plugin_source=plugin_source,
+        )
+        for asset_type in ("icon", "cover", "avatar"):
+            value = visuals.get(asset_type)
+            if value:
+                copied[asset_type] = value
         out.append(copied)
     return out
 

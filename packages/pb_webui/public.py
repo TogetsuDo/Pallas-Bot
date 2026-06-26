@@ -191,6 +191,15 @@ def register_routes(
         response.delete_cookie(key=legacy_page_cookie, path=base or "/")
         return response
 
+    @router.get(f"{base}/plugin-assets/{{plugin_id}}/{{asset_path:path}}", include_in_schema=False, response_model=None)
+    async def _plugin_package_asset(plugin_id: str, asset_path: str) -> FileResponse:
+        from pallas.console.webui.plugin_package_assets import resolve_plugin_package_asset_file
+
+        path = resolve_plugin_package_asset_file(plugin_id, asset_path)
+        if path is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="asset not found")
+        return FileResponse(path)
+
     @router.get(
         f"{base}",
         include_in_schema=False,

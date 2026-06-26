@@ -81,7 +81,8 @@ def _is_numbered_list_block(block: str) -> bool:
 
 
 def _format_numbered_list_block(block: str, width: int) -> str:
-    """保留有序列表行结构，超长行在序号后折行并对齐续行。"""
+    """保留有序列表行结构；每条占一行，避免 textwrap 在中文中间硬折行。"""
+    del width  # PIL 按像素 truncate；markdown 段内也不拆序号条
     lines = [ln.strip() for ln in block.strip().splitlines() if ln.strip()]
     formatted: list[str] = []
     for ln in lines:
@@ -89,17 +90,7 @@ def _format_numbered_list_block(block: str, width: int) -> str:
         if not m:
             formatted.append(ln)
             continue
-        prefix, body = m.group(1), m.group(2)
-        hang = " " * len(prefix)
-        wrapped = textwrap.fill(
-            body,
-            width=max(12, width),
-            initial_indent=prefix,
-            subsequent_indent=hang,
-            break_long_words=True,
-            break_on_hyphens=True,
-        )
-        formatted.append(wrapped)
+        formatted.append(m.group(1) + m.group(2))
     return "\n".join(formatted)
 
 

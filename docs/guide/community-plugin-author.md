@@ -72,13 +72,17 @@ my_plugin/
 
 ## 图标与索引元数据
 
-商店卡片图标优先级：
+商店卡片与控制台插件列表的视觉资源优先级（由 `resolve_catalog_visuals()` 统一合并）：
 
-1. 索引条目中的 **`icon`**（完整 URL）
-2. 自动推断：`https://raw.githubusercontent.com/<owner>/<repo>/<ref>/assets/icon.png`（Gitee 同理）
-3. 作者 GitHub 头像（`author` 或仓库 owner）
+1. **已安装插件包内 `assets/`**（`/pallas/plugin-assets/<plugin_id>/…`）
+2. **商店资源快照缓存**（`/pallas/store-assets/…`）
+3. 索引 / 官方扩展条目中的 **`cover`**、**`icon`**、**`avatar`**（完整 URL）
+4. 自动推断远程：`https://raw.githubusercontent.com/<owner>/<repo>/<ref>/assets/icon.png`（Gitee 同理）
+5. 作者 GitHub 头像（`author` 或仓库 owner）
 
-**推荐**：在仓库放 `assets/icon.png`，索引里只写 `repository` 即可；不必重复写 `icon` URL。
+**推荐**：在仓库放 `assets/icon.png`（可选 `assets/cover.webp`、`assets/avatar.png`），索引里只写 `repository` 即可；Git 安装到 `local/plugins` 后控制台会直接读包内文件，不必重复写 `icon` URL。
+
+包内候选路径与 URL 规则见 [插件目录约定 · 包内视觉资源](../architecture/plugin-convention.md#插件包内视觉资源assets)。
 
 索引单条示例（追加到 `index.json` 的 `plugins` 数组）：
 

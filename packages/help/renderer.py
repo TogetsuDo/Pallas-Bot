@@ -24,6 +24,9 @@ _HELP_CACHE_FILES_PER_DIR_MAX = 20
 def invalidate_help_image_cache_suffix() -> None:
     global _style_suffix_cache
     _style_suffix_cache = (0.0, "")
+    from pallas.console.webui.plugin_package_assets import invalidate_plugin_package_assets_revision
+
+    invalidate_plugin_package_assets_revision()
 
 
 def _help_style_files_revision() -> str:
@@ -72,6 +75,9 @@ def _compute_help_image_cache_suffix() -> str:
         f"|{font_part}"
         f"|sty={_help_style_files_revision()}"
     )
+    from pallas.console.webui.plugin_package_assets import plugin_package_assets_revision
+
+    base = f"{base}|{plugin_package_assets_revision()}"
     if not cfg.side_paint_enabled:
         return base
     paint_path = project_path("resource", "styles", "default", "imgs") / cfg.side_paint_filename

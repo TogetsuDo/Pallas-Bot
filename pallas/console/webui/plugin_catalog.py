@@ -15,7 +15,7 @@ from pallas.console.webui.community_plugin_index import (
     load_index_from_path,
 )
 from pallas.console.webui.community_plugin_registry import resolve_community_plugin_avatar
-from pallas.console.webui.plugin_registry import official_extension_for_plugin
+from pallas.console.webui.plugin_package_assets import resolve_plugin_package_visual_urls
 from pallas.core.foundation.paths import PROJECT_ROOT
 from pallas.core.platform.bot_runtime.plugin_matrix import (
     EXTRA_PACKAGE_MODULES,
@@ -415,28 +415,82 @@ def community_plugin_row_for_plugin(plugin_id: str) -> dict[str, Any] | None:
     return None
 
 
-def resolve_catalog_visuals(
-    *,
-    plugin_id: str,
-    plugin_source: PluginSourceKind,
-) -> dict[str, str | None]:
+def _resolve_remote_catalog_visuals(plugin_id: str) -> dict[str, str | None]:
     community = community_plugin_row_for_plugin(plugin_id)
     if community is not None:
         return {
             "avatar": resolve_community_plugin_avatar(community),
             "icon": resolve_community_plugin_icon(community),
-            "cover": community.get("cover"),
+            "cover": str(community.get("cover") or "").strip() or None,
         }
 
-    official = official_extension_for_plugin(plugin_id)
-    if official is not None:
-        cover = str(official.get("cover") or "").strip() or None
-        icon = cover or (str(official.get("icon") or "").strip() or None)
+    from pallas.core.platform.bot_runtime.plugin_matrix import (
+        extra_package_for_plugin,
+        official_extension_visuals,
+    )
+
+    package = extra_package_for_plugin(plugin_id)
+    if package:
+        visuals = official_extension_visuals(package)
+        cover = str(visuals.get("cover") or "").strip() or None
+        icon = cover or (str(visuals.get("icon") or "").strip() or None)
         return {
             "avatar": None,
             "icon": icon,
             "cover": cover,
         }
+
+    return {"avatar": None, "icon": None, "cover": None}
+
+
+def _first_visual_url(*values: str | None) -> str | None:
+    for value in values:
+        clean = str(value or "").strip()
+        if clean:
+            return clean
+    return None
+
+
+def _icon_only_from_layer(layer: dict[str, str | None]) -> str | None:
+    cover = str(layer.get("cover") or "").strip() or None
+    icon = str(layer.get("icon") or "").strip() or None
+    if not icon:
+        return None
+    if cover and icon == cover:
+        return None
+    return icon
+
+
+def _merge_catalog_visual_layers(
+    local: dict[str, str | None],
+    cached: dict[str, str | None],
+    remote: dict[str, str | None],
+) -> dict[str, str | None]:
+    cover = _first_visual_url(local.get("cover"), cached.get("cover"), remote.get("cover"))
+    avatar = _first_visual_url(local.get("avatar"), cached.get("avatar"), remote.get("avatar"))
+    icon_only = _first_visual_url(
+        _icon_only_from_layer(local),
+        _icon_only_from_layer(cached),
+        _icon_only_from_layer(remote),
+    )
+    display_icon = cover or icon_only or avatar
+    return {"cover": cover, "icon": display_icon, "avatar": avatar}
+
+
+def resolve_catalog_visuals(
+    *,
+    plugin_id: str,
+    plugin_source: PluginSourceKind,
+    plugin_root: Path | None = None,
+) -> dict[str, str | None]:
+    local = resolve_plugin_package_visual_urls(plugin_id=plugin_id, plugin_root=plugin_root)
+    from pallas.console.webui.plugin_store_assets import resolve_store_cached_visual_urls_for_plugin
+
+    cached = resolve_store_cached_visual_urls_for_plugin(plugin_id)
+    remote = _resolve_remote_catalog_visuals(plugin_id)
+    merged = _merge_catalog_visual_layers(local, cached, remote)
+    if merged.get("cover") or merged.get("icon") or merged.get("avatar"):
+        return merged
 
     if is_core_plugin(plugin_id) or plugin_source == "core":
         return {"avatar": None, "icon": _BRAND_AVATAR_PATH, "cover": None}
@@ -479,13 +533,25 @@ def build_plugin_catalog_rows(
         plugin_source: PluginSourceKind,
         plugin_source_dir: str | None,
         has_config: bool,
+        plugin_root: Path | None = None,
+        loaded_plugin: object | None = None,
     ) -> None:
         resolved_plugin_id = resolved_plugin_identity(package, module_name or nb_name)
         visible, ign, hid = _help_flags(nb_name, resolved_plugin_id)
         ids = {nb_name, package, resolved_plugin_id, f"packages.{resolved_plugin_id}"}
         g_disabled = any(x in globally_disabled for x in ids if x)
         g_protected = any(x in global_disable_protected for x in ids if x)
-        visuals = resolve_catalog_visuals(plugin_id=resolved_plugin_id, plugin_source=plugin_source)
+        root = plugin_root
+        if root is None and loaded_plugin is not None:
+            mod = getattr(loaded_plugin, "module", None)
+            file_path = getattr(mod, "__file__", "") if mod is not None else ""
+            if file_path:
+                root = Path(file_path).resolve().parent
+        visuals = resolve_catalog_visuals(
+            plugin_id=resolved_plugin_id,
+            plugin_source=plugin_source,
+            plugin_root=root,
+        )
         rows.append({
             "name": resolved_plugin_id,
             "nb_plugin_name": nb_name,
@@ -546,6 +612,8 @@ def build_plugin_catalog_rows(
             plugin_source=plugin_source,
             plugin_source_dir=plugin_source_dir,
             has_config=package_has_config_module(package, package_root=disk_root),
+            plugin_root=disk_root,
+            loaded_plugin=p,
         )
 
     for module_path in discover_pyproject_plugin_modules():
@@ -573,6 +641,7 @@ def build_plugin_catalog_rows(
             plugin_source="pip",
             plugin_source_dir=None,
             has_config=module_has_config_module(module_name),
+            loaded_plugin=p,
         )
 
     for module_paths in EXTRA_PACKAGE_MODULES.values():
@@ -606,6 +675,7 @@ def build_plugin_catalog_rows(
                 plugin_source="extra" if len(module_paths) == 1 else "pip",
                 plugin_source_dir=None,
                 has_config=module_has_config_module(module_name),
+                loaded_plugin=p,
             )
 
     from nonebot import get_loaded_plugins
@@ -633,6 +703,7 @@ def build_plugin_catalog_rows(
             plugin_source="pip",
             plugin_source_dir=None,
             has_config=module_has_config_module(module_name),
+            loaded_plugin=p,
         )
 
     catalog_role = resolve_catalog_process_role()

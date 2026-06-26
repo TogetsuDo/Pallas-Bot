@@ -23,6 +23,7 @@ def test_apply_asset_snapshot_to_official_rows_prefers_cached_urls(monkeypatch, 
     rows = [
         {
             "package": "pallas-plugin-draw",
+            "plugin_ids": ["draw"],
             "icon": "https://raw.githubusercontent.com/acme/draw/icon.png",
             "cover": "https://raw.githubusercontent.com/acme/draw/cover.webp",
             "avatar": None,
@@ -31,8 +32,8 @@ def test_apply_asset_snapshot_to_official_rows_prefers_cached_urls(monkeypatch, 
 
     out = mod.apply_asset_snapshot_to_rows("official", rows)
 
-    assert out[0]["icon"] == "/pallas/store-assets/icon/draw.png"
     assert out[0]["cover"] == "/pallas/store-assets/cover/draw.webp"
+    assert out[0]["icon"] == "/pallas/store-assets/cover/draw.webp"
 
 
 def test_get_cached_readme_markdown_reads_saved_snapshot(monkeypatch, tmp_path: Path) -> None:

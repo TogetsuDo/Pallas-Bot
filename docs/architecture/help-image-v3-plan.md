@@ -6,7 +6,7 @@
 
 - QQ「牛牛帮助」成图在 **Pallas-Bot** `packages/help/`，非 WebUI。
 - 现状：pillowmd + Markdown 宽表，无插件封面/头像，观感像文档表格。
-- WebUI 已通过 `resolve_catalog_visuals()` 打通 icon/cover/avatar，帮助图未复用。
+- WebUI 与帮助图已通过 `resolve_catalog_visuals()` 打通 icon/cover/avatar（含包内 `assets/` → `/pallas/plugin-assets/`）。
 
 ## 目标
 
@@ -98,7 +98,7 @@ GET /pallas/api/help/preview
 ## 缓存
 
 - v3 与 pillowmd 共用 `data/help/<群号|private>/` 下 PNG 磁盘缓存；`render_v3_image_bytes()` 先 `load_cached_image()`，未命中再 PIL 编码并 `save_image_to_cache()`。
-- cache key：业务键（如 `menu_v1|…`）+ `style_name` + `_help_image_cache_suffix()`（含字体 mtime、样式文件 mtime、立绘配置等）。
+- cache key：业务键（如 `menu_v1|…`）+ `style_name` + `_help_image_cache_suffix()`（含字体 mtime、样式文件 mtime、立绘配置、**插件包内 assets 摘要 `pkgvis=`** 等）。`pkgvis` 进程内约 **5 分钟** TTL，单次扫描各插件根目录下实际命中的 cover/icon/avatar（非全候选路径穷举）。
 - 默认字体：`resource/fonts/SourceHanSerifCN-Regular.otf`（思源宋体 CN Regular）；可用 `PALLAS_HELP_V3_FONT` 覆盖。
 
 ## 样张

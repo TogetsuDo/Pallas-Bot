@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 from packages.help.plugin_visuals import (
@@ -6,6 +7,7 @@ from packages.help.plugin_visuals import (
     load_help_plugin_icon,
     pick_help_icon_url,
     plugin_cover_hue,
+    resolve_help_icon_path,
 )
 
 
@@ -34,3 +36,12 @@ def test_load_help_plugin_icon_falls_back_to_brand_avatar() -> None:
     icon = load_help_plugin_icon(plugin, size=64, label="未知插件")
     assert icon.size == (64, 64)
     assert icon.mode == "RGBA"
+
+
+def test_local_plugin_asset_precedes_core_brand_avatar() -> None:
+    roulette_init = Path(__file__).resolve().parents[3] / "packages" / "roulette" / "__init__.py"
+    plugin = SimpleNamespace(name="roulette", module=SimpleNamespace(__file__=str(roulette_init)), metadata=None)
+    path = resolve_help_icon_path(plugin)
+    assert path is not None
+    assert path.name == "cover.png"
+    assert path.parent.name == "assets"

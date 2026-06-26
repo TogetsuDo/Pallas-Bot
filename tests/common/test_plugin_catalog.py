@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pallas.console.webui.plugin_catalog import (
     build_plugin_catalog_rows,
     discover_extra_plugin_packages,
@@ -7,6 +9,7 @@ from pallas.console.webui.plugin_catalog import (
     infer_plugin_source,
     package_load_role,
     plugin_source_from_module_path,
+    resolve_catalog_visuals,
 )
 
 
@@ -313,15 +316,18 @@ def test_catalog_row_reuses_official_extension_visuals(monkeypatch) -> None:
         lambda: ({}, {"draw": FakeLoadedPlugin()}),
     )
     monkeypatch.setattr(
-        "pallas.console.webui.plugin_catalog.official_extension_for_plugin",
+        "pallas.console.webui.plugin_store_assets.resolve_store_cached_visual_urls_for_plugin",
+        lambda _pid: {"cover": None, "icon": None, "avatar": None},
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog._resolve_remote_catalog_visuals",
         lambda plugin_id: {
-            "package": "pallas-plugin-draw",
             "avatar": None,
-            "icon": "/pallas/official-extensions/pallas-plugin-draw.svg",
+            "icon": "https://raw.githubusercontent.com/TogetsuDo/pallas-plugin-draw/main/assets/brand-avatar.png",
             "cover": "https://raw.githubusercontent.com/TogetsuDo/pallas-plugin-draw/main/assets/brand-avatar.png",
         }
         if plugin_id == "draw"
-        else None,
+        else {"avatar": None, "icon": None, "cover": None},
     )
 
     rows = build_plugin_catalog_rows()
@@ -385,13 +391,17 @@ def test_catalog_row_reuses_community_plugin_visuals(monkeypatch) -> None:
         "pallas.console.webui.plugin_catalog.package_has_config_module",
         lambda package, *, package_root=None: False,
     )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_store_assets.resolve_store_cached_visual_urls_for_plugin",
+        lambda _pid: {"cover": None, "icon": None, "avatar": None},
+    )
 
     rows = build_plugin_catalog_rows()
     row = next(r for r in rows if r["name"] == "demo_local")
 
     assert row["avatar"] == "https://avatars.githubusercontent.com/acme?s=64"
-    assert row["icon"] == "https://raw.githubusercontent.com/acme/demo/main/assets/icon.png"
     assert row["cover"] == "https://raw.githubusercontent.com/acme/demo/main/assets/cover.webp"
+    assert row["icon"] == row["cover"]
 
 
 def test_catalog_row_core_plugin_uses_brand_avatar(monkeypatch) -> None:
@@ -427,3 +437,12 @@ def test_catalog_row_core_plugin_uses_brand_avatar(monkeypatch) -> None:
     assert row["icon"]
     assert row["icon"].endswith("/pallas/assets/brand-avatar.png")
     assert row["cover"] is None
+
+
+def test_catalog_row_uses_package_asset_cover_when_present() -> None:
+    roulette_root = Path(__file__).resolve().parents[2] / "packages" / "roulette"
+    if not (roulette_root / "assets" / "cover.png").is_file():
+        return
+    visuals = resolve_catalog_visuals(plugin_id="roulette", plugin_source="core", plugin_root=roulette_root)
+    assert visuals["cover"] == "/pallas/plugin-assets/roulette/assets/cover.png"
+    assert visuals["icon"] == visuals["cover"]

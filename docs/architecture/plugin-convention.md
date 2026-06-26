@@ -65,6 +65,26 @@
 - 命令冷却：在 handler 内使用 `pallas.api.limits`（见 [command_limits](../common/command_limits/README.md)）；可在 `extra["command_limits"]` 声明默认 CD 供文档与后续扩展。
 - **插件存储键**：在 `extra["plugin_storage"]` 声明群/用户/牛级数据键；读写使用 `pallas.api.storage.GroupPluginStorage` 或 `get/set_plugin_storage`。
 
+### 插件包内视觉资源（assets）
+
+控制台插件列表、商店「本地插件」与帮助图共用 `resolve_catalog_visuals()`（实现见 `pallas/console/webui/plugin_package_assets.py`），按以下优先级合并 **cover / icon / avatar**：
+
+1. **包内 assets**（`local/plugins`、`packages` 或 pip 安装目录 → `/pallas/plugin-assets/…`）
+2. **商店资源快照缓存**（`/pallas/store-assets/…`）
+3. **远程 URL**（社区索引 / 官方扩展仓库 raw 链等）
+
+扫描插件根目录下的候选文件：
+
+| 角色 | 候选路径（按优先级，节选） |
+| --- | --- |
+| cover | `assets/cover.webp`、`assets/cover.png`、`cover.png` … |
+| icon | `assets/icon.png`、`assets/icon.webp`、`icon.png` … |
+| avatar | `assets/avatar.png`、`assets/avatar.jpg` … |
+
+发现后对外 URL 为 **`/pallas/plugin-assets/<plugin_id>/<相对路径>`**（`pb_webui` 直出）。无包内文件时使用商店快照 **`/pallas/store-assets/`**，再回退索引 / 仓库远程 URL。
+
+**推荐**：在插件包内放 `assets/cover.png` 或 `assets/icon.png`，无需在 metadata 写 URL；WebUI 与帮助图会自动展示。
+
 ### 命令权限与帮助文案（cmd_perm）
 
 新增或修改**可独立配置权限**的命令时：

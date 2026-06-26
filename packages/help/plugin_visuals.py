@@ -9,11 +9,15 @@ from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
-from pallas.console.webui.community_plugin_assets import COVER_CANDIDATE_PATHS, ICON_CANDIDATE_PATHS
 from pallas.console.webui.plugin_catalog import (
     discover_extra_plugin_packages,
     infer_plugin_source,
     resolved_plugin_identity,
+)
+from pallas.console.webui.plugin_package_assets import (
+    PACKAGE_ASSET_CANDIDATE_PATHS,
+    PUBLIC_PREFIX as PLUGIN_ASSETS_PUBLIC_PREFIX,
+    resolve_plugin_package_asset_file,
 )
 from pallas.console.webui.plugin_store_assets import load_snapshot
 from pallas.core.foundation.paths import plugin_data_dir, project_path
@@ -22,7 +26,7 @@ from .help_theme import resolve_help_font_path
 
 _STORE_PREFIX = "/pallas/store-assets/"
 _BRAND_AVATAR_URL = "/pallas/assets/brand-avatar.png"
-_LOCAL_ASSET_NAMES = tuple(dict.fromkeys((*COVER_CANDIDATE_PATHS, *ICON_CANDIDATE_PATHS)))
+_LOCAL_ASSET_NAMES = PACKAGE_ASSET_CANDIDATE_PATHS
 
 
 def plugin_cover_hue(seed: str) -> int:
@@ -41,7 +45,14 @@ def resolve_help_visual_urls(plugin: Any) -> dict[str, str | None]:
     package = plugin_id or nb_name
     extra_pkgs = discover_extra_plugin_packages()
     plugin_source, _ = infer_plugin_source(package, plugin, extra_pkgs=extra_pkgs)
-    visuals = resolve_catalog_visuals(plugin_id=plugin_id or package, plugin_source=plugin_source)
+    mod = getattr(plugin, "module", None)
+    file_path = getattr(mod, "__file__", "") if mod is not None else ""
+    plugin_root = Path(file_path).resolve().parent if file_path else None
+    visuals = resolve_catalog_visuals(
+        plugin_id=plugin_id or package,
+        plugin_source=plugin_source,
+        plugin_root=plugin_root,
+    )
     return {
         "cover": str(visuals.get("cover") or "").strip() or None,
         "icon": str(visuals.get("icon") or "").strip() or None,
@@ -61,6 +72,12 @@ def local_path_from_visual_url(url: str | None) -> Path | None:
         rel = raw[len(_STORE_PREFIX) :].lstrip("/")
         path = plugin_data_dir("pb_webui", create=False) / "store-assets" / rel
         return path if path.is_file() else None
+    if raw.startswith(f"{PLUGIN_ASSETS_PUBLIC_PREFIX}/"):
+        rel = raw[len(PLUGIN_ASSETS_PUBLIC_PREFIX) + 1 :]
+        if "/" in rel:
+            plugin_id, asset_rel = rel.split("/", 1)
+            path = resolve_plugin_package_asset_file(plugin_id, asset_rel)
+            return path
     if raw == _BRAND_AVATAR_URL or raw.endswith("/assets/brand-avatar.png"):
         path = project_path("packages/pb_webui/static/brand-avatar.png")
         return path if path.is_file() else None
@@ -112,15 +129,15 @@ def local_plugin_asset_path(plugin: Any) -> Path | None:
 
 
 def resolve_help_icon_path(plugin: Any) -> Path | None:
+    local_path = local_plugin_asset_path(plugin)
+    if local_path is not None:
+        return local_path
     visuals = resolve_help_visual_urls(plugin)
     icon_url = pick_help_icon_url(visuals)
     if icon_url:
         path = local_path_from_visual_url(icon_url)
         if path is not None:
             return path
-    local_path = local_plugin_asset_path(plugin)
-    if local_path is not None:
-        return local_path
     return local_path_from_visual_url(_BRAND_AVATAR_URL)
 
 

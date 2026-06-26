@@ -17,7 +17,7 @@ npm install
 npm run dev    # 默认 http://127.0.0.1:5173/pallas/
 ```
 
-`npm run dev` 将 `/pallas/api` 代理到 `http://127.0.0.1:8088`。后端端口非 8088 时：
+`npm run dev` 将 `/pallas/api`、`/pallas/plugin-assets`、`/pallas/store-assets` 等代理到 `http://127.0.0.1:8088`。后端端口非 8088 时：
 
 ```bash
 VITE_PROXY_TARGET=http://127.0.0.1:<port> npm run dev
@@ -131,6 +131,14 @@ CI 分别在两仓执行上述 check。
 | 内嵌协议端静态页 | 主仓 `src/plugins/pb_protocol/web/static/`（同样遵守窄屏） |
 
 PR 仍建议**单一主题**：前后端分拆为两个 PR 时，在描述中互相链接。
+
+## 插件包内视觉资源
+
+插件列表、商店本地插件与帮助图共用后端 `resolve_catalog_visuals()`。在 `local/plugins/<id>/` 或 `packages/<id>/` 放置 `assets/cover.png`、`assets/icon.png` 等（完整候选见 [插件目录约定 · 包内视觉资源](../architecture/plugin-convention.md#插件包内视觉资源assets)）后：
+
+- API 字段 `cover` / `icon` / `avatar` 按 **包内 → 商店缓存 → 远程** 合并后返回 `/pallas/plugin-assets/…` 或 `/pallas/store-assets/…`
+- 前端 `resolvePluginIconForRow()` **优先**使用上述 API 字段，再回退商店远程 URL 或品牌 mascot
+- bundled README 中相对路径 `assets/…` 会改写为同前缀 URL（`normalizeBundledReadmeMarkdown`）
 
 ## 提交
 
