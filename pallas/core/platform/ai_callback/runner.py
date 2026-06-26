@@ -34,11 +34,6 @@ from pallas.product.llm.behavior import BehaviorAction, BehaviorRun, BehaviorSce
 from pallas.product.llm.behavior_store import append_behavior_run
 from pallas.product.llm.config import get_llm_config
 from pallas.product.llm.kernel.memory_governance import can_write_runtime_state_summary
-from pallas.product.llm.repeater_feedback import (
-    append_feedback_entry,
-    build_feedback_entry,
-    should_collect_llm_repeater_feedback,
-)
 from pallas.product.llm.session_store import append_llm_message, compact_user_llm_history_with_summary
 from pallas.product.llm.task_metrics import record_bot_llm_route, record_bot_llm_task
 
@@ -59,6 +54,13 @@ _REPEATER_CALLBACK_TASKS = frozenset({
 
 
 def maybe_append_llm_repeater_feedback(task_id: str, task: dict, reply_text: str) -> None:
+    from pallas.product.llm.repeater_feedback import (
+        append_feedback_entry,
+        build_feedback_entry,
+        resolve_feedback_llm_route,
+        should_collect_llm_repeater_feedback,
+    )
+
     cfg = get_llm_config()
     if not cfg.llm_repeater_feedback_enabled:
         return
@@ -71,9 +73,11 @@ def maybe_append_llm_repeater_feedback(task_id: str, task: dict, reply_text: str
         user_text=user_text,
         reply_text=reply_text,
         source_tags=source_tags,
+        fallback_text=str(task.get("fallback_text") or "").strip(),
     ):
         return
     try:
+        task_type = str(task.get("task_type") or "").strip()
         append_feedback_entry(
             build_feedback_entry(
                 entry_id=task_id,
@@ -85,7 +89,10 @@ def maybe_append_llm_repeater_feedback(task_id: str, task: dict, reply_text: str
                 reply_text=reply_text,
                 behavior_scene=str(task.get("behavior_scene") or "").strip(),
                 behavior_actions=list(task.get("behavior_actions") or []),
-                llm_route=str(task.get("llm_route") or "").strip(),
+                llm_route=resolve_feedback_llm_route(
+                    task_type=task_type,
+                    llm_route=str(task.get("llm_route") or "").strip(),
+                ),
                 source_tags=source_tags,
                 eligible_for_bias=True,
                 eligible_for_writeback=False,
@@ -156,9 +163,11 @@ async def resolve_callback_task(task_id: str) -> dict | None:
         "group_id": rec.get("group_id"),
         "user_id": rec.get("user_id"),
         "task_type": rec.get("task_type"),
+        "user_text": rec.get("user_text"),
         "fallback_text": rec.get("fallback_text"),
         "candidate_pool": rec.get("candidate_pool"),
         "llm_route": rec.get("llm_route"),
+        "behavior_scene": rec.get("behavior_scene"),
         "last_reply_text": rec.get("last_reply_text"),
     }
 
@@ -264,6 +273,9 @@ async def run_ai_callback(
         elif should_suppress_llm_duplicate_reply(task, reply_text):
             fallback = str(task.get("fallback_text") or "").strip()
             reply_text = fallback if fallback and fallback != reply_text else ""
+        from pallas.product.llm.output_filter import resolve_output_filtered_reply
+
+        reply_text = resolve_output_filtered_reply(task, reply_text)
         if task_type in _REPEATER_CALLBACK_TASKS and reply_text:
             accepted = await evaluate_repeater_callback_text(task, reply_text)
             if not accepted:
@@ -300,7 +312,9 @@ async def run_ai_callback(
                 if user_text:
                     await append_llm_message(int(bot_id), scope_group, speaker_id, "user", user_text)
                 await append_llm_message(int(bot_id), scope_group, speaker_id, "assistant", reply_text)
-        if task_type == LLM_CHAT_TASK_TYPE and reply_text and text_delivered:
+        from pallas.product.llm.repeater_feedback import is_feedback_task_type
+
+        if is_feedback_task_type(task_type) and reply_text and text_delivered:
             maybe_append_llm_repeater_feedback(task_id, task, reply_text)
         behavior_scene = str(task.get("behavior_scene") or "").strip()
         if task_type == LLM_CHAT_TASK_TYPE and behavior_scene:

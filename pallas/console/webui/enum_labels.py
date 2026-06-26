@@ -43,6 +43,12 @@ FIELD_CHOICE_LABELS: dict[str, dict[str, str]] = {
         "polish": "命中语料后完整润色（遗留）",
         "both": "现编 + 完整润色（遗留）",
     },
+    "llm_vector_retrieve": {
+        "keyword": "仅关键词（默认）",
+        "hybrid": "关键词 + 向量（推荐）",
+        "embedding": "纯向量",
+        "vector": "纯向量（同 embedding）",
+    },
 }
 
 

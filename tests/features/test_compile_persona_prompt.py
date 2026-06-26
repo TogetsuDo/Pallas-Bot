@@ -51,6 +51,8 @@ def test_load_at_chat_system_prompt_avoids_assistant_style() -> None:
     assert "群聊里有人明确 @ 你" in text
     assert "默认 1-2 句" in text
     assert "不要默认称呼对方为博士" in text
+    assert "禁止客服/助手口吻" in text
+    assert "有啥想聊" in text
     assert "1-3 段" not in text
 
 

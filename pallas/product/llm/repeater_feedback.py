@@ -12,6 +12,13 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from pallas.core.foundation.paths import plugin_data_dir
+from pallas.core.platform.ai_callback.task_types import (
+    LLM_CHAT_TASK_TYPE,
+    REPEATER_FALLBACK_TASK_TYPE,
+    REPEATER_POLISH_LITE_TASK_TYPE,
+    REPEATER_POLISH_TASK_TYPE,
+    REPEATER_SELECT_TASK_TYPE,
+)
 from pallas.product.llm.kernel.feedback_models import FeedbackBiasSnapshot
 from pallas.product.llm.kernel.memory_governance import (
     can_collect_feedback,
@@ -30,6 +37,21 @@ _MAX_REPLY_LEN = 32
 _TOP_REPLIES_LIMIT = 3
 _TOP_SCENES_LIMIT = 5
 _RECENT_WINDOW_MULTIPLIER = 4
+
+_FEEDBACK_TASK_TYPES = frozenset({
+    LLM_CHAT_TASK_TYPE,
+    REPEATER_FALLBACK_TASK_TYPE,
+    REPEATER_POLISH_TASK_TYPE,
+    REPEATER_POLISH_LITE_TASK_TYPE,
+    REPEATER_SELECT_TASK_TYPE,
+})
+
+_TASK_TYPE_TO_LLM_ROUTE = {
+    REPEATER_FALLBACK_TASK_TYPE: "corpus_fallback",
+    REPEATER_POLISH_TASK_TYPE: "corpus_polish",
+    REPEATER_POLISH_LITE_TASK_TYPE: "corpus_polish_lite",
+    REPEATER_SELECT_TASK_TYPE: "corpus_select",
+}
 
 
 class LlmRepeaterFeedbackEntry(BaseModel):
@@ -68,6 +90,17 @@ def feedback_entries_path() -> Path:
     return feedback_base_dir() / "entries.jsonl"
 
 
+def resolve_feedback_llm_route(*, task_type: str, llm_route: str = "") -> str:
+    explicit = str(llm_route or "").strip()
+    if explicit:
+        return explicit
+    return _TASK_TYPE_TO_LLM_ROUTE.get(str(task_type or "").strip().lower(), "")
+
+
+def is_feedback_task_type(task_type: str) -> bool:
+    return str(task_type or "").strip().lower() in _FEEDBACK_TASK_TYPES
+
+
 def should_collect_llm_repeater_feedback(
     *,
     task_type: str,
@@ -75,12 +108,17 @@ def should_collect_llm_repeater_feedback(
     user_text: str,
     reply_text: str,
     source_tags: list[str],
+    fallback_text: str = "",
 ) -> bool:
-    if str(task_type).strip().lower() != "llm_chat":
+    normalized_task = str(task_type or "").strip().lower()
+    if normalized_task not in _FEEDBACK_TASK_TYPES:
         return False
     if int(group_id or 0) <= 0:
         return False
-    if not str(user_text or "").strip():
+    trigger_text = str(user_text or "").strip()
+    if normalized_task != LLM_CHAT_TASK_TYPE and not trigger_text:
+        trigger_text = str(fallback_text or "").strip()
+    if not trigger_text:
         return False
     plain_reply = str(reply_text or "").strip()
     if not plain_reply or len(plain_reply) > _MAX_REPLY_LEN:
@@ -195,7 +233,7 @@ def group_feedback_bias_snapshot(*, group_id: int, limit: int = 50) -> dict[str,
 
 
 def should_append_feedback_for_task(task_type: str) -> bool:
-    return can_collect_feedback() and str(task_type).strip().lower() == "llm_chat"
+    return can_collect_feedback() and is_feedback_task_type(task_type)
 
 
 def promotion_allowed() -> bool:

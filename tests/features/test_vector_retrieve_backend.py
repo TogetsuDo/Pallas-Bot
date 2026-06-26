@@ -108,7 +108,7 @@ def test_hybrid_backend_blends_keyword_and_embedding(monkeypatch: pytest.MonkeyP
 
 def test_get_vector_retrieve_backend_honors_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "pallas.product.llm.knowledge.vector_backend.repo_env_raw_value",
+        "pallas.product.llm.config.repo_env_raw_value",
         lambda key: "embedding" if key == "LLM_VECTOR_RETRIEVE" else None,
     )
     backend = get_vector_retrieve_backend()

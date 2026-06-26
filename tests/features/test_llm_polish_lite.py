@@ -17,6 +17,15 @@ def test_build_polish_lite_user_text() -> None:
     assert "【用户消息】夜宵吃什么" in text
     assert "【候选回复】小炒黄牛肉" in text
     assert "勿加设定词" in text
+    assert "继续聊" in text
+
+
+def test_load_polish_lite_system_prompt_forbids_expansion() -> None:
+    from pallas.product.persona.compile_persona_prompt import load_polish_lite_system_prompt
+
+    text = load_polish_lite_system_prompt()
+    assert "禁止扩写" in text
+    assert "继续聊" in text
 
 
 def test_build_polish_lite_user_text_with_expression_habits() -> None:

@@ -71,6 +71,10 @@ def test_list_webui_env_sections_contains_llm_section():
     assert "LLM_REPEATER_BIAS_ENABLED" in env_keys
     assert "LLM_REPEATER_WRITEBACK_ENABLED" in env_keys
     assert "CONVERSATION_FEATURE_LEVEL" in env_keys
+    assert "LLM_VECTOR_RETRIEVE" in env_keys
+    assert "LLM_EMBEDDING_MODEL" in env_keys
+    assert "LLM_OUTPUT_FILTER_ENABLED" in env_keys
+    assert "LLM_OUTPUT_FILTER_CHAT_HARD_PHRASES" in env_keys
 
 
 def test_list_webui_env_sections_contains_ingress_dispatch():

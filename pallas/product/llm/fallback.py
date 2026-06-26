@@ -99,6 +99,7 @@ async def maybe_submit_repeater_llm_fallback(
             "group_id": group_id,
             "user_id": user_id,
             "task_type": REPEATER_FALLBACK_TASK_TYPE,
+            "user_text": text,
             "reply_mode": str(reply_mode or "normal"),
             "start_time": time.time(),
         },

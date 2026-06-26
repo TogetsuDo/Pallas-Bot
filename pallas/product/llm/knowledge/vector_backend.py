@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import TYPE_CHECKING, Protocol
 
-from pallas.core.foundation.config.repo_settings import repo_env_raw_value
+from pallas.product.llm.config import VectorRetrieveMode, resolve_llm_vector_retrieve
 
 if TYPE_CHECKING:
     from pallas.product.llm.knowledge.models import KnowledgeSourceDecl, RetrievedKnowledgeChunk
-
-VectorRetrieveMode = Literal["keyword", "embedding", "hybrid", "vector"]
 
 
 class VectorRetrieveBackend(Protocol):
@@ -24,10 +22,7 @@ class VectorRetrieveBackend(Protocol):
 
 
 def vector_retrieve_mode() -> VectorRetrieveMode:
-    mode = str(repo_env_raw_value("LLM_VECTOR_RETRIEVE") or "keyword").strip().lower()
-    if mode in ("embedding", "hybrid", "vector"):
-        return mode  # type: ignore[return-value]
-    return "keyword"
+    return resolve_llm_vector_retrieve()
 
 
 class KeywordVectorBackend:

@@ -11,7 +11,6 @@ from pallas.core.foundation.db.repository_pg import LlmMemoryEntryRow, get_sessi
 from pallas.core.foundation.db.runtime import is_postgresql_backend
 from pallas.product.llm.config import LlmConfig, get_llm_config
 from pallas.product.llm.memory.policy import classify_memory_candidate, normalize_episode_note
-from pallas.product.llm.memory.retrieve import memory_relevance_score
 from pallas.product.llm.session_store import normalize_group_scope
 from pallas.product.persona.prompt_guard import sanitize_prompt_block, sanitize_prompt_literal
 
@@ -236,23 +235,18 @@ async def retrieve_memory_hits(
             .scalars()
             .all()
         )
-    scored: list[dict[str, Any]] = []
-    for row in rows:
-        score = memory_relevance_score(
-            query_text,
-            keywords=str(row.keywords or ""),
-            content=str(row.content or ""),
-        )
-        if score <= 0:
-            continue
-        scored.append({
-            "score": score,
+    from pallas.product.llm.memory.retrieve import rank_memory_candidates
+
+    candidates = [
+        {
             "content": str(row.content or "").strip(),
             "keywords": str(row.keywords or "").strip(),
             "source": str(row.source or "").strip() or "memory",
             "group_id": int(row.group_id or 0),
-        })
-    scored.sort(key=lambda item: int(item.get("score") or 0), reverse=True)
+        }
+        for row in rows
+    ]
+    scored = rank_memory_candidates(query_text, candidates)
     seen: set[str] = set()
     out: list[dict[str, Any]] = []
     for item in scored:

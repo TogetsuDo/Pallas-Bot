@@ -92,6 +92,22 @@ def test_field_meta_includes_choice_labels_for_registered_enum():
     assert row["choice_labels"]["select_polish_lite"] == "选句为主，偶尔轻顺口气"
 
 
+def test_field_meta_includes_choice_labels_for_llm_vector_retrieve():
+    class _Retrieve(BaseModel):
+        llm_vector_retrieve: Literal["keyword", "hybrid", "embedding"] = Field(default="keyword")
+
+    f = _Retrieve.model_fields["llm_vector_retrieve"]
+    row = field_meta_for_model_field(
+        key="llm_vector_retrieve",
+        field=f,
+        env_key="LLM_VECTOR_RETRIEVE",
+        cur="keyword",
+        default_value="keyword",
+    )
+    assert row["choice_labels"]["hybrid"] == "关键词 + 向量（推荐）"
+    assert row["choice_labels"]["keyword"] == "仅关键词（默认）"
+
+
 class _Bounds(BaseModel):
     port: int = Field(default=9099, ge=1, le=65535)
     rate: float = Field(default=0.5, gt=0.0, lt=1.0)

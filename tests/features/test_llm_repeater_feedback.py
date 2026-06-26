@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pallas.product.llm.config import LlmConfig, clear_llm_config_cache, get_llm_config
+from pallas.product.llm.config import LlmConfig, clear_llm_config_cache
 from pallas.product.llm.repeater_feedback import (
     LlmRepeaterFeedbackEntry,
     append_feedback_entry,
@@ -46,6 +46,38 @@ def test_should_collect_llm_repeater_feedback_rejects_long_explanatory_reply() -
     )
 
     assert accepted is False
+
+
+def test_should_collect_llm_repeater_feedback_accepts_repeater_polish_lite() -> None:
+    accepted = should_collect_llm_repeater_feedback(
+        task_type="repeater_polish_lite",
+        group_id=123,
+        user_text="嘎嘎",
+        reply_text="我赌你的枪里",
+        source_tags=[],
+    )
+
+    assert accepted is True
+
+
+def test_should_collect_llm_repeater_feedback_uses_fallback_when_trigger_missing() -> None:
+    accepted = should_collect_llm_repeater_feedback(
+        task_type="repeater_select",
+        group_id=123,
+        user_text="",
+        reply_text="摸摸",
+        source_tags=[],
+        fallback_text="候选句",
+    )
+
+    assert accepted is True
+
+
+def test_resolve_feedback_llm_route_maps_repeater_task() -> None:
+    from pallas.product.llm.repeater_feedback import resolve_feedback_llm_route
+
+    assert resolve_feedback_llm_route(task_type="repeater_polish_lite", llm_route="") == "corpus_polish_lite"
+    assert resolve_feedback_llm_route(task_type="llm_chat", llm_route="plain_llm_chat") == "plain_llm_chat"
 
 
 def test_build_feedback_entry_defaults_writeback_false() -> None:

@@ -9,8 +9,33 @@ from pydantic import BaseModel, ConfigDict, Field
 from pallas.console.webui.field_help import field_help
 from pallas.product.llm.config import get_llm_config
 
+VectorRetrieveMode = Literal["keyword", "embedding", "hybrid", "vector"]
 RepeaterMode = Literal["off", "select", "select_polish_lite", "select_fallback", "fallback", "polish", "both"]
 ConversationFeatureLevel = Literal["", "legacy_repeater", "repeater_plus_decision", "full_conversation_kernel"]
+
+
+def default_output_filter_chat_hard_phrases() -> list[str]:
+    from pallas.product.llm.output_filter import CHAT_HARD_BLOCK_PHRASES
+
+    return list(CHAT_HARD_BLOCK_PHRASES)
+
+
+def default_output_filter_chat_soft_phrases() -> list[str]:
+    from pallas.product.llm.output_filter import CHAT_SOFT_RETRY_PHRASES
+
+    return list(CHAT_SOFT_RETRY_PHRASES)
+
+
+def default_output_filter_polish_lite_hard_phrases() -> list[str]:
+    from pallas.product.llm.output_filter import POLISH_LITE_HARD_BLOCK_PHRASES
+
+    return list(POLISH_LITE_HARD_BLOCK_PHRASES)
+
+
+def default_output_filter_polish_lite_soft_phrases() -> list[str]:
+    from pallas.product.llm.output_filter import POLISH_LITE_SOFT_RETRY_PHRASES
+
+    return list(POLISH_LITE_SOFT_RETRY_PHRASES)
 
 
 class LlmWebuiConfig(BaseModel):
@@ -153,11 +178,60 @@ class LlmWebuiConfig(BaseModel):
             "开启后 CD 内连发只保留最后一次 completion",
         ),
     )
+    llm_output_filter_enabled: bool = Field(
+        default=True,
+        description=field_help(
+            "是否启用 AI 回复输出后过滤",
+            "拦截客服腔、邀约尾缀等；接话任务优先回落语料原文",
+        ),
+    )
+    llm_output_filter_chat_hard_phrases: list[str] = Field(
+        default_factory=default_output_filter_chat_hard_phrases,
+        description=field_help(
+            "闲聊/接话硬拦截词表",
+            "JSON 字符串数组；命中后接话回落语料，闲聊静默不发",
+        ),
+    )
+    llm_output_filter_chat_soft_phrases: list[str] = Field(
+        default_factory=default_output_filter_chat_soft_phrases,
+        description=field_help(
+            "闲聊/接话软拦截词表",
+            "JSON 字符串数组；与硬拦截同样处理，便于分批下线",
+        ),
+    )
+    llm_output_filter_polish_lite_hard_phrases: list[str] = Field(
+        default_factory=default_output_filter_polish_lite_hard_phrases,
+        description=field_help(
+            "接话轻润色额外硬拦截词",
+            "与上方闲聊硬拦截合并后用于 repeater_polish_lite",
+        ),
+    )
+    llm_output_filter_polish_lite_soft_phrases: list[str] = Field(
+        default_factory=default_output_filter_polish_lite_soft_phrases,
+        description=field_help(
+            "接话轻润色额外软拦截词",
+            "与上方闲聊软拦截合并后用于 repeater_polish_lite",
+        ),
+    )
     llm_memory_rag_enabled: bool = Field(
         default=True,
         description=field_help(
             "是否启用群记忆检索",
             "开启后可将「记住：…」写入记忆，并按相关度注入对话",
+        ),
+    )
+    llm_vector_retrieve: VectorRetrieveMode = Field(
+        default="keyword",
+        description=field_help(
+            "群记忆与知识源的检索方式",
+            "keyword=仅关键词；hybrid=关键词+向量（推荐，需 AI 仓 embeddings）；embedding=纯向量",
+        ),
+    )
+    llm_embedding_model: str = Field(
+        default="stub",
+        description=field_help(
+            "向量检索使用的 embedding 模型名",
+            "与 Pallas-Bot-AI embeddings 接口一致；本地联调可填 stub",
         ),
     )
     llm_relationship_notes_enabled: bool = Field(
@@ -193,6 +267,13 @@ def get_llm_webui_config() -> LlmWebuiConfig:
         conversation_feature_level=cfg.conversation_feature_level or "",  # type: ignore[arg-type]
         llm_reply_gate_enabled=cfg.llm_reply_gate_enabled,
         llm_chat_queue_merge=cfg.llm_chat_queue_merge,
+        llm_output_filter_enabled=cfg.llm_output_filter_enabled,
+        llm_output_filter_chat_hard_phrases=cfg.llm_output_filter_chat_hard_phrases,
+        llm_output_filter_chat_soft_phrases=cfg.llm_output_filter_chat_soft_phrases,
+        llm_output_filter_polish_lite_hard_phrases=cfg.llm_output_filter_polish_lite_hard_phrases,
+        llm_output_filter_polish_lite_soft_phrases=cfg.llm_output_filter_polish_lite_soft_phrases,
         llm_memory_rag_enabled=cfg.llm_memory_rag_enabled,
+        llm_vector_retrieve=cfg.llm_vector_retrieve,
+        llm_embedding_model=cfg.llm_embedding_model,
         llm_relationship_notes_enabled=cfg.llm_relationship_notes_enabled,
     )

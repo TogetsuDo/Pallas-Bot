@@ -53,7 +53,7 @@ def build_polish_lite_user_text_with_suffix(user_text: str, candidate_text: str,
         f"【用户消息】{message}\n"
         f"【候选回复】{candidate}\n"
         f"{suffix_block}\n"
-        "请在不改变原意的前提下轻顺口气；勿扩写、勿加设定词。只输出一句。"
+        "请在不改变原意的前提下轻顺口气；勿扩写、勿加设定词、勿加「继续聊/换个话题」类尾缀。只输出一句，长度接近候选。"
     )
 
 
@@ -112,6 +112,7 @@ async def maybe_submit_repeater_llm_polish_lite(
             "group_id": group_id,
             "user_id": user_id,
             "task_type": REPEATER_POLISH_LITE_TASK_TYPE,
+            "user_text": plain,
             "fallback_text": candidate,
             "reply_mode": str(reply_mode or "normal"),
             "start_time": time.time(),
@@ -198,7 +199,12 @@ async def maybe_submit_repeater_corpus_llm(
     if candidate and cfg.llm_polish_enabled:
         from pallas.product.llm.polish import maybe_submit_repeater_llm_polish
 
-        if await maybe_submit_repeater_llm_polish(event, candidate_text=candidate, reply_mode=reply_mode):
+        if await maybe_submit_repeater_llm_polish(
+            event,
+            candidate_text=candidate,
+            trigger_user_text=user_text,
+            reply_mode=reply_mode,
+        ):
             return True
 
     return False

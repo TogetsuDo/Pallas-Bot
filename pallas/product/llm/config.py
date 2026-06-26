@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from threading import Lock
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -166,6 +167,22 @@ def resolve_conversation_feature_level_raw() -> str:
     return ""
 
 
+VectorRetrieveMode = Literal["keyword", "embedding", "hybrid", "vector"]
+
+
+def resolve_llm_vector_retrieve() -> VectorRetrieveMode:
+    mode = _env_str("LLM_VECTOR_RETRIEVE", "keyword").strip().lower()
+    if mode in ("embedding", "hybrid", "vector"):
+        return mode  # type: ignore[return-value]
+    return "keyword"
+
+
+def resolve_llm_embedding_model() -> str:
+    raw = repo_env_raw_value("LLM_EMBEDDING_MODEL")
+    text = str(raw or "stub").strip()
+    return text or "stub"
+
+
 class LlmMcpServerConfig(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="ignore")
 
@@ -222,9 +239,16 @@ class LlmConfig(BaseModel):
     llm_reply_gate_enabled: bool = Field(default=True)
     llm_reply_gate_min_chars: int = Field(default=1, ge=0, le=32)
     llm_chat_queue_merge: bool = Field(default=True)
+    llm_output_filter_enabled: bool = Field(default=True)
+    llm_output_filter_chat_hard_phrases: list[str] = Field(default_factory=list)
+    llm_output_filter_chat_soft_phrases: list[str] = Field(default_factory=list)
+    llm_output_filter_polish_lite_hard_phrases: list[str] = Field(default_factory=list)
+    llm_output_filter_polish_lite_soft_phrases: list[str] = Field(default_factory=list)
     llm_tools_blacklist: list[str] = Field(default_factory=list)
     llm_tools_desc_max_len: int = Field(default=120, ge=32, le=512)
     llm_memory_rag_enabled: bool = Field(default=True)
+    llm_vector_retrieve: VectorRetrieveMode = Field(default="keyword")
+    llm_embedding_model: str = Field(default="stub")
     llm_memory_rag_top_k: int = Field(default=3, ge=1, le=8)
     llm_memory_max_per_group: int = Field(default=200, ge=1, le=2000)
     llm_memory_content_max_len: int = Field(default=500, ge=64, le=4000)
@@ -257,6 +281,13 @@ def _env_str_list(key: str) -> list[str]:
     return [part.strip() for part in text.replace(";", ",").split(",") if part.strip()]
 
 
+def _env_str_list_or_default(key: str, default: tuple[str, ...]) -> list[str]:
+    raw = repo_env_raw_value(key)
+    if raw is None or not str(raw).strip():
+        return list(default)
+    return _env_str_list(key)
+
+
 def _env_mcp_server_list(key: str) -> list[LlmMcpServerConfig]:
     raw = repo_env_raw_value(key)
     if raw is None or not raw.strip():
@@ -287,6 +318,13 @@ def get_llm_config() -> LlmConfig:
         port = _env_int("LLM_AI_SERVER_PORT", _env_int("AI_SERVER_PORT", 9099))
         repeater_mode = resolve_llm_repeater_mode()
         fallback_enabled, polish_enabled, select_enabled = resolve_llm_repeater_flags()
+        from pallas.product.llm.output_filter import (
+            CHAT_HARD_BLOCK_PHRASES,
+            CHAT_SOFT_RETRY_PHRASES,
+            POLISH_LITE_HARD_BLOCK_PHRASES,
+            POLISH_LITE_SOFT_RETRY_PHRASES,
+        )
+
         _cached_llm_config = LlmConfig(
             ai_server_host=host,
             ai_server_port=port,
@@ -334,9 +372,28 @@ def get_llm_config() -> LlmConfig:
             llm_reply_gate_enabled=_env_bool("LLM_REPLY_GATE_ENABLED", True),
             llm_reply_gate_min_chars=_env_int("LLM_REPLY_GATE_MIN_CHARS", 1),
             llm_chat_queue_merge=_env_bool("LLM_CHAT_QUEUE_MERGE", True),
+            llm_output_filter_enabled=_env_bool("LLM_OUTPUT_FILTER_ENABLED", True),
+            llm_output_filter_chat_hard_phrases=_env_str_list_or_default(
+                "LLM_OUTPUT_FILTER_CHAT_HARD_PHRASES",
+                CHAT_HARD_BLOCK_PHRASES,
+            ),
+            llm_output_filter_chat_soft_phrases=_env_str_list_or_default(
+                "LLM_OUTPUT_FILTER_CHAT_SOFT_PHRASES",
+                CHAT_SOFT_RETRY_PHRASES,
+            ),
+            llm_output_filter_polish_lite_hard_phrases=_env_str_list_or_default(
+                "LLM_OUTPUT_FILTER_POLISH_LITE_HARD_PHRASES",
+                POLISH_LITE_HARD_BLOCK_PHRASES,
+            ),
+            llm_output_filter_polish_lite_soft_phrases=_env_str_list_or_default(
+                "LLM_OUTPUT_FILTER_POLISH_LITE_SOFT_PHRASES",
+                POLISH_LITE_SOFT_RETRY_PHRASES,
+            ),
             llm_tools_blacklist=_env_str_list("LLM_TOOLS_BLACKLIST"),
             llm_tools_desc_max_len=_env_int("LLM_TOOLS_DESC_MAX_LEN", 120),
             llm_memory_rag_enabled=_env_bool("LLM_MEMORY_RAG_ENABLED", True),
+            llm_vector_retrieve=resolve_llm_vector_retrieve(),
+            llm_embedding_model=resolve_llm_embedding_model(),
             llm_memory_rag_top_k=_env_int("LLM_MEMORY_RAG_TOP_K", 3),
             llm_memory_max_per_group=_env_int("LLM_MEMORY_MAX_PER_GROUP", 200),
             llm_memory_content_max_len=_env_int("LLM_MEMORY_CONTENT_MAX_LEN", 500),

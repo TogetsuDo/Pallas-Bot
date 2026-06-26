@@ -11,10 +11,12 @@ from pallas.core.platform.ai_callback.task_types import (
     CHAT_DRUNK_TASK_TYPE,
     LLM_CHAT_TASK_TYPE,
     REPEATER_FALLBACK_TASK_TYPE,
+    REPEATER_POLISH_LITE_TASK_TYPE,
     REPEATER_POLISH_TASK_TYPE,
 )
 from pallas.product.llm.behavior import BehaviorAction, BehaviorScene
 from pallas.product.llm.config import LlmConfig
+from pallas.product.llm.output_filter import CHAT_HARD_BLOCK_PHRASES
 
 
 def test_should_suppress_llm_duplicate_reply_for_short_parasitic_tail() -> None:
@@ -300,7 +302,10 @@ async def test_run_ai_callback_appends_repeater_feedback_when_enabled(
         lambda: LlmConfig(llm_repeater_feedback_enabled=True),
     )
     appended: list[object] = []
-    monkeypatch.setattr(ai_callback_runner, "append_feedback_entry", lambda entry: appended.append(entry))
+    monkeypatch.setattr(
+        "pallas.product.llm.repeater_feedback.append_feedback_entry",
+        lambda entry: appended.append(entry),
+    )
 
     result = await ai_callback_runner.run_ai_callback("task-feedback-1", status="success", text="少装。")
 
@@ -312,6 +317,52 @@ async def test_run_ai_callback_appends_repeater_feedback_when_enabled(
     assert entry.reply_text == "少装。"
     assert entry.behavior_scene == "banter"
     assert entry.source_tags == ["recent_chat"]
+
+
+@pytest.mark.asyncio
+async def test_run_ai_callback_appends_repeater_task_feedback_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = MagicMock()
+    bot.call_api = AsyncMock(return_value=None)
+    monkeypatch.setattr(ai_callback_runner, "get_bot", lambda _bot_id: bot)
+    monkeypatch.setattr(
+        ai_callback_runner.TaskManager,
+        "get_task",
+        AsyncMock(
+            return_value={
+                "bot_id": "111",
+                "group_id": 222,
+                "user_id": 333,
+                "task_type": REPEATER_POLISH_LITE_TASK_TYPE,
+                "user_text": "嘎嘎",
+                "fallback_text": "咕咕",
+                "reply_mode": "god",
+            }
+        ),
+    )
+    monkeypatch.setattr(ai_callback_runner.TaskManager, "remove_task", AsyncMock())
+    monkeypatch.setattr(ai_callback_runner, "remove_ai_task", lambda _task_id: None)
+    monkeypatch.setattr(
+        ai_callback_runner,
+        "get_llm_config",
+        lambda: LlmConfig(llm_repeater_feedback_enabled=True),
+    )
+    monkeypatch.setattr(ai_callback_runner, "evaluate_repeater_callback_text", AsyncMock(return_value=True))
+    appended: list[object] = []
+    monkeypatch.setattr(
+        "pallas.product.llm.repeater_feedback.append_feedback_entry",
+        lambda entry: appended.append(entry),
+    )
+
+    result = await ai_callback_runner.run_ai_callback("task-repeater-fb-1", status="success", text="我赌你的枪里")
+
+    assert result == {"message": "ok"}
+    assert len(appended) == 1
+    entry = appended[0]
+    assert entry.llm_route == "corpus_polish_lite"
+    assert entry.user_text == "嘎嘎"
+    assert entry.reply_text == "我赌你的枪里"
 
 
 @pytest.mark.asyncio
@@ -343,7 +394,7 @@ async def test_run_ai_callback_disabled_repeater_feedback_does_not_append(
         lambda: LlmConfig(llm_repeater_feedback_enabled=False),
     )
     append_feedback_entry = MagicMock()
-    monkeypatch.setattr(ai_callback_runner, "append_feedback_entry", append_feedback_entry)
+    monkeypatch.setattr("pallas.product.llm.repeater_feedback.append_feedback_entry", append_feedback_entry)
 
     result = await ai_callback_runner.run_ai_callback("task-feedback-disabled-1", status="success", text="少装。")
 
@@ -384,7 +435,7 @@ async def test_run_ai_callback_feedback_write_failure_does_not_break_success(
     def raise_append(_entry) -> None:
         raise RuntimeError("disk full")
 
-    monkeypatch.setattr(ai_callback_runner, "append_feedback_entry", raise_append)
+    monkeypatch.setattr("pallas.product.llm.repeater_feedback.append_feedback_entry", raise_append)
 
     result = await ai_callback_runner.run_ai_callback("task-feedback-fail-1", status="success", text="少装。")
 
@@ -421,7 +472,7 @@ async def test_run_ai_callback_delivery_failure_does_not_append_repeater_feedbac
     )
     monkeypatch.setattr(ai_callback_runner, "send_group_message", AsyncMock(return_value=False))
     append_feedback_entry = MagicMock()
-    monkeypatch.setattr(ai_callback_runner, "append_feedback_entry", append_feedback_entry)
+    monkeypatch.setattr("pallas.product.llm.repeater_feedback.append_feedback_entry", append_feedback_entry)
 
     result = await ai_callback_runner.run_ai_callback("task-feedback-delivery-fail-1", status="success", text="少装。")
 
@@ -679,6 +730,79 @@ async def test_run_ai_callback_repeater_polish_success_rejected_uses_fallback_te
     bot.call_api.assert_awaited_once()
     call_kwargs = bot.call_api.await_args.kwargs
     assert call_kwargs["message"] == "语料原文"
+
+
+@pytest.mark.asyncio
+async def test_run_ai_callback_chat_output_filter_blocks_service_tone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = MagicMock()
+    bot.call_api = AsyncMock(return_value=None)
+    monkeypatch.setattr(ai_callback_runner, "get_bot", lambda _bot_id: bot)
+    monkeypatch.setattr(
+        ai_callback_runner.TaskManager,
+        "get_task",
+        AsyncMock(
+            return_value={
+                "bot_id": "111",
+                "group_id": 222,
+                "task_type": LLM_CHAT_TASK_TYPE,
+                "user_id": 333,
+            }
+        ),
+    )
+    monkeypatch.setattr(ai_callback_runner.TaskManager, "remove_task", AsyncMock())
+    monkeypatch.setattr(ai_callback_runner, "remove_ai_task", lambda _task_id: None)
+    monkeypatch.setattr(
+        "pallas.product.llm.config.get_llm_config",
+        lambda: LlmConfig(
+            llm_output_filter_enabled=True,
+            llm_output_filter_chat_hard_phrases=list(CHAT_HARD_BLOCK_PHRASES),
+        ),
+    )
+
+    result = await ai_callback_runner.run_ai_callback(
+        "task-chat-filter",
+        status="success",
+        text="博士您好，有什么想聊的吗？",
+    )
+
+    assert result == {"message": "ok"}
+    bot.call_api.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_ai_callback_polish_lite_output_filter_uses_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = MagicMock()
+    bot.call_api = AsyncMock(return_value=None)
+    monkeypatch.setattr(ai_callback_runner, "get_bot", lambda _bot_id: bot)
+    monkeypatch.setattr(
+        ai_callback_runner.TaskManager,
+        "get_task",
+        AsyncMock(
+            return_value={
+                "bot_id": "111",
+                "group_id": 222,
+                "task_type": REPEATER_POLISH_LITE_TASK_TYPE,
+                "fallback_text": "好耶",
+            }
+        ),
+    )
+    monkeypatch.setattr(ai_callback_runner.TaskManager, "remove_task", AsyncMock())
+    monkeypatch.setattr(ai_callback_runner, "remove_ai_task", lambda _task_id: None)
+    monkeypatch.setattr(ai_callback_runner, "evaluate_repeater_callback_text", AsyncMock(return_value=True))
+
+    result = await ai_callback_runner.run_ai_callback(
+        "task-polish-lite-filter",
+        status="success",
+        text="那就继续聊吧",
+    )
+
+    assert result == {"message": "ok"}
+    bot.call_api.assert_awaited_once()
+    assert bot.call_api.await_args.kwargs["message"] == "好耶"
 
 
 @pytest.mark.asyncio
