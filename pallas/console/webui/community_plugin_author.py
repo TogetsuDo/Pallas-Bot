@@ -190,6 +190,13 @@ def _extract_decl_rows(node: ast.AST) -> list[dict[str, Any]]:
     return []
 
 
+def _is_usage_builder_call(node: ast.AST) -> bool:
+    """识别 join_usage(...) / usage_line(...) 这类 usage 组装调用。"""
+    if not isinstance(node, ast.Call):
+        return False
+    return _extract_call_name(node.func) in {"join_usage", "usage_line"}
+
+
 def parse_plugin_metadata_contract(init_path: Path) -> dict[str, Any]:
     text = init_path.read_text(encoding="utf-8")
     try:
@@ -212,7 +219,11 @@ def parse_plugin_metadata_contract(init_path: Path) -> dict[str, Any]:
             continue
         for keyword in node.keywords:
             if keyword.arg in {"name", "description", "usage"}:
-                contract[keyword.arg] = _const_str(keyword.value) or ""
+                value = _const_str(keyword.value)
+                # usage 推荐用 join_usage()/usage_line() 组装，非字面量也视为已填写。
+                if value is None and keyword.arg == "usage" and _is_usage_builder_call(keyword.value):
+                    value = "<join_usage>"
+                contract[keyword.arg] = value or ""
                 continue
             if keyword.arg != "extra" or not isinstance(keyword.value, ast.Dict):
                 continue
