@@ -38,6 +38,25 @@ my_plugin/
 
 可选：接入 [cmd_perm](../common/cmd_perm/README.md) 的 `command_permissions`，帮助图会自动展示「何人可用」。
 
+---
+
+## 版本与更新日志
+
+社区插件从 4.0 起开始正式做版本管理，约定如下：
+
+- **版本号**：遵循[语义化版本](https://semver.org/lang/zh-CN/)（如 `0.1.0`）。在 `index.json` 条目里填可选字段 `version`，并与仓库的 git tag、`CHANGELOG.md` 对应。
+- **git tag**：发布一个版本时打 `vX.Y.Z`（如 `v0.1.0`），便于回溯与商店按 ref 安装。
+- **`CHANGELOG.md`**：在仓库根目录维护，推荐 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式：日常改动记到 `## [Unreleased]`，发布时按版本归档。
+
+控制台 **插件商店 → 详情弹窗 → 更新日志** 分栏的取值顺序：
+
+1. 仓库根目录的 `CHANGELOG.md`（首选，体验最好）；
+2. 缺失时，对已安装到 `local/plugins/<id>/` 的插件，按本地 git 提交历史**自动生成**（兜底，仅列提交标题）。
+
+因此**强烈建议**维护 `CHANGELOG.md`；否则用户只能看到原始提交记录。README 也可加版本徽章（与官方插件一致，文案为「版本 · vX.Y.Z」）。
+
+示范写法见 [`pallas-community-plugin-interact`](https://github.com/TogetsuDo/pallas-community-plugin-interact) 的 `CHANGELOG.md` 与 README。
+
 ### 社区插件画像（L1 / L2）
 
 公开收录与 WebUI 插件页「指令与能力」依赖 **metadata 声明完整度**：
@@ -70,6 +89,7 @@ my_plugin/
   "description": "一句话说明功能。",
   "repository": "https://github.com/you/my_plugin.git",
   "ref": "main",
+  "version": "0.1.0",
   "author": "your_github_id",
   "tags": ["工具"],
   "min_pallas_version": "4.0.0"
@@ -147,6 +167,7 @@ uv run python tools/community_plugin_author.py validate-index /path/to/index.jso
 - [ ] 仓库根即为 NoneBot 插件包（含 `__init__.py`），或 README 说明 clone 后路径
 - [ ] `assets/icon.png` 或索引中提供 `icon`
 - [ ] `description` 一句说清功能；`min_pallas_version` 如实填写
+- [ ] 建议维护 `CHANGELOG.md`（Keep a Changelog），发布版本打 `vX.Y.Z` tag，可在条目填 `version`
 - [ ] 更新 `index.json` 的 `updated_at`
 
 合并后 CI 会同步 README 插件列表；Bot 拉取远程 `index.json` 即可，无需再手工改 README。

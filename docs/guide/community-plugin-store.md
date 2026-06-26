@@ -62,6 +62,17 @@ Docker 挂载示例见 [站点定制 · Docker](../architecture/site-customizati
 
 ---
 
+## 详情弹窗：README 与更新日志
+
+点击商店卡片打开详情弹窗，可在 **README** / **更新日志** 两个分栏间切换：
+
+- **README**：拉取仓库根目录 `README.md`。
+- **更新日志**：优先展示仓库根目录 `CHANGELOG.md`；社区插件若仓库未提供，则对已安装到 `local/plugins/<id>/` 的副本按本地 git 提交历史**自动生成**（仅列提交标题）。
+
+官方扩展与社区插件都适用。作者维护 `CHANGELOG.md` 的约定见 [社区插件开发者指南 · 版本与更新日志](community-plugin-author.md#版本与更新日志)。
+
+---
+
 ## 手动投放（不经过商店）
 
 与商店安装结果相同：把 NoneBot 插件目录放到 `local/plugins/<名>/`，配置 `extra_plugin_dirs`（或依赖自动检测），重启 Bot。

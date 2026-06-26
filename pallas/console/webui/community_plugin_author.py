@@ -268,6 +268,13 @@ def validate_community_plugin_dir(plugin_dir: Path) -> tuple[list[str], list[str
     if not any((plugin_dir / name).is_file() for name in readme_names):
         warnings.append("建议提供 README.md，便于商店详情页展示")
 
+    changelog_names = ("CHANGELOG.md", "changelog.md", "CHANGELOG.MD")
+    if not any((plugin_dir / name).is_file() for name in changelog_names):
+        warnings.append(
+            "建议提供 CHANGELOG.md（Keep a Changelog 格式），商店「更新日志」分栏会优先展示；"
+            "缺失时仅能按 git 提交历史兜底",
+        )
+
     # L1 import 检查（社区插件仅允许 pallas.api.*）
     import_errors = _validate_plugin_imports(plugin_dir)
     errors.extend(f"L1 import 违规: {err}" for err in import_errors)
