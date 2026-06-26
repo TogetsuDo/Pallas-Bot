@@ -37,7 +37,48 @@ async def test_resolve_task_route_explicit_model_wins(monkeypatch: pytest.Monkey
 
 
 @pytest.mark.asyncio
-async def test_resolve_task_route_prefers_ai_health(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_resolve_task_route_prefers_ai_health_task_routing_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    clear_task_route_cache()
+
+    async def fake_health(**_kwargs):
+        return {
+            "ok": True,
+            "body": {
+                "llm": {
+                    "provider_mode": "chain",
+                    "task_routing": {"drunk": "local", "llm_chat": "remote"},
+                    "local_task_models": {"repeater_select": "qwen2.5:0.5b"},
+                }
+            },
+        }
+
+    async def fail_local(**_kwargs):
+        raise AssertionError("health route should be preferred before local-routing fetch")
+
+    monkeypatch.setattr("pallas.product.llm.task_routing.probe_ai_service_health", fake_health)
+    monkeypatch.setattr("pallas.product.llm.task_routing.fetch_local_routing_config", fail_local)
+
+    drunk_route = await resolve_task_route("drunk")
+    chat_route = await resolve_task_route("llm_chat")
+
+    assert drunk_route == TaskRouteSpec(
+        task="drunk",
+        resolved_model=None,
+        provider_hint="local",
+        source="ai_health",
+        fallback_models=(),
+    )
+    assert chat_route == TaskRouteSpec(
+        task="llm_chat",
+        resolved_model=None,
+        provider_hint="remote",
+        source="ai_health",
+        fallback_models=(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_resolve_task_route_prefers_ai_health_local_task_models(monkeypatch: pytest.MonkeyPatch) -> None:
     clear_task_route_cache()
 
     async def fake_health(**_kwargs):
@@ -46,8 +87,7 @@ async def test_resolve_task_route_prefers_ai_health(monkeypatch: pytest.MonkeyPa
             "body": {
                 "llm": {
                     "provider_mode": "local",
-                    "task_routing": {"repeater_select": "qwen3:14b"},
-                    "local_task_models": {"llm_chat": "qwen3:8b"},
+                    "local_task_models": {"repeater_select": "qwen3:14b", "llm_chat": "qwen3:8b"},
                 }
             },
         }

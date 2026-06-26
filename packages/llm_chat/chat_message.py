@@ -60,8 +60,6 @@ from .near_field_scorer import RECENT_LIVE_SOURCE as _RECENT_LIVE_SOURCE
 from .near_field_scorer import recent_hint_source_label, select_scored_expression_candidates
 from .prompts import get_system_prompt
 from .replies import (
-    LLM_CHAT_BUSY_REPLY,
-    LLM_CHAT_FAILED_REPLY,
     LLM_CHAT_MEMORY_SAVED_REPLY,
     LLM_CHAT_RELATIONSHIP_SAVED_REPLY,
     LLM_CHAT_VAGUE_REPLY,
@@ -80,19 +78,6 @@ llm_chat_msg = on_message(
     rule=Rule(llm_chat_rule),
     permission=group_message_permission_for_command("llm_chat.chat"),
 )
-
-
-def user_reply_for_submit_failure(status: str) -> str | None:
-    from pallas.product.llm.submit_gate import user_message_for_submit_status
-
-    mapped = user_message_for_submit_status(status)
-    if mapped:
-        return mapped
-    if status == "busy":
-        return LLM_CHAT_BUSY_REPLY
-    if status in {"request_failed", "empty_response", "invalid_response"}:
-        return LLM_CHAT_FAILED_REPLY
-    return None
 
 
 def resolve_corpus_llm_route(llm_cfg, pool: list[str], candidate: str) -> str:
@@ -576,9 +561,7 @@ async def handle_llm_chat(bot: Bot, event: Event):
     if not result.ok:
         await TaskManager.remove_task(request_id)
         record_bot_llm_task(LLM_CHAT_TASK_TYPE, "submit_skip")
-        reply = user_reply_for_submit_failure(result.status)
-        if reply:
-            await llm_chat_msg.send(reply)
+        logger.debug("llm chat submit failed silently: status={} group={} user={}", result.status, group_id, user_id)
         return
 
     await refresh_llm_chat_cooldown(event, default_cd_sec=llm_cfg.llm_chat_cooldown_sec)

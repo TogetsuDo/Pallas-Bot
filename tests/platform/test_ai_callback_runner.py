@@ -8,6 +8,7 @@ from nonebot.adapters.onebot.v11.exception import NetworkError
 from pallas.core.platform.ai_callback import runner as ai_callback_runner
 from pallas.core.platform.ai_callback.handlers import should_suppress_llm_duplicate_reply
 from pallas.core.platform.ai_callback.task_types import (
+    CHAT_DRUNK_TASK_TYPE,
     LLM_CHAT_TASK_TYPE,
     REPEATER_FALLBACK_TASK_TYPE,
     REPEATER_POLISH_TASK_TYPE,
@@ -500,6 +501,60 @@ async def test_run_ai_callback_get_bot_failed(monkeypatch: pytest.MonkeyPatch) -
     result = await ai_callback_runner.run_ai_callback("task-1", status="success", text="hello")
 
     assert result == {"message": "failed"}
+
+
+@pytest.mark.asyncio
+async def test_run_ai_callback_drunk_chat_failed_is_silent(monkeypatch: pytest.MonkeyPatch) -> None:
+    bot = MagicMock()
+    bot.call_api = AsyncMock(return_value=None)
+    monkeypatch.setattr(ai_callback_runner, "get_bot", lambda _bot_id: bot)
+    monkeypatch.setattr(
+        ai_callback_runner.TaskManager,
+        "get_task",
+        AsyncMock(
+            return_value={
+                "bot_id": "111",
+                "group_id": 222,
+                "task_type": CHAT_DRUNK_TASK_TYPE,
+            }
+        ),
+    )
+    remove_task = AsyncMock()
+    monkeypatch.setattr(ai_callback_runner.TaskManager, "remove_task", remove_task)
+    monkeypatch.setattr(ai_callback_runner, "remove_ai_task", lambda _task_id: None)
+
+    result = await ai_callback_runner.run_ai_callback("task-drunk-fail", status="failed")
+
+    assert result == {"message": "ok"}
+    bot.call_api.assert_not_awaited()
+    remove_task.assert_awaited_once_with("task-drunk-fail")
+
+
+@pytest.mark.asyncio
+async def test_run_ai_callback_llm_chat_failed_is_silent(monkeypatch: pytest.MonkeyPatch) -> None:
+    bot = MagicMock()
+    bot.call_api = AsyncMock(return_value=None)
+    monkeypatch.setattr(ai_callback_runner, "get_bot", lambda _bot_id: bot)
+    monkeypatch.setattr(
+        ai_callback_runner.TaskManager,
+        "get_task",
+        AsyncMock(
+            return_value={
+                "bot_id": "111",
+                "group_id": 222,
+                "task_type": LLM_CHAT_TASK_TYPE,
+            }
+        ),
+    )
+    remove_task = AsyncMock()
+    monkeypatch.setattr(ai_callback_runner.TaskManager, "remove_task", remove_task)
+    monkeypatch.setattr(ai_callback_runner, "remove_ai_task", lambda _task_id: None)
+
+    result = await ai_callback_runner.run_ai_callback("task-llm-chat-fail", status="failed")
+
+    assert result == {"message": "ok"}
+    bot.call_api.assert_not_awaited()
+    remove_task.assert_awaited_once_with("task-llm-chat-fail")
 
 
 @pytest.mark.asyncio

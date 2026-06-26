@@ -124,18 +124,28 @@ async def resolve_task_route(task: str, *, explicit_model: str | None = None) ->
 
     health_payload = await _cached_ai_health_payload()
     llm_info = health_payload.get("llm") if isinstance(health_payload.get("llm"), dict) else {}
-    provider_hint = str(llm_info.get("provider_mode") or "").strip() or None
+    provider_mode = str(llm_info.get("provider_mode") or "").strip() or None
     fallbacks = _fallback_models_from_payload(llm_info, normalized_task)
-    for key in ("task_routing", "local_task_models"):
-        resolved = _mapping_lookup(llm_info.get(key), normalized_task)
-        if resolved:
-            return TaskRouteSpec(
-                task=normalized_task,
-                resolved_model=resolved,
-                provider_hint=provider_hint,
-                source="ai_health",
-                fallback_models=fallbacks,
-            )
+
+    routed_provider = _mapping_lookup(llm_info.get("task_routing"), normalized_task)
+    if routed_provider:
+        return TaskRouteSpec(
+            task=normalized_task,
+            resolved_model=None,
+            provider_hint=routed_provider,
+            source="ai_health",
+            fallback_models=fallbacks,
+        )
+
+    local_model = _mapping_lookup(llm_info.get("local_task_models"), normalized_task)
+    if local_model:
+        return TaskRouteSpec(
+            task=normalized_task,
+            resolved_model=local_model,
+            provider_hint=provider_mode,
+            source="ai_health",
+            fallback_models=fallbacks,
+        )
 
     local_payload = await _cached_local_routing_payload()
     resolved = _route_from_local_config(normalized_task, local_payload)
@@ -144,7 +154,7 @@ async def resolve_task_route(task: str, *, explicit_model: str | None = None) ->
         return TaskRouteSpec(
             task=normalized_task,
             resolved_model=resolved,
-            provider_hint=provider_hint,
+            provider_hint=provider_mode,
             source="config" if not fallbacks else "fallback",
             fallback_models=local_fallbacks,
         )
@@ -152,14 +162,14 @@ async def resolve_task_route(task: str, *, explicit_model: str | None = None) ->
         return TaskRouteSpec(
             task=normalized_task,
             resolved_model=local_fallbacks[0],
-            provider_hint=provider_hint,
+            provider_hint=provider_mode,
             source="fallback",
             fallback_models=local_fallbacks[1:],
         )
     return TaskRouteSpec(
         task=normalized_task,
         resolved_model=None,
-        provider_hint=provider_hint,
+        provider_hint=provider_mode,
         source="config",
         fallback_models=(),
     )

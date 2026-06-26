@@ -3,6 +3,7 @@
 from .availability import is_drunk_chat_enabled, is_legacy_rwkv_drunk_chat_enabled, is_llm_chat_service_enabled
 from .client import build_chat_messages, chat_endpoint_path, delete_llm_chat_session, submit_chat_task
 from .config import LlmConfig, clear_llm_config_cache, get_llm_config, llm_server_base_url
+from .drunk_chat_context import DrunkChatSubmitContext, build_drunk_chat_system_prompt
 from .knowledge import builtin as knowledge_builtin  # noqa: F401 — 注册内置知识源
 from .message_guard import contains_likely_prompt_injection, format_user_turn, sanitize_user_message
 from .models import ChatCompletionMessage, ChatCompletionRequest, ChatSubmitRequest, ChatSubmitResult
@@ -13,7 +14,9 @@ __all__ = [
     "ChatCompletionRequest",
     "ChatSubmitRequest",
     "ChatSubmitResult",
+    "DrunkChatSubmitContext",
     "LlmConfig",
+    "build_drunk_chat_system_prompt",
     "build_chat_messages",
     "chat_endpoint_path",
     "clear_llm_config_cache",

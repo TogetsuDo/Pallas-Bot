@@ -1,10 +1,17 @@
-from packages.llm_chat.chat_message import user_reply_for_submit_failure
-from packages.llm_chat.replies import LLM_CHAT_BUSY_REPLY, LLM_CHAT_FAILED_REPLY
-from pallas.product.llm.submit_gate import user_message_for_submit_status
+from pallas.core.platform.ai_callback.handlers import failure_reply_for_task
+from pallas.core.platform.ai_callback.task_types import CHAT_DRUNK_TASK_TYPE, LLM_CHAT_TASK_TYPE
 
 
-def test_user_reply_for_submit_failure():
-    assert user_reply_for_submit_failure("busy") == LLM_CHAT_BUSY_REPLY
-    assert user_reply_for_submit_failure("request_failed") == LLM_CHAT_FAILED_REPLY
-    assert user_reply_for_submit_failure("ai_circuit_open") == user_message_for_submit_status("ai_circuit_open")
-    assert user_reply_for_submit_failure("cooldown") is None
+def test_failure_reply_for_llm_chat_is_silent() -> None:
+    reply = failure_reply_for_task({"task_type": LLM_CHAT_TASK_TYPE})
+    assert reply is None
+
+
+def test_failure_reply_for_legacy_ollama_is_silent() -> None:
+    reply = failure_reply_for_task({"task_type": "ollama"})
+    assert reply is None
+
+
+def test_failure_reply_for_drunk_chat_is_silent() -> None:
+    reply = failure_reply_for_task({"task_type": CHAT_DRUNK_TASK_TYPE})
+    assert reply is None
