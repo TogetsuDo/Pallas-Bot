@@ -2804,12 +2804,49 @@ def _log_error_log_meta() -> dict[str, Any]:
     return {"sharded_log_errors": sharded, "log_error_sources": sources}
 
 
+_LOG_ERROR_PUBLIC_SNAPSHOT: list[dict[str, Any]] | None = None
+_LOG_ERROR_PUBLIC_SNAPSHOT_KEY: tuple[Any, ...] | None = None
+_LOG_ERROR_PUBLIC_SNAPSHOT_EXP: float = 0.0
+_LOG_ERROR_PUBLIC_SNAPSHOT_TTL_SEC = 2.5
+
+
+def _invalidate_log_error_public_cache() -> None:
+    global _LOG_ERROR_PUBLIC_SNAPSHOT, _LOG_ERROR_PUBLIC_SNAPSHOT_KEY, _LOG_ERROR_PUBLIC_SNAPSHOT_EXP
+    _LOG_ERROR_PUBLIC_SNAPSHOT = None
+    _LOG_ERROR_PUBLIC_SNAPSHOT_KEY = None
+    _LOG_ERROR_PUBLIC_SNAPSHOT_EXP = 0.0
+
+
+def _log_errors_payload(
+    *,
+    source: str | None = None,
+    tb_limit: int = 0,
+    limit: int = 120,
+) -> dict[str, Any]:
+    return {
+        "log_error_log": _log_error_log_public(source=source, tb_limit=tb_limit, limit=limit),
+        **_log_error_log_meta(),
+    }
+
+
 def _log_error_log_public(
     *,
     limit: int = 30,
     tb_limit: int = 0,
     source: str | None = None,
 ) -> list[dict[str, Any]]:
+    global _LOG_ERROR_PUBLIC_SNAPSHOT, _LOG_ERROR_PUBLIC_SNAPSHOT_KEY, _LOG_ERROR_PUBLIC_SNAPSHOT_EXP
+    src = (source or "all").strip() or "all"
+    cap = max(1, int(limit))
+    cache_key = (src, int(tb_limit), cap)
+    now = time.monotonic()
+    if (
+        _LOG_ERROR_PUBLIC_SNAPSHOT_KEY == cache_key
+        and _LOG_ERROR_PUBLIC_SNAPSHOT is not None
+        and now < _LOG_ERROR_PUBLIC_SNAPSHOT_EXP
+    ):
+        return [dict(it) for it in _LOG_ERROR_PUBLIC_SNAPSHOT if isinstance(it, dict)]
+
     with _LOG_ERROR_JSONL_LOCK:
         raw = list(_LOG_ERROR_BUFFER)
     merged: list[dict[str, Any]] = [dict(it) for it in raw if isinstance(it, dict)]
@@ -2817,10 +2854,17 @@ def _log_error_log_public(
         if _shard_hub_console():
             from pallas.core.platform.shard.logs.view import collect_cluster_log_errors
 
-            merged.extend(collect_cluster_log_errors(per_file=800, limit=max(limit * 4, 80)))
+            cluster_limit = max(cap * 2, 40)
+            per_file = min(600, max(cap * 6, 80))
+            merged.extend(
+                collect_cluster_log_errors(per_file=per_file, limit=cluster_limit),
+            )
     except Exception:
         pass
     if not merged:
+        _LOG_ERROR_PUBLIC_SNAPSHOT = []
+        _LOG_ERROR_PUBLIC_SNAPSHOT_KEY = cache_key
+        _LOG_ERROR_PUBLIC_SNAPSHOT_EXP = now + _LOG_ERROR_PUBLIC_SNAPSHOT_TTL_SEC
         return []
     seen: set[tuple[str, str, str]] = set()
     bucket: list[dict[str, Any]] = []
@@ -2836,7 +2880,11 @@ def _log_error_log_public(
             continue
         bucket.append(norm)
     bucket.sort(key=lambda x: int(x.get("at") or 0))
-    return bucket[-limit:]
+    out = bucket[-cap:]
+    _LOG_ERROR_PUBLIC_SNAPSHOT = [dict(it) for it in out]
+    _LOG_ERROR_PUBLIC_SNAPSHOT_KEY = cache_key
+    _LOG_ERROR_PUBLIC_SNAPSHOT_EXP = now + _LOG_ERROR_PUBLIC_SNAPSHOT_TTL_SEC
+    return [dict(it) for it in out]
 
 
 def _cleanup_log_error_archives_sync() -> None:
@@ -2849,6 +2897,7 @@ def _cleanup_log_error_archives_sync() -> None:
         except OSError as e:
             logger.warning("Pallas-Bot 控制台: 删除 log_errors.jsonl 失败: {}", str(e))
         _LOG_ERROR_BUFFER.clear()
+    _invalidate_log_error_public_cache()
 
 
 def _cleanup_log_errors_manual_sync() -> dict[str, Any]:
@@ -2863,7 +2912,7 @@ def _cleanup_log_errors_manual_sync() -> dict[str, Any]:
             sharded_errors = True
     except Exception:
         pass
-    drop_read_cache(("plugin-run-stats:",))
+    drop_read_cache(("plugin-run-stats:", "log-errors:"))
     return {"cleared": True, "sharded_errors": sharded_errors}
 
 
@@ -2904,7 +2953,7 @@ async def _scheduled_cleanup_matcher_error_logs() -> None:
                 trim_worker_duration_logs_sync(shard_id=wid, cap=0)
     except Exception:
         pass
-    drop_read_cache(("plugin-run-stats:",))
+    drop_read_cache(("plugin-run-stats:", "log-errors:"))
     logger.info(
         "Pallas-Bot 控制台: 控制台异常记录已按计划清理（每日 4:00，"
         "matcher_errors.jsonl、matcher_durations.jsonl、log_errors.jsonl、分片 errors/*.jsonl 与进程内缓冲）"
@@ -3255,6 +3304,7 @@ def _plugin_run_stats_overview(
     self_id: str | None,
     log_source: str | None = None,
     tb_limit: int = 0,
+    include_log_errors: bool = True,
 ) -> dict[str, Any]:
     rows_out: list[dict[str, Any]] = []
     total_runs = 0
@@ -3345,17 +3395,19 @@ def _plugin_run_stats_overview(
                     include_hist=True,
                 )
             )
-    return {
+    payload: dict[str, Any] = {
         "total_runs": total_runs,
         "total_errors": total_errors,
         "total_runs_today": total_runs_today,
         "total_errors_today": total_errors_today,
         "matcher_calls_history_bucket_sec": _API_HIST_BUCKET_SEC,
         "matcher_calls_history_max_buckets": _API_HIST_MAX_BUCKETS,
-        "log_error_log": _log_error_log_public(source=log_source, tb_limit=tb_limit),
         "bots": rows_out,
         **_log_error_log_meta(),
     }
+    if include_log_errors:
+        payload["log_error_log"] = _log_error_log_public(source=log_source, tb_limit=tb_limit)
+    return payload
 
 
 def _console_daily_stats_payload(
@@ -4901,7 +4953,9 @@ def register_extended_api(
             return await _message_stats_overview(self_id=str(self_id) if self_id is not None else None)
 
         key = f"message-stats:{self_id or 'all'}"
-        data = await cached_read(key=key, loader=_load, ttl_sec=2.0, stale_sec=10.0)
+        ttl = 4.0 if self_id is not None else 2.0
+        stale = 15.0 if self_id is not None else 10.0
+        data = await cached_read(key=key, loader=_load, ttl_sec=ttl, stale_sec=stale)
         return JSONResponse({"ok": True, "data": data})
 
     @router.get(f"{x}/community-stats", include_in_schema=True)
@@ -4989,18 +5043,64 @@ def register_extended_api(
             le=200_000,
             description="log_error_log 单条 traceback 最大字符数，0 表示不截断",
         ),
+        view: str | None = Query(
+            default=None,
+            description="log_errors 时仅返回 log_error_log 与来源元数据，跳过 Bot 统计聚合",
+        ),
+    ) -> JSONResponse:
+        src = (log_source or "all").strip() or "all"
+        view_norm = (view or "").strip().lower()
+
+        async def _load() -> dict[str, Any]:
+            if view_norm == "log_errors":
+                return await asyncio.to_thread(
+                    _log_errors_payload,
+                    source=src,
+                    tb_limit=tb_limit,
+                )
+            include_log_errors = self_id is None
+            return await asyncio.to_thread(
+                _plugin_run_stats_overview,
+                self_id=str(self_id) if self_id is not None else None,
+                log_source=src,
+                tb_limit=tb_limit,
+                include_log_errors=include_log_errors,
+            )
+
+        key = (
+            f"plugin-run-stats:{self_id or 'all'}:logsrc:{src}:tbl:{tb_limit}:view:{view_norm or 'full'}"
+        )
+        ttl = 3.0 if view_norm == "log_errors" or self_id is not None else 2.0
+        stale = 20.0 if view_norm == "log_errors" else 12.0 if self_id is not None else 10.0
+        data = await cached_read(key=key, loader=_load, ttl_sec=ttl, stale_sec=stale)
+        return JSONResponse({"ok": True, "data": data})
+
+    @router.get(f"{x}/log-errors", include_in_schema=True)
+    async def _log_errors(
+        log_source: str | None = Query(
+            default=None,
+            description="报错来源筛选：all|hub|worker-N",
+        ),
+        tb_limit: int = Query(
+            default=0,
+            ge=0,
+            le=200_000,
+            description="单条 traceback 最大字符数，0 表示不截断",
+        ),
+        limit: int = Query(default=120, ge=1, le=500, description="最多返回条数"),
     ) -> JSONResponse:
         src = (log_source or "all").strip() or "all"
 
         async def _load() -> dict[str, Any]:
-            return _plugin_run_stats_overview(
-                self_id=str(self_id) if self_id is not None else None,
-                log_source=src,
+            return await asyncio.to_thread(
+                _log_errors_payload,
+                source=src,
                 tb_limit=tb_limit,
+                limit=limit,
             )
 
-        key = f"plugin-run-stats:{self_id or 'all'}:logsrc:{src}:tbl:{tb_limit}"
-        data = await cached_read(key=key, loader=_load, ttl_sec=2.0, stale_sec=10.0)
+        key = f"log-errors:logsrc:{src}:tbl:{tb_limit}:lim:{limit}"
+        data = await cached_read(key=key, loader=_load, ttl_sec=3.0, stale_sec=25.0)
         return JSONResponse({"ok": True, "data": data})
 
     @router.post(f"{x}/log-errors/cleanup", include_in_schema=True)
@@ -5021,14 +5121,15 @@ def register_extended_api(
         end: str | None = Query(default=None, description="YYYY-MM-DD，含当日"),
     ) -> JSONResponse:
         async def _load() -> dict[str, Any]:
-            return _console_daily_stats_payload(
+            return await asyncio.to_thread(
+                _console_daily_stats_payload,
                 self_id=str(self_id) if self_id is not None else None,
                 start=start,
                 end=end,
             )
 
         key = f"console-daily-stats:{self_id or 'all'}:{start or ''}:{end or ''}"
-        data = await cached_read(key=key, loader=_load, ttl_sec=3.0, stale_sec=15.0)
+        data = await cached_read(key=key, loader=_load, ttl_sec=3.5, stale_sec=18.0)
         return JSONResponse({"ok": True, "data": data})
 
     @router.get(f"{x}/plugins", include_in_schema=True)
@@ -6788,29 +6889,38 @@ def register_extended_api(
         _ensure_log_sink()
         from pallas.console.web import tail_nonebot_log_entries_scoped, tail_nonebot_log_lines_scoped
 
-        sharded_logs = False
-        log_sources: list[str] = []
-        try:
-            if _shard_hub_console():
-                sharded_logs = True
-                from pallas.core.platform.shard.logs.view import list_shard_log_sources
-
-                log_sources = list_shard_log_sources()
-        except Exception:
-            pass
         src = (source or "all").strip() or "all"
-        return {
-            "ok": True,
-            "data": {
-                "lines": tail_nonebot_log_lines_scoped(n, scope, source=src),
-                "entries": tail_nonebot_log_entries_scoped(n, scope, source=src),
-                "max": plugin_config.pallas_webui_log_lines_max,
-                "scope": scope,
-                "source": src,
-                "sharded_logs": sharded_logs,
-                "log_sources": log_sources,
-            },
-        }
+        scope_norm = scope
+        n_cap = n
+
+        async def _load() -> dict[str, Any]:
+            sharded_logs = False
+            log_sources: list[str] = []
+            try:
+                if _shard_hub_console():
+                    sharded_logs = True
+                    from pallas.core.platform.shard.logs.view import list_shard_log_sources
+
+                    log_sources = list_shard_log_sources()
+            except Exception:
+                pass
+
+            def _sync() -> dict[str, Any]:
+                return {
+                    "lines": tail_nonebot_log_lines_scoped(n_cap, scope_norm, source=src),
+                    "entries": tail_nonebot_log_entries_scoped(n_cap, scope_norm, source=src),
+                    "max": plugin_config.pallas_webui_log_lines_max,
+                    "scope": scope_norm,
+                    "source": src,
+                    "sharded_logs": sharded_logs,
+                    "log_sources": log_sources,
+                }
+
+            return await asyncio.to_thread(_sync)
+
+        cache_key = f"logs:{n_cap}:{scope_norm}:{src}"
+        data = await cached_read(key=cache_key, loader=_load, ttl_sec=0.75, stale_sec=6.0)
+        return {"ok": True, "data": data}
 
     @router.get(
         f"{x}/logs/stream",
