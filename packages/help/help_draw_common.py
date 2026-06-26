@@ -23,6 +23,18 @@ from .help_theme import (
 from .plugin_visuals import help_font
 
 
+def strip_help_markdown(text: str) -> str:
+    """PIL 帮助图不渲染 Markdown，去掉常见行内强调标记。"""
+    s = text or ""
+    for _ in range(3):
+        new = re.sub(r"\*\*(.+?)\*\*", r"\1", s)
+        new = re.sub(r"__(.+?)__", r"\1", new)
+        if new == s:
+            break
+        s = new
+    return s
+
+
 def truncate_pixels(draw: ImageDraw.ImageDraw, text: str, font, max_width: int) -> str:
     t = re.sub(r"\s+", " ", (text or "").replace("\n", " ")).strip()
     if not t:
@@ -86,7 +98,7 @@ def measure_body_block_height(
 ) -> int:
     from .markdown_generator import _format_numbered_list_block, _is_numbered_list_block
 
-    content = (body or "").strip() or "暂无"
+    content = strip_help_markdown((body or "").strip() or "暂无")
     if _is_numbered_list_block(content):
         formatted = _format_numbered_list_block(content, width_chars)
         text_h = measure_preformatted_lines_height(formatted, line_h=line_h)
@@ -136,7 +148,7 @@ def draw_body_block(
     """绘制说明/用法等正文；有序列表保留 1. 2. 3. 结构与换行对齐。"""
     from .markdown_generator import _format_numbered_list_block, _is_numbered_list_block
 
-    content = (body or "").strip() or "暂无"
+    content = strip_help_markdown((body or "").strip() or "暂无")
     if _is_numbered_list_block(content):
         formatted = _format_numbered_list_block(content, width_chars)
         return draw_preformatted_lines_block(
@@ -181,7 +193,7 @@ def draw_wrapped_block(
     body_font = help_font(body_size)
     draw.text((x, y), title, fill=TEXT_TITLE, font=title_font)
     cursor = y + title_size + 8
-    wrapped = textwrap.fill((body or "").strip() or "暂无", width=width_chars)
+    wrapped = textwrap.fill(strip_help_markdown((body or "").strip() or "暂无"), width=width_chars)
     for line in wrapped.splitlines():
         if not line.strip():
             continue

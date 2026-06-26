@@ -74,8 +74,11 @@ def draw_plugin_detail_image(data: PluginDetailData) -> Image.Image:
         draw.ellipse((text_x, dot_y, text_x + DETAIL_STATUS_DOT, dot_y + DETAIL_STATUS_DOT), fill=status_color)
         status_text = "已启用" if data.enabled else "已停用"
         draw.text((text_x + DETAIL_STATUS_DOT + 6, cursor_y + 72), status_text, fill=status_color, font=help_font(18))
-        hint = f"牛牛关闭 {data.display_name}" if data.enabled else f"牛牛开启 {data.display_name}"
-        draw.text((text_x + 100, cursor_y + 72), hint, fill=TEXT_MUTED, font=help_font(16))
+        if data.enabled:
+            hint = f"关闭：牛牛关闭 {data.display_name}"
+        else:
+            hint = f"开启：牛牛开启 {data.display_name}"
+        draw.text((text_x, cursor_y + 98), hint, fill=TEXT_MUTED, font=help_font(16))
 
     cursor_y = banner_bottom + 16
     if data.functions:
