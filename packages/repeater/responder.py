@@ -74,7 +74,10 @@ class Responder:
     REPLY_FLAG = "[PallasBot: Reply]"
     FEEDBACK_BIAS_LIMIT = 40
     FEEDBACK_BIAS_MAX_MULTIPLIER = 1.08
+    FEEDBACK_BIAS_MATCHED_MULTIPLIER = 1.18
+    FEEDBACK_BIAS_PARTIAL_MULTIPLIER = 1.05
     FEEDBACK_BIAS_MIN_COUNT = 2
+    FEEDBACK_BIAS_MATCHED_MIN_COUNT = 1
 
     @staticmethod
     def _repeat_ignore_user_ids() -> set[int]:
@@ -241,19 +244,20 @@ class Responder:
         *,
         feedback_snapshot: dict | None,
     ) -> float:
-        plain = str(text or "").strip()
-        if not plain or not isinstance(feedback_snapshot, dict):
-            return 1.0
-        if int(feedback_snapshot.get("count") or 0) < Responder.FEEDBACK_BIAS_MIN_COUNT:
-            return 1.0
-        top_replies = {
-            str(item).strip() for item in list(feedback_snapshot.get("top_replies") or []) if str(item).strip()
-        }
-        if plain not in top_replies:
-            return 1.0
-        if len(plain) > 32:
-            return 1.0
-        return Responder.FEEDBACK_BIAS_MAX_MULTIPLIER
+        from pallas.product.llm.feedback_learning import feedback_bias_multiplier_for_text
+
+        return feedback_bias_multiplier_for_text(
+            text,
+            feedback_snapshot=feedback_snapshot,
+            max_multiplier=Responder.FEEDBACK_BIAS_MATCHED_MULTIPLIER,
+            matched_multiplier=Responder.FEEDBACK_BIAS_MATCHED_MULTIPLIER,
+            semantic_multiplier=1.12,
+            top_multiplier=Responder.FEEDBACK_BIAS_MAX_MULTIPLIER,
+            partial_multiplier=Responder.FEEDBACK_BIAS_PARTIAL_MULTIPLIER,
+            penalty_multiplier=0.45,
+            min_count=Responder.FEEDBACK_BIAS_MIN_COUNT,
+            matched_min_count=Responder.FEEDBACK_BIAS_MATCHED_MIN_COUNT,
+        )
 
     @staticmethod
     def _pick_answer_text(
@@ -637,12 +641,30 @@ class Responder:
             if r.get("reply") and r["reply"] != Responder.REPLY_FLAG
         ]
         feedback_snapshot = None
+        trigger_text = str(getattr(chat_data, "plain_text", "") or chat_data.raw_message or "").strip()
+        behavior_scene = ""
+        try:
+            from pallas.product.llm.behavior import classify_behavior_scene
+
+            recent_texts = [str(getattr(item, "raw_message", "") or "") for item in group_msgs[-5:]]
+            recent_users = {int(getattr(item, "user_id", 0) or 0) for item in group_msgs[-5:]}
+            behavior_scene = str(
+                classify_behavior_scene(
+                    user_text=trigger_text,
+                    recent_texts=recent_texts,
+                    has_multi_party_overlap=len(recent_users) > 2,
+                ).value
+            )
+        except Exception as exc:
+            logger.warning("repeater.behavior_scene_failed group_id={}: {}", group_id, exc)
         if can_apply_feedback_bias():
             try:
                 feedback_snapshot = await asyncio.to_thread(
                     group_feedback_bias_snapshot,
                     group_id=group_id,
                     limit=Responder.FEEDBACK_BIAS_LIMIT,
+                    user_text=trigger_text,
+                    behavior_scene=behavior_scene,
                 )
             except Exception as exc:
                 logger.warning("repeater.llm_feedback_bias_snapshot_failed group_id={}: {}", group_id, exc)
@@ -775,6 +797,10 @@ class Responder:
             "repeat_hit": bool(repeat_hit),
             "keywords": str(answer_keywords or "")[:120],
             "answer_preview": str(answer_str or "")[:80],
+            "behavior_scene": behavior_scene,
+            "feedback_bias_multiplier": float(
+                Responder._feedback_bias_multiplier(answer_str, feedback_snapshot=feedback_snapshot)
+            ),
         })
         return ReplyBundle(
             answer_list=plan[0],

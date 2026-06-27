@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import time
-from collections import Counter, deque
+from collections import deque
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +19,6 @@ from pallas.core.platform.ai_callback.task_types import (
     REPEATER_POLISH_TASK_TYPE,
     REPEATER_SELECT_TASK_TYPE,
 )
-from pallas.product.llm.kernel.feedback_models import FeedbackBiasSnapshot
 from pallas.product.llm.kernel.memory_governance import (
     can_collect_feedback,
     can_promote_writeback,
@@ -259,6 +258,9 @@ def set_feedback_entry_correction(
         item.eligible_for_bias = True
         rows[idx] = item
         _write_feedback_entries(rows)
+        from pallas.product.llm.promotion_candidates import note_feedback_entry_for_promotion
+
+        note_feedback_entry_for_promotion(item)
         return item
 
     payload = dict(create_fields or {})
@@ -423,26 +425,32 @@ def list_group_feedback_entries(*, group_id: int, limit: int = 50) -> list[LlmRe
     return deduped[-max(1, int(limit)) :]
 
 
-def group_feedback_bias_snapshot(*, group_id: int, limit: int = 50) -> dict[str, Any]:
-    rows = [item for item in list_group_feedback_entries(group_id=group_id, limit=limit) if item.eligible_for_bias]
-    reply_counter = Counter(
-        effective_feedback_reply_text(item) for item in rows if effective_feedback_reply_text(item)
-    )
-    scene_counter = Counter(item.behavior_scene for item in rows if item.behavior_scene)
-    top_replies = [text for text, _ in reply_counter.most_common(_TOP_REPLIES_LIMIT)]
-    scenes = [text for text, _ in scene_counter.most_common(_TOP_SCENES_LIMIT)]
-    promotion_candidate_count = 0
-    if can_promote_writeback():
-        from pallas.product.llm.promotion_candidates import count_pending_promotion_candidates
+def is_reply_safe_for_auto_promote(reply_text: str) -> bool:
+    plain = str(reply_text or "").strip()
+    if not plain or len(plain) > _MAX_REPLY_LEN:
+        return False
+    if any(token in plain for token in _BLOCKED_REPLY_HINTS):
+        return False
+    from pallas.product.llm.feedback_learning import is_reply_safe_for_shaped_writeback
 
-        promotion_candidate_count = count_pending_promotion_candidates(group_id=int(group_id))
-    snapshot = FeedbackBiasSnapshot(
-        count=len(rows),
-        top_replies=top_replies,
-        scenes=scenes,
-        promotion_candidate_count=promotion_candidate_count,
+    return is_reply_safe_for_shaped_writeback(plain)
+
+
+def group_feedback_bias_snapshot(
+    *,
+    group_id: int,
+    limit: int = 50,
+    user_text: str = "",
+    behavior_scene: str = "",
+) -> dict[str, Any]:
+    from pallas.product.llm.feedback_learning import build_feedback_bias_snapshot_data
+
+    return build_feedback_bias_snapshot_data(
+        group_id=int(group_id),
+        limit=int(limit),
+        user_text=str(user_text or ""),
+        behavior_scene=str(behavior_scene or ""),
     )
-    return snapshot.model_dump(mode="json")
 
 
 def should_append_feedback_for_task(task_type: str) -> bool:

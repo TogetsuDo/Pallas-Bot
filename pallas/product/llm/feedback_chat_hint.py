@@ -124,3 +124,14 @@ def build_group_feedback_chat_hint(*, group_id: int, user_text: str = "", limit:
         return ""
     body = sanitize_prompt_literal("\n- ".join(hints), max_len=560)
     return f"\n【维护者样本参考】\n- {body}"
+
+
+async def load_repeater_feedback_system_suffix(*, group_id: int, user_text: str = "") -> str:
+    import asyncio
+
+    hint = await asyncio.to_thread(
+        build_group_feedback_chat_hint,
+        group_id=int(group_id),
+        user_text=str(user_text or ""),
+    )
+    return str(hint or "").strip()

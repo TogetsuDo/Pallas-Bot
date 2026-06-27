@@ -680,10 +680,42 @@ def test_feedback_bias_multiplier_ignores_sparse_feedback():
 
     mult = Responder._feedback_bias_multiplier(
         "少来。",
-        feedback_snapshot={"count": 1, "top_replies": ["少来。"], "scenes": ["banter"]},
+        feedback_snapshot={"count": 1, "top_replies": ["少来。"], "scenes": ["banter"], "matched_replies": []},
     )
 
     assert mult == 1.0
+
+
+def test_feedback_bias_multiplier_boosts_trigger_matched_reply_with_single_sample():
+    from packages.repeater.responder import Responder
+
+    mult = Responder._feedback_bias_multiplier(
+        "别闹",
+        feedback_snapshot={
+            "count": 1,
+            "top_replies": [],
+            "matched_replies": ["别闹"],
+            "scenes": ["banter"],
+        },
+    )
+
+    assert mult == Responder.FEEDBACK_BIAS_MATCHED_MULTIPLIER
+
+
+def test_feedback_bias_multiplier_partial_match_top_reply():
+    from packages.repeater.responder import Responder
+
+    mult = Responder._feedback_bias_multiplier(
+        "真的少来。",
+        feedback_snapshot={
+            "count": 3,
+            "top_replies": ["少来。"],
+            "matched_replies": [],
+            "scenes": ["banter"],
+        },
+    )
+
+    assert mult == Responder.FEEDBACK_BIAS_PARTIAL_MULTIPLIER
 
 
 @pytest.mark.asyncio

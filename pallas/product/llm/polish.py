@@ -105,6 +105,12 @@ async def maybe_submit_repeater_llm_polish(
         return False
     if not system_prompt:
         return False
+    from pallas.product.llm.feedback_chat_hint import load_repeater_feedback_system_suffix
+
+    trigger_plain = str(trigger_user_text or candidate).strip()
+    feedback_hint = await load_repeater_feedback_system_suffix(group_id=group_id, user_text=trigger_plain)
+    if feedback_hint:
+        system_prompt = f"{system_prompt.rstrip()}{feedback_hint}"
 
     request_id = str(ULID())
     await TaskManager.add_task(

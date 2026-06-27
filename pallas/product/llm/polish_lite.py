@@ -96,6 +96,11 @@ async def maybe_submit_repeater_llm_polish_lite(
     system_prompt = load_polish_lite_system_prompt()
     if not system_prompt:
         return False
+    from pallas.product.llm.feedback_chat_hint import load_repeater_feedback_system_suffix
+
+    feedback_hint = await load_repeater_feedback_system_suffix(group_id=group_id, user_text=plain)
+    if feedback_hint:
+        system_prompt = f"{system_prompt.rstrip()}{feedback_hint}"
 
     from pallas.product.llm.inference_params import derive_llm_inference_params
     from pallas.product.persona import resolve_persona_for_message

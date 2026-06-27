@@ -8,6 +8,7 @@ import pytest
 from pallas.product.llm.config import clear_llm_config_cache
 from pallas.product.llm.promotion_candidates import (
     PROMOTION_SUPPORT_THRESHOLD,
+    auto_promote_eligible_candidates_for_group,
     build_candidate_id,
     list_promotion_candidates,
     refresh_promotion_candidates_for_group,
@@ -35,12 +36,14 @@ def enable_writeback_env(monkeypatch) -> None:
 
 
 def test_build_candidate_id_is_stable() -> None:
-    assert build_candidate_id(group_id=123, reply_text="少来。") == build_candidate_id(
+    assert build_candidate_id(group_id=123, trigger_text="你又来这套", reply_text="少来。") == build_candidate_id(
         group_id=123,
+        trigger_text="你又来这套",
         reply_text="少来。",
     )
-    assert build_candidate_id(group_id=123, reply_text="少来。") != build_candidate_id(
+    assert build_candidate_id(group_id=123, trigger_text="你又来这套", reply_text="少来。") != build_candidate_id(
         group_id=124,
+        trigger_text="你又来这套",
         reply_text="少来。",
     )
 
@@ -146,7 +149,7 @@ def test_resolve_promotion_candidate_promote_and_reject(tmp_path, monkeypatch) -
             group_id=123,
             user_id=998,
             request_id="req-new-2",
-            user_text="继续说",
+            user_text="你先别急",
             reply_text="行吧。",
             behavior_scene="venting",
         )
@@ -203,3 +206,68 @@ async def test_resolve_promotion_candidate_with_writeback_persists_status(tmp_pa
 
     resolved = list_promotion_candidates(group_id=123, include_resolved=True, refresh=False)[0]
     assert resolved.writeback_status == "written"
+
+
+def test_refresh_promotion_candidates_aggregates_corrected_reply_text(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PALLAS_DATA_DIR", str(tmp_path))
+    enable_writeback_env(monkeypatch)
+
+    append_feedback_entry(
+        build_feedback_entry(
+            bot_id=10001,
+            group_id=123,
+            user_id=456,
+            request_id="req-corr-only",
+            user_text="你好",
+            reply_text="嗨。",
+            corrected_reply_text="你好呀，在呢",
+            corrected_at=1,
+        )
+    )
+
+    rows = list_promotion_candidates(group_id=123, refresh=False)
+
+    assert len(rows) == 1
+    assert rows[0].reply_text == "你好呀，在呢"
+    assert rows[0].support_count == 2
+    assert rows[0].correction_backed is True
+
+
+@pytest.mark.asyncio
+async def test_auto_promote_eligible_candidates_writes_back(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PALLAS_DATA_DIR", str(tmp_path))
+    enable_writeback_env(monkeypatch)
+
+    for idx in range(3):
+        append_feedback_entry(
+            build_feedback_entry(
+                bot_id=10001,
+                group_id=123,
+                user_id=456 + idx,
+                request_id=f"req-auto-{idx}",
+                user_text="你又来这套",
+                reply_text="少来。",
+                behavior_scene="banter",
+            )
+        )
+
+    fake_repo = SimpleNamespace(
+        learn_answer=AsyncMock(),
+        context_exists_by_keywords=AsyncMock(return_value=False),
+        upsert_answer=AsyncMock(),
+        insert=AsyncMock(),
+    )
+    monkeypatch.setattr(
+        "pallas.core.foundation.db.context_repo_access.get_shared_context_repository",
+        lambda: fake_repo,
+    )
+
+    promoted = await auto_promote_eligible_candidates_for_group(group_id=123)
+
+    assert len(promoted) == 1
+    assert promoted[0].promoted is True
+    assert promoted[0].writeback_status == "written"
+    assert promoted[0].writeback_message == "auto_promoted"
+    fake_repo.learn_answer.assert_awaited_once()
+    pending = list_promotion_candidates(group_id=123, refresh=False)
+    assert pending == []

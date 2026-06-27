@@ -381,3 +381,21 @@ def test_set_feedback_entry_correction_updates_and_creates(tmp_path, monkeypatch
     assert cleared is not None
     assert cleared.corrected_reply_text == ""
     assert find_feedback_entry(request_id="req-corr-new") is not None
+
+
+def test_group_feedback_bias_snapshot_matched_replies_for_trigger(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PALLAS_DATA_DIR", str(tmp_path))
+    append_feedback_entry(
+        build_feedback_entry(
+            bot_id=10001,
+            group_id=123,
+            user_id=456,
+            request_id="req-match-1",
+            user_text="牛牛真棒啊",
+            reply_text="还行吧",
+        )
+    )
+
+    snap = group_feedback_bias_snapshot(group_id=123, limit=50, user_text="真棒啊")
+
+    assert snap["matched_replies"] == ["还行吧"]

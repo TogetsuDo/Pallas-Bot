@@ -11,12 +11,15 @@ from pallas.core.foundation.db.modules import Answer, Context
 from pallas.product.llm.kernel.feedback_models import PromotionCandidate
 from pallas.product.llm.repeater_feedback import (
     LlmRepeaterFeedbackEntry,
+    effective_feedback_reply_text,
     feedback_base_dir,
+    is_reply_safe_for_auto_promote,
     list_group_feedback_entries,
     promotion_allowed,
 )
 
 PROMOTION_SUPPORT_THRESHOLD = 2
+AUTO_PROMOTE_SUPPORT_THRESHOLD = 3
 ResolveAction = Literal["promote", "reject"]
 
 
@@ -26,8 +29,9 @@ def promotion_candidates_path():
     return path
 
 
-def build_candidate_id(*, group_id: int, reply_text: str) -> str:
-    key = f"{int(group_id)}:{str(reply_text or '').strip()}"
+def build_candidate_id(*, group_id: int, trigger_text: str, reply_text: str) -> str:
+    trigger_kw = _chat_keywords(trigger_text, group_id=int(group_id))
+    key = f"{int(group_id)}:{trigger_kw}:{str(reply_text or '').strip()}"
     return hashlib.sha256(key.encode("utf-8")).hexdigest()[:16]
 
 
@@ -62,32 +66,71 @@ def _write_candidates_index(rows: dict[str, PromotionCandidate]) -> None:
             handle.write(json.dumps(item.model_dump(mode="json"), ensure_ascii=False) + "\n")
 
 
-def _aggregate_reply_support(entries: list[LlmRepeaterFeedbackEntry]) -> dict[str, list[LlmRepeaterFeedbackEntry]]:
-    grouped: dict[str, list[LlmRepeaterFeedbackEntry]] = {}
+def feedback_entry_support_weight(item: LlmRepeaterFeedbackEntry) -> int:
+    if str(item.corrected_reply_text or "").strip():
+        return 2
+    return 1
+
+
+def reply_support_weight(reply_entries: list[LlmRepeaterFeedbackEntry]) -> tuple[int, bool]:
+    weight = 0
+    has_correction = False
+    for item in reply_entries:
+        weight += feedback_entry_support_weight(item)
+        if str(item.corrected_reply_text or "").strip():
+            has_correction = True
+    return weight, has_correction
+
+
+def _aggregate_trigger_reply_support(
+    entries: list[LlmRepeaterFeedbackEntry],
+) -> dict[tuple[str, str], list[LlmRepeaterFeedbackEntry]]:
+    grouped: dict[tuple[str, str], list[LlmRepeaterFeedbackEntry]] = {}
     for item in entries:
         if not item.eligible_for_bias:
             continue
-        reply_text = str(item.reply_text or "").strip()
+        reply_text = effective_feedback_reply_text(item)
         if not reply_text:
             continue
-        grouped.setdefault(reply_text, []).append(item)
+        trigger_kw = _chat_keywords(str(item.user_text or "").strip(), group_id=int(item.group_id))
+        if not trigger_kw:
+            continue
+        grouped.setdefault((trigger_kw, reply_text), []).append(item)
     return grouped
+
+
+def is_auto_promote_eligible(candidate: PromotionCandidate) -> bool:
+    if candidate.promoted or str(candidate.rejected_reason or "").strip():
+        return False
+    if not is_reply_safe_for_auto_promote(candidate.reply_text):
+        return False
+    if not str(candidate.trigger_text or "").strip():
+        return False
+    support = int(candidate.support_count or 0)
+    if support >= AUTO_PROMOTE_SUPPORT_THRESHOLD:
+        return True
+    return support >= PROMOTION_SUPPORT_THRESHOLD and bool(candidate.correction_backed)
 
 
 def refresh_promotion_candidates_for_group(*, group_id: int, limit: int = 200) -> list[PromotionCandidate]:
     if not promotion_allowed():
         return []
     entries = list_group_feedback_entries(group_id=int(group_id), limit=max(1, int(limit)))
-    grouped = _aggregate_reply_support(entries)
+    grouped = _aggregate_trigger_reply_support(entries)
     rows = _load_candidates_index()
     changed = False
     created: list[PromotionCandidate] = []
-    for reply_text, reply_entries in grouped.items():
-        if len(reply_entries) < PROMOTION_SUPPORT_THRESHOLD:
+    for (trigger_kw, reply_text), reply_entries in grouped.items():
+        support_count, correction_backed = reply_support_weight(reply_entries)
+        if support_count < PROMOTION_SUPPORT_THRESHOLD:
             continue
         reply_entries.sort(key=lambda item: int(item.created_at))
         latest = reply_entries[-1]
-        candidate_id = build_candidate_id(group_id=int(group_id), reply_text=reply_text)
+        candidate_id = build_candidate_id(
+            group_id=int(group_id),
+            trigger_text=str(latest.user_text or trigger_kw),
+            reply_text=reply_text,
+        )
         existing = rows.get(candidate_id)
         if existing is not None and (existing.promoted or str(existing.rejected_reason or "").strip()):
             continue
@@ -96,7 +139,8 @@ def refresh_promotion_candidates_for_group(*, group_id: int, limit: int = 200) -
             group_id=int(group_id),
             trigger_text=str(latest.user_text or "").strip(),
             reply_text=reply_text,
-            support_count=len(reply_entries),
+            support_count=support_count,
+            correction_backed=correction_backed,
             last_seen_at=int(latest.created_at or time.time()),
             promoted=bool(existing.promoted) if existing is not None else False,
             rejected_reason=str(existing.rejected_reason or "") if existing is not None else "",
@@ -109,6 +153,7 @@ def refresh_promotion_candidates_for_group(*, group_id: int, limit: int = 200) -
             created.append(candidate)
     if changed:
         _write_candidates_index(rows)
+    schedule_auto_promote_for_group(int(group_id))
     return created
 
 
@@ -258,6 +303,37 @@ async def resolve_promotion_candidate_with_writeback(
         rows[str(item.candidate_id).strip()] = item
         _write_candidates_index(rows)
         return item
+
+
+def schedule_auto_promote_for_group(group_id: int) -> None:
+    if not promotion_allowed() or int(group_id) <= 0:
+        return
+    import asyncio
+
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    loop.create_task(auto_promote_eligible_candidates_for_group(group_id=int(group_id)))
+
+
+async def auto_promote_eligible_candidates_for_group(*, group_id: int) -> list[PromotionCandidate]:
+    if not promotion_allowed():
+        return []
+    promoted: list[PromotionCandidate] = []
+    rows = list_promotion_candidates(group_id=int(group_id), refresh=False, include_resolved=False)
+    for candidate in rows:
+        if not is_auto_promote_eligible(candidate):
+            continue
+        updated = await resolve_promotion_candidate_with_writeback(candidate.candidate_id, action="promote")
+        if updated is None or updated.writeback_status != "written":
+            continue
+        updated.writeback_message = "auto_promoted"
+        rows_index = _load_candidates_index()
+        rows_index[str(updated.candidate_id).strip()] = updated
+        _write_candidates_index(rows_index)
+        promoted.append(updated)
+    return promoted
 
 
 def note_feedback_entry_for_promotion(entry: LlmRepeaterFeedbackEntry) -> None:
