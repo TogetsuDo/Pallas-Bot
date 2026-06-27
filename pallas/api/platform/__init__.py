@@ -95,7 +95,9 @@ from pallas.core.platform.shard.coord.bot_count import (
 # ── 分片在线态 ──
 from pallas.core.platform.shard.presence import (
     bot_has_local_connection,
+    close_local_bot_connection,
     get_cluster_online_bot_ids,
+    mark_protocol_bot_offline,
     pick_local_query_bot,
 )
 
@@ -156,7 +158,9 @@ __all__ = [
     "store_cached_group_bot_ids",
     # 分片在线态
     "bot_has_local_connection",
+    "close_local_bot_connection",
     "get_cluster_online_bot_ids",
+    "mark_protocol_bot_offline",
     "pick_local_query_bot",
     # 分片上下文
     "is_local_representative",
