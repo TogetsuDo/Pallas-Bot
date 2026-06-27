@@ -4,7 +4,9 @@ from pallas.product.llm.config import clear_llm_config_cache, get_llm_config
 from pallas.product.llm.message_guard import (
     contains_likely_prompt_injection,
     format_user_turn,
+    normalize_llm_chat_user_text,
     sanitize_user_message,
+    strip_leading_self_at_mentions,
 )
 
 
@@ -38,3 +40,40 @@ def test_get_llm_config_defaults(monkeypatch) -> None:
     cfg = get_llm_config()
     assert cfg.ai_server_port == 9099
     assert cfg.use_unified_chat_api is True
+
+
+def test_strip_leading_self_at_mentions_plain_alias() -> None:
+    text = strip_leading_self_at_mentions(
+        "@帕拉丝 你在干嘛",
+        bot_self_id=12345,
+        mention_names=["帕拉丝", "牛牛"],
+    )
+    assert text == "你在干嘛"
+
+
+def test_strip_leading_self_at_mentions_cq_at() -> None:
+    text = strip_leading_self_at_mentions(
+        "[CQ:at,qq=12345] 你好",
+        bot_self_id=12345,
+        mention_names=["帕拉丝"],
+    )
+    assert text == "你好"
+
+
+def test_strip_leading_self_at_mentions_keeps_other_user_at() -> None:
+    text = strip_leading_self_at_mentions(
+        "@渡月桥 帮我叫一下帕拉丝",
+        bot_self_id=12345,
+        mention_names=["帕拉丝", "牛牛"],
+    )
+    assert text == "@渡月桥 帮我叫一下帕拉丝"
+
+
+def test_normalize_llm_chat_user_text_prefers_plain() -> None:
+    text = normalize_llm_chat_user_text(
+        "[CQ:at,qq=12345] 你在干嘛",
+        plain="@帕拉丝 你在干嘛",
+        bot_self_id=12345,
+        mention_names=["帕拉丝"],
+    )
+    assert text == "你在干嘛"

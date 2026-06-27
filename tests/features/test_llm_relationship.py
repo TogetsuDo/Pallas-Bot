@@ -5,6 +5,8 @@ from pallas.product.llm.memory.relationship import (
     normalize_relationship_note,
     parse_relationship_teach,
     relationship_note_has_value,
+    relationship_teach_likely,
+    resolve_relationship_teach_target_id,
 )
 from pallas.product.llm.memory.relationship_store import decayed_weight
 
@@ -22,6 +24,31 @@ def test_parse_relationship_teach_rejects_emotion() -> None:
     assert parse_relationship_teach("今天烦死了") is None
     assert parse_relationship_teach("随便说点什么") is None
     assert parse_relationship_teach("对我心情不好") is None
+
+
+def test_parse_relationship_teach_rejects_conversational_dui() -> None:
+    assert parse_relationship_teach("对你开枪怎么了") is None
+    assert parse_relationship_teach("对他别那么凶") is None
+    assert parse_relationship_teach("对啊我是谁") is None
+
+
+def test_relationship_teach_likely_skips_casual_chat() -> None:
+    assert relationship_teach_likely("你好") is False
+    assert relationship_teach_likely("对你开枪怎么了") is True
+    assert relationship_teach_likely("记住关系：阿米娅是领袖") is True
+
+
+def test_resolve_relationship_teach_target_id_ignores_at_bot() -> None:
+    assert resolve_relationship_teach_target_id(
+        "[CQ:at,qq=111] 记住关系：群主",
+        speaker_id=222,
+        bot_self_id=111,
+    ) == 222
+    assert resolve_relationship_teach_target_id(
+        "[CQ:at,qq=333] 记住关系：发小",
+        speaker_id=222,
+        bot_self_id=111,
+    ) == 333
 
 
 def test_relationship_note_has_value() -> None:

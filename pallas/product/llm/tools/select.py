@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pallas.product.llm.tools.identity import is_self_identity_question
+
 _ARKNIGHTS_HINTS = (
     "干员",
     "技能",
@@ -46,7 +48,8 @@ def infer_tool_domains(user_text: str) -> frozenset[str]:
     if any(hint.lower() in text for hint in _ARKNIGHTS_HINTS):
         domains.add("arknights")
     if any(hint in text for hint in _OPERATOR_LOOKUP_HINTS):
-        domains.add("arknights")
+        if not is_self_identity_question(user_text):
+            domains.add("arknights")
     for hints, domain in _COMMAND_HINTS:
         if any(hint in text for hint in hints):
             domains.add(domain)

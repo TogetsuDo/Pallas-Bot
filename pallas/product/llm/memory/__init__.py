@@ -4,7 +4,7 @@ from .inject import (
     enrich_system_with_memory_context,
     enrich_system_with_relationship_context,
 )
-from .relationship import extract_at_target, parse_relationship_teach
+from .relationship import extract_at_target, parse_relationship_teach, resolve_relationship_teach_target_id
 from .relationship_store import (
     is_relationship_store_available,
     retrieve_relationship_note,
@@ -23,6 +23,7 @@ __all__ = [
     "is_relationship_store_available",
     "parse_memory_teach",
     "parse_relationship_teach",
+    "resolve_relationship_teach_target_id",
     "retrieve_relationship_note",
     "save_memory_entry",
     "save_relationship_note",

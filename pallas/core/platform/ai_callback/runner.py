@@ -276,6 +276,23 @@ async def run_ai_callback(
         from pallas.product.llm.output_filter import resolve_output_filtered_reply
 
         reply_text = resolve_output_filtered_reply(task, reply_text)
+        if task_type == LLM_CHAT_TASK_TYPE and reply_text:
+            from pallas.product.llm.message_guard import strip_leading_self_at_mentions
+            from pallas.product.persona.self_identity import DEFAULT_SELF_ALIASES
+
+            raw_aliases = task.get("self_aliases")
+            mention_names = (
+                [str(item) for item in raw_aliases if str(item).strip()]
+                if isinstance(raw_aliases, list) and raw_aliases
+                else list(DEFAULT_SELF_ALIASES)
+            )
+            bot_id_raw = task.get("bot_id")
+            bot_self_id = int(bot_id_raw) if bot_id_raw is not None and str(bot_id_raw).isdigit() else None
+            reply_text = strip_leading_self_at_mentions(
+                reply_text,
+                bot_self_id=bot_self_id,
+                mention_names=mention_names,
+            )
         if task_type in _REPEATER_CALLBACK_TASKS and reply_text:
             accepted = await evaluate_repeater_callback_text(task, reply_text)
             if not accepted:

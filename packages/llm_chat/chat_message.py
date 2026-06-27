@@ -34,12 +34,13 @@ from pallas.product.llm.knowledge.inject import enrich_system_with_knowledge_sou
 from pallas.product.llm.memory import (
     enrich_system_with_memory_context,
     enrich_system_with_relationship_context,
-    extract_at_target,
     parse_memory_teach,
     parse_relationship_teach,
+    resolve_relationship_teach_target_id,
     save_memory_entry,
     save_relationship_note,
 )
+from pallas.product.llm.message_guard import normalize_llm_chat_user_text
 from pallas.product.llm.persona_context import build_persona_llm_context
 from pallas.product.llm.polish_lite import maybe_submit_repeater_corpus_llm
 from pallas.product.llm.reply_gate import evaluate_llm_reply_gate
@@ -59,7 +60,7 @@ from pallas.product.persona.affect_kernel import (
     group_flavor_summary_from_style_snapshot,
 )
 from pallas.product.persona.corpus_expression_habits import infer_expression_affect_stance
-from pallas.product.persona.self_identity import save_self_alias_from_teach
+from pallas.product.persona.self_identity import extract_self_aliases, save_self_alias_from_teach
 
 from . import startup as _startup  # noqa: F401
 from .config import get_llm_chat_config
@@ -385,7 +386,11 @@ async def handle_llm_chat(bot: Bot, event: Event):
 
     relationship_body = parse_relationship_teach(plain or msg)
     if relationship_body is not None and llm_cfg.llm_relationship_notes_enabled:
-        target_id = extract_at_target(msg) or user_id
+        target_id = resolve_relationship_teach_target_id(
+            msg,
+            speaker_id=user_id,
+            bot_self_id=int(bot.self_id),
+        )
         saved = await save_relationship_note(int(bot.self_id), group_id, target_id, relationship_body, cfg=llm_cfg)
         if saved:
             await llm_chat_msg.send(LLM_CHAT_RELATIONSHIP_SAVED_REPLY)
@@ -634,6 +639,21 @@ async def handle_llm_chat(bot: Bot, event: Event):
     if corpus_ending_hint:
         system_prompt = f"{system_prompt.rstrip()}{corpus_ending_hint}"
     last_reply_text = await latest_llm_assistant_reply(int(bot.self_id), group_id, user_id)
+    persona_dict = None
+    if persona_bundle is not None:
+        try:
+            persona_raw = persona_bundle.metadata.persona
+            if isinstance(persona_raw, dict):
+                persona_dict = persona_raw
+        except Exception:
+            persona_dict = None
+    self_aliases = extract_self_aliases(persona_dict)
+    llm_user_text = normalize_llm_chat_user_text(
+        msg,
+        plain=plain,
+        bot_self_id=int(bot.self_id),
+        mention_names=self_aliases,
+    ) or (plain or msg).strip()
     await TaskManager.add_task(
         request_id,
         {
@@ -641,7 +661,7 @@ async def handle_llm_chat(bot: Bot, event: Event):
             "group_id": getattr(event, "group_id", None),
             "user_id": user_id,
             "task_type": LLM_CHAT_TASK_TYPE,
-            "user_text": msg,
+            "user_text": llm_user_text,
             "fallback_text": corpus_fallback,
             "llm_route": llm_route,
             "agent_loop_enabled": bool(tool_meta.get("tools_enabled")),
@@ -658,6 +678,7 @@ async def handle_llm_chat(bot: Bot, event: Event):
             "behavior_actions": [str(item.action) for item in behavior_patterns],
             "behavior_hint": behavior_hint,
             "start_time": time.time(),
+            "self_aliases": self_aliases[:8],
         },
     )
 
@@ -665,7 +686,7 @@ async def handle_llm_chat(bot: Bot, event: Event):
         ChatSubmitRequest(
             request_id=request_id,
             session_id=session_id,
-            user_text=msg,
+            user_text=llm_user_text,
             system_prompt=system_prompt,
             bot_id=int(bot.self_id),
             group_id=group_id,
@@ -676,6 +697,9 @@ async def handle_llm_chat(bot: Bot, event: Event):
             knowledge_retrieval_trace=knowledge_retrieval_trace,
             hybrid_retrieval_trace=hybrid_retrieval_trace,
             llm_rewrite_metadata={
+                "task": "llm_chat",
+                "bot_id": int(bot.self_id),
+                "self_aliases": self_aliases[:8],
                 "variation_hint": variation_hint,
                 "persona_affect_block": affect_system_block,
                 "persona_shaping_active": bool(affect_system_block),
