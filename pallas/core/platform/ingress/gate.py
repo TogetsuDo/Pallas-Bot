@@ -263,6 +263,17 @@ def register_ingress_gate_runtime() -> None:
         await ingress_notice_preprocess(bot, event)
 
     @event_preprocessor
+    async def message_scrub_global_hook(bot, event) -> None:
+        from nonebot.adapters.onebot.v11 import MessageEvent
+
+        from pallas.product.message_scrub import is_message_scrub_blocked_sync
+
+        if isinstance(event, MessageEvent):
+            plain = (event.get_plaintext() or "").strip()
+            if is_message_scrub_blocked_sync(plain_text=plain, raw_message=event.raw_message):
+                raise IgnoredException("message scrub globally blocked")
+
+    @event_preprocessor
     async def ingress_group_message_gate_hook(bot, event) -> None:
         await ingress_group_message_gate(bot, event)
 
