@@ -27,6 +27,7 @@ from .prompt_guard import (
     sanitize_prompt_block,
     wrap_stats_block,
 )
+from .self_identity import compile_self_identity_prompt
 
 if TYPE_CHECKING:
     from .model import ResolvedPersona
@@ -69,6 +70,7 @@ _DRUNK_CHAT_OVERLAY = (
 
 class PersonaPromptSections(BaseModel):
     base: str
+    self_identity: str = ""
     preset_layers: str = ""
     bot_behavior: str
     group_style: str
@@ -204,6 +206,7 @@ def apply_drunk_chat_overlay(system: str) -> str:
 def assemble_persona_system(sections: PersonaPromptSections, *, mode: str = "normal") -> str:
     section_values = (
         sections.base,
+        sections.self_identity,
         sections.preset_layers,
         sections.bot_behavior,
         sections.group_style,
@@ -235,6 +238,7 @@ def compile_persona_prompt(
     bot_behavior = build_bot_behavior_prompt(persona)
     group_style = compile_group_style_prompt(style_profile)
     group_expression = compile_group_expression_prompt(style_profile)
+    self_identity = compile_self_identity_prompt(bot_persona)
     preset_layers = ""
     if persona_preset_layers_enabled():
         sample = style_profile.get("sample") if isinstance(style_profile, dict) else None
@@ -242,6 +246,7 @@ def compile_persona_prompt(
         preset_layers = compile_preset_layers_prompt(layers)
     sections = PersonaPromptSections(
         base=base,
+        self_identity=self_identity,
         preset_layers=preset_layers,
         bot_behavior=bot_behavior,
         group_style=group_style,

@@ -54,6 +54,7 @@ class LlmHistorySessionDetail(BaseModel):
     session: LlmHistorySessionSummary
     turns: list[LlmChatTurn]
     behavior_runs: list[dict[str, Any]] = Field(default_factory=list)
+    feedback_entries: list[dict[str, Any]] = Field(default_factory=list)
 
 
 def normalize_group_scope(group_id: int | None) -> int:
@@ -464,7 +465,23 @@ async def get_llm_history_session_detail(
             if updated is not None:
                 item = updated
         resolved_runs.append(behavior_run_public_dict(item))
-    return LlmHistorySessionDetail(session=summary_rows[0], turns=turns, behavior_runs=resolved_runs)
+    from pallas.product.llm.repeater_feedback import list_feedback_entries_for_session
+
+    feedback_rows = list_feedback_entries_for_session(
+        bot_id=int(bot_id),
+        group_id=int(normalize_group_scope(group_id)),
+        user_id=int(user_id),
+        limit=100,
+    )
+    feedback_entries = [
+        item.model_dump(mode="json") if hasattr(item, "model_dump") else dict(item) for item in feedback_rows
+    ]
+    return LlmHistorySessionDetail(
+        session=summary_rows[0],
+        turns=turns,
+        behavior_runs=resolved_runs,
+        feedback_entries=feedback_entries,
+    )
 
 
 async def update_llm_behavior_annotation(

@@ -34,6 +34,7 @@ _BLOCKED_REPLY_HINTS = (
     "首先",
 )
 _MAX_REPLY_LEN = 32
+_MAX_CORRECTION_LEN = 120
 _TOP_REPLIES_LIMIT = 3
 _TOP_SCENES_LIMIT = 5
 _RECENT_WINDOW_MULTIPLIER = 4
@@ -71,6 +72,8 @@ class LlmRepeaterFeedbackEntry(BaseModel):
     source_tags: list[str] = Field(default_factory=list)
     eligible_for_bias: bool = True
     eligible_for_writeback: bool = False
+    corrected_reply_text: str = ""
+    corrected_at: int = 0
 
 
 def feedback_base_dir() -> Path:
@@ -147,6 +150,8 @@ def build_feedback_entry(**kwargs: Any) -> LlmRepeaterFeedbackEntry:
         source_tags=[str(item).strip() for item in list(kwargs.get("source_tags") or []) if str(item).strip()],
         eligible_for_bias=bool(kwargs.get("eligible_for_bias", True)),
         eligible_for_writeback=bool(kwargs.get("eligible_for_writeback", False)),
+        corrected_reply_text=str(kwargs.get("corrected_reply_text") or "").strip(),
+        corrected_at=int(kwargs.get("corrected_at") or 0),
     )
 
 
@@ -189,6 +194,212 @@ def _dedupe_key(entry: LlmRepeaterFeedbackEntry) -> str:
     return f"fallback:{entry.group_id}:{entry.user_id}:{entry.created_at}:{entry.reply_text}"
 
 
+def _write_feedback_entries(rows: list[LlmRepeaterFeedbackEntry]) -> None:
+    path = feedback_entries_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        for item in rows:
+            handle.write(json.dumps(item.model_dump(mode="json"), ensure_ascii=False) + "\n")
+
+
+def _load_all_feedback_entries() -> list[LlmRepeaterFeedbackEntry]:
+    path = feedback_entries_path()
+    if not path.exists():
+        return []
+    return list(_iter_feedback_entries(path))
+
+
+def find_feedback_entry(*, entry_id: str = "", request_id: str = "") -> LlmRepeaterFeedbackEntry | None:
+    target_entry_id = str(entry_id or "").strip()
+    target_request_id = str(request_id or "").strip()
+    if not target_entry_id and not target_request_id:
+        return None
+    for item in reversed(_load_all_feedback_entries()):
+        if target_entry_id and str(item.entry_id).strip() == target_entry_id:
+            return item
+        if target_request_id and str(item.request_id).strip() == target_request_id:
+            return item
+    return None
+
+
+def effective_feedback_reply_text(entry: LlmRepeaterFeedbackEntry) -> str:
+    corrected = str(entry.corrected_reply_text or "").strip()
+    if corrected:
+        return corrected
+    return str(entry.reply_text or "").strip()
+
+
+def set_feedback_entry_correction(
+    *,
+    entry_id: str = "",
+    request_id: str = "",
+    corrected_reply_text: str,
+    create_fields: dict[str, Any] | None = None,
+) -> LlmRepeaterFeedbackEntry | None:
+    text = str(corrected_reply_text or "").strip()
+    if not text:
+        return None
+    if len(text) > _MAX_CORRECTION_LEN:
+        text = text[:_MAX_CORRECTION_LEN].rstrip()
+
+    target_entry_id = str(entry_id or "").strip()
+    target_request_id = str(request_id or "").strip()
+    now = int(time.time())
+    rows = _load_all_feedback_entries()
+    for idx, item in enumerate(rows):
+        matched = False
+        if target_entry_id and str(item.entry_id).strip() == target_entry_id:
+            matched = True
+        elif target_request_id and str(item.request_id).strip() == target_request_id:
+            matched = True
+        if not matched:
+            continue
+        item.corrected_reply_text = text
+        item.corrected_at = now
+        item.eligible_for_bias = True
+        rows[idx] = item
+        _write_feedback_entries(rows)
+        return item
+
+    payload = dict(create_fields or {})
+    if not payload:
+        return None
+    req_id = target_request_id or str(payload.get("request_id") or "").strip()
+    if not req_id:
+        req_id = f"manual-corr-{now}"
+    entry = build_feedback_entry(
+        entry_id=target_entry_id or req_id,
+        request_id=req_id,
+        bot_id=int(payload["bot_id"]),
+        group_id=int(payload["group_id"]),
+        user_id=int(payload["user_id"]),
+        user_text=str(payload.get("user_text") or "").strip(),
+        reply_text=str(payload.get("reply_text") or "").strip(),
+        behavior_scene=str(payload.get("behavior_scene") or "").strip(),
+        llm_route=str(payload.get("llm_route") or "").strip(),
+        eligible_for_bias=True,
+        corrected_reply_text=text,
+        corrected_at=now,
+    )
+    append_feedback_entry(entry)
+    return entry
+
+
+def clear_feedback_entry_correction(*, entry_id: str = "", request_id: str = "") -> LlmRepeaterFeedbackEntry | None:
+    target_entry_id = str(entry_id or "").strip()
+    target_request_id = str(request_id or "").strip()
+    if not target_entry_id and not target_request_id:
+        return None
+    rows = _load_all_feedback_entries()
+    updated: LlmRepeaterFeedbackEntry | None = None
+    for idx, item in enumerate(rows):
+        matched = False
+        if target_entry_id and str(item.entry_id).strip() == target_entry_id:
+            matched = True
+        elif target_request_id and str(item.request_id).strip() == target_request_id:
+            matched = True
+        if not matched:
+            continue
+        item.corrected_reply_text = ""
+        item.corrected_at = 0
+        rows[idx] = item
+        updated = item
+        break
+    if updated is None:
+        return None
+    _write_feedback_entries(rows)
+    return updated
+
+
+def set_feedback_entry_eligibility(
+    *,
+    entry_id: str = "",
+    request_id: str = "",
+    eligible_for_bias: bool,
+) -> LlmRepeaterFeedbackEntry | None:
+    target_entry_id = str(entry_id or "").strip()
+    target_request_id = str(request_id or "").strip()
+    if not target_entry_id and not target_request_id:
+        return None
+    rows = _load_all_feedback_entries()
+    updated: LlmRepeaterFeedbackEntry | None = None
+    for idx, item in enumerate(rows):
+        matched = False
+        if target_entry_id and str(item.entry_id).strip() == target_entry_id:
+            matched = True
+        elif target_request_id and str(item.request_id).strip() == target_request_id:
+            matched = True
+        if not matched:
+            continue
+        item.eligible_for_bias = bool(eligible_for_bias)
+        rows[idx] = item
+        updated = item
+        break
+    if updated is None:
+        return None
+    _write_feedback_entries(rows)
+    return updated
+
+
+def delete_feedback_entry(*, entry_id: str = "", request_id: str = "") -> bool:
+    target_entry_id = str(entry_id or "").strip()
+    target_request_id = str(request_id or "").strip()
+    if not target_entry_id and not target_request_id:
+        return False
+    rows = _load_all_feedback_entries()
+    kept: list[LlmRepeaterFeedbackEntry] = []
+    removed = False
+    for item in rows:
+        matched = False
+        if target_entry_id and str(item.entry_id).strip() == target_entry_id:
+            matched = True
+        elif target_request_id and str(item.request_id).strip() == target_request_id:
+            matched = True
+        if matched:
+            removed = True
+            continue
+        kept.append(item)
+    if not removed:
+        return False
+    _write_feedback_entries(kept)
+    return True
+
+
+def list_feedback_entries_for_session(
+    *,
+    bot_id: int,
+    group_id: int,
+    user_id: int,
+    limit: int = 100,
+) -> list[LlmRepeaterFeedbackEntry]:
+    path = feedback_entries_path()
+    if not path.exists():
+        return []
+    window_size = max(1, int(limit)) * _RECENT_WINDOW_MULTIPLIER
+    recent: deque[LlmRepeaterFeedbackEntry] = deque(maxlen=window_size)
+    target_group_id = int(group_id)
+    target_bot_id = int(bot_id)
+    target_user_id = int(user_id)
+    for item in _iter_feedback_entries(path):
+        if int(item.group_id) != target_group_id:
+            continue
+        if int(item.bot_id) != target_bot_id:
+            continue
+        if int(item.user_id) != target_user_id:
+            continue
+        recent.append(item)
+    deduped: list[LlmRepeaterFeedbackEntry] = []
+    seen_ids: set[str] = set()
+    for item in reversed(recent):
+        dedupe_key = _dedupe_key(item)
+        if dedupe_key in seen_ids:
+            continue
+        seen_ids.add(dedupe_key)
+        deduped.append(item)
+    deduped.reverse()
+    return deduped[-max(1, int(limit)) :]
+
+
 def list_group_feedback_entries(*, group_id: int, limit: int = 50) -> list[LlmRepeaterFeedbackEntry]:
     path = feedback_entries_path()
     if not path.exists():
@@ -214,7 +425,9 @@ def list_group_feedback_entries(*, group_id: int, limit: int = 50) -> list[LlmRe
 
 def group_feedback_bias_snapshot(*, group_id: int, limit: int = 50) -> dict[str, Any]:
     rows = [item for item in list_group_feedback_entries(group_id=group_id, limit=limit) if item.eligible_for_bias]
-    reply_counter = Counter(item.reply_text for item in rows if item.reply_text)
+    reply_counter = Counter(
+        effective_feedback_reply_text(item) for item in rows if effective_feedback_reply_text(item)
+    )
     scene_counter = Counter(item.behavior_scene for item in rows if item.behavior_scene)
     top_replies = [text for text, _ in reply_counter.most_common(_TOP_REPLIES_LIMIT)]
     scenes = [text for text, _ in scene_counter.most_common(_TOP_SCENES_LIMIT)]

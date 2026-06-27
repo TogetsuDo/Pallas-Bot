@@ -20,6 +20,9 @@ _DIRECT_REPEATED_OPENERS = (
 )
 _LAUGH_OPENER_RE = re.compile(r"^(哈哈+|呵呵+|嘿嘿+)")
 _SIGH_OPENER_RE = re.compile(r"^(欸|哎|唉|呃|额)+")
+_ANIMAL_OPENER_RE = re.compile(r"^(哞~|喵~|喵呜~|哞呜~)")
+_TILDE_OPENER_RE = re.compile(r"^([\u4e00-\u9fff]{1,2})~")
+_KAOMOJI_SUFFIX_RE = re.compile(r"\(\*[^)]{1,16}\*\)\s*$")
 
 _USER_WAIT_SUFFIXES = ("?", "？", "...", "…", "、")
 _USER_WAIT_TOKENS = ("等等", "等下", "先别", "我补一句", "还有", "然后")
@@ -35,6 +38,10 @@ def should_wait_for_more(user_text: str) -> bool:
     if any(text.endswith(token) for token in _USER_WAIT_SUFFIXES):
         return True
     return any(token in text[-8:] for token in _USER_WAIT_TOKENS)
+
+
+def has_kaomoji_suffix(text: str) -> bool:
+    return bool(_KAOMOJI_SUFFIX_RE.search(str(text or "").strip()))
 
 
 def repeated_assistant_openers(turns: list[LlmChatTurn], *, limit: int = 3) -> list[str]:
@@ -57,6 +64,9 @@ def classify_repeated_opener(text: str) -> str:
     plain = str(text or "").strip()
     if not plain:
         return ""
+    animal = _ANIMAL_OPENER_RE.match(plain)
+    if animal:
+        return animal.group(1)
     if _LAUGH_OPENER_RE.match(plain):
         return "哈哈类"
     if _SIGH_OPENER_RE.match(plain):
@@ -71,6 +81,11 @@ def normalize_generic_prefix(text: str) -> str:
     plain = str(text or "").strip()
     if len(plain) < _GENERIC_PREFIX_MIN_LEN:
         return ""
+    tilde = _TILDE_OPENER_RE.match(plain)
+    if tilde:
+        prefix = tilde.group(0)
+        if len(prefix) >= _GENERIC_PREFIX_MIN_LEN:
+            return prefix
     prefix_chars: list[str] = []
     for char in plain:
         if char in "，,。！？!?~～…：:；;、()（）[]【】<>《》\"'“”‘’ ":
@@ -92,7 +107,7 @@ def recent_assistant_endings(turns: list[LlmChatTurn], *, limit: int = 3) -> lis
         if turn.role != "assistant":
             continue
         text = str(turn.content or "").strip()
-        if not text:
+        if not text or has_kaomoji_suffix(text):
             continue
         compact = text.rstrip("。！？!?~～…，,、 ")
         if not compact:
@@ -107,6 +122,11 @@ def recent_assistant_endings(turns: list[LlmChatTurn], *, limit: int = 3) -> lis
 
 
 def build_recent_reply_ending_hint(turns: list[LlmChatTurn]) -> str:
+    assistant_texts = [str(turn.content or "").strip() for turn in turns if turn.role == "assistant" and turn.content]
+    if len(assistant_texts) >= 3:
+        kaomoji_count = sum(1 for text in assistant_texts[-3:] if has_kaomoji_suffix(text))
+        if kaomoji_count >= 2:
+            return ""
     endings = recent_assistant_endings(turns)
     if not endings:
         return ""
@@ -136,6 +156,15 @@ def build_recent_reply_variation_hint(turns: list[LlmChatTurn]) -> str:
         except Exception:
             pass
 
+    recent = assistant_texts[-3:]
+    animal_openers = sum(1 for text in recent if _ANIMAL_OPENER_RE.match(text))
+    if animal_openers >= 2:
+        hints.append("最近开头动物口癖太多，别再用哞~/喵~ 起手")
+
+    kaomoji_count = sum(1 for text in recent if has_kaomoji_suffix(text))
+    if kaomoji_count >= 2:
+        hints.append("最近句尾颜文字太像模板，这轮别加 (*…*) 这类 ASCII 表情")
+
     recent_lengths = [len(text) for text in assistant_texts[-3:]]
     if recent_lengths and min(recent_lengths) >= 28:
         hints.append("最近解释偏满，这轮优先短一点，像顺手接一句")
@@ -162,4 +191,4 @@ def build_recent_reply_variation_hint(turns: list[LlmChatTurn]) -> str:
 
     if not hints:
         return ""
-    return "【本轮表达去重】\n- " + "\n- ".join(hints[:3])
+    return "【本轮表达去重】\n- " + "\n- ".join(hints[:4])

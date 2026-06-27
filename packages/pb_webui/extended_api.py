@@ -83,8 +83,13 @@ from pallas.product.llm.promotion_candidates import (
     resolve_promotion_candidate_with_writeback,
 )
 from pallas.product.llm.repeater_feedback import (
+    clear_feedback_entry_correction,
+    delete_feedback_entry,
+    find_feedback_entry,
     group_feedback_bias_snapshot,
     list_group_feedback_entries,
+    set_feedback_entry_correction,
+    set_feedback_entry_eligibility,
 )
 
 from .console_meta_store import (
@@ -6634,6 +6639,76 @@ def register_extended_api(
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": data})
+
+    @router.post(f"{x}/llm/repeater-feedback/manage", include_in_schema=True)
+    async def _llm_repeater_feedback_manage(
+        body: dict[str, Any],
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        entry_id = str(body.get("entry_id") or "").strip()
+        request_id = str(body.get("request_id") or "").strip()
+        action = str(body.get("action") or "").strip().lower()
+        if not entry_id and not request_id:
+            raise HTTPException(status_code=400, detail="entry_id 或 request_id 至少填一项")
+        allowed_actions = {"invalidate", "restore", "delete", "correct", "clear_correction"}
+        if action not in allowed_actions:
+            raise HTTPException(
+                status_code=400,
+                detail="action 必须为 invalidate / restore / delete / correct / clear_correction",
+            )
+        try:
+            if action == "delete":
+                ok = delete_feedback_entry(entry_id=entry_id, request_id=request_id)
+                if not ok:
+                    raise HTTPException(status_code=404, detail="未找到该反哺记录")
+                return JSONResponse({"ok": True, "data": {"deleted": True, "entry_id": entry_id or request_id}})
+            if action == "correct":
+                corrected_reply_text = str(body.get("corrected_reply_text") or "").strip()
+                if not corrected_reply_text:
+                    raise HTTPException(status_code=400, detail="corrected_reply_text 必填")
+                create_fields: dict[str, Any] | None = None
+                if find_feedback_entry(entry_id=entry_id, request_id=request_id) is None:
+                    bot_id = body.get("bot_id")
+                    group_id = body.get("group_id")
+                    user_id = body.get("user_id")
+                    if bot_id is None or group_id is None or user_id is None:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="未找到反哺记录时需提供 bot_id / group_id / user_id",
+                        )
+                    create_fields = {
+                        "bot_id": int(bot_id),
+                        "group_id": int(group_id),
+                        "user_id": int(user_id),
+                        "user_text": str(body.get("user_text") or "").strip(),
+                        "reply_text": str(body.get("reply_text") or "").strip(),
+                        "llm_route": str(body.get("llm_route") or "").strip(),
+                        "behavior_scene": str(body.get("behavior_scene") or "").strip(),
+                        "request_id": request_id,
+                    }
+                updated = set_feedback_entry_correction(
+                    entry_id=entry_id,
+                    request_id=request_id,
+                    corrected_reply_text=corrected_reply_text,
+                    create_fields=create_fields,
+                )
+            elif action == "clear_correction":
+                updated = clear_feedback_entry_correction(entry_id=entry_id, request_id=request_id)
+            else:
+                updated = set_feedback_entry_eligibility(
+                    entry_id=entry_id,
+                    request_id=request_id,
+                    eligible_for_bias=action == "restore",
+                )
+        except HTTPException:
+            raise
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        if updated is None:
+            raise HTTPException(status_code=404, detail="未找到该反哺记录")
+        return JSONResponse({"ok": True, "data": updated.model_dump(mode="json")})
 
     @router.get(f"{x}/llm/repeater-feedback/promotion-candidates", include_in_schema=True)
     async def _llm_repeater_feedback_promotion_candidates_get(

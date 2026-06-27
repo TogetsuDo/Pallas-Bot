@@ -168,3 +168,78 @@ def test_llm_repeater_feedback_promotion_candidates_resolve_api(monkeypatch) -> 
     assert payload["ok"] is True
     assert payload["data"]["promoted"] is True
     assert payload["data"]["writeback_status"] == "written"
+
+
+def test_llm_repeater_feedback_manage_api(monkeypatch) -> None:
+    def fake_set_feedback_entry_eligibility(*, entry_id: str = "", request_id: str = "", eligible_for_bias: bool):
+        assert request_id == "req-1"
+        assert eligible_for_bias is False
+        return LlmRepeaterFeedbackEntry(
+            entry_id="req-1",
+            created_at=1718700001,
+            bot_id=10001,
+            group_id=123,
+            user_id=30003,
+            request_id="req-1",
+            user_text="你又来这套",
+            reply_text="少来。",
+            eligible_for_bias=False,
+        )
+
+    monkeypatch.setattr(mod, "set_feedback_entry_eligibility", fake_set_feedback_entry_eligibility, raising=False)
+
+    client = _build_client(monkeypatch)
+    response = client.post(
+        "/pallas/api/llm/repeater-feedback/manage",
+        json={"request_id": "req-1", "action": "invalidate"},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["data"]["eligible_for_bias"] is False
+
+
+def test_llm_repeater_feedback_manage_correct_api(monkeypatch) -> None:
+    def fake_find_feedback_entry(*, entry_id: str = "", request_id: str = ""):
+        assert request_id == "req-1"
+        return LlmRepeaterFeedbackEntry(
+            entry_id="req-1",
+            created_at=1718700001,
+            bot_id=10001,
+            group_id=123,
+            user_id=30003,
+            request_id="req-1",
+            user_text="你又来这套",
+            reply_text="少来。",
+        )
+
+    def fake_set_feedback_entry_correction(**kwargs):
+        assert kwargs["corrected_reply_text"] == "别闹"
+        return LlmRepeaterFeedbackEntry(
+            entry_id="req-1",
+            created_at=1718700001,
+            bot_id=10001,
+            group_id=123,
+            user_id=30003,
+            request_id="req-1",
+            user_text="你又来这套",
+            reply_text="少来。",
+            corrected_reply_text="别闹",
+            corrected_at=1718700002,
+            eligible_for_bias=True,
+        )
+
+    monkeypatch.setattr(mod, "find_feedback_entry", fake_find_feedback_entry, raising=False)
+    monkeypatch.setattr(mod, "set_feedback_entry_correction", fake_set_feedback_entry_correction, raising=False)
+
+    client = _build_client(monkeypatch)
+    response = client.post(
+        "/pallas/api/llm/repeater-feedback/manage",
+        json={"request_id": "req-1", "action": "correct", "corrected_reply_text": "别闹"},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["data"]["corrected_reply_text"] == "别闹"

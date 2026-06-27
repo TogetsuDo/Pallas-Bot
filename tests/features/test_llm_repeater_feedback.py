@@ -291,3 +291,93 @@ def test_list_group_feedback_entries_dedupes_same_request_id_with_different_entr
     assert [row.entry_id for row in rows] == ["entry-b", "entry-c"]
     assert [row.request_id for row in rows] == ["req-1", "req-2"]
     assert snap["count"] == 2
+
+
+def test_feedback_manage_invalidate_restore_and_delete(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PALLAS_DATA_DIR", str(tmp_path))
+    from pallas.product.llm.repeater_feedback import (
+        append_feedback_entry,
+        build_feedback_entry,
+        delete_feedback_entry,
+        find_feedback_entry,
+        list_feedback_entries_for_session,
+        set_feedback_entry_eligibility,
+    )
+
+    append_feedback_entry(
+        build_feedback_entry(
+            entry_id="req-manage-1",
+            request_id="req-manage-1",
+            bot_id=10001,
+            group_id=123,
+            user_id=456,
+            user_text="你好",
+            reply_text="嗨。",
+        )
+    )
+
+    updated = set_feedback_entry_eligibility(request_id="req-manage-1", eligible_for_bias=False)
+    assert updated is not None
+    assert updated.eligible_for_bias is False
+
+    restored = set_feedback_entry_eligibility(entry_id="req-manage-1", eligible_for_bias=True)
+    assert restored is not None
+    assert restored.eligible_for_bias is True
+
+    session_rows = list_feedback_entries_for_session(bot_id=10001, group_id=123, user_id=456, limit=10)
+    assert len(session_rows) == 1
+    assert session_rows[0].reply_text == "嗨。"
+
+    assert delete_feedback_entry(request_id="req-manage-1") is True
+    assert find_feedback_entry(request_id="req-manage-1") is None
+
+
+def test_set_feedback_entry_correction_updates_and_creates(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("PALLAS_DATA_DIR", str(tmp_path))
+    from pallas.product.llm.repeater_feedback import (
+        append_feedback_entry,
+        build_feedback_entry,
+        clear_feedback_entry_correction,
+        find_feedback_entry,
+        set_feedback_entry_correction,
+    )
+
+    append_feedback_entry(
+        build_feedback_entry(
+            entry_id="req-corr-1",
+            request_id="req-corr-1",
+            bot_id=10001,
+            group_id=123,
+            user_id=456,
+            user_text="你好",
+            reply_text="嗨。",
+        )
+    )
+
+    updated = set_feedback_entry_correction(
+        request_id="req-corr-1",
+        corrected_reply_text="你好呀，在呢",
+    )
+    assert updated is not None
+    assert updated.corrected_reply_text == "你好呀，在呢"
+    assert updated.eligible_for_bias is True
+
+    created = set_feedback_entry_correction(
+        request_id="req-corr-new",
+        corrected_reply_text="收到",
+        create_fields={
+            "bot_id": 10001,
+            "group_id": 123,
+            "user_id": 456,
+            "user_text": "在吗",
+            "reply_text": "在的",
+        },
+    )
+    assert created is not None
+    assert created.request_id == "req-corr-new"
+    assert created.corrected_reply_text == "收到"
+
+    cleared = clear_feedback_entry_correction(request_id="req-corr-1")
+    assert cleared is not None
+    assert cleared.corrected_reply_text == ""
+    assert find_feedback_entry(request_id="req-corr-new") is not None

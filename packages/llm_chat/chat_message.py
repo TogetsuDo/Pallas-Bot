@@ -1,3 +1,4 @@
+import asyncio
 import time
 from collections import Counter
 
@@ -20,6 +21,7 @@ from pallas.product.llm.behavior import (
 )
 from pallas.product.llm.behavior_store import list_behavior_patterns
 from pallas.product.llm.chat_queue import merge_queued_chat, stash_chat_during_cooldown
+from pallas.product.llm.feedback_chat_hint import build_group_feedback_chat_hint
 from pallas.product.llm.governance import check_llm_chat_gate, refresh_llm_chat_cooldown
 from pallas.product.llm.kernel import (
     ConversationContext,
@@ -52,6 +54,7 @@ from pallas.product.llm.task_metrics import record_bot_llm_task
 from pallas.product.llm.tools.registry import tool_metadata_for_chat
 from pallas.product.persona.affect_kernel import build_persona_affect_contract, build_variation_hint_from_contract
 from pallas.product.persona.corpus_expression_habits import infer_expression_affect_stance
+from pallas.product.persona.self_identity import save_self_alias_from_teach
 
 from . import startup as _startup  # noqa: F401
 from .config import get_llm_chat_config
@@ -60,6 +63,7 @@ from .near_field_scorer import RECENT_LIVE_SOURCE as _RECENT_LIVE_SOURCE
 from .near_field_scorer import recent_hint_source_label, select_scored_expression_candidates
 from .prompts import get_system_prompt
 from .replies import (
+    LLM_CHAT_ALIAS_SAVED_REPLY,
     LLM_CHAT_MEMORY_SAVED_REPLY,
     LLM_CHAT_RELATIONSHIP_SAVED_REPLY,
     LLM_CHAT_VAGUE_REPLY,
@@ -293,6 +297,10 @@ async def handle_llm_chat(bot: Bot, event: Event):
             await llm_chat_msg.send(LLM_CHAT_MEMORY_SAVED_REPLY)
             return
 
+    if await save_self_alias_from_teach(int(bot.self_id), plain or msg):
+        await llm_chat_msg.send(LLM_CHAT_ALIAS_SAVED_REPLY)
+        return
+
     relationship_body = parse_relationship_teach(plain or msg)
     if relationship_body is not None and llm_cfg.llm_relationship_notes_enabled:
         target_id = extract_at_target(msg) or user_id
@@ -503,6 +511,14 @@ async def handle_llm_chat(bot: Bot, event: Event):
         behavior_hint = build_behavior_hint_text(scene=behavior_scene, actions=behavior_actions)
         if behavior_hint:
             system_prompt = f"{system_prompt.rstrip()}\n{behavior_hint}"
+        if group_id is not None:
+            feedback_hint = await asyncio.to_thread(
+                build_group_feedback_chat_hint,
+                group_id=int(group_id),
+                user_text=plain or msg,
+            )
+            if feedback_hint:
+                system_prompt = f"{system_prompt.rstrip()}{feedback_hint}"
     else:
         behavior_hint = ""
     ending_hint = build_llm_chat_ending_hint(recent_turns)
