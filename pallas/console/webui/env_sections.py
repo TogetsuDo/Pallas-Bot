@@ -91,71 +91,6 @@ def field_to_env_uppercase_keys(model_cls: type[BaseModel]) -> dict[str, str]:
     return {name: name.upper() for name in model_cls.model_fields}
 
 
-def _plugin_env_skip_fields(section_id: str, cfg_cls: type[BaseModel]) -> frozenset[str]:
-    """WebUI 通用配置默认隐藏进阶项（仍可通过 webui.json / 环境变量设置）。"""
-    all_names = set(cfg_cls.model_fields)
-    if section_id == "pb_webui":
-        keep = {"pallas_webui_enabled", "pallas_webui_http_base", "pallas_webui_dev_mode"}
-        return frozenset(all_names - keep)
-    if section_id == "pb_protocol":
-        keep = {
-            "pallas_protocol_enabled",
-            "pallas_protocol_webui_enabled",
-            "pallas_protocol_follow_bot_lifecycle",
-            "pallas_protocol_restart_max_concurrency",
-            "pallas_protocol_restart_stagger_s",
-            "pallas_protocol_auto_download_runtime",
-        }
-        return frozenset(all_names - keep)
-    if section_id == "help":
-        keep = {"default_style", "ignored_plugins", "side_paint_enabled"}
-        return frozenset(all_names - keep)
-    return frozenset()
-
-
-def _plugin_env_section_from_module(
-    *,
-    section_id: str,
-    title: str,
-    module_label: str,
-    config_module: str,
-) -> WebuiEnvSection | None:
-    """从 ``*.config`` 加载 ``Config``；若已 ``install_hot_reload_config`` 则走注册表。"""
-    try:
-        mod = importlib.import_module(config_module)
-    except ModuleNotFoundError:
-        from nonebot import logger
-
-        logger.warning("webui env section skipped: config module not found {}", config_module)
-        return None
-    cfg_cls = getattr(mod, "Config", None)
-    if cfg_cls is None or not isinstance(cfg_cls, type) or not issubclass(cfg_cls, BaseModel):
-        return None
-
-    plugin_module = config_module.removesuffix(".config")
-
-    def read_current() -> BaseModel:
-        from nonebot import get_plugin_config
-
-        from .registry import read_plugin_config
-
-        return read_plugin_config(
-            plugin_module,
-            cfg_cls,
-            fallback_getter=lambda: get_plugin_config(cfg_cls),
-        )
-
-    return WebuiEnvSection(
-        id=section_id,
-        title=title,
-        module_label=module_label,
-        model_cls=cfg_cls,
-        read_current=read_current,
-        field_to_env=field_to_env_uppercase_keys(cfg_cls),
-        skip_fields=_plugin_env_skip_fields(section_id, cfg_cls),
-    )
-
-
 def _control_plane_section() -> WebuiEnvSection:
     from pallas.product.control_plane.webui_config import ControlPlaneWebuiConfig, get_control_plane_webui_config
 
@@ -265,34 +200,6 @@ def _repeater_learn_section() -> WebuiEnvSection:
     )
 
 
-def _cmd_perm_section() -> WebuiEnvSection:
-    from pallas.core.perm.config import CmdPermConfig, get_cmd_perm_config
-
-    return WebuiEnvSection(
-        id="cmd_perm",
-        title="命令权限",
-        module_label="pallas.core.perm",
-        model_cls=CmdPermConfig,
-        read_current=get_cmd_perm_config,
-        field_to_env={"command_permission_overrides": "PALLAS_COMMAND_PERMISSION_OVERRIDES"},
-        skip_fields=frozenset(),
-    )
-
-
-def _command_limits_section() -> WebuiEnvSection:
-    from pallas.core.limits.config import CommandLimitsConfig, get_command_limits_config
-
-    return WebuiEnvSection(
-        id="command_limits",
-        title="命令冷却",
-        module_label="pallas.core.limits",
-        model_cls=CommandLimitsConfig,
-        read_current=get_command_limits_config,
-        field_to_env={"command_limit_overrides": "PALLAS_COMMAND_LIMIT_OVERRIDES"},
-        skip_fields=frozenset(),
-    )
-
-
 def _mail_section() -> WebuiEnvSection:
     from pallas.core.shared.utils.mail import SmtpConfig, get_smtp_config
 
@@ -373,8 +280,6 @@ def _arknights_kb_section() -> WebuiEnvSection:
 
 def _base_section_by_id(section_id: str) -> WebuiEnvSection | None:
     builders: dict[str, Any] = {
-        "cmd_perm": _cmd_perm_section,
-        "command_limits": _command_limits_section,
         "mail": _mail_section,
         "llm": _llm_section,
         "arknights_kb": _arknights_kb_section,
@@ -405,8 +310,6 @@ def _registered_sections() -> tuple[WebuiEnvSection, ...]:
         return _sections_cache
     parts: list[WebuiEnvSection] = []
     parts.extend((
-        _cmd_perm_section(),
-        _command_limits_section(),
         _mail_section(),
         _llm_section(),
         _arknights_kb_section(),
@@ -424,37 +327,11 @@ def _registered_sections() -> tuple[WebuiEnvSection, ...]:
 
     if (PACKAGE_ROOT / "product" / "message_scrub" / "config.py").is_file() and is_message_scrub_enabled():
         parts.append(_message_scrub_section())
-    parts.extend(
-        s
-        for s in (
-            _plugin_env_section_from_module(
-                section_id="pb_webui",
-                title="网页控制台",
-                module_label="packages.pb_webui",
-                config_module="packages.pb_webui.config",
-            ),
-            _plugin_env_section_from_module(
-                section_id="pb_protocol",
-                title="QQ 协议端（NapCat 等）",
-                module_label="packages.pb_protocol",
-                config_module="packages.pb_protocol.config",
-            ),
-            _plugin_env_section_from_module(
-                section_id="help",
-                title="帮助菜单与样式",
-                module_label="packages.help",
-                config_module="packages.help.config",
-            ),
-        )
-        if s is not None
-    )
     _sections_cache = tuple(parts)
     return _sections_cache
 
 
 _COMMON_CONFIG_SECTION_ORDER: tuple[str, ...] = (
-    "cmd_perm",
-    "command_limits",
     "mail",
     "llm",
     "arknights_kb",
@@ -466,9 +343,6 @@ _COMMON_CONFIG_SECTION_ORDER: tuple[str, ...] = (
     "repeater_learn",
     "message_scrub",
     "service_gateways",
-    "pb_webui",
-    "pb_protocol",
-    "help",
 )
 
 
@@ -590,16 +464,8 @@ def webui_env_section_payload(
         "module": s.module_label,
         "fields": fields,
     }
-    if section_id == "cmd_perm":
-        perm_src = s.model_cls.model_validate(current_values) if current_values is not None else cfg_obj
-        base.update(_cmd_perm_payload_extras(perm_src))
-    elif section_id == "command_limits":
-        limit_src = s.model_cls.model_validate(current_values) if current_values is not None else cfg_obj
-        base.update(_command_limits_payload_extras(limit_src))
-    elif section_id == "llm":
+    if section_id == "llm":
         base.update({"llm_model_admin": True})
-    elif section_id == "pb_webui":
-        base.update(_pallas_webui_payload_extras())
     elif section_id == "ingress_dispatch":
         base.update(_ingress_dispatch_payload_extras())
     return base
@@ -650,62 +516,6 @@ def _ingress_dispatch_payload_extras() -> dict[str, Any]:
     }
 
 
-def _pallas_webui_payload_extras() -> dict[str, Any]:
-    return {
-        "dev_mode_hot_reload": True,
-        "field_groups": [
-            {
-                "id": "security",
-                "title": "安全与开发调试",
-                "field_names": [
-                    "pallas_webui_dev_mode",
-                    "pallas_webui_cors",
-                    "pallas_webui_allowed_origins",
-                ],
-                "plugin_config_path": "/plugins/pb_webui",
-            },
-            {
-                "id": "deploy",
-                "title": "网页挂载与前端安装包",
-                "field_names": [
-                    "pallas_webui_enabled",
-                    "pallas_webui_http_base",
-                    "pallas_webui_dist_zip_url",
-                    "pallas_webui_dist_zip_repo",
-                    "pallas_webui_dist_zip_tag",
-                    "pallas_webui_dist_zip_asset",
-                ],
-                "plugin_config_path": "/plugins/pb_webui",
-            },
-            {
-                "id": "runtime",
-                "title": "运行时",
-                "field_names": ["pallas_webui_log_lines_max"],
-                "plugin_config_path": "/plugins/pb_webui",
-            },
-        ],
-    }
-
-
-def _cmd_perm_payload_extras(cfg_obj: Any) -> dict[str, Any]:
-    from pallas.core.perm.schema import build_command_perm_ui
-
-    overrides = getattr(cfg_obj, "command_permission_overrides", None) or {}
-    if not isinstance(overrides, dict):
-        overrides = {}
-    return {"command_perm_ui": build_command_perm_ui({str(k): str(v) for k, v in overrides.items()})}
-
-
-def _command_limits_payload_extras(cfg_obj: Any) -> dict[str, Any]:
-    from pallas.core.limits.config import normalize_command_limit_overrides
-    from pallas.core.limits.schema import build_command_limits_ui
-
-    overrides = getattr(cfg_obj, "command_limit_overrides", None) or {}
-    if not isinstance(overrides, dict):
-        overrides = {}
-    return {"command_limits_ui": build_command_limits_ui(normalize_command_limit_overrides(overrides))}
-
-
 def apply_webui_env_section_patch(section_id: str, patch: dict[str, Any]) -> dict[str, Any]:
     from .community_stats_section import COMMUNITY_STATS_SECTION_ID, apply_community_stats_patch
     from .control_plane_section import CONTROL_PLANE_SECTION_ID, apply_control_plane_patch
@@ -744,21 +554,7 @@ def apply_webui_env_section_patch(section_id: str, patch: dict[str, Any]) -> dic
             reload_message_scrub_caches()
         except Exception:
             pass
-    if section_id == "cmd_perm":
-        try:
-            from pallas.core.perm import clear_cmd_perm_cache
-
-            clear_cmd_perm_cache()
-        except Exception:
-            pass
-    elif section_id == "command_limits":
-        try:
-            from pallas.core.limits import clear_command_limits_cache
-
-            clear_command_limits_cache()
-        except Exception:
-            pass
-    elif section_id == "ingress_fanout":
+    if section_id == "ingress_fanout":
         try:
             from pallas.core.platform.ingress.config import clear_ingress_fanout_config_cache
 

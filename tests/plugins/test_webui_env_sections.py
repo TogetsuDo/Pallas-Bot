@@ -1,59 +1,17 @@
-import importlib.util
 from pathlib import Path
 
 import pytest
-from nonebot.plugin import PluginMetadata
 
 _MS_CFG = Path(__file__).resolve().parents[2] / "pallas" / "product" / "message_scrub" / "config.py"
 skip_no_message_scrub = pytest.mark.skipif(not _MS_CFG.is_file(), reason="无 message_scrub 配置模块")
 
-
-def _plugin_meta(name: str, command_ids: list[str]) -> PluginMetadata:
-    return PluginMetadata(
-        name=name,
-        description=f"{name} test plugin。",
-        usage="",
-        extra={
-            "command_limits": [{"id": cid, "cd_sec": 3} for cid in command_ids],
-        },
-    )
-
-
-def _import_command_limit_plugins() -> None:
-    import pallas_plugin_bot_status  # noqa: F401
-
-    import packages.help  # noqa: F401
-    import pallas.product.service_gateways.connectivity  # noqa: F401
-
-
-def _patch_loaded_command_limit_plugins(monkeypatch: pytest.MonkeyPatch) -> None:
-    from types import SimpleNamespace
-
-    from pallas_plugin_bot_status import __plugin_meta__ as bot_status_meta
-
-    from packages.help import __plugin_meta__ as help_meta
-    from pallas.product.service_gateways.connectivity import __plugin_meta__ as connectivity_meta
-
-    maa_meta = _plugin_meta(
-        "maa",
-        ["maa.status", "maa.clear_queue", "maa.switch_device", "maa.raw_task", "maa.control"],
-    )
-    sing_meta = _plugin_meta(
-        "sing",
-        ["sing.sing", "sing.play", "sing.request_song", "sing.song_title"],
-    )
-    from pallas.core.limits.schema import clear_merged_command_limits_cache
-
-    clear_merged_command_limits_cache()
-
-    plugins = [
-        SimpleNamespace(name="bot_status", metadata=bot_status_meta),
-        SimpleNamespace(name="connectivity", metadata=connectivity_meta),
-        SimpleNamespace(name="help", metadata=help_meta),
-        SimpleNamespace(name="maa", metadata=maa_meta),
-        SimpleNamespace(name="sing", metadata=sing_meta),
-    ]
-    monkeypatch.setattr("pallas.core.limits.schema.get_loaded_plugins", lambda: plugins)
+_REMOVED_COMMON_CONFIG_SECTIONS = frozenset({
+    "cmd_perm",
+    "command_limits",
+    "pb_webui",
+    "pb_protocol",
+    "help",
+})
 
 
 def test_list_webui_env_sections_contains_llm_section():
@@ -207,23 +165,23 @@ def test_list_webui_env_sections_hides_message_scrub_when_disabled(monkeypatch: 
     clear_webui_env_sections_cache()
 
 
-def test_list_webui_env_sections_contains_plugin_common_sections():
+def test_list_webui_env_sections_excludes_plugin_migrated_sections():
     from pallas.console.webui import list_webui_env_sections
+    from pallas.console.webui.env_sections import clear_webui_env_sections_cache
 
+    clear_webui_env_sections_cache()
     rows = list_webui_env_sections()
     ids = {r["id"] for r in rows}
-    assert "command_limits" in ids
-    assert "pb_webui" in ids
-    try:
-        has_pb_protocol = importlib.util.find_spec("packages.pb_protocol.config") is not None
-    except ModuleNotFoundError:
-        has_pb_protocol = False
-    if has_pb_protocol:
-        assert "pb_protocol" in ids
-    else:
-        assert "pb_protocol" not in ids
-    assert "help" in ids
+    assert _REMOVED_COMMON_CONFIG_SECTIONS.isdisjoint(ids)
     assert "service_gateways" in ids
+
+
+def test_removed_common_config_sections_are_unknown():
+    from pallas.console.webui.env_sections import get_webui_env_section
+
+    for section_id in _REMOVED_COMMON_CONFIG_SECTIONS:
+        with pytest.raises(ValueError, match="未知 common-config"):
+            get_webui_env_section(section_id)
 
 
 def test_service_gateways_payload_shape():
@@ -263,46 +221,6 @@ def test_arknights_kb_payload_does_not_import_unrelated_special_sections(
     assert "ARKNIGHTS_KB_AUTO_SYNC" in env_keys
 
 
-def test_command_limits_section_payload_shape(monkeypatch: pytest.MonkeyPatch):
-    from pallas.console.webui import webui_env_section_payload
-
-    _import_command_limit_plugins()
-    _patch_loaded_command_limit_plugins(monkeypatch)
-    data = webui_env_section_payload("command_limits")
-    assert data["plugin"] == "command_limits"
-    assert data["module"] == "pallas.core.limits"
-    assert "command_limits_ui" in data
-    assert any(row["id"] == "help.help" for row in data["command_limits_ui"]["commands"])
-    assert any(row["id"] == "sing.sing" for row in data["command_limits_ui"]["commands"])
-    assert any(row["id"] == "maa.control" for row in data["command_limits_ui"]["commands"])
-
-
-def test_command_limits_section_payload_keeps_zero_override(monkeypatch: pytest.MonkeyPatch):
-    from pallas.console.webui import webui_env_section_payload
-
-    _import_command_limit_plugins()
-    _patch_loaded_command_limit_plugins(monkeypatch)
-    data = webui_env_section_payload(
-        "command_limits",
-        current_values={"command_limit_overrides": {"help.help": 0}},
-    )
-    commands = {row["id"]: row for row in data["command_limits_ui"]["commands"]}
-    assert commands["help.help"]["effective_cd_sec"] == 0
-
-
-def test_command_limits_patch_writes_json_override(tmp_path, monkeypatch):
-    import json
-
-    from pallas.console.webui import apply_webui_env_section_patch
-    from pallas.core.foundation.config import repo_settings as rs
-
-    webui_file = tmp_path / "webui.json"
-    monkeypatch.setattr(rs, "repo_webui_settings_path", lambda: webui_file)
-    apply_webui_env_section_patch("command_limits", {"command_limit_overrides": {"help.help": 11}})
-    data = json.loads(webui_file.read_text(encoding="utf-8"))
-    assert json.loads(data["env"]["PALLAS_COMMAND_LIMIT_OVERRIDES"]) == {"help.help": 11}
-
-
 def test_field_to_env_uppercase_keys_matches_plugin_api():
     from packages.pb_webui.config import Config
     from pallas.console.webui import field_to_env_uppercase_keys
@@ -311,35 +229,7 @@ def test_field_to_env_uppercase_keys_matches_plugin_api():
     assert m["pallas_webui_enabled"] == "PALLAS_WEBUI_ENABLED"
 
 
-def test_pb_webui_section_payload_env_keys_uppercase():
-    from pallas.console.webui import webui_env_section_payload
-
-    data = webui_env_section_payload("pb_webui")
-    assert data["plugin"] == "pb_webui"
-    assert data["module"] == "packages.pb_webui"
-    assert data.get("dev_mode_hot_reload") is True
-    groups = {g["id"]: g for g in data.get("field_groups") or []}
-    assert "security" in groups
-    assert "pallas_webui_dev_mode" in groups["security"]["field_names"]
-    assert groups["security"]["plugin_config_path"] == "/plugins/pb_webui"
-    for f in data["fields"]:
-        assert f["env_key"] == f["name"].upper()
-
-
-def test_pb_webui_patch_writes_uppercase_env(tmp_path, monkeypatch):
-    import json
-
-    from pallas.console.webui import apply_webui_env_section_patch
-    from pallas.core.foundation.config import repo_settings as rs
-
-    webui_file = tmp_path / "webui.json"
-    monkeypatch.setattr(rs, "repo_webui_settings_path", lambda: webui_file)
-    apply_webui_env_section_patch("pb_webui", {"pallas_webui_http_base": "/pallas-test"})
-    data = json.loads(webui_file.read_text(encoding="utf-8"))
-    assert data["env"]["PALLAS_WEBUI_HTTP_BASE"] == "/pallas-test"
-
-
-def test_common_config_raw_toml_roundtrip(tmp_path, monkeypatch):
+def test_common_config_raw_toml_roundtrip_mail(tmp_path, monkeypatch):
     import json
 
     from pallas.console.webui.env_sections import (
@@ -350,13 +240,13 @@ def test_common_config_raw_toml_roundtrip(tmp_path, monkeypatch):
 
     webui_file = tmp_path / "webui.json"
     monkeypatch.setattr(rs, "repo_webui_settings_path", lambda: webui_file)
-    text = webui_env_section_raw_toml("pb_webui")
+    text = webui_env_section_raw_toml("mail")
     assert "[env]" in text
-    assert "# common-config: pb_webui" in text
-    patched = f'{text.rstrip()}\nPALLAS_WEBUI_HTTP_BASE = "/from-raw"\n'
-    apply_webui_env_section_raw_toml("pb_webui", patched)
+    assert "# common-config: mail" in text
+    patched = f'{text.rstrip()}\nPALLAS_SMTP_SERVER = "smtp.example.com"\n'
+    apply_webui_env_section_raw_toml("mail", patched)
     data = json.loads(webui_file.read_text(encoding="utf-8"))
-    assert data["env"]["PALLAS_WEBUI_HTTP_BASE"] == "/from-raw"
+    assert data["env"]["PALLAS_SMTP_SERVER"] == "smtp.example.com"
 
 
 def test_common_config_raw_unsupported_section():
