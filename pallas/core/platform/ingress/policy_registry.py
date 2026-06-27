@@ -91,11 +91,13 @@ def parse_fanout_policy(raw: dict[str, Any]) -> FanoutPolicyEntry | None:
 
 
 def fanout_policy_for_plugin(plugin_name: str) -> FanoutPolicyEntry | None:
-    name = (plugin_name or "").strip()
+    from pallas.core.platform.bot_runtime.plugin_package_aliases import canonical_plugin_package
+
+    name = canonical_plugin_package((plugin_name or "").strip())
     if not name:
         return None
     for plugin in get_loaded_plugins():
-        if str(getattr(plugin, "name", "")).strip() != name:
+        if canonical_plugin_package(str(getattr(plugin, "name", "")).strip()) != name:
             continue
         meta = getattr(plugin, "metadata", None)
         extra = getattr(meta, "extra", None) if meta is not None else None
