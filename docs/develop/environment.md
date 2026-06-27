@@ -21,7 +21,42 @@ uv sync --dev
 uv sync --dev --extra coord-redis
 ```
 
+使用 PostgreSQL 时一并带上 `pg`：
+
+```bash
+uv sync --dev --extra coord-redis --extra pg
+```
+
 `uv sync` 会在虚拟环境中注册 **`pallas`** 命令（见下文「统一运维 CLI」）。
+
+## uv sync 与官方扩展（必读）
+
+**`uv sync` 会把 `.venv` 严格对齐 lockfile 当前解析结果**，并卸载不在本次 sync 范围内的包。下列内容**不在**默认 `uv sync` 里，裸跑 sync 可能被清掉：
+
+| 类别 | 典型包 | 如何装 |
+| --- | --- | --- |
+| 官方扩展（8 个） | `pallas-plugin-protocol`、`pallas-plugin-duel` 等 | `uv run pallas ext install <package>` 或 WebUI 插件商店 |
+| 分片 Redis 客户端 | `redis` | `uv sync --extra coord-redis` 或 `uv pip install 'redis>=5.2,<6'` |
+| PostgreSQL 驱动 | `sqlalchemy`、`asyncpg` | `uv sync --extra pg` 或 `uv pip install 'sqlalchemy[asyncio]>=2.0' 'asyncpg>=0.29'` |
+
+因此：
+
+- **不要**在已装官方扩展、已配分片/PostgreSQL 的环境里反复执行**裸** `uv sync` / `uv sync --frozen`（不带你实际用到的 `--extra`）。
+- **仅想注册 `pallas` CLI、不动其它 pip 包**时，用：
+  ```bash
+  uv pip install -e . --no-deps
+  ```
+- **必须 sync 本体依赖**时，带上全部 extras，sync 后再补扩展：
+  ```bash
+  uv sync --extra coord-redis --extra pg   # 按 pallas.toml 实际 backend 调整
+  uv run pallas ext list                   # 查看应装的官方扩展
+  # 对 listed 里 installed=no 的逐个：
+  uv run pallas ext install pallas-plugin-protocol
+  # …
+  ```
+- **只补单个依赖、不想动扩展**时，优先 `uv pip install …`，不要用 sync。
+
+扩展装完后需 **重启 Bot**（分片常用 `uv run pallas restart --mode shard`）。装扩展若报 hot-load 相关栈追踪，只要 `pallas ext list` 显示 `installed=yes`，重启进程即可。
 
 ## 统一运维 CLI（`pallas`）
 
@@ -138,7 +173,7 @@ uv run pallas stop --mode unified
 
 生产或多进程场景见 [多进程分片](../architecture/bot_process_sharding.md)。本地若需验证分片：
 
-- 在 `pallas.toml` 的 `[env]` 配置 `REDIS_URL`（需 `uv sync --extra coord-redis`）
+- 在 `pallas.toml` 的 `[env]` 配置 `REDIS_URL`（Python 端需 `redis` 包，见上文 [uv sync 与官方扩展](#uv-sync-与官方扩展必读)）
 - 使用 `uv run pallas run shard`（会探测 Redis；worker 已运行时跳过重复启动）
 
 ```bash
