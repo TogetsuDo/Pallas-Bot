@@ -18,6 +18,7 @@ from pallas.core.platform.bot_runtime.plugin_matrix import (
     extra_package_for_plugin,
     official_extension_activation_policy,
     official_extension_description,
+    official_extension_display_name,
     official_extension_repo_url,
     official_extension_visuals,
 )
@@ -111,6 +112,7 @@ def build_official_extension_rows() -> list[dict[str, Any]]:
         rows.append({
             "package": package,
             "plugin_ids": plugin_ids,
+            "display_name": official_extension_display_name(package),
             "description": official_extension_description(package),
             "install_cli": ext_install_cli_for_package(package),
             "activation_policy": official_extension_activation_policy(package),

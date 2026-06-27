@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from nonebot import get_driver
+from nonebot.plugin import get_plugin
 
 from pallas.core.foundation.startup_report import register_startup_fact
+
+_APSCHEDULER_PLUGIN_ID = "nonebot_plugin_apscheduler"
 
 _HOOK_REGISTERED = False
 
@@ -25,9 +28,7 @@ def register_apscheduler_startup_hook() -> None:
     global _HOOK_REGISTERED
     if _HOOK_REGISTERED:
         return
-    try:
-        import nonebot_plugin_apscheduler  # noqa: F401
-    except ImportError:
+    if get_plugin(_APSCHEDULER_PLUGIN_ID) is None:
         return
     try:
         driver = get_driver()

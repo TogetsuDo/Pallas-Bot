@@ -7,6 +7,7 @@ from pallas.core.platform.bot_runtime.plugin_matrix import (
     is_core_plugin,
     is_extra_plugin,
     official_extension_description,
+    official_extension_display_name,
     official_extension_visuals,
     resolve_hub_bundled_module_paths,
     should_load_bundled_plugin,
@@ -176,6 +177,12 @@ def test_official_extension_description_prefers_readme_summary():
 
 def test_official_extension_description_falls_back_for_multi_plugin_package():
     assert official_extension_description("pallas-plugin-ai-media") == "唱歌（sing）与 酒后聊天（chat）。"
+
+
+def test_official_extension_display_name_uses_chinese_titles():
+    assert official_extension_display_name("pallas-plugin-maa") == "MAA 远控"
+    assert official_extension_display_name("pallas-plugin-ai-media") == "唱歌 / 酒后聊天"
+    assert official_extension_display_name("pallas-plugin-unknown") == "unknown"
 
 
 def test_official_extension_visuals_use_official_repo_assets() -> None:

@@ -95,6 +95,18 @@ OFFICIAL_EXTENSION_ACTIVATION_POLICY: dict[str, ActivationPolicy] = {
     "pallas-plugin-bot-status": "hot-reloadable",
 }
 
+# 与扩展仓 PluginMetadata.name / 文档标题一致（插件商店卡片主标题）
+OFFICIAL_EXTENSION_TITLES: dict[str, str] = {
+    "pallas-plugin-duel": "牛牛决斗",
+    "pallas-plugin-draw": "牛牛画画",
+    "pallas-plugin-dream": "牛牛做梦",
+    "pallas-plugin-maa": "MAA 远控",
+    "pallas-plugin-protocol": "协议端管理",
+    "pallas-plugin-who-is-spy": "谁是卧底",
+    "pallas-plugin-ai-media": "唱歌 / 酒后聊天",
+    "pallas-plugin-bot-status": "牛牛状态",
+}
+
 # 与扩展仓 README 首段说明一致（插件商店卡片单行描述）
 OFFICIAL_EXTENSION_DESCRIPTIONS: dict[str, str] = {
     "pallas-plugin-duel": "牛牛决斗。",
@@ -246,6 +258,15 @@ def official_extension_asset_url(package: str, asset_path: str) -> str | None:
 def official_extension_description(package: str) -> str:
     pkg = (package or "").strip()
     return official_extension_readme_summary(pkg) or OFFICIAL_EXTENSION_DESCRIPTIONS.get(pkg, "")
+
+
+def official_extension_display_name(package: str) -> str:
+    pkg = (package or "").strip()
+    title = OFFICIAL_EXTENSION_TITLES.get(pkg, "").strip()
+    if title:
+        return title
+    short = pkg.removeprefix("pallas-plugin-")
+    return short or pkg
 
 
 def official_extension_activation_policy(package: str) -> ActivationPolicy | None:

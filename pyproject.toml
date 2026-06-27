@@ -85,7 +85,6 @@ builtin_plugins = []
 [tool.nonebot.plugins]
 "@local" = []
 nonebot-plugin-apscheduler = ["nonebot_plugin_apscheduler"]
-nonebot-plugin-status = ["nonebot_plugin_status"]
 
 [tool.nonebot.adapters]
 "@local" = []

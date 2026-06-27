@@ -102,6 +102,8 @@ def _plugin_env_skip_fields(section_id: str, cfg_cls: type[BaseModel]) -> frozen
             "pallas_protocol_enabled",
             "pallas_protocol_webui_enabled",
             "pallas_protocol_follow_bot_lifecycle",
+            "pallas_protocol_restart_max_concurrency",
+            "pallas_protocol_restart_stagger_s",
             "pallas_protocol_auto_download_runtime",
         }
         return frozenset(all_names - keep)

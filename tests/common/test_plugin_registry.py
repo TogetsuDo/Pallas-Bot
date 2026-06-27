@@ -41,6 +41,7 @@ def test_build_official_extension_rows_include_visuals():
         "/pallas/store-assets/cover/official-pallas-plugin-duel.png",
     )
     assert duel["description"] == "泰拉风味多幕决斗，带剧情事件、抢答和八角笼玩法。"
+    assert duel["display_name"] == "牛牛决斗"
     assert duel["avatar"] is None
 
 

@@ -222,6 +222,8 @@ FIELD_LABELS: dict[str, str] = {
     "pallas_protocol_docker_uid": "容器运行 UID",
     "pallas_protocol_enabled": "启用协议端管理",
     "pallas_protocol_follow_bot_lifecycle": "随牛牛启停实例",
+    "pallas_protocol_restart_max_concurrency": "批量重启最大并发",
+    "pallas_protocol_restart_stagger_s": "批量 rolling 间隔秒数",
     "pallas_protocol_github_repo": "NapCat 下载仓库",
     "pallas_protocol_github_token": "GitHub 下载令牌",
     "pallas_protocol_instances_root": "实例数据总目录",
