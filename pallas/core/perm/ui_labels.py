@@ -15,6 +15,7 @@ PLUGIN_TITLE_FALLBACKS: dict[str, str] = {
     "connectivity": "牛牛连通",
     "draw": "牛牛画画",
     "dream": "牛牛做梦",
+    "drink": "牛牛喝酒",
     "duel": "牛牛决斗",
     "greeting": "牛牛欢迎",
     "help": "牛牛帮助",
@@ -42,6 +43,8 @@ COMMAND_LABEL_FALLBACKS: dict[str, str] = {
     "connectivity.probe": "牛牛连通",
     "draw.draw": "牛牛画画",
     "draw.gateway": "牛牛网关",
+    "drink.drink": "牛牛喝酒 / 牛牛干杯 / 牛牛继续喝",
+    "drink.sober_up": "牛牛醒一醒 / 牛牛别喝了",
     "dream.ban_cleanup": "梦库清理（不可以）",
     "duel.duel": "牛牛决斗",
     "duel.cage": "八角笼牛",
@@ -95,6 +98,10 @@ COMMAND_LABEL_FALLBACKS: dict[str, str] = {
     "roulette.mode_switch": "牛牛轮盘切换模式",
     "sing.ncm_login": "网易云登录",
     "sing.ncm_logout": "网易云登出",
+    "sing.sing": "牛牛唱歌 / 牛牛继续唱",
+    "sing.play": "牛牛唱歌（随机）",
+    "sing.request_song": "牛牛点歌",
+    "sing.song_title": "牛牛什么歌",
 }
 
 

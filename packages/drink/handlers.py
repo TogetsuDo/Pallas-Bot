@@ -3,12 +3,14 @@ import random
 from datetime import datetime, timedelta
 
 from nonebot import get_bot, logger, on_message
-from nonebot.adapters.onebot.v11 import GroupMessageEvent, permission
+from nonebot.adapters.onebot.v11 import GroupMessageEvent
 from nonebot.exception import ActionFailed
 from nonebot.rule import Rule
 from nonebot_plugin_apscheduler import scheduler
 
 from pallas.core.foundation.config import BotConfig
+from pallas.core.limits import is_command_cooldown_ready, refresh_command_cooldown
+from pallas.core.perm import group_message_permission_for_command
 from pallas.core.plugin_coord import dream as dream_coord
 
 
@@ -20,7 +22,7 @@ drink_msg = on_message(
     rule=Rule(is_drink_msg),
     priority=5,
     block=True,
-    permission=permission.GROUP,
+    permission=group_message_permission_for_command("drink.drink"),
 )
 
 
@@ -39,10 +41,10 @@ async def sober_up_later(bot_id: int, group_id: int):
 
 @drink_msg.handle()
 async def handle_drink(event: GroupMessageEvent):
-    config = BotConfig(event.self_id, event.group_id, cooldown=3)
-    if not await config.is_cooldown("drink"):
+    if not await is_command_cooldown_ready(event, "drink.drink"):
         return
-    await config.refresh_cooldown("drink")
+    await refresh_command_cooldown(event, "drink.drink")
+    config = BotConfig(event.self_id, event.group_id)
 
     drunk_duration = random.randint(60, 600)
     logger.info(
@@ -86,7 +88,7 @@ sober_up_msg = on_message(
     rule=Rule(is_sober_up_msg),
     priority=5,
     block=True,
-    permission=permission.GROUP,
+    permission=group_message_permission_for_command("drink.sober_up"),
 )
 
 

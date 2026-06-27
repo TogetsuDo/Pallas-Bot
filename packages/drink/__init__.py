@@ -1,5 +1,6 @@
 from nonebot.plugin import PluginMetadata
 
+from pallas.core.commands import command_limit_list, command_limit_row, command_perm_list, command_perm_row
 from pallas.core.perm.metadata_defaults import (
     PLUGIN_EXTRA_VERSION,
     PLUGIN_HOMEPAGE,
@@ -31,12 +32,20 @@ __plugin_meta__ = PluginMetadata(
                 "牛牛别喝了",
             ],
         },
+        "command_permissions": command_perm_list(
+            command_perm_row("drink.drink", "牛牛喝酒 / 牛牛干杯 / 牛牛继续喝"),
+            command_perm_row("drink.sober_up", "牛牛醒一醒 / 牛牛别喝了"),
+        ),
+        "command_limits": command_limit_list(
+            command_limit_row("drink.drink", 3),
+        ),
         "menu_data": [
             {
                 "func": "牛牛喝酒",
                 "trigger_method": "on_message",
                 "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛喝酒 / 牛牛干杯 / 牛牛继续喝",
+                "command_permission": "drink.drink",
                 "brief_des": "饮酒并进入醉酒",
                 "detail_des": "喝得越多越容易醉，醉酒后说话和行为都会变得不一样，太过头还会睡着。",
             },
@@ -45,6 +54,7 @@ __plugin_meta__ = PluginMetadata(
                 "trigger_method": "on_message",
                 "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛醒一醒 / 牛牛别喝了",
+                "command_permission": "drink.sober_up",
                 "brief_des": "立即醒酒",
                 "detail_des": "让牛牛立刻清醒；如果它正在做梦，也会一起停下来。",
             },
