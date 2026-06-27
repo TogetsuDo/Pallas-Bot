@@ -78,7 +78,7 @@ pallas status --mode shard
 
 | 场景 | 命令 |
 | --- | --- |
-| 单进程启动 | `uv run pallas run unified` |
+| 单进程启动 | `uv run pallas`（等同 `uv run pallas run unified`） |
 | 分片启动（hub + worker） | `uv run pallas run shard` |
 | 分片：仅 hub | `uv run pallas run shard --hub-only` |
 | 分片：仅补缺失 worker | `uv run pallas run shard --workers-only` |

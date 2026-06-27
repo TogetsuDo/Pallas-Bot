@@ -46,6 +46,21 @@ def test_module_invocation_ext_list_does_not_require_nonebot_init():
     assert "NoneBot has not been initialized." not in proc.stderr
 
 
+def test_main_default_starts_unified(monkeypatch):
+    called: dict[str, bool] = {}
+
+    def fake_run_unified(args):
+        called["skip_port_sync"] = args.skip_port_sync
+        return 0
+
+    monkeypatch.setattr(
+        "pallas.console.cli.commands.lifecycle.run_unified",
+        fake_run_unified,
+    )
+    assert main([]) == 0
+    assert called["skip_port_sync"] is False
+
+
 def test_main_sync_dry(monkeypatch):
     async def fake_sync(**_kwargs):
         return 0

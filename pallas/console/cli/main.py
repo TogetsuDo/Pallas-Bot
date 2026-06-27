@@ -21,7 +21,7 @@ _COMMAND_MODULES = (
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pallas",
-        description="Pallas Bot 统一运维：依赖同步、官方扩展、启停与更新",
+        description="Pallas Bot 统一运维：依赖同步、官方扩展、启停与更新（无子命令时默认启动单进程 Bot）",
     )
     parser.add_argument(
         "-V",
@@ -29,7 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="version",
         version=f"%(prog)s {CLI_VERSION}",
     )
-    sub = parser.add_subparsers(dest="command", required=True)
+    sub = parser.add_subparsers(dest="command", required=False)
     for module_name in _COMMAND_MODULES:
         module = import_module(module_name)
         if hasattr(module, "register"):
@@ -46,10 +46,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     handler = getattr(args, "handler", None)
-    if handler is None:
-        parser.print_help()
-        return 2
-    return int(handler(args))
+    if handler is not None:
+        return int(handler(args))
+    if args.command is None:
+        from pallas.console.cli.commands.lifecycle import run_unified
+
+        return int(run_unified(argparse.Namespace(skip_port_sync=False)))
+    parser.print_help()
+    return 2
 
 
 if __name__ == "__main__":
