@@ -31,9 +31,9 @@
 
 | 命令 ID | 默认等级 |
 | --- | --- |
-| `bot_status.status` | bot_moderator |
-| `bot_status.count` | everyone |
-| `bot_status.test_mail` | superuser |
+| `bot_status.status` | 号主 |
+| `bot_status.count` | 所有人 |
+| `bot_status.test_mail` | 仅超管 |
 
 ## 配置项
 

@@ -32,8 +32,8 @@
 
 | 命令 ID | 默认等级 |
 | --- | --- |
-| `blacklist.add` | staff |
-| `blacklist.remove` | staff |
+| `blacklist.add` | 群管或号主 |
+| `blacklist.remove` | 群管或号主 |
 
 ## 配置项
 

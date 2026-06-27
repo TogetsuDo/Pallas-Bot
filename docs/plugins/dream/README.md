@@ -31,7 +31,7 @@
 
 | 命令 ID | 默认等级 |
 | --- | --- |
-| `dream.ban_cleanup` | staff |
+| `dream.ban_cleanup` | 群管或号主 |
 
 无独立命令权限的日常做梦口令可不在本节重复展开。
 

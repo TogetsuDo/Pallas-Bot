@@ -32,11 +32,11 @@
 
 | 命令 ID | 默认等级 |
 | --- | --- |
-| `help.help` | everyone |
-| `help.plugin_enable` | staff |
-| `help.plugin_disable` | staff |
-| `help.plugin_enable_all` | staff |
-| `help.plugin_disable_all` | staff |
+| `help.help` | 所有人 |
+| `help.plugin_enable` | 群管或号主 |
+| `help.plugin_disable` | 群管或号主 |
+| `help.plugin_enable_all` | 群管或号主 |
+| `help.plugin_disable_all` | 群管或号主 |
 
 ## 配置项
 

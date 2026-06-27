@@ -32,11 +32,11 @@
 
 | 命令 ID | 默认等级 |
 | --- | --- |
-| `pb_core.status` | staff |
-| `pb_core.console` | staff |
-| `pb_core.plugins` | staff |
-| `pb_core.update_check` | superuser |
-| `pb_core.restart` | superuser |
+| `pb_core.status` | 群管或号主 |
+| `pb_core.console` | 群管或号主 |
+| `pb_core.plugins` | 群管或号主 |
+| `pb_core.update_check` | 仅超管 |
+| `pb_core.restart` | 仅超管 |
 
 ## 配置项
 

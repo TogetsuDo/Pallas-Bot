@@ -31,8 +31,8 @@
 
 | 命令 ID | 默认等级 |
 | --- | --- |
-| `repeater.ban` | staff |
-| `repeater.ban_latest` | staff |
+| `repeater.ban` | 群管或号主 |
+| `repeater.ban_latest` | 群管或号主 |
 
 ## 配置项
 

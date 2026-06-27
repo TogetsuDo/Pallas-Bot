@@ -29,8 +29,8 @@
 
 | 命令 ID | 默认等级 |
 | --- | --- |
-| `llm_chat.chat` | everyone |
-| `llm_chat.clear` | everyone |
+| `llm_chat.chat` | 所有人 |
+| `llm_chat.clear` | 所有人 |
 
 运维向的 `换模型`、`卸模型`、`LLM 状态` 默认只给超管使用，不面向普通帮助菜单展示。
 

@@ -39,7 +39,7 @@ uv sync --extra plugins-dream
 
 | 命令 ID | 默认等级 |
 | --- | --- |
-| `dream.ban_cleanup` | staff |
+| `dream.ban_cleanup` | 群管或号主 |
 
 （与复读共用「不可以」清理梦库，权限见帮助详情。）
 

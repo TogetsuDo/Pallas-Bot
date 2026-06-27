@@ -35,11 +35,11 @@
 
 | 命令 ID | 默认等级 |
 | --- | --- |
-| `who_is_spy.open` | everyone |
-| `who_is_spy.join` | everyone |
-| `who_is_spy.start` | everyone |
-| `who_is_spy.status` | everyone |
-| `who_is_spy.end` | everyone |
+| `who_is_spy.open` | 所有人 |
+| `who_is_spy.join` | 所有人 |
+| `who_is_spy.start` | 所有人 |
+| `who_is_spy.status` | 所有人 |
+| `who_is_spy.end` | 所有人 |
 
 ## 配置项
 

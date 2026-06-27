@@ -33,9 +33,9 @@
 
 | 命令 ID | 默认等级 |
 | --- | --- |
-| `duel.duel` | everyone |
-| `duel.cage` | everyone |
-| `duel.reload_events` | group_moderator |
+| `duel.duel` | 所有人 |
+| `duel.cage` | 所有人 |
+| `duel.reload_events` | 群管/群主 |
 
 ## 配置项
 

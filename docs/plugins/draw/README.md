@@ -29,7 +29,7 @@
 
 | 命令 ID | 默认等级 |
 | --- | --- |
-| `draw.draw` | everyone |
+| `draw.draw` | 所有人 |
 
 ## 配置项
 

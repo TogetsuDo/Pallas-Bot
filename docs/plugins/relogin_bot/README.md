@@ -30,8 +30,8 @@
 
 | 命令 ID | 默认等级 |
 | --- | --- |
-| `relogin.relogin` | bot_moderator |
-| `relogin.create` | superuser |
+| `relogin.relogin` | 号主 |
+| `relogin.create` | 仅超管 |
 
 ## 配置项
 

@@ -31,10 +31,10 @@
 
 | 命令 ID | 默认等级 |
 | --- | --- |
-| `greeting.set_friend_welcome` | bot_moderator |
-| `greeting.clear_friend_welcome` | bot_moderator |
-| `greeting.set_group_welcome` | group_moderator |
-| `greeting.clear_group_welcome` | group_moderator |
+| `greeting.set_friend_welcome` | 号主 |
+| `greeting.clear_friend_welcome` | 号主 |
+| `greeting.set_group_welcome` | 群管/群主 |
+| `greeting.clear_group_welcome` | 群管/群主 |
 
 ## 配置项
 

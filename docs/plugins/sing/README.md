@@ -37,8 +37,8 @@
 | `sing.play` | 所有人 | 牛牛唱歌（随机，无歌名） |
 | `sing.request_song` | 所有人 | 牛牛点歌 |
 | `sing.song_title` | 所有人 | 牛牛什么歌 |
-| `sing.ncm_login` | superuser | 网易云登录 |
-| `sing.ncm_logout` | superuser | 网易云登出 |
+| `sing.ncm_login` | 仅超管 | 网易云登录 |
+| `sing.ncm_logout` | 仅超管 | 网易云登出 |
 
 ## 配置项
 
