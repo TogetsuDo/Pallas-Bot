@@ -13,7 +13,10 @@ def compile_group_expression_prompt(style_profile: dict[str, Any] | None) -> str
     raw = style_profile.get("raw") if isinstance(style_profile.get("raw"), dict) else {}
     derived = style_profile.get("derived") if isinstance(style_profile.get("derived"), dict) else {}
     if not derived:
-        return wrap_stats_block("group_expression", "【群聊表达习惯】样本不足，暂无稳定表达习惯。")
+        return wrap_stats_block(
+            "group_expression",
+            "【群聊表达习惯】新群或样本尚少：像群友口语接话，可带一点帕拉斯自信/接梗，避免客服式完整解释。",
+        )
 
     parts: list[str] = []
     length_pref = str(derived.get("length_pref") or "").strip()

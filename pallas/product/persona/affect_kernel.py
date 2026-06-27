@@ -49,13 +49,30 @@ def build_persona_affect_contract(
     stance_hints: list[str] = []
     if group_flavor_summary:
         stance_hints.append(group_flavor_summary)
+
+    if length_pref == "short":
+        stance_hints.append("优先 1-2 句短口语，像顺手回一句，别展开解释。")
+    elif length_pref == "long":
+        stance_hints.append("可稍多说一两句，但仍要像群聊接话，别写小作文。")
+    else:
+        stance_hints.append("像被 @ 后顺口接话，2 句内为主，别写成完整答复。")
+
     if persona is not None:
         warmth = float(getattr(persona, "warmth", 0.0) or 0.0)
         chaos = float(getattr(persona, "chaos_bias", 0.0) or 0.0)
+        assertiveness = float(getattr(persona, "assertiveness", 0.0) or 0.0)
         if warmth >= 0.1:
-            stance_hints.append("语气可稍软，但别像哄人。")
+            stance_hints.append("语气可稍软、更接梗，但别像哄人或客服安抚。")
+        elif warmth <= -0.1:
+            stance_hints.append("语气偏克制，少热情铺垫，直接接重点。")
         if chaos >= 0.5:
-            stance_hints.append("可更跳脱，但别硬拗。")
+            stance_hints.append("可更跳脱接梗，但别硬拗、别演过头。")
+        elif chaos >= 0.12:
+            stance_hints.append("本群偏短句接梗，可更跳、更口语，但仍别哞~/颜文字起手。")
+        if assertiveness >= 0.1:
+            stance_hints.append("可适度反抛或顶一句，保持帕拉斯身份即可。")
+        elif assertiveness <= -0.1:
+            stance_hints.append("少反呛，顺着话题接，别抢戏。")
 
     opener_hints = [item for item in list(repeated_openers or []) if item]
     ending_constraints = ["避免固定模板收口", "避免连续重复同一开头"]
@@ -90,3 +107,49 @@ def build_variation_hint_from_contract(contract: PersonaAffectContract) -> str:
         return ""
     labels = "、".join(contract.opener_suppression_hints[:3])
     return f"【开头去重】最近别再用这些开头：{labels}。"
+
+
+def build_persona_affect_system_block(contract: PersonaAffectContract) -> str:
+    """@ 闲聊专用：把 contract 的 stance/长度/禁腔调写入 system，而不只放 metadata 去重。"""
+    lines = ["【本轮牛格塑形】"]
+    seen: set[str] = set()
+    for hint in contract.stance_hints:
+        text = str(hint or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        lines.append(f"- {text}")
+
+    if contract.preferred_length_max <= 16:
+        length_line = "句长预算：优先 1 句，最多 2 句短口语。"
+    elif contract.preferred_length_max <= 36:
+        length_line = "句长预算：2 句内说完，像群友顺口接话。"
+    else:
+        length_line = "句长预算：可稍展开，但仍保持口语，别写分段小作文。"
+    if length_line not in seen:
+        lines.append(f"- {length_line}")
+
+    if contract.disallowed_tones:
+        tones = "、".join(contract.disallowed_tones)
+        lines.append(f"- 避免腔调：{tones}；可带一点帕拉斯自信/庆典感，但别演成助手。")
+
+    for item in contract.ending_constraints:
+        text = str(item or "").strip()
+        if text and text not in seen:
+            lines.append(f"- {text}")
+
+    if len(lines) <= 1:
+        lines.append("- 像本群常出现的接话：口语、直接，带一点帕拉斯自信即可。")
+    return "\n".join(lines)
+
+
+def group_flavor_summary_from_style_snapshot(group_style: dict | None) -> str:
+    if not isinstance(group_style, dict):
+        return ""
+    hints = group_style.get("hints")
+    if not isinstance(hints, list):
+        return ""
+    parts = [str(item).strip() for item in hints if str(item).strip()]
+    if not parts:
+        return ""
+    return "本群风格：" + "、".join(parts[:4])

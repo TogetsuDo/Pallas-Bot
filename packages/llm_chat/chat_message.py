@@ -52,7 +52,12 @@ from pallas.product.llm.reply_variation import (
 from pallas.product.llm.session_store import list_user_llm_messages
 from pallas.product.llm.task_metrics import record_bot_llm_task
 from pallas.product.llm.tools.registry import tool_metadata_for_chat
-from pallas.product.persona.affect_kernel import build_persona_affect_contract, build_variation_hint_from_contract
+from pallas.product.persona.affect_kernel import (
+    build_persona_affect_contract,
+    build_persona_affect_system_block,
+    build_variation_hint_from_contract,
+    group_flavor_summary_from_style_snapshot,
+)
 from pallas.product.persona.corpus_expression_habits import infer_expression_affect_stance
 from pallas.product.persona.self_identity import save_self_alias_from_teach
 
@@ -197,6 +202,83 @@ async def load_recent_live_expression_rows(
     return rows
 
 
+async def build_llm_chat_dynamic_expression_hint(
+    group_id: int | None,
+    text: str,
+    *,
+    bot_id: int | None = None,
+    current_user_id: int | None = None,
+) -> str:
+    if group_id is None:
+        return ""
+    plain = str(text or "").strip()
+    if not plain:
+        return ""
+
+    from pallas.core.foundation.db import make_group_config_repository
+    from pallas.product.persona.affect_triggers import extract_affect_triggers
+    from pallas.product.persona.dynamic_expression import (
+        build_affect_trigger_turn_hint,
+        format_dynamic_expression_hint,
+        format_situational_expression_pairs,
+        match_message_affect_triggers,
+    )
+
+    try:
+        group_config = await make_group_config_repository().get(int(group_id))
+    except Exception:
+        group_config = None
+    profile = getattr(group_config, "style_profile", None) if group_config is not None else None
+    triggers = extract_affect_triggers(profile if isinstance(profile, dict) else None)
+    matched = match_message_affect_triggers(plain, triggers)
+    trigger_hint = build_affect_trigger_turn_hint(plain, matched)
+
+    recent_rows = await load_recent_live_expression_rows(
+        int(group_id),
+        plain,
+        bot_id=bot_id,
+        current_user_id=current_user_id,
+    )
+    answer_rows: list[dict[str, object]] = []
+    try:
+        from pallas.core.foundation.db.context_repo_access import get_shared_context_repository
+    except Exception:
+        repo = None
+    else:
+        repo = get_shared_context_repository()
+    list_answers = getattr(repo, "list_answers_for_group_since", None) if repo is not None else None
+    if callable(list_answers):
+        try:
+            answers = await list_answers(int(group_id), 0)
+        except Exception:
+            answers = []
+        else:
+            for ans in answers:
+                messages = getattr(ans, "messages", None) or []
+                sample = str(messages[0] if messages else getattr(ans, "keywords", "") or "").strip()
+                answer_rows.append({
+                    "text": sample,
+                    "count": int(getattr(ans, "count", 0) or 0),
+                    "keywords": str(getattr(ans, "keywords", "") or "").strip(),
+                    "source": _ANSWER_SOURCE,
+                    "time": int(getattr(ans, "time", 0) or 0),
+                    "topic_hits": 0,
+                })
+
+    trigger_keywords = extract_chat_trigger_keywords(plain)
+    target_stance = infer_expression_affect_stance(plain)
+    merged_rows = list(recent_rows) + answer_rows
+    candidates = select_scored_expression_candidates(
+        merged_rows,
+        target_stance=target_stance,
+        trigger_keywords=trigger_keywords,
+        query_text=plain,
+        limit=3,
+    )
+    situational_lines = format_situational_expression_pairs(matched, candidates, user_text=plain)
+    return format_dynamic_expression_hint(trigger_hint, situational_lines)
+
+
 async def build_llm_chat_corpus_ending_hint(
     group_id: int | None,
     text: str = "",
@@ -311,6 +393,7 @@ async def handle_llm_chat(bot: Bot, event: Event):
 
     system_prompt = ""
     bundle = None
+    persona_bundle = None
     try:
         bundle, temperature, token_count = await build_persona_llm_context(
             int(bot.self_id),
@@ -320,6 +403,7 @@ async def handle_llm_chat(bot: Bot, event: Event):
             purpose="chat",
             base_system_path=cfg.llm_chat_system_prompt_path or None,
         )
+        persona_bundle = bundle
         system_prompt = bundle.system.strip()
     except Exception:
         logger.exception("compile_persona_prompt failed, falling back to static system prompt")
@@ -380,9 +464,9 @@ async def handle_llm_chat(bot: Bot, event: Event):
         system_prompt = f"{system_prompt.rstrip()}\n{expression_suffix}"
 
     persona_for_gate = None
-    if bundle is not None:
+    if persona_bundle is not None:
         try:
-            persona_raw = bundle.metadata.persona
+            persona_raw = persona_bundle.metadata.persona
             if isinstance(persona_raw, dict):
                 from pallas.product.persona.model import ResolvedPersona
 
@@ -450,14 +534,31 @@ async def handle_llm_chat(bot: Bot, event: Event):
     request_id = str(ULID())
     recent_turns = await list_user_llm_messages(int(bot.self_id), group_id, user_id, limit=6)
     variation_hint = build_recent_reply_variation_hint(recent_turns)
+    affect_system_block = ""
     if persona_for_gate is not None:
+        group_flavor = ""
+        group_style = getattr(persona_bundle.metadata, "group_style", None)
+        if persona_bundle is not None and isinstance(group_style, dict):
+            group_flavor = group_flavor_summary_from_style_snapshot(group_style)
         affect_contract = build_persona_affect_contract(
             persona_for_gate,
+            group_flavor_summary=group_flavor,
             repeated_openers=repeated_assistant_openers(recent_turns),
         )
+        affect_system_block = build_persona_affect_system_block(affect_contract)
         affect_hint = build_variation_hint_from_contract(affect_contract)
         if affect_hint and affect_hint not in variation_hint:
             variation_hint = f"{variation_hint}\n{affect_hint}".strip() if variation_hint else affect_hint
+    if affect_system_block:
+        system_prompt = f"{system_prompt.rstrip()}\n\n{affect_system_block}"
+    dynamic_expression_hint = await build_llm_chat_dynamic_expression_hint(
+        group_id,
+        plain or msg,
+        bot_id=int(bot.self_id),
+        current_user_id=user_id,
+    )
+    if dynamic_expression_hint:
+        system_prompt = f"{system_prompt.rstrip()}{dynamic_expression_hint}"
     if variation_hint:
         system_prompt = f"{system_prompt.rstrip()}\n\n{variation_hint}"
     behavior_scene = classify_behavior_scene(
@@ -549,6 +650,9 @@ async def handle_llm_chat(bot: Bot, event: Event):
             "last_reply_text": last_reply_text,
             "variation_hint": variation_hint,
             "variation_applied": bool(variation_hint),
+            "persona_affect_block": affect_system_block,
+            "persona_shaping_active": bool(affect_system_block),
+            "dynamic_expression_hint": dynamic_expression_hint,
             "behavior_scene": str(behavior_scene),
             "behavior_pattern_ids": [item.pattern_id for item in behavior_patterns],
             "behavior_actions": [str(item.action) for item in behavior_patterns],
@@ -571,6 +675,11 @@ async def handle_llm_chat(bot: Bot, event: Event):
             temperature=temperature,
             knowledge_retrieval_trace=knowledge_retrieval_trace,
             hybrid_retrieval_trace=hybrid_retrieval_trace,
+            llm_rewrite_metadata={
+                "variation_hint": variation_hint,
+                "persona_affect_block": affect_system_block,
+                "persona_shaping_active": bool(affect_system_block),
+            },
         ),
         cfg=llm_cfg,
     )

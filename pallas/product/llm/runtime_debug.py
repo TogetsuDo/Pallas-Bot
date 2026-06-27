@@ -45,6 +45,8 @@ def build_stage_inputs(
     messages: list[dict[str, Any]],
     metadata: dict[str, Any],
 ) -> dict[str, Any]:
+    from pallas.product.persona.shaping_observe import build_persona_shaping_summary
+
     tool_catalog = metadata.get("tool_catalog") if isinstance(metadata.get("tool_catalog"), dict) else {}
     tools = tool_catalog.get("tools") if isinstance(tool_catalog.get("tools"), list) else []
     hybrid_trace = (
@@ -90,6 +92,11 @@ def build_stage_inputs(
             **base,
             "mode": metadata.get("mode"),
             "task": metadata.get("task"),
+            "persona_shaping": build_persona_shaping_summary(
+                metadata,
+                system_prompt=system_prompt,
+                task=str(metadata.get("task") or ""),
+            ),
         },
     }
 
@@ -103,6 +110,11 @@ def append_request_snapshot(
     metadata: dict[str, Any],
 ) -> str:
     snapshot_id = f"reqsnap_{uuid.uuid4().hex[:16]}"
+    stage_inputs = build_stage_inputs(
+        system_prompt=system_prompt,
+        messages=messages,
+        metadata=metadata,
+    )
     row = {
         "request_snapshot_id": snapshot_id,
         "request_id": request_id,
@@ -111,18 +123,16 @@ def append_request_snapshot(
         "system_prompt": system_prompt,
         "messages": messages,
         "agent_stage_plan": list(metadata.get("agent_stage_plan") or []),
-        "stage_inputs": build_stage_inputs(
-            system_prompt=system_prompt,
-            messages=messages,
-            metadata=metadata,
-        ),
+        "stage_inputs": stage_inputs,
         "tool_catalog": metadata.get("tool_catalog") or {},
+        "persona_shaping": stage_inputs["generate"]["persona_shaping"],
         "metadata_subset": {
             "task": metadata.get("task"),
             "mode": metadata.get("mode"),
             "bot_id": metadata.get("bot_id"),
             "group_id": metadata.get("group_id"),
             "user_id": metadata.get("user_id"),
+            "persona_shaping_active": metadata.get("persona_shaping_active"),
         },
     }
     with request_snapshot_path().open("a", encoding="utf-8") as f:
@@ -144,10 +154,24 @@ def append_runtime_trace(*, request_id: str, trace: dict[str, Any]) -> None:
 def load_runtime_debug_bundle(*, request_id: str) -> dict[str, Any]:
     snapshot = find_request_snapshot(request_id=request_id)
     trace_row = find_runtime_trace(request_id=request_id)
+    persona_shaping: dict[str, Any] | None = None
+    if isinstance(snapshot, dict):
+        raw = snapshot.get("persona_shaping")
+        if isinstance(raw, dict):
+            persona_shaping = raw
+        else:
+            from pallas.product.persona.shaping_observe import build_persona_shaping_summary
+
+            persona_shaping = build_persona_shaping_summary(
+                snapshot.get("metadata_subset") if isinstance(snapshot.get("metadata_subset"), dict) else {},
+                system_prompt=str(snapshot.get("system_prompt") or ""),
+                task=str(snapshot.get("task") or ""),
+            )
     return {
         "request_id": request_id,
         "snapshot": snapshot,
         "trace": (trace_row or {}).get("trace"),
+        "persona_shaping": persona_shaping,
     }
 
 
@@ -167,6 +191,7 @@ def build_replay_payload(*, request_id: str, mode: str = "mock_tools") -> dict[s
         "stage_inputs": snapshot.get("stage_inputs") or {},
         "tool_catalog": snapshot.get("tool_catalog"),
         "metadata_subset": snapshot.get("metadata_subset"),
+        "persona_shaping": snapshot.get("persona_shaping"),
         "trace": bundle.get("trace"),
     }
 

@@ -85,4 +85,4 @@ def test_compile_group_style_prompt_ready() -> None:
 def test_compile_group_style_prompt_not_ready() -> None:
     prompt = compile_group_style_prompt(None)
     assert "<<STATS:group_style>>" in prompt
-    assert "样本不足" in prompt
+    assert "新群或样本尚少" in prompt

@@ -165,6 +165,11 @@ async def test_submit_chat_task_unified_llm_chat_payload_includes_agent_stage_pl
             user_id=30003,
             task="llm_chat",
             hybrid_retrieval_trace={"sources": ["memory"], "memory": {"hit_count": 1}},
+            llm_rewrite_metadata={
+                "variation_hint": "【本轮表达去重】\n- 最近解释偏满",
+                "persona_affect_block": "【本轮牛格塑形】\n- 像顺口接话",
+                "persona_shaping_active": True,
+            },
         ),
         cfg=cfg,
     )
@@ -175,6 +180,9 @@ async def test_submit_chat_task_unified_llm_chat_payload_includes_agent_stage_pl
     assert metadata["tools_enabled"] is True
     assert metadata["agent_stage_plan"] == ["plan", "tool_loop", "generate"]
     assert metadata["tool_schema_count"] == 2
+    assert "最近解释偏满" in str(metadata.get("variation_hint") or "")
+    assert "本轮牛格塑形" in str(metadata.get("persona_affect_block") or "")
+    assert metadata.get("persona_shaping_active") is True
     assert metadata["hybrid_retrieval_trace"]["memory"]["hit_count"] == 1
 
 

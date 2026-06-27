@@ -112,7 +112,7 @@ def compile_group_style_prompt(style_profile: dict[str, Any] | None, *, locale: 
         locale = "zh"
 
     if not snapshot["ready"]:
-        body = "样本不足，暂无可用画像。"
+        body = "新群或样本尚少；接话宜口语、直接，可带一点帕拉斯自信，避免客服式完整解释。"
         return wrap_stats_block("group_style", f"【群风格】{body}")
 
     signals = snapshot.get("signals") or {}

@@ -542,6 +542,11 @@ async def test_handle_llm_chat_records_route_and_fallback_meta(monkeypatch: pyte
     )
     monkeypatch.setattr(
         mod,
+        "build_llm_chat_dynamic_expression_hint",
+        AsyncMock(return_value=""),
+    )
+    monkeypatch.setattr(
+        mod,
         "build_llm_chat_corpus_ending_hint",
         AsyncMock(return_value="\n【语料收尾参考】当前话题可参考本群常接的短句：行啊、那确实。"),
     )
@@ -602,7 +607,11 @@ async def test_handle_llm_chat_records_route_and_fallback_meta(monkeypatch: pyte
         async def find_reply_bundle(self):
             return bundle
 
-    monkeypatch.setitem(__import__("sys").modules, "packages.repeater.model", SimpleNamespace(Chat=FakeChat))
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "packages.repeater.model",
+        SimpleNamespace(Chat=FakeChat, ChatData=SimpleNamespace),
+    )
     monkeypatch.setattr(mod, "maybe_submit_repeater_corpus_llm", AsyncMock(return_value=False))
 
     await mod.handle_llm_chat(bot, event)
@@ -620,9 +629,12 @@ async def test_handle_llm_chat_records_route_and_fallback_meta(monkeypatch: pyte
     assert payload["behavior_hint"] == ""
     submit_request = submit_mock.await_args.args[0]
     assert "【本轮表达去重】" in submit_request.system_prompt
+    assert "【本轮牛格塑形】" in submit_request.system_prompt
     assert "【表达习惯参考】" in submit_request.system_prompt
     assert "【收尾变化参考】" in submit_request.system_prompt
     assert "【语料收尾参考】" in submit_request.system_prompt
+    assert submit_request.llm_rewrite_metadata["persona_shaping_active"] is True
+    assert "【本轮牛格塑形】" in submit_request.llm_rewrite_metadata["persona_affect_block"]
     assert submit_request.hybrid_retrieval_trace["sources"] == ["memory"]
 
 

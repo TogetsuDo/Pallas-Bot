@@ -133,7 +133,7 @@ def test_compile_persona_prompt_rejects_poisoned_style_profile_enums() -> None:
         base_system="基础",
     )
     assert bundle.metadata.group_style["ready"] is False
-    assert "样本不足" in bundle.sections.group_style
+    assert "新群或样本尚少" in bundle.sections.group_style
 
 
 def test_assemble_persona_system_skips_empty_sections() -> None:
