@@ -4,6 +4,10 @@ from math import log1p
 from operator import itemgetter
 
 from pallas.product.persona.corpus_expression_habits import infer_expression_affect_stance
+from pallas.product.persona.dynamic_expression import (
+    clean_expression_reference_text,
+    is_usable_expression_reference,
+)
 
 RECENT_LIVE_SOURCE = "recent_live"
 REPEATER_SOURCE = "repeater"
@@ -201,6 +205,10 @@ def select_scored_expression_candidates(
     seen_endings: set[str] = set()
     seen_shapes: set[str] = set()
     for _score, text in scored:
+        cleaned = clean_expression_reference_text(text)
+        if not is_usable_expression_reference(cleaned):
+            continue
+        text = cleaned
         if text in seen_text:
             continue
         ending = ending_signature(text)
@@ -226,6 +234,10 @@ def select_scored_expression_candidates(
             limit=limit,
         )
         for text in supplemental_rows:
+            cleaned = clean_expression_reference_text(text)
+            if not is_usable_expression_reference(cleaned):
+                continue
+            text = cleaned
             if text in seen_text:
                 continue
             ending = ending_signature(text)

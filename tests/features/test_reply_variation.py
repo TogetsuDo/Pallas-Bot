@@ -41,6 +41,11 @@ def test_classify_repeated_opener_detects_animal_prefix() -> None:
     assert classify_repeated_opener("喵~ 你说得对") == "喵~"
 
 
+def test_classify_repeated_opener_ignores_numeric_prefix() -> None:
+    assert classify_repeated_opener("3498 某种回复") == ""
+    assert classify_repeated_opener("你快") == ""
+
+
 def test_build_recent_reply_variation_hint_flags_animal_and_kaomoji() -> None:
     turns = [
         SimpleNamespace(role="assistant", content="哞~ 谢谢啦！(*^_^*)"),

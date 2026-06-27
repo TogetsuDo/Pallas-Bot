@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from pallas.product.persona.dynamic_expression import (
     build_affect_trigger_turn_hint,
+    clean_expression_reference_text,
     format_dynamic_expression_hint,
     format_situational_expression_pairs,
+    is_usable_expression_reference,
     match_message_affect_triggers,
 )
 
@@ -34,17 +36,31 @@ def test_build_affect_trigger_turn_hint_describes_tone_shift() -> None:
 def test_format_situational_expression_pairs_pairs_trigger_with_candidate() -> None:
     lines = format_situational_expression_pairs(
         [{"phrase": "牛牛税"}],
-        ["那确实", "有点狠"],
+        ["那确实，有点道理", "有点狠但还行"],
         user_text="今天牛牛税多少",
     )
 
-    assert lines == ['当「牛牛税」时，可以参考「那确实」']
+    assert len(lines) == 1
+    assert "牛牛税" in lines[0]
+    assert "那确实" in lines[0]
+    assert "勿照抄" in lines[0]
+
+
+def test_is_usable_expression_reference_rejects_cq_and_fragments() -> None:
+    assert not is_usable_expression_reference("[CQ:at,qq=123] 你快")
+    assert not is_usable_expression_reference("你快")
+    assert not is_usable_expression_reference("3498")
+    assert is_usable_expression_reference("你都喊成这样了，还不进来那也太不给面子了")
+
+
+def test_clean_expression_reference_text_strips_cq() -> None:
+    assert clean_expression_reference_text("[CQ:at,qq=123] 你快进来呀") == "你快进来呀"
 
 
 def test_format_dynamic_expression_hint_joins_sections() -> None:
     hint = format_dynamic_expression_hint(
         "【情境触发】提到「开黑」时，按本群习惯接话",
-        ['当「开黑」时，可以参考「来一把」'],
+        ["当「开黑」时，可参考本群说法「来一把吧，走起」"],
     )
 
     assert "【情境触发】" in hint

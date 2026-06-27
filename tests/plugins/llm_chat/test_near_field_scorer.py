@@ -95,7 +95,7 @@ def test_select_scored_expression_candidates_dedupes_same_shape_endings() -> Non
 def test_select_scored_expression_candidates_allows_answer_only_fallback() -> None:
     rows = [
         {
-            "text": "那确实",
+            "text": "那确实有点离谱",
             "source": ANSWER_SOURCE,
             "count": 4,
             "keywords": "明日方舟 六星",
@@ -120,7 +120,7 @@ def test_select_scored_expression_candidates_allows_answer_only_fallback() -> No
         limit=3,
     )
 
-    assert picked == ["你这波有点狠", "那确实"]
+    assert picked == ["你这波有点狠", "那确实有点离谱"]
 
 
 def test_select_scored_expression_candidates_prefers_more_recent_complain_when_near_field_only() -> None:
@@ -195,7 +195,14 @@ def test_select_scored_expression_candidates_filters_warm_tail_when_complain_ans
 
 def test_select_scored_expression_candidates_falls_back_to_hot_rows_without_topic_match() -> None:
     rows = [
-        {"text": "行啊", "source": ANSWER_SOURCE, "count": 9, "keywords": "吃饭 下班", "time": 1, "topic_hits": 0},
+        {
+            "text": "今天也行吧",
+            "source": ANSWER_SOURCE,
+            "count": 9,
+            "keywords": "吃饭 下班",
+            "time": 1,
+            "topic_hits": 0,
+        },
         {"text": "也不是不行", "source": ANSWER_SOURCE, "count": 7, "keywords": "夜宵", "time": 2, "topic_hits": 0},
     ]
 
@@ -207,4 +214,4 @@ def test_select_scored_expression_candidates_falls_back_to_hot_rows_without_topi
         limit=3,
     )
 
-    assert picked == ["行啊", "也不是不行"]
+    assert picked == ["今天也行吧", "也不是不行"]

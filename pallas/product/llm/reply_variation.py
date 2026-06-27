@@ -27,7 +27,7 @@ _KAOMOJI_SUFFIX_RE = re.compile(r"\(\*[^)]{1,16}\*\)\s*$")
 _USER_WAIT_SUFFIXES = ("?", "？", "...", "…", "、")
 _USER_WAIT_TOKENS = ("等等", "等下", "先别", "我补一句", "还有", "然后")
 _STRUCTURE_MARKERS = ("先", "别", "可以", "不用", "慢慢", "一下", "这事", "你先")
-_GENERIC_PREFIX_MIN_LEN = 2
+_GENERIC_PREFIX_MIN_LEN = 3
 _GENERIC_PREFIX_MAX_LEN = 4
 
 
@@ -95,6 +95,8 @@ def normalize_generic_prefix(text: str) -> str:
             break
     prefix = "".join(prefix_chars).strip()
     if len(prefix) < _GENERIC_PREFIX_MIN_LEN:
+        return ""
+    if prefix.isdigit() or not any("\u4e00" <= char <= "\u9fff" for char in prefix):
         return ""
     if prefix in {"我是", "你是", "这个", "那个", "不是", "就是"}:
         return ""

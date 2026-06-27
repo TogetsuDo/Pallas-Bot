@@ -1,8 +1,60 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .prompt_guard import sanitize_prompt_literal
+
+_CQ_CODE_RE = re.compile(r"\[CQ:[^\]]+\]", re.IGNORECASE)
+_AT_PLAIN_RE = re.compile(r"@[^\s@，,。！!？?：:;；]{1,24}")
+_EXPRESSION_REF_MIN_LEN = 5
+_EXPRESSION_REF_MIN_CJK = 3
+_EXPRESSION_REF_MAX_LEN = 48
+
+
+def clean_expression_reference_text(text: str, *, max_len: int = _EXPRESSION_REF_MAX_LEN) -> str:
+    out = _CQ_CODE_RE.sub("", str(text or ""))
+    out = _AT_PLAIN_RE.sub("", out)
+    out = re.sub(r"\s+", " ", out).strip()
+    return sanitize_prompt_literal(out, max_len=max_len)
+
+
+def is_usable_expression_reference(
+    text: str,
+    *,
+    min_len: int = _EXPRESSION_REF_MIN_LEN,
+    min_cjk: int = _EXPRESSION_REF_MIN_CJK,
+) -> bool:
+    cleaned = clean_expression_reference_text(text, max_len=512)
+    if not cleaned or "[CQ:" in cleaned.upper():
+        return False
+    if len(cleaned) < min_len:
+        return False
+    if cleaned.isdigit() or re.fullmatch(r"[\d\s]+", cleaned):
+        return False
+    cjk_count = sum(1 for char in cleaned if "\u4e00" <= char <= "\u9fff")
+    if cjk_count == 0:
+        return False
+    if cjk_count < min_cjk and len(cleaned) < 12:
+        return False
+    digit_ratio = sum(char.isdigit() for char in cleaned) / max(len(cleaned), 1)
+    if digit_ratio >= 0.5:
+        return False
+    return True
+
+
+def filter_expression_reference_candidates(candidates: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in candidates:
+        cleaned = clean_expression_reference_text(item)
+        if not cleaned or cleaned in seen:
+            continue
+        if not is_usable_expression_reference(cleaned):
+            continue
+        seen.add(cleaned)
+        out.append(cleaned)
+    return out
 
 
 def match_message_affect_triggers(plain_text: str, triggers: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -56,8 +108,7 @@ def format_situational_expression_pairs(
     user_text: str = "",
 ) -> list[str]:
     lines: list[str] = []
-    remaining = [sanitize_prompt_literal(str(item or "").strip(), max_len=24) for item in candidates]
-    remaining = [item for item in remaining if item]
+    remaining = filter_expression_reference_candidates([str(item or "").strip() for item in candidates])
 
     for item in matched_triggers[:3]:
         phrase = sanitize_prompt_literal(str(item.get("phrase") or ""), max_len=24)
@@ -66,15 +117,15 @@ def format_situational_expression_pairs(
         if not remaining:
             break
         reply = remaining.pop(0)
-        lines.append(f"当「{phrase}」时，可以参考「{reply}」")
+        lines.append(f"当「{phrase}」时，可参考本群说法「{reply}」（勿照抄 @、CQ 码或半句碎片）")
 
     if remaining and not matched_triggers:
         query_snippet = sanitize_prompt_literal(str(user_text or "").strip()[:16], max_len=16)
         for reply in remaining[:2]:
             if query_snippet:
-                lines.append(f"针对「{query_snippet}」，可以参考「{reply}」")
+                lines.append(f"针对「{query_snippet}」，可参考本群说法「{reply}」（勿照抄 @、CQ 码或半句碎片）")
             else:
-                lines.append(f"可以参考本群说法「{reply}」")
+                lines.append(f"可参考本群说法「{reply}」（勿照抄 @、CQ 码或半句碎片）")
     return lines
 
 
