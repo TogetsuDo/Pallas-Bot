@@ -4371,7 +4371,7 @@ class _LlmProvidersConfigData(BaseModel):
 class _LlmProviderTestData(BaseModel):
     provider_id: str
     reachable: bool
-    latency_ms: int | None = None
+    latency_ms: float | None = None
     error: str | None = None
 
 
@@ -4454,7 +4454,7 @@ class _LlmProvidersRoutingBody(BaseModel):
 
 
 class _LlmProvidersDocumentBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
     providers: list[_LlmProviderRowBody] = Field(default_factory=list)
     routing: _LlmProvidersRoutingBody = Field(default_factory=_LlmProvidersRoutingBody)

@@ -299,3 +299,42 @@ def test_llm_wizard_status_summarizes_next_step(monkeypatch) -> None:
     assert data["checks"][0]["id"] == "ai_service"
     assert data["checks"][2]["ok"] is False
     assert data["next_step"] == "至少存在一个可达提供方"
+
+
+async def _fake_probe_provider(provider_id: str, *, cfg=None, timeout_sec: float = 15.0):
+    _ = (provider_id, cfg, timeout_sec)
+    return {"provider_id": "local", "reachable": True, "latency_ms": 26.4, "error": ""}
+
+
+def test_llm_providers_put_ignores_readonly_metadata(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    async def fake_save(document, **kwargs):
+        _ = kwargs
+        captured["document"] = document
+        return {"providers_file": "/tmp/providers.toml", "provider_status": [], "task_routing": {}}
+
+    monkeypatch.setattr("pallas.product.llm.model_admin.save_providers_config", fake_save)
+    client = _build_client(monkeypatch)
+    response = client.put(
+        "/pallas/api/common-config/llm/providers",
+        json={
+            "providers": [],
+            "routing": {"chain_fallback": [], "tasks": {}},
+            "providers_file": "/tmp/x",
+            "file_exists": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert captured["document"] == {"providers": [], "routing": {"chain_fallback": [], "tasks": {}}}
+
+
+def test_llm_provider_test_accepts_float_latency(monkeypatch) -> None:
+    monkeypatch.setattr("pallas.product.llm.model_admin.probe_provider", _fake_probe_provider)
+    client = _build_client(monkeypatch)
+    response = client.post("/pallas/api/common-config/llm/providers/local/test")
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["data"]["reachable"] is True
+    assert payload["data"]["latency_ms"] == 26.4

@@ -131,7 +131,7 @@ class LlmProviderTestData(BaseModel):
     ok: bool
     provider_id: str = ""
     model: str = ""
-    latency_ms: int | None = None
+    latency_ms: float | None = None
     error: str = ""
     detail: str = ""
 
