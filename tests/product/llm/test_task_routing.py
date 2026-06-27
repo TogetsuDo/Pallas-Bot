@@ -55,25 +55,45 @@ async def test_resolve_task_route_prefers_ai_health_task_routing_provider(monkey
     async def fail_local(**_kwargs):
         raise AssertionError("health route should be preferred before local-routing fetch")
 
+    async def fake_providers(**_kwargs):
+        return {
+            "providers": [
+                {
+                    "id": "local",
+                    "kind": "local",
+                    "default_model": "qwen3:8b",
+                    "task_models": {"drunk": "qwen2.5:0.5b"},
+                },
+                {
+                    "id": "remote",
+                    "kind": "remote",
+                    "default_model": "deepseek-v4-flash",
+                    "task_models": {"llm_chat": "deepseek-v4-flash"},
+                },
+            ],
+            "routing": {"chain_fallback": ["local", "remote"], "tasks": {}},
+        }
+
     monkeypatch.setattr("pallas.product.llm.task_routing.probe_ai_service_health", fake_health)
     monkeypatch.setattr("pallas.product.llm.task_routing.fetch_local_routing_config", fail_local)
+    monkeypatch.setattr("pallas.product.llm.model_admin.fetch_providers_config", fake_providers)
 
     drunk_route = await resolve_task_route("drunk")
     chat_route = await resolve_task_route("llm_chat")
 
     assert drunk_route == TaskRouteSpec(
         task="drunk",
-        resolved_model=None,
+        resolved_model="qwen2.5:0.5b",
         provider_hint="local",
         source="ai_health",
-        fallback_models=(),
+        fallback_models=("deepseek-v4-flash",),
     )
     assert chat_route == TaskRouteSpec(
         task="llm_chat",
-        resolved_model=None,
+        resolved_model="deepseek-v4-flash",
         provider_hint="remote",
         source="ai_health",
-        fallback_models=(),
+        fallback_models=("qwen3:8b",),
     )
 
 

@@ -12,6 +12,8 @@ _health_cache: dict[str, Any] = {}
 _health_cache_at = 0.0
 _local_routing_cache: dict[str, Any] = {}
 _local_routing_cache_at = 0.0
+_providers_cache: dict[str, Any] = {}
+_providers_cache_at = 0.0
 
 
 @dataclass(frozen=True)
@@ -39,11 +41,13 @@ def serialize_task_route(spec: TaskRouteSpec) -> dict[str, Any]:
 
 
 def clear_task_route_cache() -> None:
-    global _health_cache_at, _local_routing_cache_at
+    global _health_cache_at, _local_routing_cache_at, _providers_cache_at
     _health_cache.clear()
     _local_routing_cache.clear()
+    _providers_cache.clear()
     _health_cache_at = 0.0
     _local_routing_cache_at = 0.0
+    _providers_cache_at = 0.0
 
 
 def _mapping_lookup(mapping: Any, task: str) -> str | None:
@@ -92,6 +96,70 @@ async def _cached_local_routing_payload() -> dict[str, Any]:
     return payload
 
 
+async def _cached_providers_payload() -> dict[str, Any]:
+    global _providers_cache_at
+    now = time.monotonic()
+    if _providers_cache and now - _providers_cache_at < _CACHE_TTL_SEC:
+        return dict(_providers_cache)
+    try:
+        from .model_admin import fetch_providers_config
+
+        payload = await fetch_providers_config(timeout_sec=2.0)
+    except Exception:
+        payload = {}
+    payload = dict(payload) if isinstance(payload, dict) else {}
+    _providers_cache.clear()
+    _providers_cache.update(payload)
+    _providers_cache_at = now
+    return payload
+
+
+def _provider_row(providers_payload: dict[str, Any], provider_id: str) -> dict[str, Any] | None:
+    rows = providers_payload.get("providers")
+    if not isinstance(rows, list):
+        return None
+    for raw in rows:
+        if isinstance(raw, dict) and str(raw.get("id") or "").strip() == provider_id:
+            return raw
+    return None
+
+
+def _resolve_provider_task_model(providers_payload: dict[str, Any], provider_id: str, task: str) -> str | None:
+    row = _provider_row(providers_payload, provider_id)
+    if not row:
+        return None
+    task_models = row.get("task_models")
+    if isinstance(task_models, dict):
+        model = str(task_models.get(task) or "").strip()
+        if model:
+            return model
+    default_model = str(row.get("default_model") or "").strip()
+    return default_model or None
+
+
+def _chain_fallback_models(
+    providers_payload: dict[str, Any],
+    *,
+    task: str,
+    primary_provider: str,
+) -> tuple[str, ...]:
+    routing = providers_payload.get("routing")
+    if not isinstance(routing, dict):
+        return ()
+    chain_fallback = routing.get("chain_fallback")
+    if not isinstance(chain_fallback, list):
+        return ()
+    out: list[str] = []
+    for raw in chain_fallback:
+        provider_id = str(raw or "").strip()
+        if not provider_id or provider_id == primary_provider:
+            continue
+        model = _resolve_provider_task_model(providers_payload, provider_id, task)
+        if model:
+            out.append(model)
+    return tuple(out)
+
+
 def _fallback_models_from_payload(payload: dict[str, Any], task: str) -> tuple[str, ...]:
     chains = payload.get("task_fallback_chains")
     if isinstance(chains, dict):
@@ -129,12 +197,22 @@ async def resolve_task_route(task: str, *, explicit_model: str | None = None) ->
 
     routed_provider = _mapping_lookup(llm_info.get("task_routing"), normalized_task)
     if routed_provider:
+        providers_payload = await _cached_providers_payload()
+        resolved_model = _resolve_provider_task_model(providers_payload, routed_provider, normalized_task)
+        if not resolved_model:
+            resolved_model = _mapping_lookup(llm_info.get("local_task_models"), normalized_task)
+        chain_fallbacks = _chain_fallback_models(
+            providers_payload,
+            task=normalized_task,
+            primary_provider=routed_provider,
+        )
+        merged_fallbacks = chain_fallbacks or fallbacks
         return TaskRouteSpec(
             task=normalized_task,
-            resolved_model=None,
+            resolved_model=resolved_model,
             provider_hint=routed_provider,
             source="ai_health",
-            fallback_models=fallbacks,
+            fallback_models=merged_fallbacks,
         )
 
     local_model = _mapping_lookup(llm_info.get("local_task_models"), normalized_task)

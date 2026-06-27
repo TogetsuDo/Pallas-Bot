@@ -4351,6 +4351,7 @@ class _LlmProviderConfigRowData(BaseModel):
     kind: str
     base_url: str = ""
     api_key_env: str = ""
+    api_key_set: bool = False
     default_model: str = ""
     enabled: bool = False
     task_models: dict[str, str] = Field(default_factory=dict)
@@ -4440,6 +4441,7 @@ class _LlmProviderRowBody(BaseModel):
     id: str = Field(min_length=1, max_length=64)
     kind: str = Field(default="remote")
     base_url: str = ""
+    api_key: str = ""
     api_key_env: str = ""
     default_model: str = ""
     enabled: bool = True
