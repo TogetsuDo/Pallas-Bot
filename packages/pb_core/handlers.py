@@ -19,6 +19,7 @@ from .admins import (
     parse_add_bot_admin_targets,
 )
 from .console import format_console_hint_text, format_plugins_summary_text
+from .restart_notify import record_restart_notify
 from .status import format_runtime_status_text
 from .update import format_update_check_text
 
@@ -68,8 +69,13 @@ async def handle_restart(ctx: PluginHandlerContext) -> None:
         await ctx.finish("当前环境未检测到 run_unified_bot / run_sharded_bot，无法自动重启。")
         return
     mode = resolve_bot_mode("auto")
+    record_restart_notify(
+        user_id=int(ctx.user_id),
+        bot_id=int(ctx.event.self_id),
+        mode=mode,
+    )
     scheduled = schedule_bot_restart(mode=mode, delay_s=3.0)
     if not scheduled:
         await ctx.finish("重启调度失败，请改用 WebUI 或 pallas restart。")
         return
-    await ctx.finish(f"将在约 3 秒后重启（{mode}）。若未恢复请查看日志。")
+    await ctx.finish(f"将在约 3 秒后重启（{mode}）。恢复后会私聊通知你。")

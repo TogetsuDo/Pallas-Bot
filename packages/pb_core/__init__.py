@@ -15,6 +15,7 @@ from pallas.core.perm.metadata_defaults import (
 )
 from pallas.core.perm.metadata_text import SCENE_BOTH, SCENE_PRIVATE, join_usage, usage_line
 
+from . import startup as _startup  # noqa: F401
 from .handlers import (
     handle_add_bot_admin,
     handle_console,
