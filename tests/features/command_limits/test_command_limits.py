@@ -143,7 +143,7 @@ def test_command_limits_ui_label_prefers_chinese_name(monkeypatch):
     from pallas.core.limits.schema import build_command_limits_ui, clear_merged_command_limits_cache
 
     clear_merged_command_limits_cache()
-    maa_meta = _plugin_meta("maa", ["maa.control", "maa.status", "maa.raw_task"])
+    maa_meta = _plugin_meta("maa", ["maa.control", "maa.status", "maa.unknown_cmd"])
     monkeypatch.setattr(
         "pallas.core.limits.schema.get_loaded_plugins",
         lambda: [SimpleNamespace(name="maa", metadata=maa_meta)],
@@ -165,7 +165,7 @@ def test_command_limits_ui_label_prefers_chinese_name(monkeypatch):
     # 2) 无声明 label 时回退到集中映射的中文名
     assert commands["maa.control"]["label"] == "MAA 远控指令"
     # 3) 既无声明也无映射时回退为裸命令 id
-    assert commands["maa.raw_task"]["label"] == "maa.raw_task"
+    assert commands["maa.unknown_cmd"]["label"] == "maa.unknown_cmd"
 
 
 def test_command_limits_ui_uses_override_values(monkeypatch):

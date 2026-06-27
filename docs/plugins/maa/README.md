@@ -40,11 +40,17 @@
 | `牛牛MAA设备名` | 设置别名 |
 ## 命令权限
 
-| 命令 ID | 默认等级 |
-| --- | --- |
-| `maa.bind` | everyone |
-| `maa.control` | everyone |
-| `maa.status` | everyone |
+| 命令 ID | 默认等级 | 说明 |
+| --- | --- | --- |
+| `maa.bind` | 所有人 | 牛牛绑定MAA |
+| `maa.switch_device` | 所有人 | 牛牛切换MAA设备 |
+| `maa.device_alias` | 所有人 | 牛牛MAA设备名 |
+| `maa.control` | 所有人 | 牛牛长草 / 牛牛作战等远控口令 |
+| `maa.raw_task` | 所有人 | 牛牛MAA任务 |
+| `maa.clear_queue` | 所有人 | 牛牛清空MAA队列 |
+| `maa.status` | 所有人 | 牛牛MAA状态 |
+
+可在 WebUI 插件页或「通用配置 → 命令权限」覆盖。
 
 ## 配置项
 
