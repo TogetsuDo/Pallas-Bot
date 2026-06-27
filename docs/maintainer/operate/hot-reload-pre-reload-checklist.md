@@ -48,6 +48,15 @@
 2. 若 SSE 进度流 `phase=failed`，勿假定已安装成功
 3. 按 activation_policy 选择牛牛重启或全栈重启
 
+## 5. 社区插件安装/更新/卸载后
+
+`community_plugin_ops` / 商店安装返回 `activation_action` 时：
+
+1. **首次安装** + `hot-reload`：无需重启；确认插件页已出现且命令可用
+2. **更新**（无论是否勾重启）：NoneBot 无法卸载旧 matcher；未重启前仍运行旧代码
+3. **分片**：社区插件在 worker 加载；重启优先 **workers-only**（WebUI「立即重启」在分片下亦如此）
+4. `extra_plugin_dirs` 未含 `local/plugins` 时，安装后无法热加载，须先改配置再重启
+
 ## 相关
 
 - [hot-reload-tiers.md](../../architecture/hot-reload-tiers.md)

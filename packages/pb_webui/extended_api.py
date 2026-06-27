@@ -4494,21 +4494,17 @@ class _RequestActionsBatchBody(BaseModel):
 
 
 async def _resolve_community_plugin_target(body: _CommunityPluginActionBody) -> tuple[str, str, str]:
-    plugin_id = body.plugin_id.strip()
-    repo_url = (body.repository_url or "").strip()
-    ref = (body.ref or "main").strip() or "main"
-    if not repo_url:
-        from pallas.console.webui.community_plugin_index import load_community_plugin_index_safe
+    from pallas.console.cli.community_plugin_target import resolve_community_plugin_target
+    from pallas.console.webui.community_plugin_install import CommunityPluginInstallError
 
-        index = await load_community_plugin_index_safe()
-        for entry in index.get("plugins") or []:
-            if str(entry.get("plugin_id")) == plugin_id:
-                repo_url = str(entry.get("repository_url") or "").strip()
-                ref = str(entry.get("ref") or ref).strip() or "main"
-                break
-    if not repo_url:
-        raise HTTPException(status_code=400, detail="缺少 repository_url，且索引中无该插件")
-    return plugin_id, repo_url, ref
+    try:
+        return await resolve_community_plugin_target(
+            body.plugin_id,
+            repository_url=body.repository_url,
+            ref=body.ref or "main",
+        )
+    except CommunityPluginInstallError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail) from e
 
 
 async def _apply_bot_config_patch(account: int, body: _BotConfigPatch) -> dict[str, Any]:

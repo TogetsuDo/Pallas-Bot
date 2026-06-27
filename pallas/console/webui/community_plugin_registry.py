@@ -121,6 +121,7 @@ def build_community_plugin_row(
         "installed_ref": installed_ref,
         "latest_ref": latest_ref,
         "status": status,
+        "activation_policy": "hot-reloadable",
     }
 
 
@@ -139,6 +140,7 @@ async def build_community_plugin_store() -> dict[str, Any]:
         "extra_plugin_dirs_ready": extra_plugin_dirs_ready(),
         "webui_install": webui_community_install_enabled(),
         "restart_available": bot_lifecycle_available(),
+        "activation_policy": "hot-reloadable",
         "update_checked_at": snapshot_checked_at(),
         "plugins": rows,
     }

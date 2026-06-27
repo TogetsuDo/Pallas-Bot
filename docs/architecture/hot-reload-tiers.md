@@ -13,7 +13,20 @@
 ## 明确不做
 
 - NoneBot matcher 级热卸载/重载**不作为默认运维路径**。
-- 扩展 pip 包安装：`extension_install` 仍返回 `needs_restart`；与 **牛牛重启**（`pb_core`）共用调度 API。
+- 扩展 pip 包**更新**已加载模块：不支持运行时热更，须重启（PoC 仅覆盖**首次安装**后加载）。
+- 社区插件 **git 更新/卸载**：同上，不支持代码级热更；**首次安装**在 unified + `extra_plugin_dirs` 就绪时可热加载。
+
+## 社区插件激活策略
+
+社区插件（`local/plugins/<id>/`）经 `community_plugin_ops` → `append_community_activation_result` 生效，与官方扩展共用 `activation_action` / `restart_scheduled` 字段。
+
+| 操作 | activation_policy | unified（不勾重启） | shard（勾重启） |
+| --- | --- | --- | --- |
+| **首次安装** | `hot-reloadable` | `hot_load_extra_dir_plugin()` → `hot-reload` | 提示待重启；勾重启则 **workers-only** |
+| **git 更新** | `workers-restart` | 提示待重启（诚实说明不支持热更） | 勾重启 → **workers-only** |
+| **卸载** | `full-restart` | 提示待重启 | 勾重启 → **workers-only** |
+
+前提：`config/pallas.toml` 的 `[bootstrap].extra_plugin_dirs` 含 `"local/plugins"`，否则安装后无法热加载。
 
 ## 官方扩展激活策略（activation_policy）
 
@@ -68,6 +81,8 @@ extra={
 | 改 help / ingress 声明 | 插件 `reload_policy: metadata` 时 WebUI 保存可触发元数据索引重建；或 `pallas plugin reload <name>` / 控制台 API |
 | 改 Python 代码 | 重启 Bot；`reload_policy: full` 可尝试 `pallas plugin reload`（失败则重启）；群内 **牛牛重启** 或 `pallas restart` |
 | 安装官方扩展 | WebUI 插件商店；勾选「安装并重启」或手动重启 |
+| 安装社区插件 | WebUI 社区商店 / git 安装；单机 unified 首次安装可热加载；**更新须重启** |
+| 更新社区插件 | 商店「更新并重启」；分片优先 workers-only |
 
 ## 相关文档
 

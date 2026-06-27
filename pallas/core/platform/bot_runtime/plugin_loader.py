@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import sys
 
 import nonebot
 from nonebot import logger
@@ -73,12 +74,36 @@ def _prioritize_scheduler_modules(module_paths: list[str]) -> list[str]:
     return sched + rest
 
 
+def clear_poisoned_apscheduler_import(*, role_label: str) -> bool:
+    """移除未通过 load_plugin 注册的提前 import，避免 NoneBot 拒绝加载。"""
+    existing = sys.modules.get(_APSCHEDULER_MODULE)
+    if existing is None or getattr(existing, "__plugin__", None) is not None:
+        return False
+    logger.warning(
+        "启动：{} 检测到 {} 被提前 import，清理后重试 load_plugin",
+        role_label,
+        _APSCHEDULER_MODULE,
+    )
+    del sys.modules[_APSCHEDULER_MODULE]
+    prefix = f"{_APSCHEDULER_MODULE}."
+    for name in list(sys.modules):
+        if name.startswith(prefix):
+            del sys.modules[name]
+    return True
+
+
 def load_apscheduler_plugin_first(*, role_label: str, loaded_short: set[str]) -> bool:
     if _load_slot_key(_APSCHEDULER_MODULE) in loaded_short:
-        return False
+        return True
+    clear_poisoned_apscheduler_import(role_label=role_label)
     if _load_plugin_module(_APSCHEDULER_MODULE, role_label=role_label, loaded_short=loaded_short):
         register_apscheduler_startup_hook()
         return True
+    logger.error(
+        "启动：{} 无法加载 {}；依赖 scheduler 的插件会报 Cannot load plugin",
+        role_label,
+        _APSCHEDULER_MODULE,
+    )
     return False
 
 
@@ -91,6 +116,67 @@ def load_bundled_plugin_entry_submodules(module_path: str) -> None:
         return
     for sub in subs:
         importlib.import_module(f"{module_path}.{sub}")
+
+
+def runtime_loaded_short_names() -> set[str]:
+    """当前进程已加载插件的 canonical 短名集合（供运行时热加载去重）。"""
+    out: set[str] = set()
+    try:
+        from nonebot import get_loaded_plugins
+    except Exception:
+        return out
+    for plugin in get_loaded_plugins():
+        nb = str(getattr(plugin, "name", "") or "").strip()
+        if nb:
+            out.add(_load_slot_key(nb))
+        mod = getattr(plugin, "module", None)
+        mname = getattr(mod, "__name__", "") if mod is not None else ""
+        if mname:
+            out.add(_load_slot_key(mname.rsplit(".", 1)[-1]))
+    return out
+
+
+def hot_load_extra_dir_plugin(plugin_id: str, *, role_label: str = "runtime") -> bool:
+    """尝试从 extra_plugin_dirs 热加载单个社区插件（仅首次加载；已加载则跳过）。"""
+    pid = (plugin_id or "").strip()
+    if not pid:
+        return False
+    if pid in runtime_loaded_short_names():
+        logger.debug("运行时热加载：{} 已加载，跳过", pid)
+        return False
+
+    from pallas.core.foundation.config.repo_settings import resolve_extra_plugin_dirs
+    from pallas.core.plugin_reload.metadata_index import reload_plugin_metadata_index
+
+    loaded_short = runtime_loaded_short_names()
+    load_apscheduler_plugin_first(role_label=role_label, loaded_short=loaded_short)
+    if _load_slot_key(pid) in loaded_short:
+        logger.debug("运行时热加载：{} 同名槽位已占用", pid)
+        return False
+
+    for rel_dir in resolve_extra_plugin_dirs():
+        norm = rel_dir.strip().replace("\\", "/").rstrip("/")
+        pkg_path = PROJECT_ROOT / norm / pid
+        if not (pkg_path / "__init__.py").is_file():
+            continue
+        try:
+            plugin = nonebot.load_plugin(pkg_path)
+            found = [plugin] if plugin is not None else []
+        except Exception as e:
+            logger.warning("运行时热加载：{} 加载 {} 失败: {}", role_label, pkg_path, e)
+            continue
+        if not found:
+            continue
+        for loaded in found:
+            mod = getattr(loaded, "module", None)
+            name = getattr(mod, "__name__", "") if mod is not None else ""
+            if name:
+                load_bundled_plugin_entry_submodules(name)
+        reload_plugin_metadata_index()
+        logger.info("运行时热加载：{} 已从 {} 加载", pid, norm)
+        return True
+    logger.warning("运行时热加载：{} 未在 extra_plugin_dirs 中找到有效包", pid)
+    return False
 
 
 def _load_plugin_module(
@@ -115,7 +201,8 @@ def _load_plugin_module(
         loaded_short.add(slot)
         return True
     except Exception as e:
-        logger.warning("启动：{} 加载 {} 失败: {}", role_label, module_path, e)
+        log = logger.error if _short_name(module_path) == _APSCHEDULER_MODULE else logger.warning
+        log("启动：{} 加载 {} 失败: {}", role_label, module_path, e)
         return False
 
 
@@ -301,6 +388,9 @@ def load_plugins_for_role() -> None:
         return
 
     if not _PLUGINS_ROOT.is_dir():
+        loaded_short: set[str] = set()
+        role_label = "hub" if is_hub_role() else "worker"
+        load_apscheduler_plugin_first(role_label=role_label, loaded_short=loaded_short)
         nonebot.load_from_toml("pyproject.toml")
         return
 

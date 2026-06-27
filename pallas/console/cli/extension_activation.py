@@ -8,7 +8,10 @@ from nonebot import logger
 
 from pallas.console.cli.bot_process import bot_lifecycle_available, schedule_bot_restart
 from pallas.console.cli.runtime_mode import resolve_bot_mode
-from pallas.core.platform.bot_runtime.plugin_loader import _load_plugin_module
+from pallas.core.platform.bot_runtime.plugin_loader import (
+    _load_plugin_module,
+    load_apscheduler_plugin_first,
+)
 from pallas.core.platform.bot_runtime.plugin_matrix import (
     EXTRA_PACKAGE_MODULES,
     official_extension_activation_policy,
@@ -21,6 +24,7 @@ def _hot_load_package_modules(package: str) -> bool:
     if not modules:
         return False
     loaded_short: set[str] = set()
+    load_apscheduler_plugin_first(role_label="runtime", loaded_short=loaded_short)
     loaded = False
     for module_path in modules:
         loaded = _load_plugin_module(module_path, role_label="runtime", loaded_short=loaded_short) or loaded

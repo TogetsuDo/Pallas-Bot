@@ -98,7 +98,8 @@ uv run pallas sync              # 包装 uv sync
 uv run pallas update bot        # git 更新本体（可加 --restart）
 uv run pallas update webui      # 下载 WebUI dist
 uv run pallas ext list          # 官方扩展
-uv run pallas plugin …          # 插件运维
+uv run pallas plugin reload …   # 按 reload_policy 重载
+uv run pallas plugin community …  # 社区插件 git 安装/更新
 uv run pallas deploy shard      # 应用 deploy 分片模板
 ```
 

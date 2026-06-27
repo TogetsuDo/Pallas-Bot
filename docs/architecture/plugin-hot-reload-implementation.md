@@ -12,9 +12,9 @@
 | --- | --- | --- |
 | 对象 | 已加载插件的配置/元数据/代码变更 | pip 安装/更新/卸载后的进程级生效 |
 | 入口 | WebUI 插件配置保存 | WebUI 插件商店 / CLI |
-| 现状 | 配置级 ✅；元数据级 ✅；代码级 ❌ | CLI 已分级；WebUI 仍一律 `needs_restart: true` |
+| 现状 | 配置级 ✅；元数据级 ✅；代码级 ❌ | CLI / WebUI 已分级（`extension_ops` / `community_plugin_ops`） |
 
-CLI 侧 `append_activation_result()` 已实现（`pallas/console/cli/extension_activation.py`），WebUI `extension_install.py` 未接线。
+CLI 侧 `append_activation_result()` 已实现（`pallas/console/cli/extension_activation.py`）；WebUI 经 `extension_ops` / `community_plugin_ops` 共用激活流水线。
 
 ## 目标
 
@@ -125,6 +125,18 @@ pip install/update/uninstall
 
 - unified + draw/bot-status 安装成功后可 `hot-reload`（或 honest fallback）
 - 测试覆盖：无 restart 热加载成功、热加载失败 fallback 重启
+
+### Phase 5 — 社区插件首次安装热加载
+
+**范围**：`community_plugin_activation.py`、`hot_load_extra_dir_plugin()`、WebUI 社区商店
+
+**现状（2026-06-27）**
+
+- unified + `extra_plugin_dirs` 就绪：git 安装成功后尝试 `hot_load_extra_dir_plugin()`，成功则 `activation_action=hot-reload`。
+- 分片：不在 worker 内热插拔；勾「安装并重启」调度 **workers-only**。
+- **更新/卸载**：不支持运行时热更；文案诚实说明须重启；更新 policy 为 `workers-restart`。
+
+**已知限制**：与 Phase 4 相同（无 matcher 卸载、更新须重启）。
 
 ## API 草案（Phase 2）
 

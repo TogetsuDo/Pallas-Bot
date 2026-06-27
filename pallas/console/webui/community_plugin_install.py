@@ -158,7 +158,7 @@ async def install_community_plugin(
             status_code=502,
         )
     dirs_ready = extra_plugin_dirs_ready()
-    msg = f"已安装到 local/plugins/{pid}/，请重启 Bot 后加载。"
+    msg = f"已安装到 local/plugins/{pid}/。"
     if not dirs_ready:
         msg += ' 请在 config/pallas.toml 的 [bootstrap].extra_plugin_dirs 加入 "local/plugins"。'
     return {
@@ -219,7 +219,7 @@ async def update_community_plugin(
             status_code=502,
         )
     dirs_ready = extra_plugin_dirs_ready()
-    msg = f"已更新 local/plugins/{pid}/，请重启 Bot 后加载。"
+    msg = f"已更新 local/plugins/{pid}/。"
     if not dirs_ready:
         msg += ' 请在 config/pallas.toml 的 [bootstrap].extra_plugin_dirs 加入 "local/plugins"。'
     return {
