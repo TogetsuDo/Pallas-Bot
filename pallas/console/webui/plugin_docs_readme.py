@@ -2,7 +2,22 @@
 
 from __future__ import annotations
 
+import re
+
 from pallas.core.foundation.paths import PROJECT_ROOT
+
+_BRAND_AVATAR_HTML = re.compile(
+    r'(<img\b[^>]*\bsrc=["\'])/pallas/assets/brand-avatar(?:-hd)?\.png(["\'])',
+    re.IGNORECASE,
+)
+_BRAND_AVATAR_MD = re.compile(
+    r"(!\[[^\]]*]\()/pallas/assets/brand-avatar(?:-hd)?\.png(\))",
+    re.IGNORECASE,
+)
+_PLUGIN_ASSETS = re.compile(
+    r'(!\[[^\]]*]\(|<img\b[^>]*\bsrc=["\'])(?:\./)?assets/',
+    re.IGNORECASE,
+)
 
 
 def bundled_plugin_readme_relative_path(plugin_id: str) -> str | None:
@@ -33,6 +48,34 @@ def bundled_plugin_readme_relative_path(plugin_id: str) -> str | None:
     return None
 
 
+def normalize_bundled_plugin_readme_markdown(plugin_id: str, markdown: str) -> str:
+    """改写 bundled README 资源路径；包内存在 cover 时替换顶图 brand-avatar。"""
+    pid = canonical_plugin_id(plugin_id)
+    out = (markdown or "").replace("../assets/", "/pallas/assets/").replace("docs/assets/", "/pallas/assets/")
+    if not pid:
+        return out
+
+    asset_prefix = f"/pallas/plugin-assets/{pid}/"
+    out = _PLUGIN_ASSETS.sub(rf"\1{asset_prefix}assets/", out)
+
+    from pallas.console.webui.plugin_package_assets import (
+        plugin_roots_for_id,
+        resolve_plugin_package_visual_urls,
+    )
+
+    roots = plugin_roots_for_id(pid)
+    root = roots[0] if roots else None
+    cover_url = resolve_plugin_package_visual_urls(plugin_id=pid, plugin_root=root).get("cover")
+    if not cover_url:
+        return out
+
+    out, html_n = _BRAND_AVATAR_HTML.subn(rf"\1{cover_url}\2", out, count=1)
+    if html_n:
+        return out
+    out, _ = _BRAND_AVATAR_MD.subn(rf"\1{cover_url}\2", out, count=1)
+    return out
+
+
 def read_bundled_plugin_readme(plugin_id: str) -> dict[str, str] | None:
     rel = bundled_plugin_readme_relative_path(plugin_id)
     if not rel:
@@ -43,10 +86,11 @@ def read_bundled_plugin_readme(plugin_id: str) -> dict[str, str] | None:
         return None
     if not markdown.strip():
         return None
+    clean = canonical_plugin_id(plugin_id)
     return {
-        "plugin": canonical_plugin_id(plugin_id),
+        "plugin": clean,
         "relative_path": rel,
-        "markdown": markdown,
+        "markdown": normalize_bundled_plugin_readme_markdown(clean, markdown),
         "source": "bundled",
     }
 
