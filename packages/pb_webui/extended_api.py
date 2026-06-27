@@ -8535,12 +8535,12 @@ def register_extended_api(
         register_console_session_invalidation_hook(clear_extended_read_cache)
         app.state._pallas_ext_read_cache_inv_hook = True
 
-    app.include_router(router_pub)
-    app.include_router(router)
-
     from packages.help.console_routes import register_help_preview_routes
 
     register_help_preview_routes(router, api_base=x)
+
+    app.include_router(router_pub)
+    app.include_router(router)
 
     from packages.pb_webui.console_api_errors import register_console_api_exception_handlers
 
