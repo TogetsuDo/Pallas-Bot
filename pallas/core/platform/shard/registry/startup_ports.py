@@ -73,10 +73,20 @@ def evaluate_registry_worker_ports(
             notes=["分片未启用"],
         )
 
-    planned = allocate_worker_ports(n, base, skip_occupied=skip_occupied)
     reg = get_shard_registry()
     current = worker_ports_from_registry(reg, n)
+    nominal = [base + i for i in range(n)]
 
+    # registry 已是 base+N 且端口被占用：视为 worker 运行中，勿因 skip_occupied 改写到新端口
+    if n > 0 and current == nominal and not all_worker_ports_free(nominal):
+        notes.append("注册表 worker 端口已与规划一致，端口占用视为 worker 运行中，跳过写回 registry")
+        return RegistryPortEvaluation(
+            worker_ports=current,
+            skip_registry_alloc=True,
+            notes=notes,
+        )
+
+    planned = allocate_worker_ports(n, base, skip_occupied=skip_occupied)
     ports_match = current == planned.ports
     ports_free = all_worker_ports_free(planned.ports) if planned.ports else True
     skip_registry = bool(ports_match and ports_free and n > 0)

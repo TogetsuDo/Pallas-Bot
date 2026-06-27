@@ -18,7 +18,7 @@ usage() {
 用法:  ./scripts/run_sharded_bot.sh <命令> [选项]
 
 命令:
-  start     启动控制台与全部牛牛 worker（可加 --hub-only 仅启 hub；--workers-only 仅拉起缺失 worker）
+  start     启动控制台与全部牛牛 worker（worker 已全部运行则跳过启动与端口重分配；可加 --hub-only / --workers-only）
   stop      停止全部分片进程（可加 --workers-only 仅停 worker，或 --hub-only 仅停 hub）
   status    查看进程、端口、Redis 协调与配置摘要
   restart   先 stop 再 start（可加 --workers-only 仅重启 worker，或 --hub-only 仅重启 hub）
@@ -497,6 +497,22 @@ count_running_production_worker_ids() {
     fi
   done
   echo "${running}"
+}
+
+# cold=冷启动（评估端口并同步协议端）；scale=仅补缺失 worker；skip=已全部运行
+resolve_production_worker_start_mode() {
+  local workers="$1"
+  local running
+  running="$(count_running_production_worker_ids)"
+  if [[ "${workers}" -le 0 ]]; then
+    echo "cold"
+  elif [[ "${running}" -ge "${workers}" ]]; then
+    echo "skip"
+  elif [[ "${running}" -gt 0 ]]; then
+    echo "scale"
+  else
+    echo "cold"
+  fi
 }
 
 wait_worker_ports_released() {

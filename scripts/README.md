@@ -1,6 +1,6 @@
 # 运维脚本索引
 
-> **4.0 运维**：推荐统一 CLI **`./scripts/pallas`**（见 [pallas-cli.md](../docs/architecture/pallas-cli.md)）。`run_*_bot.sh` 为兼容入口，由 `pallas run|stop|restart` 内部调用。
+> **4.0 运维**：在 Bot 仓库根目录执行 **`uv run pallas`**（或 `./scripts/pallas`）。`run_*_bot.sh` 为兼容入口，由 `pallas run|stop|restart` 内部调用。需先 `uv sync` 以注册 `pallas` 命令。
 
 | 目录 | 用途 |
 | --- | --- |

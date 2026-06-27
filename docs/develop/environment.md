@@ -21,6 +21,54 @@ uv sync --dev
 uv sync --dev --extra coord-redis
 ```
 
+`uv sync` 会在虚拟环境中注册 **`pallas`** 命令（见下文「统一运维 CLI」）。
+
+## 统一运维 CLI（`pallas`）
+
+Bot 仓库内置统一运维入口，推荐在**仓库根目录或任意子目录**使用（CLI 会向上查找含 `pyproject.toml` 的 Pallas-Bot 根目录）：
+
+```bash
+uv run pallas --help
+uv run pallas doctor          # 环境检查（uv、配置、启停脚本、分片 Redis）
+```
+
+激活虚拟环境后也可直接：
+
+```bash
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pallas status --mode shard
+```
+
+### 启停 Bot
+
+| 场景 | 命令 |
+| --- | --- |
+| 单进程启动 | `uv run pallas run unified` |
+| 分片启动（hub + worker） | `uv run pallas run shard` |
+| 分片：仅 hub | `uv run pallas run shard --hub-only` |
+| 分片：仅补缺失 worker | `uv run pallas run shard --workers-only` |
+| 查看状态 | `uv run pallas status --mode auto` |
+| 停止 | `uv run pallas stop --mode auto` |
+| 重启 | `uv run pallas restart --mode auto` |
+| 分片：仅重启 worker | `uv run pallas restart --mode shard --workers-only` |
+
+`--mode auto` 会根据 pid 文件与环境变量推断单进程或分片；分片部署建议显式写 `--mode shard`。
+
+**注意**：若 worker 已全部在运行，再次 `pallas run shard` 会**跳过** worker 启动与端口重分配，避免误改 registry；需要全量重启 worker 时用 `restart --workers-only`。
+
+### 其它常用子命令
+
+```bash
+uv run pallas sync              # 包装 uv sync
+uv run pallas update bot        # git 更新本体（可加 --restart）
+uv run pallas update webui      # 下载 WebUI dist
+uv run pallas ext list          # 官方扩展
+uv run pallas plugin …          # 插件运维
+uv run pallas deploy shard      # 应用 deploy 分片模板
+```
+
+`./scripts/pallas` 与 `./scripts/run_*_bot.sh` 仍为兼容入口，内部由上述 CLI 调用。脚本索引见 [`scripts/README.md`](../../scripts/README.md)。
+
 ## 运行配置
 
 **不要**再依赖根目录 `.env` 作为唯一配置源。
@@ -60,6 +108,8 @@ uv run python tools/migrate_env_to_pallas.py
 
 ## 启动 Bot
 
+除下述 `nb run` 与脚本外，**日常启停优先用 [统一运维 CLI](#统一运维-cli-pallas)**（`uv run pallas run unified` / `run shard`）。
+
 单进程（最常见本地调试）：
 
 ```bash
@@ -74,6 +124,14 @@ uv run nb run
 ./scripts/run_unified_bot.sh stop
 ```
 
+等价 CLI：
+
+```bash
+uv run pallas run unified
+uv run pallas status --mode unified
+uv run pallas stop --mode unified
+```
+
 浏览器打开 `http://127.0.0.1:8088/pallas/`，使用启动日志中的口令登录。
 
 ### 分片模式（可选）
@@ -81,7 +139,15 @@ uv run nb run
 生产或多进程场景见 [多进程分片](../architecture/bot_process_sharding.md)。本地若需验证分片：
 
 - 在 `pallas.toml` 的 `[env]` 配置 `REDIS_URL`（需 `uv sync --extra coord-redis`）
-- 使用 `./scripts/run_sharded_bot.sh start`（脚本会探测 Redis）
+- 使用 `uv run pallas run shard`（会探测 Redis；worker 已运行时跳过重复启动）
+
+```bash
+uv run pallas run shard
+uv run pallas status --mode shard
+uv run pallas stop --mode shard
+```
+
+测试 worker（`test` / `test2` 子命令）等高级选项仍见 `./scripts/run_sharded_bot.sh -h`。
 
 ### 站点自有插件
 

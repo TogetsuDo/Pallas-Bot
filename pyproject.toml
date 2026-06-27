@@ -57,6 +57,9 @@ deploy-shard-pg = [
     "redis>=5.2,<6",
 ]
 
+[project.scripts]
+pallas = "pallas.console.cli.main:main"
+
 [dependency-groups]
 dev = [
     "pip-audit>=2.9.0",

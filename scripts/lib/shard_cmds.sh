@@ -60,10 +60,27 @@ cmd_start_workers_only() {
   require_coord_redis_for_shard_start || return 1
 
   local workers="${WORKER_COUNT_OVERRIDE:-$(calc_worker_count)}"
-  local running_before
+  local running_before worker_mode
   running_before="$(count_running_production_worker_ids)"
-  if [[ "${SCALE_ONLY}" -eq 0 && "${running_before}" -gt 0 ]]; then
+  worker_mode="$(resolve_production_worker_start_mode "${workers}")"
+  if [[ "${SCALE_ONLY}" -eq 0 && "${worker_mode}" == "scale" ]]; then
     SCALE_ONLY=1
+  fi
+
+  if [[ "${SCALE_ONLY}" -eq 0 && "${worker_mode}" == "skip" ]]; then
+    print_title "Pallas-Bot 分片模式 · 启动缺失 worker（保留已运行进程）"
+    print_config_summary "${workers}"
+    if is_running "${PID_HUB}"; then
+      echo "  hub        保持运行（:${HUB_PORT}）"
+    else
+      echo "  hub        未运行（本次不启动 hub）"
+    fi
+    echo "  worker     已全部运行（${running_before}/${workers}），跳过启动与端口重分配"
+    echo "  $(shard_coord_backend_hint)"
+    print_title "worker 无需启动"
+    echo "  汇总       worker ${running_before}/${workers} 运行 · $(shard_coord_backend_hint)"
+    echo "  提示       需全量重启时请执行 restart --workers-only"
+    return 0
   fi
 
   print_title "Pallas-Bot 分片模式 · 启动缺失 worker（保留已运行进程）"
@@ -74,6 +91,7 @@ cmd_start_workers_only() {
     echo "  hub        未运行（本次不启动 hub）"
   fi
   if [[ "${SCALE_ONLY}" -eq 1 ]]; then
+    echo "  worker     部分运行（${running_before}/${workers}），仅启动缺失 worker"
     echo "  端口策略   扩容模式（registry 端口，不重分配、不同步协议端）"
   else
     echo "  端口策略   冷启动（评估端口并同步协议端 ws_url）"
@@ -142,31 +160,57 @@ cmd_start() {
 
   local workers="${WORKER_COUNT_OVERRIDE:-$(calc_worker_count)}"
   local hub_url="http://127.0.0.1:${HUB_PORT}"
+  local worker_mode running_before
+  worker_mode="$(resolve_production_worker_start_mode "${workers}")"
+  running_before="$(count_running_production_worker_ids)"
 
   print_title "Pallas-Bot 分片模式 · 启动"
   print_config_summary "${workers}"
-  if [[ "${SKIP_OCCUPIED_PORTS}" -eq 1 ]]; then
-    echo "  端口策略   自动跳过占用"
-  else
-    echo "  端口策略   严格 起点+分片号"
-  fi
+  case "${worker_mode}" in
+    skip)
+      echo "  worker     已全部运行（${running_before}/${workers}），跳过 worker 启动与端口重分配"
+      ;;
+    scale)
+      echo "  worker     部分运行（${running_before}/${workers}），仅启动缺失 worker"
+      echo "  端口策略   扩容模式（registry 端口，不重分配、不同步协议端）"
+      ;;
+    cold)
+      if [[ "${SKIP_OCCUPIED_PORTS}" -eq 1 ]]; then
+        echo "  端口策略   自动跳过占用"
+      else
+        echo "  端口策略   严格 起点+分片号"
+      fi
+      ;;
+  esac
   echo "  $(shard_coord_backend_hint)"
   echo ""
 
-  wait_worker_ports_released "${workers}" || true
-  echo ""
-  prepare_shard_ports "${workers}" || return 1
-  workers="$(calc_worker_count)"
+  if [[ "${worker_mode}" == "cold" ]]; then
+    wait_worker_ports_released "${workers}" || true
+    echo ""
+    prepare_shard_ports "${workers}" || return 1
+    workers="$(calc_worker_count)"
+  fi
   echo ""
   echo "  正在启动进程…"
 
   start_hub_process
 
-  if [[ "${DRY_RUN}" -eq 0 ]]; then
+  if [[ "${DRY_RUN}" -eq 0 && "${worker_mode}" == "cold" ]]; then
     sleep 1
   fi
 
-  start_production_workers "${workers}"
+  case "${worker_mode}" in
+    skip)
+      ;;
+    scale)
+      workers="$(calc_worker_count)"
+      start_missing_production_workers "${workers}"
+      ;;
+    cold)
+      start_production_workers "${workers}"
+      ;;
+  esac
 
   if [[ "${DRY_RUN}" -eq 1 ]]; then
     echo ""
@@ -215,6 +259,9 @@ cmd_start() {
   elif [[ "${hub_ok}" -eq 1 ]] && [[ "${worker_running}" -eq "${workers}" ]]; then
     echo ""
     echo "  全部进程已就绪。"
+  elif [[ "${worker_mode}" == "skip" && "${worker_running}" -eq "${workers}" ]]; then
+    echo ""
+    echo "  worker 已在运行，本次未重复启动；需全量重启请执行 restart --workers-only。"
   fi
 }
 
