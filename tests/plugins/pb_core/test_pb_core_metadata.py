@@ -9,6 +9,7 @@ def test_pb_core_metadata_declares_all_commands():
         "pb_core.plugins",
         "pb_core.update_check",
         "pb_core.restart",
+        "pb_core.add_bot_admin",
     }
     assert missing_command_declarations(__plugin_meta__.extra, command_ids=command_ids) == []
 

@@ -12,6 +12,12 @@ from pallas.console.cli.runtime_mode import resolve_bot_mode
 if TYPE_CHECKING:
     from pallas.core.commands import PluginHandlerContext
 
+from .admins import (
+    ADD_BOT_ADMIN_COMMAND,
+    add_bot_admins,
+    format_add_bot_admin_result,
+    parse_add_bot_admin_targets,
+)
 from .console import format_console_hint_text, format_plugins_summary_text
 from .status import format_runtime_status_text
 from .update import format_update_check_text
@@ -32,6 +38,29 @@ async def handle_plugins(ctx: PluginHandlerContext) -> None:
 
 async def handle_update_check(ctx: PluginHandlerContext) -> None:
     await ctx.finish(await format_update_check_text())
+
+
+async def handle_add_bot_admin(ctx: PluginHandlerContext) -> None:
+    parsed = parse_add_bot_admin_targets(
+        ctx.plain_text,
+        ctx.event.message,
+        self_id=int(ctx.event.self_id),
+    )
+    if parsed is None:
+        await ctx.finish(
+            f"用法：{ADD_BOT_ADMIN_COMMAND} [牛牛QQ] 号主QQ [号主QQ…]\n私聊当前牛时省略牛牛 QQ；也可 @ 号主。"
+        )
+        return
+    bot_id, admin_ids = parsed
+    created, merged, added = await add_bot_admins(bot_id, admin_ids)
+    await ctx.finish(
+        format_add_bot_admin_result(
+            bot_id=bot_id,
+            created=created,
+            merged=merged,
+            added=added,
+        )
+    )
 
 
 async def handle_restart(ctx: PluginHandlerContext) -> None:

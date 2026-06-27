@@ -13,9 +13,10 @@ from pallas.core.perm.metadata_defaults import (
     PLUGIN_HOMEPAGE,
     PLUGIN_MENU_TEMPLATE,
 )
-from pallas.core.perm.metadata_text import SCENE_BOTH, join_usage, usage_line
+from pallas.core.perm.metadata_text import SCENE_BOTH, SCENE_PRIVATE, join_usage, usage_line
 
 from .handlers import (
+    handle_add_bot_admin,
     handle_console,
     handle_plugins,
     handle_restart,
@@ -32,6 +33,7 @@ __plugin_meta__ = PluginMetadata(
         usage_line("牛牛插件", "查看插件列表"),
         usage_line("牛牛更新", "查看更新情况"),
         usage_line("牛牛重启", "重新启动牛牛"),
+        usage_line("牛牛添加号主 [牛牛QQ] 号主QQ", "为牛牛入库并添加号主"),
     ),
     type="application",
     homepage=PLUGIN_HOMEPAGE,
@@ -46,6 +48,7 @@ __plugin_meta__ = PluginMetadata(
             command_perm_row("pb_core.plugins", "牛牛插件", "staff"),
             command_perm_row("pb_core.update_check", "牛牛更新", "superuser"),
             command_perm_row("pb_core.restart", "牛牛重启", "superuser"),
+            command_perm_row("pb_core.add_bot_admin", "牛牛添加号主", "superuser"),
         ),
         "command_limits": command_limit_list(
             command_limit_row("pb_core.status", 10),
@@ -53,6 +56,7 @@ __plugin_meta__ = PluginMetadata(
             command_limit_row("pb_core.plugins", 15),
             command_limit_row("pb_core.update_check", 60),
             command_limit_row("pb_core.restart", 120),
+            command_limit_row("pb_core.add_bot_admin", 30),
         ),
         "menu_data": [
             {
@@ -101,6 +105,14 @@ __plugin_meta__ = PluginMetadata(
                 "brief_des": "重新启动牛牛",
                 "detail_des": "在当前环境支持时，让这只牛牛重新启动。",
             },
+            {
+                "func": "牛牛添加号主",
+                "trigger_method": "on_cmd",
+                "trigger_scene": SCENE_PRIVATE,
+                "command_permission": "pb_core.add_bot_admin",
+                "brief_des": "为牛牛入库并添加号主",
+                "detail_des": "将目标牛牛写入 bot_config，并把指定 QQ 加入 admins；多牛时可先写牛牛 QQ。",
+            },
         ],
     },
 )
@@ -110,9 +122,11 @@ console_cmd = message_command("pb_core.console", "牛牛控制台", cd_sec=10)
 plugins_cmd = message_command("pb_core.plugins", "牛牛插件", cd_sec=15)
 update_cmd = message_command("pb_core.update_check", "牛牛更新", cd_sec=60)
 restart_cmd = message_command("pb_core.restart", "牛牛重启", cd_sec=120)
+add_bot_admin_cmd = message_command("pb_core.add_bot_admin", "牛牛添加号主", cd_sec=30, scene="private")
 
 bind_alias_handlers(status_cmd, handle_status)
 bind_alias_handlers(console_cmd, handle_console)
 bind_alias_handlers(plugins_cmd, handle_plugins)
 bind_alias_handlers(update_cmd, handle_update_check)
 bind_alias_handlers(restart_cmd, handle_restart)
+bind_alias_handlers(add_bot_admin_cmd, handle_add_bot_admin)

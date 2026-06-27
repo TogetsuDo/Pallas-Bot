@@ -68,7 +68,19 @@ A: **`account`** 为该牛牛的 QQ 号；**`admins`** 为 **QQ 号组成的 JSO
 
 命令格式见 [relogin_bot 说明](plugins/relogin_bot/README.md)。
 
-**方式三：MongoDB（`DB_BACKEND=mongodb`）**
+**方式三：超管私聊「牛牛添加号主」（`pb_core`）**
+
+由 **`pb_core`**（牛牛核心，默认加载）提供，**仅超管**可用，须 **私聊** 牛牛发送：
+
+| 场景 | 示例 |
+| --- | --- |
+| 为当前私聊的牛添加号主 | `牛牛添加号主 2777777777` |
+| 一次添加多个号主 | `牛牛添加号主 2777777777 2666666666` |
+| 多牛部署，指定目标牛 | `牛牛添加号主 3888888888 2777777777` |
+
+也可 **@ 号主** 代替手写 QQ。若目标牛 **尚未入库**，命令会 **自动创建** `bot_config` 行并写入 **`admins`**；已在库中则 **合并追加**（去重）。详见 [pb_core 说明](plugins/pb_core/README.md)。
+
+**方式四：MongoDB（`DB_BACKEND=mongodb`）**
 
 - 集合名：**`config`**（对应代码中的 `BotConfigModule`）。
 - 文档字段：**`account`**（牛牛 QQ，数值）、**`admins`**（QQ 号数组）。
@@ -85,7 +97,7 @@ db.config.updateOne(
 
 若该 `account` 尚无文档，可在 Web「实例与连接」用 **初始化配置** 创建，或自行插入完整结构。
 
-**方式四：PostgreSQL（`DB_BACKEND=postgresql`）**
+**方式五：PostgreSQL（`DB_BACKEND=postgresql`）**
 
 - 表名：**`bot_config`**。
 - 主键列：**`account`**（`bigint`，牛牛 QQ）。
