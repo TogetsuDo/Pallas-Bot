@@ -163,10 +163,22 @@ def _draw_plugin_card(canvas: Image.Image, draw: ImageDraw.ImageDraw, x: int, y:
     intro = truncate_pixels(draw, row.description, intro_font, _card_text_width())
     draw.text((text_x, y + 72), intro, fill=TEXT_MUTED, font=intro_font)
 
-    badge_font = help_font(16)
+    badge_font = help_font(14)
     badge = str(row.index)
     bbox = draw.textbbox((0, 0), badge, font=badge_font)
-    bw = bbox[2] - bbox[0] + 12
-    bh = bbox[3] - bbox[1] + 6
-    draw.rounded_rectangle((x + w - bw - 10, y + 10, x + w - 10, y + 10 + bh), radius=8, fill=TABLE_HEADER)
-    draw.text((x + w - bw - 4, y + 12), badge, fill=TEXT_MUTED, font=badge_font)
+    tw = bbox[2] - bbox[0]
+    th = bbox[3] - bbox[1]
+    pad_x, pad_y = 8, 5
+    bw = tw + pad_x * 2
+    bh = max(th + pad_y * 2, 22)
+    badge_x1 = x + w - bw - 10
+    badge_y1 = y + 10
+    draw.rounded_rectangle((badge_x1, badge_y1, badge_x1 + bw, badge_y1 + bh), radius=8, fill=TABLE_HEADER)
+    # 思源宋体数字 bbox 略偏左，+1px 光学居中
+    draw.text(
+        (badge_x1 + bw / 2 + 1, badge_y1 + bh / 2),
+        badge,
+        fill=TEXT_MUTED,
+        font=badge_font,
+        anchor="mm",
+    )
