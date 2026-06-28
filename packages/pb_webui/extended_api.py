@@ -115,16 +115,14 @@ _INIT_LOG_SINK = False
 
 _MSG_STATS: dict[str, dict[str, Any]] = {}  # self_id -> sent/received + 按本地日切片的 day_*
 _MSG_TRACKING_INIT = False
-# self_id -> 与 day_received / day_runs 等对齐的本地自然日；日切时落盘并清零当日字段
+# self_id -> 本地自然日；日切时落盘并清零当日计数
 _CONSOLE_CAL_DAY: dict[str, str] = {}
 
 
 def _parse_console_hist_params() -> tuple[int, int]:
-    """协议 API / 消息吞吐 / Matcher 进程内时序桶（重启清空）。
+    """控制台时序桶参数（默认 1 分钟 × 1440 桶）。
 
-    默认 1 分钟桶、最多 1440 桶。环境变量：
-    - PALLAS_CONSOLE_HIST_BUCKET_SEC：桶宽，建议能整除 86400。
-    - PALLAS_CONSOLE_HIST_MAX_BUCKETS：最多保留桶数；覆盖时长 ≈ 二者乘积。
+    环境变量：PALLAS_CONSOLE_HIST_BUCKET_SEC、PALLAS_CONSOLE_HIST_MAX_BUCKETS。
     """
     default_bucket, default_max = 60, 1440
     try:
@@ -200,7 +198,7 @@ def _is_console_stats_excluded_plugin(plugin: str) -> bool:
     return bool(key) and key in resolve_console_stats_excluded_plugin_names()
 
 
-# NoneBot run_preprocessor 在 task group 子任务内执行，ContextVar 无法回写到父任务。
+# matcher 预处理在 task group 子任务内执行，ContextVar 无法回写到父任务。
 _MATCHER_RUN_STARTED_ATTR = "_pallas_matcher_run_started_pc"
 _MATCHER_ERROR_LOG_CAP = 80
 _MATCHER_DURATION_LOG_CAP = 150
@@ -2110,7 +2108,7 @@ def _top_api_call_today(counts: object) -> tuple[str, int]:
 
 
 def _init_message_tracking() -> None:
-    """注册 NoneBot2 钩子：消息收/发；协议 API 今日计数与按时间桶；消息收/发时间桶。"""
+    """注册消息钩子：收/发计数与时间桶。"""
     global _MSG_TRACKING_INIT
     if _MSG_TRACKING_INIT:
         return
@@ -8005,7 +8003,7 @@ def register_extended_api(
 
     @router.get(f"{x}/friend-list", include_in_schema=True)
     async def _friend_list(
-        self_id: int = Query(..., description="Bot QQ（须当前在 NoneBot 已连接）"),
+        self_id: int = Query(..., description="Bot QQ（须当前在消息框架已连接）"),
         limit: int = Query(default=800, ge=1, le=8000),
     ) -> JSONResponse:
         """只读：对在线 Bot 调用 OneBot `get_friend_list`。"""
@@ -8036,7 +8034,7 @@ def register_extended_api(
 
     @router.get(f"{x}/group-list", include_in_schema=True)
     async def _group_list(
-        self_id: int = Query(..., description="Bot QQ（须当前在 NoneBot 已连接）"),
+        self_id: int = Query(..., description="Bot QQ（须当前在消息框架已连接）"),
         limit: int = Query(default=1000, ge=1, le=10000),
     ) -> JSONResponse:
         """只读：对在线 Bot 调用 OneBot `get_group_list`。"""

@@ -111,7 +111,7 @@ def evaluate_protocol_port_sync(
     accounts_path: Path | None = None,
     env_path: Path | None = None,
 ) -> ProtocolPortEvaluation:
-    """对照**当前已落盘**的注册表检查协议端 ws_url。"""
+    """按已落盘注册表检查协议端 ws_url。"""
     from pallas.core.platform.shard.registry.config import get_shard_registry_settings
 
     _apply_env_and_clear_cache(env_path)

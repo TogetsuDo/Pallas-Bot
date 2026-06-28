@@ -102,7 +102,7 @@ __plugin_meta__ = PluginMetadata(
                 "help_audience": "maintainer",
                 "trigger_condition": "被拉黑用户的消息与通知",
                 "brief_des": "自动拦截",
-                "detail_des": "维护者对照；用户只需使用拉黑/解禁命令。",
+                "detail_des": "维护者向说明；用户只需使用拉黑/解禁命令。",
             },
         ],
     },

@@ -73,7 +73,7 @@ def execute_plugin_reload(plugin_name: str) -> dict[str, Any]:
         result["action"] = "full-reload"
         result["message"] = (
             f"插件 {canonical}：已重建元数据索引并尝试重载模块。"
-            " matcher 级热卸载仍受 NoneBot 限制，若行为异常请重启 Bot。"
+            " matcher 级热卸载仍受消息框架限制，若行为异常请重启 Bot。"
         )
         return result
 

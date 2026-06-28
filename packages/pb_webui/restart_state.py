@@ -1,4 +1,4 @@
-"""Hub 进程重启窗口状态（供 /health 与 WebUI 进度探测）。"""
+"""主节点进程重启窗口状态（供 /health 与 WebUI 进度探测）。"""
 
 from __future__ import annotations
 

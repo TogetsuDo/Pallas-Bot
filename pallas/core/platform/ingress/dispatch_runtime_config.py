@@ -73,7 +73,7 @@ class IngressDispatchRuntimeConfig(BaseModel):
         description=field_help(
             "减少群消息在插件里反复试匹配的开销，闲聊时跳过纯口令类插件",
             "选开或关；多牛、插件多的群一般保持开启",
-            "关闭后恢复 NoneBot 默认匹配方式；保存后立即生效",
+            "关闭后恢复框架默认匹配方式；保存后立即生效",
         ),
     )
     matcher_dispatch_overload_threshold: int = Field(

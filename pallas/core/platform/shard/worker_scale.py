@@ -100,7 +100,7 @@ def missing_production_worker_shard_ids(reg: ShardRegistry | None = None) -> set
 
 
 def schedule_worker_scale_restart(*, reason: str = "", delay_sec: float = _DEBOUNCE_SEC) -> bool:
-    """Hub 进程：防抖后后台 start --workers-only；非 hub 或无需扩容时跳过。"""
+    """主节点：防抖后后台 start --workers-only；非主节点或无需扩容时跳过。"""
     settings = get_shard_registry_settings()
     if not settings.enabled or settings.role != "hub" or not auto_scale_workers_enabled():
         return False

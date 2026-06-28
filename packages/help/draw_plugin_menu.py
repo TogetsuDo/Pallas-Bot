@@ -94,7 +94,7 @@ def draw_plugin_menu_image(
     if total_pages > 1:
         hints.append("翻页：牛牛帮助 2页 / p2 / 第2页（插件序号仍为全局序号）")
     if show_ignored:
-        hints.append("超管：本群/单牛全局/指定群/全实例禁用 — 详见帮助文案")
+        hints.append("超管：本群/单牛全局/指定群/全实例禁用 — 见帮助说明")
     for hint in hints:
         box_top = cursor_y
         wrapped = textwrap.fill(hint, width=46)

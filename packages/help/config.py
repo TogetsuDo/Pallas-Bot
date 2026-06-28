@@ -1,4 +1,4 @@
-# 参考https://github.com/Monody-S/CustomMarkdownImage
+# 帮助图 Markdown 渲染
 from pydantic import BaseModel, Field
 
 from pallas.console.webui import install_hot_reload_config, plugin_config_proxy
