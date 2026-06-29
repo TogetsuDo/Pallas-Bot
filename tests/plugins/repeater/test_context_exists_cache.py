@@ -9,11 +9,10 @@ async def test_context_exists_gate_cache(beanie_fixture, monkeypatch):
 
     await cache.reset_context_exists_cache()
     calls: list[str] = []
-    real_fetch = cache._fetch_exists_db
 
     async def counting_fetch(keywords: str) -> bool:
         calls.append(keywords)
-        return await real_fetch(keywords)
+        return False
 
     monkeypatch.setattr(cache, "_fetch_exists_db", counting_fetch)
 

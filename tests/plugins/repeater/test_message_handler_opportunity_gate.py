@@ -92,8 +92,20 @@ async def test_opportunity_gate_only_skips_llm_enhancement(monkeypatch: pytest.M
         lambda bot_id, group_id, payload: dispatched.append((bot_id, group_id, payload)),
     )
     monkeypatch.setattr(mod, "record_bot_llm_route", lambda *args, **kwargs: None)
+    from pallas.product.llm.kernel.models import ConversationFeatureLevel
+
+    monkeypatch.setattr(
+        mod,
+        "resolve_conversation_feature_level",
+        lambda _cfg: ConversationFeatureLevel.FULL_CONVERSATION_KERNEL,
+    )
+    monkeypatch.setattr(
+        mod,
+        "classify_behavior_scene",
+        lambda *args, **kwargs: type("S", (), {"value": "smalltalk"})(),
+    )
     trace_rows: list[dict[str, object]] = []
-    monkeypatch.setattr(mod, "append_repeater_opportunity_trace", lambda row: trace_rows.append(dict(row)) or True)
+    monkeypatch.setattr(mod, "append_conversation_decision_trace", lambda row: trace_rows.append(dict(row)) or True)
     monkeypatch.setattr(
         mod,
         "BotConfig",
@@ -109,5 +121,5 @@ async def test_opportunity_gate_only_skips_llm_enhancement(monkeypatch: pytest.M
     chat_instance.answer_from_bundle.assert_awaited_once_with(bundle)
     assert dispatched == [(300, 100, answers)]
     assert trace_rows
-    assert trace_rows[0]["kind"] == "llm_opportunity_gate"
-    assert trace_rows[0]["accepted"] is False
+    assert trace_rows[0]["kind"] == "conversation_decision_trace"
+    assert trace_rows[0]["opportunity_accepted"] is False

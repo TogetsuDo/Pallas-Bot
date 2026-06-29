@@ -538,6 +538,21 @@ def test_choose_reply_mode_keeps_normal_when_called_to_me():
     assert Responder._choose_reply_mode(persona, group_activity=1.0, to_me=True) == "normal"
 
 
+def test_roll_active_mode_is_occasional():
+    from unittest.mock import patch
+
+    from packages.repeater.responder import Responder
+
+    with patch("packages.repeater.responder.random.random", return_value=0.99):
+        assert Responder._roll_active_mode("god") == "normal"
+        assert Responder._roll_active_mode("ghost") == "normal"
+    with patch("packages.repeater.responder.random.random", return_value=0.0):
+        assert Responder._roll_active_mode("god") == "god"
+        assert Responder._roll_active_mode("ghost") == "ghost"
+    # normal 永远不掷骰子
+    assert Responder._roll_active_mode("normal") == "normal"
+
+
 def test_answer_weight_prefers_god_style_for_popular_recent_human_reply():
     from packages.repeater.responder import Responder
     from pallas.core.foundation.db import Answer
@@ -608,7 +623,7 @@ def test_answer_weight_prefers_ghost_style_for_short_odd_reply():
     assert ghost_weight > normal_weight
 
 
-def test_collect_god_candidate_pool_prefers_recent_live_same_group_texts():
+def test_collect_god_candidate_pool_excludes_recent_live_texts():
     from packages.repeater.responder import Responder
     from pallas.core.foundation.db import Answer
 
@@ -617,7 +632,7 @@ def test_collect_god_candidate_pool_prefers_recent_live_same_group_texts():
         group_id=1,
         count=5,
         time=1,
-        messages=["存量句子", "也不是不行"],
+        messages=["存量句子", "懂了这波真行"],
     )
     recent_message = ["懂了这波真行", "路过", "懂了这波真行", "来个补刀"]
 
@@ -627,8 +642,9 @@ def test_collect_god_candidate_pool_prefers_recent_live_same_group_texts():
         recent_message=recent_message,
     )
 
-    assert pool[:2] == ["懂了这波真行", "来个补刀"]
-    assert "存量句子" in pool
+    # 神模式不跟读群里此刻在刷的原话
+    assert "懂了这波真行" not in pool
+    assert pool == ["存量句子"]
 
 
 def test_collect_ghost_candidate_pool_prefers_short_odd_texts():
@@ -1098,7 +1114,7 @@ async def test_context_find_records_reply_mode_metrics():
             patch("packages.repeater.activity_gate.group_has_hosted_activity", return_value=False),
             patch("packages.repeater.responder.random.choices", side_effect=[[3], [god_answer]]),
             patch("packages.repeater.responder.random.choice", return_value="懂了这波真行"),
-            patch("packages.repeater.responder.random.random", return_value=1.0),
+            patch("packages.repeater.responder.random.random", return_value=0.0),
             patch(
                 "packages.repeater.responder.append_repeater_opportunity_trace",
                 side_effect=lambda row: trace_rows.append(dict(row)) or True,
@@ -1113,16 +1129,16 @@ async def test_context_find_records_reply_mode_metrics():
             )
             assert bundle is not None
             assert bundle.reply_mode == "god"
-            assert bundle.reply_source == "same_group_recent_live"
+            assert bundle.reply_source == "same_group"
             snap = repeater_ingress_metrics_snapshot()
             assert snap["reply_total"] == 1
             assert snap["reply_mode_god"] == 1
-            assert snap["reply_source_same_group_recent_live"] == 1
-            assert snap["reply_recent_hit"] == 1
+            assert snap["reply_source_same_group"] == 1
+            assert snap["reply_pick_god_pool"] == 1
             assert trace_rows
             assert trace_rows[0]["kind"] == "repeater_reply_bundle"
             assert trace_rows[0]["reply_mode"] == "god"
-            assert trace_rows[0]["pick_path"] == "god_recent_live"
+            assert trace_rows[0]["pick_path"] == "god_pool"
     finally:
         reply_dict.clear()
         message_dict.clear()

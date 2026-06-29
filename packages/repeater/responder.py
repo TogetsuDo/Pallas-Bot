@@ -66,6 +66,10 @@ class Responder:
     GOD_ACTIVITY_THRESHOLD = 0.6
     GHOST_ACTIVITY_THRESHOLD = 0.45
     GHOST_PICK_ACTIVITY_THRESHOLD = 0.72
+    # 神鬼是偶发风味：大多数回复仍走 normal，符合人格条件时也只按概率「入戏」，
+    # 避免在活跃群里几乎必进特殊模式而显得整天在复读/无厘头。
+    GOD_MODE_PROBABILITY = 0.3
+    GHOST_MODE_PROBABILITY = 0.3
 
     ANSWER_THRESHOLD_CHOICE_LIST = list(
         range(ANSWER_THRESHOLD - len(ANSWER_THRESHOLD_WEIGHTS) + 1, ANSWER_THRESHOLD + 1)
@@ -122,6 +126,15 @@ class Responder:
         return "normal"
 
     @staticmethod
+    def _roll_active_mode(mode: str) -> str:
+        """符合人格条件后再掷一次骰子决定是否真的入戏，让神鬼时有时无。"""
+        if mode == "god":
+            return "god" if random.random() < Responder.GOD_MODE_PROBABILITY else "normal"
+        if mode == "ghost":
+            return "ghost" if random.random() < Responder.GHOST_MODE_PROBABILITY else "normal"
+        return mode
+
+    @staticmethod
     def _sample_mode_multiplier(text: str, *, mode: str, recent_message: list[str], persona) -> float:
         plain = (text or "").strip()
         if not plain:
@@ -133,9 +146,8 @@ class Responder:
         assertiveness = float(getattr(persona, "assertiveness", 0.0) or 0.0)
         recent_hits = recent_message.count(plain)
         if mode == "god":
+            # 神＝挑「贴切、像样」的语料，不再因为某句正在群里刷就加权跟读。
             multiplier = 1.0
-            if recent_hits:
-                multiplier *= 1.25 + min(recent_hits, 3) * 0.18
             if length <= 18:
                 multiplier *= 1.08
             if warmth > 0:
@@ -180,13 +192,10 @@ class Responder:
             if text and text not in base_pool:
                 base_pool.append(text)
         if mode == "god":
-            recent_live: list[str] = []
-            for text in recent_message:
-                plain = str(text or "").strip()
-                if plain and plain not in recent_live:
-                    recent_live.append(plain)
-            favored = [text for text in recent_live if recent_message.count(text) >= 2 or 4 <= len(text) <= 16]
-            return favored + [text for text in base_pool if text not in favored]
+            # 神不跟读群里此刻在刷的原话；优先挑短而干净、未在刷屏的语料。
+            live = {str(text or "").strip() for text in recent_message if str(text or "").strip()}
+            fresh = [text for text in base_pool if text not in live]
+            return fresh or base_pool
         if mode == "ghost":
             return sorted(base_pool, key=Responder._ghost_candidate_rank, reverse=True)
         return base_pool
@@ -265,6 +274,7 @@ class Responder:
         *,
         mode: str,
         recent_message: list[str],
+        recent_sent: list[str],
         group_activity: float,
         persona,
     ) -> tuple[str, str]:
@@ -273,16 +283,17 @@ class Responder:
             pool = [sample.removeprefix("牛牛").strip() for sample in answer.messages if sample.strip()]
         if not pool:
             return "", "default"
+        # 硬约束：最近 DUPLICATE_REPLY 条说过的一律排除，宁可不接也不复读自己。
+        fresh = [text for text in pool if text not in recent_sent]
+        if not fresh:
+            return "", "default"
         if mode == "god":
-            favored = [text for text in pool if text in recent_message]
-            if favored:
-                return favored[0], "god_recent_live"
-            return pool[0], "god_pool"
+            return fresh[0], "god_pool"
         if mode == "ghost":
             chaos = float(getattr(persona, "chaos_bias", 0.0) or 0.0)
             if group_activity >= Responder.GHOST_PICK_ACTIVITY_THRESHOLD and chaos >= 0.72:
-                return pool[0], "ghost_pool"
-        return random.choice(pool), "default"
+                return fresh[0], "ghost_pool"
+        return random.choice(fresh), "default"
 
     @staticmethod
     def _human_messages_for_repeat(group_msgs: list) -> list:
@@ -598,10 +609,12 @@ class Responder:
         affect_triggers = await load_affect_triggers(group_id)
         in_hosted_activity = group_has_hosted_activity(group_id) and not chat_data.to_me
         group_activity = Responder._group_activity_score(group_msgs)
-        reply_mode = Responder._choose_reply_mode(
-            persona,
-            group_activity=group_activity,
-            to_me=chat_data.to_me,
+        reply_mode = Responder._roll_active_mode(
+            Responder._choose_reply_mode(
+                persona,
+                group_activity=group_activity,
+                to_me=chat_data.to_me,
+            )
         )
 
         is_drunk = await config.drunkenness() > 0
@@ -758,16 +771,14 @@ class Responder:
             final_answer,
             mode=reply_mode,
             recent_message=recent_message,
+            recent_sent=recent_sent,
             group_activity=group_activity,
             persona=persona,
         )
         if not answer_str:
             return None
         answer_keywords = final_answer.keywords
-        if pick_path == "god_recent_live":
-            reply_source = "same_group_recent_live"
-        else:
-            reply_source = "same_group" if int(final_answer.group_id) == int(group_id) else "cross_group"
+        reply_source = "same_group" if int(final_answer.group_id) == int(group_id) else "cross_group"
         recent_hit = answer_str in recent_message
         repeat_hit = answer_str in recent_sent
 

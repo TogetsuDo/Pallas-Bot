@@ -29,6 +29,8 @@ from .responder import ReplyBundle, Responder
 _FANOUT_PLUGIN = "repeater_fanout"
 _FANOUT_BOT_IDS_CACHE_TTL = 2.0
 _FANOUT_BOT_IDS_CACHE: dict[int, tuple[float, list[int]]] = {}
+# 复读/接话的每群冷却（秒）。比 BotConfig 默认 5s 略长，进一步压一压刷屏感。
+REPEATER_REPLY_COOLDOWN = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,13 +52,15 @@ async def list_ready_fanout_bot_ids(group_id: int) -> list[int]:
     bot_ids = await list_fanout_bot_ids(group_id)
     if not bot_ids:
         return []
-    ready = await asyncio.gather(*(BotConfig(bid, group_id).is_cooldown("repeat") for bid in bot_ids))
+    ready = await asyncio.gather(
+        *(BotConfig(bid, group_id, cooldown=REPEATER_REPLY_COOLDOWN).is_cooldown("repeat") for bid in bot_ids)
+    )
     return [bid for bid, ok in zip(bot_ids, ready, strict=True) if ok]
 
 
 async def repeater_can_attempt_reply(bot_id: int, group_id: int) -> bool:
     if not repeater_fanout_enabled():
-        return await BotConfig(bot_id, group_id).is_cooldown("repeat")
+        return await BotConfig(bot_id, group_id, cooldown=REPEATER_REPLY_COOLDOWN).is_cooldown("repeat")
     return bool(await list_ready_fanout_bot_ids(group_id))
 
 
@@ -292,7 +296,7 @@ async def run_repeater_reply_for_bot(bot_id: int, payload: dict[str, Any]) -> No
     if not await bot_may_repeater_reply(bot_id, group_id):
         return
 
-    config = BotConfig(bot_id, group_id)
+    config = BotConfig(bot_id, group_id, cooldown=REPEATER_REPLY_COOLDOWN)
 
     if not await config.is_cooldown("repeat"):
         return

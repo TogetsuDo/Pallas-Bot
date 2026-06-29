@@ -14,7 +14,10 @@ from packages.repeater.shard_opt import (
 async def test_repeater_fanout_enabled_for_group_requires_two_bots(monkeypatch):
     from packages.repeater import fanout_reply
 
-    monkeypatch.setattr(fanout_reply, "is_sharding_active", lambda: True)
+    monkeypatch.setattr(
+        "pallas.core.platform.shard.context.sharding_active",
+        lambda: True,
+    )
     monkeypatch.setattr(
         fanout_reply,
         "get_repeater_config",
@@ -78,11 +81,11 @@ def test_repeater_worker_handles_all_local_bots_when_fanout_enabled(monkeypatch)
 
 def test_scheduler_skips_worker_without_rep(monkeypatch):
     monkeypatch.setattr(
-        "pallas.core.platform.shard.registry.config.is_sharding_active",
+        "pallas.core.platform.shard.context.sharding_active",
         lambda: True,
     )
     monkeypatch.setattr(
-        "pallas.core.platform.shard.local_representative.local_worker_representative_bot_id",
+        "pallas.core.platform.shard.context.local_representative_bot_id",
         lambda: None,
     )
     assert repeater_scheduler_runs_on_worker() is False
@@ -90,18 +93,18 @@ def test_scheduler_skips_worker_without_rep(monkeypatch):
 
 def test_maintenance_runs_only_on_shard_zero_when_sharded(monkeypatch):
     monkeypatch.setattr(
-        "pallas.core.platform.shard.registry.config.is_sharding_active",
+        "pallas.core.platform.shard.context.sharding_active",
         lambda: True,
     )
     monkeypatch.setattr(
-        "pallas.core.platform.shard.registry.config.get_shard_registry_settings",
-        lambda: type("S", (), {"shard_id": 0})(),
+        "pallas.core.platform.shard.context.shard_id",
+        lambda: 0,
     )
     assert repeater_maintenance_runs_on_worker() is True
 
     monkeypatch.setattr(
-        "pallas.core.platform.shard.registry.config.get_shard_registry_settings",
-        lambda: type("S", (), {"shard_id": 3})(),
+        "pallas.core.platform.shard.context.shard_id",
+        lambda: 3,
     )
     assert repeater_maintenance_runs_on_worker() is False
 
