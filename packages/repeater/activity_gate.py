@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pallas.core.platform.ingress.hosted_activity_gate import loaded_hosted_activity_specs
 from pallas.core.platform.shard.coord.hosted_activity_coord import coord_room_live
+from pallas.product.ban_gate.snapshot import is_group_banned_fast
 
 
 def group_has_hosted_activity(group_id: int) -> bool:
@@ -14,5 +15,10 @@ def group_has_hosted_activity(group_id: int) -> bool:
     return False
 
 
+def group_is_banned(group_id: int) -> bool:
+    """被全局拉黑的群禁止主动发言；快照未就绪时 fail-open（与入站门禁一致）。"""
+    return is_group_banned_fast(int(group_id)) is True
+
+
 def blocks_proactive_speak(group_id: int) -> bool:
-    return group_has_hosted_activity(group_id)
+    return group_is_banned(group_id) or group_has_hosted_activity(group_id)
