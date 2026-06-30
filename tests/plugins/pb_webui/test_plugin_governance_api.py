@@ -121,10 +121,7 @@ def test_plugin_governance_get_returns_commands_and_runtime(monkeypatch) -> None
     assert payload["ok"] is True
     assert payload["data"]["commands"][0]["command_id"] == "sing.play"
     assert payload["data"]["commands"][0]["trigger_condition"] == "牛牛唱歌 xxx"
-    assert (
-        payload["data"]["perm_ui_filtered"]["plugins"][0]["commands"][0]["trigger_condition"]
-        == "牛牛唱歌 xxx"
-    )
+    assert payload["data"]["perm_ui_filtered"]["plugins"][0]["commands"][0]["trigger_condition"] == "牛牛唱歌 xxx"
     assert payload["data"]["menu_items"][0]["command_permission"] == "sing.play"
     assert payload["data"]["runtime"]["global_disable"] is True
     assert payload["data"]["runtime"]["help_hidden"] is True
@@ -138,6 +135,7 @@ def test_plugin_governance_get_returns_commands_and_runtime(monkeypatch) -> None
 
 def test_plugin_governance_put_filters_only_plugin_prefix(monkeypatch) -> None:
     saved_env: dict[str, str] = {}
+    cleared: dict[str, bool] = {"perm": False, "limits": False}
 
     def fake_upsert_env(items):
         saved_env.update(items)
@@ -146,6 +144,14 @@ def test_plugin_governance_put_filters_only_plugin_prefix(monkeypatch) -> None:
         assert clear_all is True
 
     monkeypatch.setattr("pallas.console.webui.plugin_api.upsert_env_dotenv_items", fake_upsert_env)
+    monkeypatch.setattr(
+        "pallas.core.perm.config.clear_cmd_perm_cache",
+        lambda: cleared.__setitem__("perm", True),
+    )
+    monkeypatch.setattr(
+        "pallas.core.limits.config.clear_command_limits_cache",
+        lambda: cleared.__setitem__("limits", True),
+    )
     monkeypatch.setattr("packages.help.visibility.load_help_hidden_plugins", list)
     monkeypatch.setattr("packages.help.global_disable.load_global_disabled_plugins", list)
     monkeypatch.setattr(
@@ -194,6 +200,7 @@ def test_plugin_governance_put_filters_only_plugin_prefix(monkeypatch) -> None:
     saved_limit = json.loads(saved_env["PALLAS_COMMAND_LIMIT_OVERRIDES"])
     assert saved_perm == {"sing.play": "staff"}
     assert saved_limit == {"sing.play": 12}
+    assert cleared == {"perm": True, "limits": True}
     assert payload["data"]["runtime"]["global_disable"] is True
     assert payload["data"]["runtime"]["help_hidden"] is True
 

@@ -5203,9 +5203,7 @@ def register_extended_api(
                 include_log_errors=include_log_errors,
             )
 
-        key = (
-            f"plugin-run-stats:{self_id or 'all'}:logsrc:{src}:tbl:{tb_limit}:view:{view_norm or 'full'}"
-        )
+        key = f"plugin-run-stats:{self_id or 'all'}:logsrc:{src}:tbl:{tb_limit}:view:{view_norm or 'full'}"
         ttl = 3.0 if view_norm == "log_errors" or self_id is not None else 2.0
         stale = 20.0 if view_norm == "log_errors" else 12.0 if self_id is not None else 10.0
         data = await cached_read(key=key, loader=_load, ttl_sec=ttl, stale_sec=stale)
@@ -5532,6 +5530,14 @@ def register_extended_api(
             )
         if env_items:
             upsert_env_dotenv_items(env_items)
+            if "PALLAS_COMMAND_PERMISSION_OVERRIDES" in env_items:
+                from pallas.core.perm.config import clear_cmd_perm_cache
+
+                clear_cmd_perm_cache()
+            if "PALLAS_COMMAND_LIMIT_OVERRIDES" in env_items:
+                from pallas.core.limits.config import clear_command_limits_cache
+
+                clear_command_limits_cache()
 
         hidden = set(load_help_hidden_plugins())
         if body.help_hidden:
