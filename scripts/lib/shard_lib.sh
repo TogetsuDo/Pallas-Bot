@@ -270,6 +270,111 @@ is_running() {
   [[ -n "${pid}" ]] && kill -0 "${pid}" 2>/dev/null
 }
 
+# 当前仓库内的 bot_hub.py / bot_worker.py（兼容相对/绝对解释器路径，不限于 uv run）
+shard_pid_is_repo_python_script() {
+  local pid="$1"
+  local script_name="$2"
+  [[ -n "${pid}" && "${pid}" =~ ^[0-9]+$ ]] || return 1
+  kill -0 "${pid}" 2>/dev/null || return 1
+  local cwd cmdline
+  cwd="$(readlink -f "/proc/${pid}/cwd" 2>/dev/null || true)"
+  [[ "${cwd}" == "${REPO_ROOT}" ]] || return 1
+  cmdline="$(tr '\0' ' ' < "/proc/${pid}/cmdline" 2>/dev/null || true)"
+  [[ "${cmdline}" == *"${script_name}"* ]] || return 1
+  [[ "${cmdline}" == *python* ]] || return 1
+  return 0
+}
+
+kill_repo_script_orphans() {
+  local script_name="$1"
+  local signal_name="$2"
+  local guard="${REPO_ROOT}/scripts/shard_process_guard.py"
+  if [[ -f "${guard}" ]]; then
+    python3 "${guard}" --repo "${REPO_ROOT}" --script "${script_name}" --signal "${signal_name}" 2>/dev/null || true
+    return 0
+  fi
+  local pid
+  for pid in $(pgrep -f "${script_name}" 2>/dev/null || true); do
+    shard_pid_is_repo_python_script "${pid}" "${script_name}" || continue
+    kill "-${signal_name}" "${pid}" 2>/dev/null || true
+    pkill "-${signal_name}" -P "${pid}" 2>/dev/null || true
+  done
+}
+
+kill_tcp_port_listeners() {
+  local port="$1"
+  local signal_name="$2"
+  local guard="${REPO_ROOT}/scripts/shard_process_guard.py"
+  if [[ -f "${guard}" ]]; then
+    python3 "${guard}" --repo "${REPO_ROOT}" --port "${port}" --signal "${signal_name}" 2>/dev/null || true
+    return 0
+  fi
+  local pid
+  while IFS= read -r pid; do
+    [[ -n "${pid}" ]] || continue
+    kill "-${signal_name}" "${pid}" 2>/dev/null || true
+    pkill "-${signal_name}" -P "${pid}" 2>/dev/null || true
+  done < <(pids_listening_on_tcp_port "${port}")
+}
+
+tcp_port_is_listening() {
+  local port="$1"
+  local guard="${REPO_ROOT}/scripts/shard_process_guard.py"
+  if [[ -f "${guard}" ]]; then
+    [[ -n "$(python3 "${guard}" --repo "${REPO_ROOT}" --port "${port}" --list 2>/dev/null | head -n1)" ]]
+    return
+  fi
+  local pid
+  while IFS= read -r pid; do
+    [[ -n "${pid}" ]] && return 0
+  done < <(pids_listening_on_tcp_port "${port}")
+  return 1
+}
+
+pids_listening_on_tcp_port() {
+  local port="$1"
+  if command -v ss >/dev/null 2>&1; then
+    ss -tlnp "sport = :${port}" 2>/dev/null | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | sort -u
+    return 0
+  fi
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -iTCP:"${port}" -sTCP:LISTEN -t 2>/dev/null | sort -u
+  fi
+}
+
+format_port_listener_hint() {
+  local port="$1"
+  local pid cmdline
+  for pid in $(pids_listening_on_tcp_port "${port}"); do
+    [[ -n "${pid}" ]] || continue
+    cmdline="$(tr '\0' ' ' < "/proc/${pid}/cmdline" 2>/dev/null || echo "?")"
+    echo "      pid ${pid}: ${cmdline}"
+  done
+}
+
+require_tcp_port_free() {
+  local port="$1"
+  local label="$2"
+  if ! tcp_port_is_listening "${port}"; then
+    return 0
+  fi
+  echo "  · ${label}：端口 ${port} 仍被占用，无法启动" >&2
+  format_port_listener_hint "${port}" >&2
+  return 1
+}
+
+kill_registered_worker_port_listeners() {
+  local signal_name="$1"
+  local workers sid wport
+  workers="${WORKER_COUNT_OVERRIDE:-$(calc_worker_count)}"
+  sid=0
+  while [[ "${sid}" -lt "${workers}" ]]; do
+    wport="$(worker_port_for_sid "${sid}")"
+    kill_tcp_port_listeners "${wport}" "${signal_name}"
+    sid=$((sid + 1))
+  done
+}
+
 rotate_bootstrap_log() {
   local name="$1"
   local bootstrap="$2"
@@ -345,48 +450,40 @@ stop_one() {
   echo "  · ${label}：已停止"
 }
 
-# 清理无 pid 文件的孤儿进程
+# 清理无 pid 文件或 pid 已过期的孤儿进程（按仓库 cwd + 端口兜底）
 stop_orphan_shard_processes() {
-  local pat
-  for pat in "${REPO_ROOT}/.venv/bin/python3 bot_hub.py" "${REPO_ROOT}/.venv/bin/python3 bot_worker.py"; do
-    if [[ "${FORCE_STOP}" -eq 1 ]]; then
-      pkill -KILL -f "${pat}" 2>/dev/null || true
-    else
-      pkill -TERM -f "${pat}" 2>/dev/null || true
-    fi
-  done
-  if [[ "${FORCE_STOP}" -eq 1 ]]; then
-    return 0
-  fi
-  sleep 1
-  for pat in "${REPO_ROOT}/.venv/bin/python3 bot_hub.py" "${REPO_ROOT}/.venv/bin/python3 bot_worker.py"; do
-    pkill -KILL -f "${pat}" 2>/dev/null || true
-  done
+  stop_orphan_hub_processes
+  stop_orphan_worker_processes
 }
 
 stop_orphan_worker_processes() {
-  local pat="${REPO_ROOT}/.venv/bin/python3 bot_worker.py"
+  local sig=TERM
+  [[ "${FORCE_STOP}" -eq 1 ]] && sig=KILL
+  kill_repo_script_orphans "bot_worker.py" "${sig}"
+  kill_registered_worker_port_listeners "${sig}"
   if [[ "${FORCE_STOP}" -eq 1 ]]; then
-    pkill -KILL -f "${pat}" 2>/dev/null || true
     return 0
   fi
-  pkill -TERM -f "${pat}" 2>/dev/null || true
   sleep 1
-  pkill -KILL -f "${pat}" 2>/dev/null || true
+  kill_repo_script_orphans "bot_worker.py" "KILL"
+  kill_registered_worker_port_listeners "KILL"
 }
 
 stop_orphan_hub_processes() {
-  local pat="${REPO_ROOT}/.venv/bin/python3 bot_hub.py"
+  local sig=TERM
+  [[ "${FORCE_STOP}" -eq 1 ]] && sig=KILL
+  kill_repo_script_orphans "bot_hub.py" "${sig}"
+  kill_tcp_port_listeners "${HUB_PORT}" "${sig}"
   if [[ "${FORCE_STOP}" -eq 1 ]]; then
-    pkill -KILL -f "${pat}" 2>/dev/null || true
     return 0
   fi
-  pkill -TERM -f "${pat}" 2>/dev/null || true
   sleep 1
-  pkill -KILL -f "${pat}" 2>/dev/null || true
+  kill_repo_script_orphans "bot_hub.py" "KILL"
+  kill_tcp_port_listeners "${HUB_PORT}" "KILL"
 }
 
 start_hub_process() {
+  require_tcp_port_free "${HUB_PORT}" "hub  控制台" || return 1
   local -a common
   mapfile -t common < <(shard_common_env)
   start_one hub "hub  控制台 :${HUB_PORT}" env \
@@ -449,6 +546,7 @@ start_production_workers() {
     if [[ "${#_worker_ports[@]}" -gt "${sid}" && -n "${_worker_ports[sid]:-}" ]]; then
       wport="${_worker_ports[sid]}"
     fi
+    require_tcp_port_free "${wport}" "worker-${sid}  WS:${wport}" || return 1
     start_one "worker-${sid}" "worker-${sid}  WS:${wport}" env \
       "${common[@]}" \
       PALLAS_BOT_ROLE=worker \
@@ -474,6 +572,7 @@ start_missing_production_workers() {
       sid=$((sid + 1))
       continue
     fi
+    require_tcp_port_free "${wport}" "worker-${sid}  WS:${wport}" || return 1
     start_one "worker-${sid}" "worker-${sid}  WS:${wport}" env \
       "${common[@]}" \
       PALLAS_BOT_ROLE=worker \

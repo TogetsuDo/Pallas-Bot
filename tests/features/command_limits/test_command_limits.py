@@ -96,6 +96,7 @@ def test_existing_plugin_metadata_declares_command_limits():
         "bot_status.status",
         "bot_status.count",
         "bot_status.test_mail",
+        "bot_status.offline_mail",
     ]
     assert [item.id for item in command_limits_from_metadata(connectivity_meta)] == ["connectivity.probe"]
     assert [item.id for item in command_limits_from_metadata(help_meta)] == [

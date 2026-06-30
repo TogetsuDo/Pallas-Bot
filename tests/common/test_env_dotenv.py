@@ -33,6 +33,20 @@ def test_upsert_env_dotenv_items_updates_webui_and_environ(tmp_path, monkeypatch
     os.environ.pop("BAR", None)
 
 
+def test_upsert_env_dotenv_items_clears_cmd_perm_cache(tmp_path, monkeypatch):
+    from pallas.core.perm import config as perm_config
+
+    webui = tmp_path / "webui.json"
+    monkeypatch.setattr(rs, "repo_webui_settings_path", lambda: webui)
+    perm_config._cached = perm_config.CmdPermConfig(command_permission_overrides={"old.cmd": "superuser"})
+    raw = '{"bot_status.status":"everyone"}'
+    ed.upsert_env_dotenv_items({"PALLAS_COMMAND_PERMISSION_OVERRIDES": raw})
+    cfg = perm_config.get_cmd_perm_config()
+    assert cfg.command_permission_overrides.get("bot_status.status") == "everyone"
+    os.environ.pop("PALLAS_COMMAND_PERMISSION_OVERRIDES", None)
+    perm_config.clear_cmd_perm_cache()
+
+
 def test_config_from_env_reads_disk_after_environ_stale(tmp_path, monkeypatch):
     class Cfg(BaseModel):
         answer_threshold: int = Field(default=3)

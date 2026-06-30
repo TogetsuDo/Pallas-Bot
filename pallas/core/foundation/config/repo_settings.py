@@ -455,6 +455,20 @@ def upsert_repo_settings_items(items: dict[str, str]) -> None:
         if not key or is_misplaced_ai_env_key(key):
             continue
         os.environ[key] = v
+    if any((k or "").strip().upper() == "PALLAS_COMMAND_PERMISSION_OVERRIDES" for k in items):
+        try:
+            from pallas.core.perm.config import clear_cmd_perm_cache
+
+            clear_cmd_perm_cache()
+        except Exception:
+            pass
+    if any((k or "").strip().upper() == "PALLAS_COMMAND_LIMIT_OVERRIDES" for k in items):
+        try:
+            from pallas.core.limits.config import clear_command_limits_cache
+
+            clear_command_limits_cache()
+        except Exception:
+            pass
 
 
 def remove_repo_settings_keys(keys: list[str]) -> None:

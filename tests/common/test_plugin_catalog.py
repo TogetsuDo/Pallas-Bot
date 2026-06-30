@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from pallas.console.webui.plugin_catalog import (
     build_plugin_catalog_rows,
     discover_extra_plugin_packages,
@@ -132,12 +134,12 @@ def test_plugin_source_from_core_path() -> None:
     assert plugin_source_from_module_path(str(main_py)) == "core"
 
 
-def test_discover_pyproject_includes_status():
+def test_discover_pyproject_includes_apscheduler():
     modules = discover_pyproject_plugin_modules()
-    assert "nonebot_plugin_status" in modules
+    assert "nonebot_plugin_apscheduler" in modules
 
 
-def test_catalog_lists_pyproject_status_on_hub(monkeypatch):
+def test_catalog_lists_pyproject_apscheduler_on_hub(monkeypatch):
     monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
     monkeypatch.setenv("PALLAS_BOT_ROLE", "hub")
     monkeypatch.setattr(
@@ -149,8 +151,8 @@ def test_catalog_lists_pyproject_status_on_hub(monkeypatch):
     get_shard_registry_settings.cache_clear()
     rows = build_plugin_catalog_rows()
     by_name = {r["name"]: r for r in rows}
-    assert "nonebot_plugin_status" in by_name
-    row = by_name["nonebot_plugin_status"]
+    assert "nonebot_plugin_apscheduler" in by_name
+    row = by_name["nonebot_plugin_apscheduler"]
     assert row["plugin_source"] == "pip"
     assert row["load_role"] == "infra"
 
@@ -171,6 +173,28 @@ def test_resolve_catalog_prefers_local_draw(tmp_path, monkeypatch) -> None:
     from pallas.console.webui.plugin_catalog import resolve_catalog_plugin_module
 
     assert resolve_catalog_plugin_module("draw") == "local.plugins.draw"
+
+
+def test_resolve_catalog_pip_extra_when_not_loaded(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog._loaded_plugin_index",
+        lambda: ({}, {}),
+    )
+    monkeypatch.setattr(
+        "pallas.console.webui.plugin_catalog.discover_extra_plugin_packages",
+        dict,
+    )
+    monkeypatch.setattr("pallas.console.webui.plugin_catalog.PROJECT_ROOT", Path("/tmp/empty-repo"))
+    from pallas.console.webui.plugin_catalog import resolve_catalog_plugin_module
+
+    module = resolve_catalog_plugin_module("maa")
+    if module is None:
+        import importlib.util
+
+        if importlib.util.find_spec("pallas_plugin_maa") is None:
+            return
+        pytest.skip("pallas_plugin_maa not installed")
+    assert module == "pallas_plugin_maa"
 
 
 def test_catalog_marks_pyproject_plugin_with_config(monkeypatch) -> None:

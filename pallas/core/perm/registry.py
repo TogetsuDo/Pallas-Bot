@@ -97,7 +97,11 @@ DEFAULT_COMMAND_PERMISSIONS: dict[str, PermissionLevel] = {
     "llm_chat.unload_model": "superuser",
     "llm_chat.status": "superuser",
     "maa.bind": "everyone",
+    "maa.switch_device": "everyone",
+    "maa.device_alias": "everyone",
     "maa.control": "everyone",
+    "maa.raw_task": "everyone",
+    "maa.clear_queue": "everyone",
     "maa.status": "everyone",
 }
 
