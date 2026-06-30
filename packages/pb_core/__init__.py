@@ -34,7 +34,7 @@ __plugin_meta__ = PluginMetadata(
         usage_line("牛牛插件", "查看插件列表"),
         usage_line("牛牛更新", "查看更新情况"),
         usage_line("牛牛重启", "重新启动牛牛"),
-        usage_line("牛牛添加号主 [牛牛QQ] 号主QQ", "为牛牛入库并添加号主"),
+        usage_line("牛牛添加号主 号主QQ… [牛 目标牛QQ]", "为牛牛入库并添加号主"),
     ),
     type="application",
     homepage=PLUGIN_HOMEPAGE,
@@ -44,9 +44,9 @@ __plugin_meta__ = PluginMetadata(
         "help_audience": "superuser",
         "menu_template": PLUGIN_MENU_TEMPLATE,
         "command_permissions": command_perm_list(
-            command_perm_row("pb_core.status", "牛牛状态", "staff"),
-            command_perm_row("pb_core.console", "牛牛控制台", "staff"),
-            command_perm_row("pb_core.plugins", "牛牛插件", "staff"),
+            command_perm_row("pb_core.status", "牛牛状态", "superuser"),
+            command_perm_row("pb_core.console", "牛牛控制台", "superuser"),
+            command_perm_row("pb_core.plugins", "牛牛插件", "superuser"),
             command_perm_row("pb_core.update_check", "牛牛更新", "superuser"),
             command_perm_row("pb_core.restart", "牛牛重启", "superuser"),
             command_perm_row("pb_core.add_bot_admin", "牛牛添加号主", "superuser"),
@@ -110,9 +110,13 @@ __plugin_meta__ = PluginMetadata(
                 "func": "牛牛添加号主",
                 "trigger_method": "on_cmd",
                 "trigger_scene": SCENE_PRIVATE,
+                "trigger_condition": "牛牛添加号主",
                 "command_permission": "pb_core.add_bot_admin",
                 "brief_des": "为牛牛入库并添加号主",
-                "detail_des": "将目标牛牛写入 bot_config，并把指定 QQ 加入 admins；多牛时可先写牛牛 QQ。",
+                "detail_des": (
+                    "默认把指定 QQ 加入当前私聊牛的 admins（可一次多个）；"
+                    "要配置别的牛时用「牛 目标牛QQ」显式指定，会自动写入/合并其 bot_config。"
+                ),
             },
         ],
     },

@@ -11,7 +11,7 @@ from pallas.core.perm import (
     effective_permission_avail_text,
     help_say_phrase,
     help_scene_text,
-    iter_user_help_menu,
+    iter_plugin_detail_menu,
 )
 
 from .markdown_generator import HelpMarkdownIssue
@@ -101,7 +101,7 @@ def build_plugin_detail_data(
         data.usage = normalize_plugin_usage_text(str(getattr(meta, "usage", None) or "暂无说明"))
         menu_data = []
         if getattr(meta, "extra", None):
-            menu_data = list(iter_user_help_menu(meta.extra.get("menu_data", [])))
+            menu_data = list(iter_plugin_detail_menu(target_plugin, meta.extra.get("menu_data", [])))
         for i, item in enumerate(menu_data, 1):
             perm_raw = effective_permission_avail_text(item)
             cd_raw = effective_command_cooldown_text(item)
@@ -138,7 +138,7 @@ def build_function_detail_data(
     if meta is None or not getattr(meta, "extra", None):
         return None, HelpMarkdownIssue.METADATA_MISSING
 
-    user_menu = list(iter_user_help_menu(meta.extra.get("menu_data", [])))
+    user_menu = list(iter_plugin_detail_menu(target_plugin, meta.extra.get("menu_data", [])))
     target_function = None
     target_index = -1
 

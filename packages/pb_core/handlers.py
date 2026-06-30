@@ -49,7 +49,8 @@ async def handle_add_bot_admin(ctx: PluginHandlerContext) -> None:
     )
     if parsed is None:
         await ctx.finish(
-            f"用法：{ADD_BOT_ADMIN_COMMAND} [牛牛QQ] 号主QQ [号主QQ…]\n私聊当前牛时省略牛牛 QQ；也可 @ 号主。"
+            f"用法：{ADD_BOT_ADMIN_COMMAND} 号主QQ [号主QQ…] [牛 目标牛QQ]\n"
+            "默认加到当前私聊的牛；要配置别的牛时带「牛 目标牛QQ」。也可 @ 号主。"
         )
         return
     bot_id, admin_ids = parsed

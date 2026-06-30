@@ -23,13 +23,13 @@ __plugin_meta__ = PluginMetadata(
     extra={
         "version": PLUGIN_EXTRA_VERSION,
         "menu_template": PLUGIN_MENU_TEMPLATE,
-        "help_audience": "maintainer",
+        "help_audience": "superuser",
         "reload_policy": "metadata",
         "menu_data": [
             {
                 "func": "控制台页面",
                 "trigger_method": "http",
-                "help_audience": "maintainer",
+                "help_audience": "superuser",
                 "trigger_condition": "/pallas/",
                 "brief_des": "打开管理页面",
                 "detail_des": "在浏览器里查看运行情况、日志和常用管理页面。",
@@ -37,7 +37,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "扩展状态接口",
                 "trigger_method": "http",
-                "help_audience": "maintainer",
+                "help_audience": "superuser",
                 "trigger_condition": "/pallas/api/*",
                 "brief_des": "控制台数据入口",
                 "detail_des": "给控制台页面提供它需要的状态与管理数据。",

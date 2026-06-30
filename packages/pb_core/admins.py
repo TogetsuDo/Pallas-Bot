@@ -10,6 +10,8 @@ from pallas.core.foundation.db import make_bot_config_repository
 ADD_BOT_ADMIN_COMMAND = "牛牛添加号主"
 
 _QQ_RE = re.compile(r"(?<![0-9])([1-9][0-9]{4,14})(?![0-9])")
+# 显式指定目标牛：关键字 + 空格 + QQ，如「牛 3888888888」「牛牛 3888888888」（bot/account 同理，大小写不敏感）
+_TARGET_RE = re.compile(r"(?:牛牛|牛|bot|account)\s+([1-9][0-9]{4,14})", re.IGNORECASE)
 
 
 def collect_qq_ids_from_plain_and_message(plain_text: str, message) -> list[int]:
@@ -38,29 +40,18 @@ def parse_add_bot_admin_targets(plain_text: str, message, *, self_id: int) -> tu
     """
     解析「牛牛添加号主」目标。
 
-    - 仅 1 个 QQ：视为当前牛的号主。
-    - 首个 QQ 等于当前牛 QQ：其余为号主。
-    - 首个 QQ 不等于当前牛 QQ：首个为牛牛 QQ，其余为号主。
+    - 默认所有 QQ（文本或 @）都作为「当前对话牛」的号主。
+    - 仅当显式带目标牛关键字（``牛 QQ`` / ``牛牛 QQ`` / ``bot QQ`` / ``account QQ``，关键字后空格接 QQ）时，
+      才把该 QQ 作为目标牛，其余 QQ 作为该目标牛的号主。
     """
     tail = extract_command_tail(plain_text, ADD_BOT_ADMIN_COMMAND)
-    if not tail:
-        source = plain_text or ""
-    else:
-        source = tail
-    ids = collect_qq_ids_from_plain_and_message(source, message)
-    if not ids:
-        return None
+    source = tail or (plain_text or "")
     bot_id = int(self_id)
-    if len(ids) == 1:
-        if ids[0] == bot_id:
-            return None
-        return bot_id, ids
-    if ids[0] == bot_id:
-        bot_id = int(self_id)
-        admin_ids = ids[1:]
-    else:
-        bot_id = ids[0]
-        admin_ids = ids[1:]
+    match = _TARGET_RE.search(source)
+    if match:
+        bot_id = int(match.group(1))
+        source = source[: match.start()] + source[match.end() :]
+    admin_ids = collect_qq_ids_from_plain_and_message(source, message)
     admins = [uid for uid in admin_ids if uid != bot_id]
     if not admins:
         return None

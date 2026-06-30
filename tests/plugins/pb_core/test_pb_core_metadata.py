@@ -24,5 +24,13 @@ def test_pb_core_status_menu_is_superuser_only_help():
     assert status_item.get("help_audience") == "superuser"
 
 
+def test_pb_core_menu_items_all_have_trigger_condition():
+    # 每条 menu 都要带 trigger_condition，否则帮助图「怎么说」列会回退成占位符。
+    menu = __plugin_meta__.extra.get("menu_data") or []
+    assert len(menu) == 6
+    for item in menu:
+        assert item.get("trigger_condition"), item.get("func")
+
+
 def test_pb_core_plugin_is_superuser_only_help():
     assert __plugin_meta__.extra.get("help_audience") == "superuser"

@@ -6,7 +6,7 @@ from pallas.core.perm import (
     effective_permission_avail_text,
     help_say_phrase,
     help_scene_text,
-    iter_user_help_menu,
+    iter_plugin_detail_menu,
 )
 
 from .config import Config
@@ -226,7 +226,7 @@ def generate_plugin_functions_markdown(
         user_menu: list[dict] = []
         if hasattr(metadata, "extra") and metadata.extra:
             menu_data = metadata.extra.get("menu_data", [])
-            user_menu = list(iter_user_help_menu(menu_data))
+            user_menu = list(iter_plugin_detail_menu(target_plugin, menu_data))
 
         if user_menu:
             first_func = _sanitize_pipe(str(user_menu[0].get("func", "1") or "1"))
@@ -285,7 +285,7 @@ def generate_function_detail_markdown(plugin_name: str, function_name: str) -> t
 
     metadata = target_plugin.metadata
     menu_data = metadata.extra.get("menu_data", []) if metadata.extra else []
-    user_menu = list(iter_user_help_menu(menu_data))
+    user_menu = list(iter_plugin_detail_menu(target_plugin, menu_data))
 
     target_function = None
     target_index = -1
