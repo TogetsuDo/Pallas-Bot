@@ -5,7 +5,11 @@ from nonebot.typing import T_State
 from .help_args import parse_help_args, parse_help_page_token
 from .markdown_generator import HelpMarkdownIssue
 from .menu_rows import build_help_menu_rows, paginate_menu_rows
-from .plugin_detail_data import build_function_detail_data, build_plugin_detail_data
+from .plugin_detail_data import (
+    build_function_detail_data,
+    build_plugin_detail_data,
+    find_command_help_targets,
+)
 from .plugin_manager import (
     find_plugin,
     find_plugin_by_identifier,
@@ -101,10 +105,50 @@ async def handle_help_command(
             return
 
     plugin_identifier = args[0]
-    plugin_name, error_message = await find_plugin_by_identifier(
-        plugin_identifier,
-        None if show_ignored else (plugin_config.ignored_plugins if plugin_config else []),
-    )
+    ignored_plugins = None if show_ignored else (plugin_config.ignored_plugins if plugin_config else [])
+    plugin_name, error_message = await find_plugin_by_identifier(plugin_identifier, ignored_plugins)
+
+    if len(args) == 1:
+        # 优先按插件名/序号展示插件详情；命中唯一插件时与旧行为一致
+        if plugin_name and not error_message:
+            is_disabled = await is_plugin_disabled_for_help_display(
+                plugin_name,
+                group_id,
+                bot_id,
+                bot=bot,
+                event=event,
+            )
+            detail_data, issue = build_plugin_detail_data(plugin_name, plugin_enabled=not is_disabled)
+            if issue is HelpMarkdownIssue.PLUGIN_NOT_FOUND:
+                await matcher.finish(f"博士，你说的'{resolved_plugin_display(plugin_name)}'是什么呀？")
+                return
+            assert detail_data is not None
+            await send_plugin_detail_image(detail_data, matcher=matcher, group_id=group_id)
+            return
+
+        # 非插件名时，尝试把单条参数当作口令/功能名，跨插件直达功能详情页
+        targets = find_command_help_targets(
+            plugin_identifier,
+            show_ignored=show_ignored,
+            ignored_plugins=plugin_config.ignored_plugins if plugin_config else [],
+        )
+        if len(targets) == 1:
+            target = targets[0]
+            detail_data, issue = build_function_detail_data(target.plugin_name, target.func_name)
+            if issue is HelpMarkdownIssue.OK and detail_data is not None:
+                await send_function_detail_image(detail_data, matcher=matcher, group_id=group_id)
+                return
+        elif len(targets) > 1:
+            preview = "、".join(f"{t.plugin_display}·{t.func_name}" for t in targets[:6])
+            suffix = " 等" if len(targets) > 6 else ""
+            await matcher.finish(
+                f"博士，'{plugin_identifier}'可能指这些功能：{preview}{suffix}，"
+                f"可以发「牛牛帮助 插件 功能」再看具体说明哦"
+            )
+            return
+
+        await matcher.finish(error_message or f"博士，你说的'{plugin_identifier}'是什么呀？")
+        return
 
     if error_message:
         await matcher.finish(error_message)
@@ -112,22 +156,6 @@ async def handle_help_command(
 
     if not plugin_name:
         await matcher.finish(f"博士，你说的'{plugin_identifier}'是什么呀？")
-        return
-
-    if len(args) == 1:
-        is_disabled = await is_plugin_disabled_for_help_display(
-            plugin_name,
-            group_id,
-            bot_id,
-            bot=bot,
-            event=event,
-        )
-        detail_data, issue = build_plugin_detail_data(plugin_name, plugin_enabled=not is_disabled)
-        if issue is HelpMarkdownIssue.PLUGIN_NOT_FOUND:
-            await matcher.finish(f"博士，你说的'{resolved_plugin_display(plugin_name)}'是什么呀？")
-            return
-        assert detail_data is not None
-        await send_plugin_detail_image(detail_data, matcher=matcher, group_id=group_id)
         return
 
     if len(args) == 2:

@@ -84,10 +84,10 @@ __plugin_meta__ = PluginMetadata(
                 "func": "功能详情",
                 "trigger_method": "on_cmd",
                 "trigger_scene": SCENE_BOTH,
-                "trigger_condition": "牛牛帮助 〈插件〉 〈功能序号或名称〉",
+                "trigger_condition": "牛牛帮助 〈插件〉 〈功能序号或名称〉 或 牛牛帮助 〈口令〉",
                 "command_permission": "help.help",
                 "brief_des": "查看单条说明",
-                "detail_des": "查看某一条功能该怎么用、在哪用、谁能用。",
+                "detail_des": "查看某一条功能该怎么用、在哪用、谁能用；也可直接发口令如「牛牛帮助 牛牛喝酒」。",
             },
             {
                 "func": "插件开关",

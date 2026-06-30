@@ -19,6 +19,10 @@ from .plugin_manager import find_plugin, plugin_display_name
 from .plugin_match import normalize_help_key
 
 _NUMBERED_USAGE_RE = re.compile(r"^\d+\.\s*")
+# trigger_condition 里的口令分隔符（多个等价口令以 / 、| 分隔）
+_CMD_ALT_SPLIT_RE = re.compile(r"[/、|]+")
+# 含占位符的条目（如「同意好友 <QQ号>」「牛牛救一下 [@用户]」「牛牛帮助 〈插件名〉」）不作直达口令
+_CMD_PLACEHOLDER_RE = re.compile(r"[<>\[\]〈〉]")
 
 
 def normalize_plugin_usage_text(usage: str) -> str:
@@ -193,3 +197,78 @@ def build_function_detail_data(
         ),
         HelpMarkdownIssue.OK,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class CommandHelpTarget:
+    plugin_name: str
+    plugin_display: str
+    func_name: str
+
+
+def command_match_tokens(item: dict[str, Any]) -> list[str]:
+    """单条 menu 项可被「牛牛帮助 <口令>」直达的检索词：func 与去占位的口令。"""
+    tokens: list[str] = []
+    func = str(item.get("func", "") or "").strip()
+    if func:
+        tokens.append(func)
+    say = help_say_phrase(item)
+    if say and say != "—":
+        for alt in _CMD_ALT_SPLIT_RE.split(say):
+            alt = alt.strip()
+            if not alt or _CMD_PLACEHOLDER_RE.search(alt):
+                continue
+            # 去掉口令后的补充说明，如「牛牛拉黑 + QQ 或 @」只取口令本体
+            alt = re.split(r"\s*\+\s*", alt)[0].strip()
+            if alt:
+                tokens.append(alt)
+    return tokens
+
+
+def search_command_help_targets(identifier: str, plugins: list[Any]) -> list[CommandHelpTarget]:
+    """在给定插件集合里把单条参数当作口令/功能名解析，精确优先、其次为口令的子串。"""
+    key = normalize_help_key(identifier)
+    if not key:
+        return []
+
+    exact: list[CommandHelpTarget] = []
+    partial: list[CommandHelpTarget] = []
+    exact_seen: set[tuple[str, str]] = set()
+    partial_seen: set[tuple[str, str]] = set()
+
+    for plugin in plugins:
+        meta = getattr(plugin, "metadata", None)
+        if meta is None or not getattr(meta, "extra", None):
+            continue
+        for item in iter_plugin_detail_menu(plugin, meta.extra.get("menu_data", [])):
+            func = str(item.get("func", "") or "").strip()
+            if not func:
+                continue
+            tokens = [t for t in (normalize_help_key(tok) for tok in command_match_tokens(item)) if t]
+            if not tokens:
+                continue
+            dedup_key = (plugin.name or "", func)
+            target = CommandHelpTarget(plugin.name or "", plugin_display_name(plugin), func)
+            if key in tokens:
+                if dedup_key not in exact_seen:
+                    exact_seen.add(dedup_key)
+                    exact.append(target)
+            elif any(key in token for token in tokens):
+                if dedup_key not in partial_seen:
+                    partial_seen.add(dedup_key)
+                    partial.append(target)
+
+    return exact or partial
+
+
+def find_command_help_targets(
+    identifier: str,
+    *,
+    show_ignored: bool,
+    ignored_plugins: list[str] | None,
+) -> list[CommandHelpTarget]:
+    """跨帮助总览插件解析口令/功能名，供「牛牛帮助 <口令>」直达功能详情页。"""
+    from .plugin_manager import get_help_menu_plugins
+
+    plugins = get_help_menu_plugins(show_ignored=show_ignored, ignored_plugins=ignored_plugins)
+    return search_command_help_targets(identifier, plugins)
