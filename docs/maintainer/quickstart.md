@@ -81,9 +81,11 @@ Bot 进程在跑，不代表 QQ 消息已经能进来。
 
 ## 第五步：按需接入 AI Runtime
 
-需要唱歌、媒体任务或更完整的 AI 链路，再接这个：
+需要 @ 对话、接话 LLM、唱歌、媒体任务或更完整的 AI 链路，再接这个：
 
-- [AI Runtime](install/ai-runtime.md)
+- **本机**：`uv run pallas ai setup`（或 AI 仓 `./scripts/ai_bootstrap.sh`）
+- **Docker 全栈**：主仓 `docker-compose.full.yml`（见 [Docker 部署](../DockerDeployment.md)）
+- **排障边界**：[AI Runtime](install/ai-runtime.md)
 
 ::: tip AI runtime 不是必需品
 别把 AI runtime 当成「Bot 能不能跑起来」的前置条件。Pallas 4.0 只靠本体 + 官方扩展就能成立。

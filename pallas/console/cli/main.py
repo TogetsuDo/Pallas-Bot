@@ -15,6 +15,7 @@ _COMMAND_MODULES = (
     "pallas.console.cli.commands.lifecycle",
     "pallas.console.cli.commands.maintenance_cmd",
     "pallas.console.cli.commands.deploy_cmd",
+    "pallas.console.cli.commands.ai_cmd",
 )
 
 

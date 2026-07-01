@@ -1,4 +1,6 @@
-# 默认：Pallas-Bot + MongoDB；NapCat 等由协议端管理（/protocol/console/）在宿主机或容器内拉起，不再单独编排 napcat 服务。
+# 默认：Pallas-Bot + MongoDB（3.x 升级用户沿用此栈）。
+# 新装推荐 PostgreSQL + AI 全栈：docker-compose.full.yml（见 DockerDeployment.md）。
+# NapCat 等由协议端管理（/protocol/console/）在宿主机或容器内拉起。
 # Bot 主配置：挂载 pallas-bot/config/pallas.toml → /app/config/pallas.toml（见 config/pallas.example.toml）
 # WebUI 插件配置：随 pallas-bot/data 卷持久化（data/pallas_config/webui.json）
 # 使用内置 PostgreSQL：在 pallas.toml 配好 [bootstrap] / [bootstrap.postgres] 后执行：

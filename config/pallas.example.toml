@@ -7,12 +7,20 @@
 host = "0.0.0.0"
 port = 8088
 superusers = ["你的QQ号"]
-db_backend = "mongodb" # 或 postgresql
+# 新装默认 PostgreSQL；从 3.x MongoDB 升级请改为 mongodb 并改用 [bootstrap.mongo]
+db_backend = "postgresql"
 
-[bootstrap.mongo]
-host = "127.0.0.1"
-port = 27017
+[bootstrap.postgres]
+host = "127.0.0.1"   # docker-compose.full.yml 容器内为 postgres
+port = 5432
+user = "pallas"
+password = "pallas"
 db = "PallasBot"
+
+# [bootstrap.mongo]  # 3.x 升级沿用 Mongo 时取消注释，并设 db_backend = "mongodb"
+# host = "127.0.0.1"   # 根目录 docker-compose.yml 容器内为 mongodb
+# port = 27017
+# db = "PallasBot"
 # user / password / auth_source 有认证时再填
 
 # ── 按需取消注释 ────────────────────────────────────────────────────
@@ -21,18 +29,14 @@ db = "PallasBot"
 # extra_plugin_dirs = ["local/plugins"]   # 未配置时，local/plugins 有有效插件包会自动纳入
 # load_bundled_extra_plugins = "auto"      # true | false | auto（默认 auto：pip 未装时用仓库内副本）
 
-# [bootstrap.postgres]
-# host = "127.0.0.1"
-# port = 5432
-# user = "postgres"
-# password = ""
-# db = "PallasBot"
+# [env]
+# AI_SERVER_HOST = "127.0.0.1"   # 全栈 Docker 内由 compose 注入 pallasbot-ai，本地开发可写这里
+# AI_SERVER_PORT = "9099"
+# LLM_CHAT_ENABLED = "true"
+# REDIS_URL = "redis://127.0.0.1:6379/0"   # 分片多进程 claim；需 uv sync --extra coord-redis
+# PALLAS_DUPLICATE_PREFIX_STRICT = "true"  # 生产推荐：重复命令 prefix 冲突时阻断启动
 
 # [community_stats]
 # enabled = false                # 默认开启；仅关闭上报时取消注释
-
-# [env]
-# REDIS_URL = "redis://127.0.0.1:6379/0"   # 分片多进程 claim；需 uv sync --extra coord-redis
-# PALLAS_DUPLICATE_PREFIX_STRICT = "true"  # 生产推荐：重复命令 prefix 冲突时阻断启动
 
 # 多机协同、语料联邦、PG 连接池等进阶项见 docs/Config.md，一般无需写进 pallas.toml。

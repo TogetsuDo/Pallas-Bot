@@ -115,7 +115,7 @@ uv run pallas deploy shard      # 应用 deploy 分片模板
 cp config/pallas.example.toml config/pallas.toml
 ```
 
-2. 编辑 `config/pallas.toml`：**至少**改 `superusers` 与数据库段（见示例内「最少配置」）。
+2. 编辑 `config/pallas.toml`：**至少**改 `superusers` 与数据库段（见示例内「最少配置」）。新装默认 **PostgreSQL**，需 `uv sync --extra pg`（见上文依赖表）。
 
 最少示例：
 
@@ -124,13 +124,17 @@ cp config/pallas.example.toml config/pallas.toml
 host = "0.0.0.0"
 port = 8088
 superusers = ["你的QQ号"]
-db_backend = "mongodb"
+db_backend = "postgresql"
 
-[bootstrap.mongo]
+[bootstrap.postgres]
 host = "127.0.0.1"
-port = 27017
+port = 5432
+user = "pallas"
+password = "pallas"
 db = "PallasBot"
 ```
+
+从 3.x MongoDB 升级时改为 `db_backend = "mongodb"` 并填写 `[bootstrap.mongo]`（见 `config/pallas.example.toml` 注释）。
 
 3. 其余插件与通用项在 Web 控制台保存，落盘 **`data/pallas_config/webui.json`**。
 

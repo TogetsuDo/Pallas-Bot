@@ -13,7 +13,7 @@
 | Docker | Engine + Compose V2；Linux 可用 `curl -fsSL https://get.docker.com \| bash` |
 | 目录 | 单独目录存放 `docker-compose.yml` 与 `pallas-bot/` 数据（勿用中文空名目录作项目名，见排障） |
 | 配置 | **`pallas-bot/config/pallas.toml`** 必须从示例复制并编辑（**文件**，非目录） |
-| 数据库 | 选定 MongoDB（默认栈）或 PostgreSQL（`--profile postgres`） |
+| 数据库 | **新装** PostgreSQL（`docker-compose.full.yml` 或 `pallas.example.toml` 默认）；**3.x 升级** 沿用 MongoDB（`docker-compose.yml`） |
 | 端口 | 宿主机映射 `8088`（或自定义）需在防火墙放行 |
 | 备份 | 持久化 **`pallas-bot/data`** 与数据库卷 |
 
@@ -73,15 +73,31 @@ volumes:
 
 ## 步骤 3：选择数据库并启动
 
-::: details MongoDB（默认栈）
-`pallas.toml` 中 `db_backend = "mongodb"`（或省略默认）。compose 已为 Bot 注入 `MONGO_HOST=mongodb`。
+::: details 全栈（新装推荐：Bot + PostgreSQL + AI + Ollama）
+1. 复制 [`docker-compose.full.yml`](../docker-compose.full.yml) 与 [`config/pallas.example.toml`](../config/pallas.example.toml)（已默认 `postgresql`）。
+2. 准备目录与 `compose.env`（`PG_*` 与 `pallas.toml` 中 `[bootstrap.postgres]` 一致）。
+3. 启动：
+
+```bash
+docker compose -f docker-compose.full.yml --env-file ./pallas-bot/config/compose.env up -d
+```
+
+4. 首次拉取 Ollama 模型需数分钟，可看 `docker compose -f docker-compose.full.yml logs -f ollama-init pallasbot-ai`。
+
+**如何确认成功**：`curl -s http://127.0.0.1:8088/pallas/api/health` 与 `curl -s http://127.0.0.1:9099/health` 均正常。
+
+有 NVIDIA GPU 时追加 `-f docker-compose.full.gpu.yml`。
+:::
+
+::: details MongoDB（3.x 升级 / 沿用现有数据）
+`pallas.toml` 中 `db_backend = "mongodb"` 并填写 `[bootstrap.mongo]`。compose 已为 Bot 注入 `MONGO_HOST=mongodb`。
 
 ```bash
 docker compose up -d
 ```
 :::
 
-::: details PostgreSQL（内置 compose 数据库）
+::: details PostgreSQL（仅 Bot，不含 AI；原 compose 分步栈）
 1. `pallas.toml` 设 `db_backend = "postgresql"` 并填写 `[bootstrap.postgres]`。
 2. 复制 [`config/compose.env.example`](../config/compose.env.example) → **`pallas-bot/config/compose.env`**，使 **`PG_*`** 与 TOML 一致。
 3. 启动：
