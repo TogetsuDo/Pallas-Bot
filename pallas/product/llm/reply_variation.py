@@ -17,6 +17,7 @@ _DIRECT_REPEATED_OPENERS = (
     "我觉得",
     "确实",
     "一般来说",
+    "行吧",
 )
 _LAUGH_OPENER_RE = re.compile(r"^(哈哈+|呵呵+|嘿嘿+)")
 _SIGH_OPENER_RE = re.compile(r"^(欸|哎|唉|呃|额)+")
@@ -188,6 +189,43 @@ def build_recent_reply_variation_hint(turns: list[LlmChatTurn]) -> str:
             hints.append("最近句式有点一个模子，少用“先判断一下、再补解释”的答法")
 
     endings = [text[-1] for text in assistant_texts[-3:] if text]
+    if len(endings) >= 3 and len(set(endings)) == 1:
+        hints.append("最近收尾太像模板，换个自然收口")
+
+    if not hints:
+        return ""
+    return "【本轮表达去重】\n- " + "\n- ".join(hints[:4])
+
+
+def build_variation_hint_from_recent_texts(recent_texts: list[str]) -> str:
+    texts = [str(item or "").strip() for item in recent_texts if str(item or "").strip()]
+    if not texts:
+        return ""
+
+    hints: list[str] = []
+    openers: list[str] = []
+    for text in reversed(texts[-6:]):
+        opener = classify_repeated_opener(text)
+        if opener and opener not in openers:
+            openers.append(opener)
+        if len(openers) >= 3:
+            break
+    if openers:
+        hints.append("最近几轮别再用这些开头：" + "、".join(openers))
+
+    recent = texts[-3:]
+    animal_openers = sum(1 for text in recent if _ANIMAL_OPENER_RE.match(text))
+    if animal_openers >= 2:
+        hints.append("最近开头动物口癖太多，别再用哞~/喵~ 起手")
+
+    kaomoji_count = sum(1 for text in recent if has_kaomoji_suffix(text))
+    if kaomoji_count >= 2:
+        hints.append("最近句尾颜文字太像模板，这轮别加 (*…*) 这类 ASCII 表情")
+
+    if recent and min(len(text) for text in recent) >= 28:
+        hints.append("最近解释偏满，这轮优先短一点，像顺手接一句")
+
+    endings = [text[-1] for text in recent if text]
     if len(endings) >= 3 and len(set(endings)) == 1:
         hints.append("最近收尾太像模板，换个自然收口")
 

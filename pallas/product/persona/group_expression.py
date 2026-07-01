@@ -15,7 +15,7 @@ def compile_group_expression_prompt(style_profile: dict[str, Any] | None) -> str
     if not derived:
         return wrap_stats_block(
             "group_expression",
-            "【群聊表达习惯】新群或样本尚少：像群友口语接话，可带一点帕拉斯自信/接梗，避免客服式完整解释。",
+            "【群聊表达习惯】新群或样本尚少：像群友口语接话，短句为主，避免客服式完整解释。",
         )
 
     parts: list[str] = []

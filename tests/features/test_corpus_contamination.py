@@ -8,6 +8,7 @@ from pallas.product.llm.corpus_contamination import (
     FEEDBACK_META_BLOCK_PHRASES,
     build_mongo_substr_query,
     is_corpus_learn_safe,
+    is_expression_reference_safe,
     is_feedback_reply_collectable,
     match_corpus_learn_block,
     match_feedback_meta_block,
@@ -38,6 +39,17 @@ def test_is_feedback_reply_collectable_blocks_meta_and_contamination() -> None:
     assert is_feedback_reply_collectable("通常我会这么说") is False
     assert is_feedback_reply_collectable("庆典感满满") is False
     assert is_feedback_reply_collectable("行，懂了") is True
+
+
+def test_is_expression_reference_safe_blocks_contaminated_hint(monkeypatch) -> None:
+    from pallas.product.llm.config import LlmConfig
+
+    monkeypatch.setattr(
+        "pallas.product.llm.config.get_llm_config",
+        lambda: LlmConfig(llm_corpus_learn_guard_enabled=True),
+    )
+    assert is_expression_reference_safe("希望每个庆典都能顺利") is False
+    assert is_expression_reference_safe("这也太黑了吧") is True
 
 
 def test_reject_corpus_learn_message(monkeypatch) -> None:

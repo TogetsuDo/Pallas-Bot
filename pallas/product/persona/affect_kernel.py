@@ -143,6 +143,32 @@ def build_persona_affect_system_block(contract: PersonaAffectContract) -> str:
     return "\n".join(lines)
 
 
+def build_repeater_persona_affect_system_block(contract: PersonaAffectContract) -> str:
+    lines = ["【接话塑形】"]
+    seen: set[str] = set()
+    for hint in contract.stance_hints[:3]:
+        text = str(hint or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        lines.append(f"- {text}")
+
+    if contract.preferred_length_max <= 16:
+        length_line = "句长：1 句为主，最多 2 句短口语。"
+    else:
+        length_line = "句长：2 句内，像群友顺口接一句。"
+    lines.extend([
+        f"- {length_line}",
+        "- 避免客服腔、总结腔、主动扯庆典或角色设定。",
+    ])
+
+    if contract.opener_suppression_hints:
+        labels = "、".join(contract.opener_suppression_hints[:2])
+        lines.append(f"- 别再用这些开头：{labels}")
+
+    return "\n".join(lines)
+
+
 def group_flavor_summary_from_style_snapshot(group_style: dict | None) -> str:
     if not isinstance(group_style, dict):
         return ""

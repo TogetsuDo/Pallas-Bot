@@ -11,6 +11,27 @@ from pallas.product.llm.reply_variation import build_recent_reply_variation_hint
 from pallas.product.llm.session_store import LlmChatTurn
 
 
+def patch_expression_message_repository(
+    monkeypatch: pytest.MonkeyPatch,
+    mod,
+    message_repo,
+) -> None:
+    import pallas.product.llm.dynamic_expression_context as dec_mod
+
+    monkeypatch.setattr(dec_mod, "make_message_repository", lambda: message_repo)
+
+
+def patch_expression_trigger_keywords(
+    monkeypatch: pytest.MonkeyPatch,
+    mod,
+    keywords_fn,
+) -> None:
+    import pallas.product.llm.dynamic_expression_context as dec_mod
+
+    monkeypatch.setattr(dec_mod, "extract_chat_trigger_keywords", keywords_fn)
+    monkeypatch.setattr(mod, "extract_chat_trigger_keywords", keywords_fn)
+
+
 @pytest.mark.asyncio
 async def test_build_llm_chat_corpus_ending_hint_prefers_topical_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
     from packages.llm_chat import chat_message as mod
@@ -89,12 +110,8 @@ async def test_build_llm_chat_corpus_ending_hint_prefers_recent_live_group_repli
         "pallas.core.foundation.db.context_repo_access",
         SimpleNamespace(get_shared_context_repository=lambda: repo),
     )
-    monkeypatch.setattr(
-        mod,
-        "make_message_repository",
-        lambda: message_repo,
-    )
-    monkeypatch.setattr(mod, "extract_chat_trigger_keywords", lambda _text: ["明日方舟", "抽卡"])
+    patch_expression_message_repository(monkeypatch, mod, message_repo)
+    patch_expression_trigger_keywords(monkeypatch, mod, lambda _text: ["明日方舟", "抽卡"])
 
     hint = await mod.build_llm_chat_corpus_ending_hint(20002, "这次抽卡也太黑了吧？？？")
 
@@ -148,8 +165,8 @@ async def test_build_llm_chat_corpus_ending_hint_skips_bot_and_current_user_in_r
         "pallas.core.foundation.db.context_repo_access",
         SimpleNamespace(get_shared_context_repository=lambda: repo),
     )
-    monkeypatch.setattr(mod, "make_message_repository", lambda: message_repo)
-    monkeypatch.setattr(mod, "extract_chat_trigger_keywords", lambda _text: ["明日方舟", "抽卡"])
+    patch_expression_message_repository(monkeypatch, mod, message_repo)
+    patch_expression_trigger_keywords(monkeypatch, mod, lambda _text: ["明日方舟", "抽卡"])
 
     hint = await mod.build_llm_chat_corpus_ending_hint(
         20002,
@@ -208,8 +225,8 @@ async def test_build_llm_chat_corpus_ending_hint_prefers_topic_run_from_same_rec
         "pallas.core.foundation.db.context_repo_access",
         SimpleNamespace(get_shared_context_repository=lambda: repo),
     )
-    monkeypatch.setattr(mod, "make_message_repository", lambda: message_repo)
-    monkeypatch.setattr(mod, "extract_chat_trigger_keywords", lambda _text: ["明日方舟", "抽卡"])
+    patch_expression_message_repository(monkeypatch, mod, message_repo)
+    patch_expression_trigger_keywords(monkeypatch, mod, lambda _text: ["明日方舟", "抽卡"])
 
     hint = await mod.build_llm_chat_corpus_ending_hint(20002, "这次抽卡也太黑了吧？？？")
 
@@ -243,8 +260,8 @@ async def test_build_llm_chat_corpus_ending_hint_ignores_repeater_bundle_backfil
         "pallas.core.foundation.db.context_repo_access",
         SimpleNamespace(get_shared_context_repository=lambda: repo),
     )
-    monkeypatch.setattr(mod, "make_message_repository", lambda: message_repo)
-    monkeypatch.setattr(mod, "extract_chat_trigger_keywords", lambda _text: ["明日方舟", "抽卡"])
+    patch_expression_message_repository(monkeypatch, mod, message_repo)
+    patch_expression_trigger_keywords(monkeypatch, mod, lambda _text: ["明日方舟", "抽卡"])
     hint = await mod.build_llm_chat_corpus_ending_hint(20002, "这次抽卡也太黑了吧？？？")
 
     assert hint == "\n【语料收尾参考】当前话题可参考本群最近常接的短句：那确实。"
@@ -287,8 +304,8 @@ async def test_build_llm_chat_corpus_ending_hint_unifies_recent_and_answer_sourc
         "pallas.core.foundation.db.context_repo_access",
         SimpleNamespace(get_shared_context_repository=lambda: repo),
     )
-    monkeypatch.setattr(mod, "make_message_repository", lambda: message_repo)
-    monkeypatch.setattr(mod, "extract_chat_trigger_keywords", lambda _text: ["明日方舟", "抽卡"])
+    patch_expression_message_repository(monkeypatch, mod, message_repo)
+    patch_expression_trigger_keywords(monkeypatch, mod, lambda _text: ["明日方舟", "抽卡"])
     hint = await mod.build_llm_chat_corpus_ending_hint(20002, "这次抽卡也太黑了吧？？？")
 
     assert hint == "\n【语料收尾参考】当前话题可参考本群最近常接的短句：那确实、这也太黑了吧、你这波有点狠。"
@@ -306,8 +323,8 @@ async def test_build_llm_chat_corpus_ending_hint_dedupes_similar_endings(monkeyp
         "pallas.core.foundation.db.context_repo_access",
         SimpleNamespace(get_shared_context_repository=lambda: repo),
     )
-    monkeypatch.setattr(mod, "make_message_repository", lambda: message_repo)
-    monkeypatch.setattr(mod, "extract_chat_trigger_keywords", lambda _text: ["明日方舟", "抽卡"])
+    patch_expression_message_repository(monkeypatch, mod, message_repo)
+    patch_expression_trigger_keywords(monkeypatch, mod, lambda _text: ["明日方舟", "抽卡"])
     repo = SimpleNamespace(
         list_answers_for_group_since=AsyncMock(
             return_value=[

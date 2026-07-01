@@ -13,7 +13,7 @@ from pallas.core.platform.ai_callback.task_types import REPEATER_POLISH_TASK_TYP
 from pallas.product.llm.client import submit_chat_task
 from pallas.product.llm.config import get_llm_config
 from pallas.product.llm.models import ChatSubmitRequest
-from pallas.product.llm.persona_context import build_persona_llm_context
+from pallas.product.llm.repeater_persona_context import build_repeater_llm_persona_context
 from pallas.product.llm.task_metrics import record_bot_llm_task
 
 if TYPE_CHECKING:
@@ -90,27 +90,29 @@ async def maybe_submit_repeater_llm_polish(
         return False
 
     session_id = f"repeater_pl_{bot_id}_{group_id}_{user_id}"
+    trigger_plain = str(trigger_user_text or candidate).strip()
 
     try:
-        bundle, temperature, token_count = await build_persona_llm_context(
+        from pallas.product.llm.feedback_chat_hint import load_repeater_feedback_system_suffix
+
+        feedback_hint = await load_repeater_feedback_system_suffix(group_id=group_id, user_text=trigger_plain)
+        persona_bundle = await build_repeater_llm_persona_context(
             bot_id,
             group_id,
-            candidate,
-            mode="normal",
+            trigger_plain or candidate,
             purpose="polish",
+            user_id=user_id,
+            feedback_suffix=feedback_hint,
         )
-        system_prompt = bundle.system.strip()
+        if persona_bundle is None or not persona_bundle.system_prompt:
+            return False
+        system_prompt = persona_bundle.system_prompt
+        temperature = persona_bundle.temperature
+        token_count = persona_bundle.token_count
+        rewrite_metadata = persona_bundle.llm_rewrite_metadata
     except Exception:
         logger.exception("repeater llm polish compile_persona_prompt failed group={}", group_id)
         return False
-    if not system_prompt:
-        return False
-    from pallas.product.llm.feedback_chat_hint import load_repeater_feedback_system_suffix
-
-    trigger_plain = str(trigger_user_text or candidate).strip()
-    feedback_hint = await load_repeater_feedback_system_suffix(group_id=group_id, user_text=trigger_plain)
-    if feedback_hint:
-        system_prompt = f"{system_prompt.rstrip()}{feedback_hint}"
 
     request_id = str(ULID())
     await TaskManager.add_task(
@@ -139,6 +141,7 @@ async def maybe_submit_repeater_llm_polish(
             task="repeater_polish",
             token_count=token_count,
             temperature=temperature,
+            llm_rewrite_metadata=rewrite_metadata,
         ),
         cfg=cfg,
     )

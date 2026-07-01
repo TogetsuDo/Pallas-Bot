@@ -37,7 +37,7 @@ async def test_repeater_fallback_still_runs_for_normal_message(monkeypatch: pyte
     monkeypatch.setattr("pallas.product.llm.fallback.get_llm_config", lambda: cfg)
     monkeypatch.setattr(
         "pallas.product.llm.fallback.build_fallback_system_prompt",
-        AsyncMock(return_value=("system", None, None)),
+        AsyncMock(return_value=("system", None, None, {})),
     )
     monkeypatch.setattr(
         "pallas.product.llm.fallback.build_fallback_expression_suffix",
@@ -50,4 +50,4 @@ async def test_repeater_fallback_still_runs_for_normal_message(monkeypatch: pyte
     event = _group_event(to_me=False)
     assert await maybe_submit_repeater_llm_fallback(event, user_text="你好") is True
     req = submit_mock.await_args.args[0]
-    assert "表达习惯参考" in req.system_prompt
+    assert "表达习惯参考" in req.user_text

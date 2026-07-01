@@ -25,6 +25,30 @@ def runtime_trace_path() -> Path:
     return runtime_debug_dir() / "runtime_traces.jsonl"
 
 
+def select_pool_observation_path() -> Path:
+    return runtime_debug_dir() / "select_pool_observations.jsonl"
+
+
+def append_select_pool_observation(
+    *,
+    bot_id: int,
+    group_id: int,
+    user_id: int,
+    source: str,
+    diag: dict[str, Any],
+) -> None:
+    row = {
+        "created_at": int(time.time()),
+        "bot_id": int(bot_id),
+        "group_id": int(group_id),
+        "user_id": int(user_id),
+        "source": str(source or ""),
+        "diag": diag,
+    }
+    with select_pool_observation_path().open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
 def _preview_text(text: str, *, limit: int = 160) -> str:
     plain = str(text or "").strip()
     if len(plain) <= limit:

@@ -136,6 +136,37 @@ def is_corpus_learn_safe(text: str) -> bool:
     return match_corpus_learn_block(text) is None
 
 
+def is_expression_reference_safe(text: str) -> bool:
+    """动态表达 / 语料收尾参考：挡庆典腔等间接污染。"""
+    if not corpus_learn_guard_enabled():
+        return True
+    plain = str(text or "").strip()
+    if not plain:
+        return False
+    if match_corpus_learn_block(plain) is not None:
+        return False
+    for phrase in CHAT_HARD_BLOCK_PHRASES:
+        if phrase in plain:
+            return False
+    return True
+
+
+def is_profiler_sample_safe(text: str) -> bool:
+    """群 style profiler 样本：与语料学习门控一致。"""
+    return is_corpus_learn_safe(text)
+
+
+def is_profiler_answer_safe(answer: object) -> bool:
+    messages = getattr(answer, "messages", None) or []
+    samples = [str(item or "").strip() for item in messages if str(item or "").strip()]
+    if samples:
+        return all(is_profiler_sample_safe(item) for item in samples)
+    keywords = str(getattr(answer, "keywords", "") or "").strip()
+    if keywords and not is_profiler_sample_safe(keywords):
+        return False
+    return bool(samples or keywords)
+
+
 def is_feedback_reply_collectable(text: str) -> bool:
     plain = str(text or "").strip()
     if not plain:

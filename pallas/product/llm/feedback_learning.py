@@ -96,6 +96,10 @@ def weighted_reply_counter(
         weight = feedback_entry_effective_weight(item, active_scene=active_scene, now=now)
         if weight <= 0.0:
             continue
+        from pallas.product.llm.corpus_contamination import is_feedback_reply_collectable
+
+        if not is_feedback_reply_collectable(reply):
+            continue
         counter[reply] += weight
     return counter
 

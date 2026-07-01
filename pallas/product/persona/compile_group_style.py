@@ -37,6 +37,12 @@ def compile_group_style_snapshot(style_profile: dict[str, Any] | None) -> dict[s
         "signals": None,
         "hints": [],
     }
+    if isinstance(sample, dict):
+        contamination = sample.get("contamination_skipped")
+        if isinstance(contamination, dict):
+            skipped = int(contamination.get("message_count") or 0) + int(contamination.get("answer_count") or 0)
+            if skipped > 0:
+                snapshot["contamination_skipped_count"] = skipped
 
     if not ready:
         snapshot["hints"] = ["样本不足，暂不生成群风格"]
@@ -112,7 +118,7 @@ def compile_group_style_prompt(style_profile: dict[str, Any] | None, *, locale: 
         locale = "zh"
 
     if not snapshot["ready"]:
-        body = "新群或样本尚少；接话宜口语、直接，可带一点帕拉斯自信，避免客服式完整解释。"
+        body = "新群或样本尚少：像群友口语接话，短句为主，避免客服式完整解释。"
         return wrap_stats_block("group_style", f"【群风格】{body}")
 
     signals = snapshot.get("signals") or {}

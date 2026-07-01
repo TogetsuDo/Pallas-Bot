@@ -53,6 +53,28 @@ def build_group_style_profile(
     recent_messages = [m for m in messages if int(getattr(m, "group_id", 0)) == int(group_id) and int(m.time) >= cutoff]
     recent_answers = [a for a in answers if int(getattr(a, "group_id", 0)) == int(group_id) and int(a.time) >= cutoff]
 
+    from pallas.product.llm.corpus_contamination import is_profiler_answer_safe, is_profiler_sample_safe
+
+    message_skipped_contamination = 0
+    filtered_messages: list[Message] = []
+    for message in recent_messages:
+        plain = str(getattr(message, "plain_text", "") or "").strip()
+        if plain and not is_profiler_sample_safe(plain):
+            message_skipped_contamination += 1
+            continue
+        filtered_messages.append(message)
+
+    answer_skipped_contamination = 0
+    filtered_answers: list[Answer] = []
+    for answer in recent_answers:
+        if not is_profiler_answer_safe(answer):
+            answer_skipped_contamination += 1
+            continue
+        filtered_answers.append(answer)
+
+    recent_messages = filtered_messages
+    recent_answers = filtered_answers
+
     plain_lengths = sorted(
         len(str(getattr(m, "plain_text", "") or "").strip())
         for m in recent_messages
@@ -107,6 +129,10 @@ def build_group_style_profile(
             "answer_count": answer_count,
             "distinct_answer_keywords": distinct_answer_keywords,
             "forced_teach_weight": round(max(0.0, float(forced_teach_weight)), 3),
+            "contamination_skipped": {
+                "message_count": int(message_skipped_contamination),
+                "answer_count": int(answer_skipped_contamination),
+            },
         },
         "raw": {
             "avg_plain_len": avg_plain_len,

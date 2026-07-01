@@ -39,6 +39,17 @@ def group_style_weight(style_profile: dict[str, Any], *, now_ts: int) -> float:
     if teach_weight > 0:
         sample_weight *= 1.0 + min(0.5, teach_weight * 0.08)
 
+    contamination = sample.get("contamination_skipped")
+    if isinstance(contamination, dict):
+        msg_skip = max(0, int(contamination.get("message_count") or 0))
+        ans_skip = max(0, int(contamination.get("answer_count") or 0))
+        kept_total = max(1, message_count + answer_count)
+        skip_total = msg_skip + ans_skip
+        if skip_total > 0:
+            ratio = skip_total / (kept_total + skip_total)
+            if ratio >= 0.2:
+                sample_weight *= max(0.2, 1.0 - ratio)
+
     updated_at = int(style_profile.get("updated_at") or 0)
     if updated_at <= 0:
         decay = 1.0

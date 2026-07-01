@@ -13,8 +13,8 @@ _PERSONA_SECTION_MARKERS = (
 )
 
 _COMPARE_NOTE = (
-    "@ 闲聊会注入【本轮牛格塑形】与动态表达参考；"
-    "repeater / 语料链路主要走 PersonaAffectContract 与 variation 去重，通常不含完整塑形块。"
+    "@ 闲聊与 repeater LLM 均可注入【本轮牛格塑形】/【接话塑形】与动态表达参考；"
+    "语料纯规则路径仍主要走 scorer 与 variation 去重。"
 )
 
 

@@ -14,8 +14,8 @@ from pallas.core.platform.ai_callback.task_types import REPEATER_POLISH_LITE_TAS
 from pallas.product.llm.client import submit_chat_task
 from pallas.product.llm.config import get_llm_config
 from pallas.product.llm.models import ChatSubmitRequest
+from pallas.product.llm.repeater_persona_context import build_repeater_llm_persona_context
 from pallas.product.llm.task_metrics import record_bot_llm_task
-from pallas.product.persona.compile_persona_prompt import load_polish_lite_system_prompt
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import GroupMessageEvent
@@ -93,20 +93,20 @@ async def maybe_submit_repeater_llm_polish_lite(
     if not prompt_user:
         return False
 
-    system_prompt = load_polish_lite_system_prompt()
-    if not system_prompt:
-        return False
     from pallas.product.llm.feedback_chat_hint import load_repeater_feedback_system_suffix
 
     feedback_hint = await load_repeater_feedback_system_suffix(group_id=group_id, user_text=plain)
-    if feedback_hint:
-        system_prompt = f"{system_prompt.rstrip()}{feedback_hint}"
-
-    from pallas.product.llm.inference_params import derive_llm_inference_params
-    from pallas.product.persona import resolve_persona_for_message
-
-    persona = await resolve_persona_for_message(bot_id, group_id, plain)
-    temperature, token_count = derive_llm_inference_params(persona, mode="normal", purpose="polish_lite")
+    persona_bundle = await build_repeater_llm_persona_context(
+        bot_id,
+        group_id,
+        plain,
+        purpose="polish_lite",
+        mode=str(reply_mode or "normal"),
+        user_id=user_id,
+        feedback_suffix=feedback_hint,
+    )
+    if persona_bundle is None or not persona_bundle.system_prompt:
+        return False
 
     session_id = f"repeater_pll_{bot_id}_{group_id}_{user_id}"
     request_id = str(ULID())
@@ -128,14 +128,15 @@ async def maybe_submit_repeater_llm_polish_lite(
             request_id=request_id,
             session_id=session_id,
             user_text=prompt_user,
-            system_prompt=system_prompt,
+            system_prompt=persona_bundle.system_prompt,
             bot_id=bot_id,
             group_id=group_id,
             user_id=user_id,
             mode="normal",
             task="repeater_polish_lite",
-            token_count=token_count,
-            temperature=temperature,
+            token_count=persona_bundle.token_count,
+            temperature=persona_bundle.temperature,
+            llm_rewrite_metadata=persona_bundle.llm_rewrite_metadata,
         ),
         cfg=cfg,
     )

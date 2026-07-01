@@ -15,6 +15,7 @@ from pallas.core.platform.ai_callback.task_types import REPEATER_SELECT_TASK_TYP
 from pallas.product.llm.client import submit_chat_task
 from pallas.product.llm.config import get_llm_config
 from pallas.product.llm.models import ChatSubmitRequest
+from pallas.product.llm.repeater_persona_context import build_repeater_llm_persona_context
 from pallas.product.llm.task_metrics import record_bot_llm_task
 from pallas.product.persona.compile_persona_prompt import resolve_select_system_prompt_path
 
@@ -31,6 +32,43 @@ def load_select_system_prompt() -> str:
     return ""
 
 
+def filter_select_candidate_pool(candidates: list[str]) -> tuple[list[str], dict[str, int]]:
+    from pallas.product.llm.corpus_contamination import is_corpus_learn_safe
+
+    raw_count = len(candidates)
+    skipped_contamination = 0
+    safe: list[str] = []
+    for text in candidates:
+        sample = str(text or "").strip()
+        if not sample or "[CQ:" in sample:
+            continue
+        if not is_corpus_learn_safe(sample):
+            skipped_contamination += 1
+            continue
+        safe.append(sample)
+    return safe, {
+        "raw_count": raw_count,
+        "safe_count": len(safe),
+        "skipped_contamination": skipped_contamination,
+    }
+
+
+def build_select_pool_diag(
+    *,
+    raw_pool: list[str],
+    safe_pool: list[str],
+    ranked: list[str],
+    skip_reason: str = "",
+) -> dict[str, int | str]:
+    return {
+        "raw_count": len(raw_pool),
+        "safe_count": len(safe_pool),
+        "ranked_count": len(ranked),
+        "skipped_contamination": max(0, len(raw_pool) - len(safe_pool)),
+        "skip_reason": str(skip_reason or ""),
+    }
+
+
 async def rank_select_candidates(
     bot_id: int,
     group_id: int,
@@ -45,10 +83,14 @@ async def rank_select_candidates(
 
     persona = await resolve_persona_for_message(bot_id, group_id, plain_text)
     affect_triggers = await load_affect_triggers(group_id)
+    from pallas.product.llm.corpus_contamination import is_corpus_learn_safe
+
     scored: list[tuple[float, str]] = []
     for text in candidates:
         sample = str(text or "").strip()
         if not sample or "[CQ:" in sample:
+            continue
+        if not is_corpus_learn_safe(sample):
             continue
         weight = message_weight_multiplier(sample, persona, affect_triggers=affect_triggers)
         scored.append((weight, sample))
@@ -163,22 +205,68 @@ async def maybe_submit_repeater_llm_select(
     if not plain or "[CQ:" in plain:
         return False
 
-    raw_pool = [str(item).strip() for item in candidates if str(item).strip() and "[CQ:" not in str(item)]
-    if len(raw_pool) < 2:
-        return False
-
     group_id = int(event.group_id)
     user_id = int(event.user_id)
     bot_id = int(event.self_id)
+
+    raw_pool = [str(item).strip() for item in candidates if str(item).strip() and "[CQ:" not in str(item)]
+    safe_pool, _filter_diag = filter_select_candidate_pool(raw_pool)
+    if len(safe_pool) < 2:
+        from pallas.product.llm.runtime_debug import append_select_pool_observation
+
+        diag = build_select_pool_diag(
+            raw_pool=raw_pool,
+            safe_pool=safe_pool,
+            ranked=[],
+            skip_reason="safe_pool_too_small",
+        )
+        append_select_pool_observation(
+            bot_id=bot_id,
+            group_id=group_id,
+            user_id=user_id,
+            source=source,
+            diag=diag,
+        )
+        record_bot_llm_task(REPEATER_SELECT_TASK_TYPE, "submit_skip")
+        logger.debug(
+            "repeater llm select skipped: safe_pool={} raw={} contamination_skipped={} source={}",
+            len(safe_pool),
+            len(raw_pool),
+            diag.get("skipped_contamination"),
+            source,
+        )
+        return False
 
     ranked = await rank_select_candidates(
         bot_id,
         group_id,
         plain,
-        raw_pool,
+        safe_pool,
         limit=cfg.llm_select_max_candidates,
     )
     if len(ranked) < 2:
+        from pallas.product.llm.runtime_debug import append_select_pool_observation
+
+        diag = build_select_pool_diag(
+            raw_pool=raw_pool,
+            safe_pool=safe_pool,
+            ranked=ranked,
+            skip_reason="ranked_pool_too_small",
+        )
+        append_select_pool_observation(
+            bot_id=bot_id,
+            group_id=group_id,
+            user_id=user_id,
+            source=source,
+            diag=diag,
+        )
+        record_bot_llm_task(REPEATER_SELECT_TASK_TYPE, "submit_skip")
+        logger.debug(
+            "repeater llm select skipped: ranked={} safe={} source={}",
+            len(ranked),
+            len(safe_pool),
+            source,
+        )
         return False
 
     fallback = str(fallback_text or "").strip() or ranked[0]
@@ -187,20 +275,24 @@ async def maybe_submit_repeater_llm_select(
     if not prompt_user:
         return False
 
-    system_prompt = load_select_system_prompt()
-    if not system_prompt:
-        return False
     from pallas.product.llm.feedback_chat_hint import load_repeater_feedback_system_suffix
 
     feedback_hint = await load_repeater_feedback_system_suffix(group_id=group_id, user_text=plain)
-    if feedback_hint:
-        system_prompt = f"{system_prompt.rstrip()}{feedback_hint}"
+    persona_bundle = await build_repeater_llm_persona_context(
+        bot_id,
+        group_id,
+        plain,
+        purpose="select",
+        mode=str(reply_mode or "normal"),
+        user_id=user_id,
+        feedback_suffix=feedback_hint,
+    )
+    if persona_bundle is None or not persona_bundle.system_prompt:
+        return False
 
-    from pallas.product.llm.inference_params import derive_llm_inference_params
-    from pallas.product.persona import resolve_persona_for_message
-
-    persona = await resolve_persona_for_message(bot_id, group_id, plain)
-    temperature, token_count = derive_llm_inference_params(persona, mode="normal", purpose="select")
+    pool_diag = build_select_pool_diag(raw_pool=raw_pool, safe_pool=safe_pool, ranked=ranked)
+    rewrite_metadata = dict(persona_bundle.llm_rewrite_metadata)
+    rewrite_metadata["select_pool_diag"] = pool_diag
 
     session_id = f"repeater_sl_{bot_id}_{group_id}_{user_id}"
     request_id = str(ULID())
@@ -224,14 +316,15 @@ async def maybe_submit_repeater_llm_select(
             request_id=request_id,
             session_id=session_id,
             user_text=prompt_user,
-            system_prompt=system_prompt,
+            system_prompt=persona_bundle.system_prompt,
             bot_id=bot_id,
             group_id=group_id,
             user_id=user_id,
             mode="normal",
             task="repeater_select",
-            token_count=token_count,
-            temperature=temperature,
+            token_count=persona_bundle.token_count,
+            temperature=persona_bundle.temperature,
+            llm_rewrite_metadata=rewrite_metadata,
         ),
         cfg=cfg,
     )

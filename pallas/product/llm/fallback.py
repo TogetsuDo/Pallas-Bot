@@ -1,4 +1,4 @@
-"""接话语料未命中时异步智能生成，默认关。"""
+"""接语料未命中时异步智能生成，默认关。"""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ from pallas.core.platform.ai_callback.task_types import REPEATER_FALLBACK_TASK_T
 from pallas.product.llm.client import submit_chat_task
 from pallas.product.llm.config import get_llm_config
 from pallas.product.llm.models import ChatSubmitRequest
+from pallas.product.llm.repeater_persona_context import build_repeater_llm_persona_context
 from pallas.product.llm.task_metrics import record_bot_llm_task
-from pallas.product.persona.compile_persona_prompt import load_fallback_lite_system_prompt
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import GroupMessageEvent
@@ -24,25 +24,21 @@ async def build_fallback_system_prompt(
     bot_id: int,
     group_id: int,
     plain_text: str,
-) -> tuple[str, float | None, int | None]:
-    from pallas.product.llm.inference_params import derive_llm_inference_params
-    from pallas.product.persona import resolve_persona_for_message
-
-    persona = await resolve_persona_for_message(bot_id, group_id, plain_text)
-    temperature, token_count = derive_llm_inference_params(persona, mode="normal", purpose="fallback_lite")
-    system_prompt = load_fallback_lite_system_prompt()
-    if not system_prompt:
-        from pallas.product.llm.persona_context import build_persona_llm_context
-
-        bundle, temperature, token_count = await build_persona_llm_context(
-            bot_id,
-            group_id,
-            plain_text,
-            mode="normal",
-            purpose="fallback",
-        )
-        system_prompt = bundle.system.strip()
-    return system_prompt, temperature, token_count
+    *,
+    user_id: int | None = None,
+    feedback_suffix: str = "",
+) -> tuple[str, float | None, int | None, dict | None]:
+    bundle = await build_repeater_llm_persona_context(
+        bot_id,
+        group_id,
+        plain_text,
+        purpose="fallback_lite",
+        user_id=user_id,
+        feedback_suffix=feedback_suffix,
+    )
+    if bundle is None:
+        return "", None, None, None
+    return bundle.system_prompt, bundle.temperature, bundle.token_count, bundle.llm_rewrite_metadata
 
 
 async def build_fallback_expression_suffix(group_id: int) -> str:
@@ -78,19 +74,26 @@ async def maybe_submit_repeater_llm_fallback(
     group_id = int(event.group_id)
     user_id = int(event.user_id)
     bot_id = int(event.self_id)
-    session_id = f"repeater_fb_{bot_id}_{group_id}_{user_id}"
 
-    try:
-        system_prompt, temperature, token_count = await build_fallback_system_prompt(bot_id, group_id, text)
-    except Exception:
-        logger.exception("repeater llm fallback compile prompt failed group={}", group_id)
-        return False
+    from pallas.product.llm.feedback_chat_hint import load_repeater_feedback_system_suffix
+
+    feedback_hint = await load_repeater_feedback_system_suffix(group_id=group_id, user_text=text)
+    expression_suffix = await build_fallback_expression_suffix(group_id)
+    system_prompt, temperature, token_count, rewrite_metadata = await build_fallback_system_prompt(
+        bot_id,
+        group_id,
+        text,
+        user_id=user_id,
+        feedback_suffix=feedback_hint,
+    )
     if not system_prompt:
         return False
-    expression_suffix = await build_fallback_expression_suffix(group_id)
-    if expression_suffix:
-        system_prompt = f"{system_prompt.rstrip()}\n{expression_suffix}"
 
+    prompt_user = text
+    if expression_suffix:
+        prompt_user = f"{text}\n{expression_suffix}"
+
+    session_id = f"repeater_fb_{bot_id}_{group_id}_{user_id}"
     request_id = str(ULID())
     await TaskManager.add_task(
         request_id,
@@ -108,7 +111,7 @@ async def maybe_submit_repeater_llm_fallback(
         ChatSubmitRequest(
             request_id=request_id,
             session_id=session_id,
-            user_text=text,
+            user_text=prompt_user,
             system_prompt=system_prompt,
             bot_id=bot_id,
             group_id=group_id,
@@ -117,6 +120,7 @@ async def maybe_submit_repeater_llm_fallback(
             task="repeater_fallback",
             token_count=token_count,
             temperature=temperature,
+            llm_rewrite_metadata=rewrite_metadata,
         ),
         cfg=cfg,
     )
