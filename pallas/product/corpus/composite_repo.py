@@ -197,6 +197,10 @@ class CompositeContextRepository:
         message: str,
         append_on_existing: bool,
     ) -> None:
+        from pallas.product.llm.corpus_contamination import reject_corpus_learn_message
+
+        if reject_corpus_learn_message(message, source="composite_upsert_answer"):
+            return
         await self._local.upsert_answer(
             keywords=keywords,
             group_id=group_id,
@@ -230,6 +234,10 @@ class CompositeContextRepository:
         message: str,
         append_on_existing: bool,
     ) -> bool:
+        from pallas.product.llm.corpus_contamination import reject_corpus_learn_message
+
+        if reject_corpus_learn_message(message, source="composite_learn_answer"):
+            return False
         local_learn = getattr(self._local, "learn_answer", None)
         if callable(local_learn):
             created = bool(

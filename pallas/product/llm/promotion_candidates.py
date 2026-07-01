@@ -236,6 +236,13 @@ async def writeback_promotion_candidate(candidate: PromotionCandidate) -> Promot
         candidate.writeback_message = "empty trigger or reply"
         candidate.writeback_at = now
         return candidate
+    from pallas.product.llm.corpus_contamination import is_corpus_learn_safe
+
+    if not is_corpus_learn_safe(str(candidate.reply_text)):
+        candidate.writeback_status = "failed"
+        candidate.writeback_message = "corpus contamination guard"
+        candidate.writeback_at = now
+        return candidate
     repo = get_shared_context_repository()
     learn_answer = getattr(repo, "learn_answer", None)
     if callable(learn_answer):

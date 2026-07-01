@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import GroupMessageEvent
 
 _POLISH_USER_PREFIX = "【候选回复】"
-_POLISH_USER_SUFFIX = "\n请按牛格轻改写以上回复，保持原意，只输出一句。"
+_POLISH_USER_SUFFIX = "\n请轻顺口气，像群友接话；保持原意，只输出一句。"
 
 _LENGTH_POLISH_HINTS: dict[str, str] = {
     "short": "改写后保持短句（1-2 句）",

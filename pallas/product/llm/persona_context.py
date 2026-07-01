@@ -7,6 +7,7 @@ from pallas.product.persona.compile_persona_prompt import (
     PersonaPromptBundle,
     compile_persona_prompt_for,
     resolve_at_chat_system_prompt_path,
+    resolve_prompt_profile_for_purpose,
     resolve_repeater_system_prompt_path,
 )
 from pallas.product.persona.model import ResolvedPersona
@@ -36,6 +37,7 @@ async def build_persona_llm_context(
         base_system=base_system,
         base_system_path=resolved_base_path,
         mode=mode,
+        prompt_profile=resolve_prompt_profile_for_purpose(purpose),
     )
     persona_raw = bundle.metadata.persona
     persona = ResolvedPersona(**persona_raw) if isinstance(persona_raw, dict) else ResolvedPersona()

@@ -41,7 +41,7 @@ def test_load_repeater_system_prompt_shorter_than_full() -> None:
     full = load_base_system_prompt()
     repeater = load_base_system_prompt(custom_path=str(resolve_repeater_system_prompt_path()))
     assert "帕拉斯" in repeater
-    assert "【接话任务】" in repeater
+    assert "【接话原则】" in repeater
     assert len(repeater) < len(full)
 
 
@@ -64,8 +64,31 @@ def test_compile_persona_prompt_uses_repeater_base() -> None:
         bot_id=1,
         base_system_path=str(resolve_repeater_system_prompt_path()),
     )
-    assert "【接话任务】" in bundle.sections.base
+    assert "【接话原则】" in bundle.sections.base
     assert "【安全约束" in bundle.system
+
+
+def test_compile_persona_prompt_repeater_profile_skips_preset_layers() -> None:
+    persona = derive_persona_from_bot_id(1)
+    bundle = compile_persona_prompt(
+        persona,
+        {"sample": {"message_count": 100, "answer_count": 20}},
+        bot_id=1,
+        base_system_path=str(resolve_repeater_system_prompt_path()),
+        prompt_profile="repeater",
+        bot_persona={"preset_layers": ["layer-a"]},
+    )
+    assert "以假乱真" in bundle.sections.base
+    assert "帕拉斯（Pallas）" not in bundle.sections.self_identity
+    assert bundle.sections.preset_layers == ""
+    assert "不要表演角色" in bundle.sections.bot_behavior or "以假乱真" in bundle.sections.bot_behavior
+
+
+def test_build_bot_behavior_prompt_repeater_profile() -> None:
+    persona = ResolvedPersona(tone="dramatic", length_pref="short", chaos_bias=0.2)
+    prompt = build_bot_behavior_prompt(persona, profile="repeater")
+    assert "勿主动扯庆典" in prompt
+    assert "群友" in prompt
 
 
 def test_build_bot_behavior_prompt_includes_tone_and_length() -> None:
@@ -193,6 +216,7 @@ async def test_build_persona_llm_context_chat_uses_at_chat_prompt(monkeypatch: p
         base_system: str | None = None,
         base_system_path: str | None = None,
         mode: str = "normal",
+        prompt_profile: str | None = None,
     ):
         assert base_system_path is not None
         text = load_base_system_prompt(custom_path=base_system_path)
@@ -204,6 +228,7 @@ async def test_build_persona_llm_context_chat_uses_at_chat_prompt(monkeypatch: p
             group_id=group_id,
             base_system=text,
             mode=mode,
+            prompt_profile=str(prompt_profile or "default"),
         )
 
     monkeypatch.setattr(

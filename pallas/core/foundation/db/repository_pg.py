@@ -40,6 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, selectinload
 
 from pallas.core.platform.observability import slow_path_threshold_ms
+from pallas.product.llm.corpus_contamination import reject_corpus_learn_message
 
 if TYPE_CHECKING:
     from pallas.core.foundation.db.modules import Answer, Ban, Context, ImageCache, Message
@@ -1115,6 +1116,8 @@ class PgContextRepository:
         khash = keywords_hash(keywords)
         ans_kw_s = _s(answer_keywords) or ""
         msg_s = _s(message) or ""
+        if reject_corpus_learn_message(msg_s, source="upsert_answer"):
+            return
 
         async with get_session() as session:
             ctx_result = await session.execute(select(ContextRow.id).where(ContextRow.keywords_hash == khash))
@@ -1172,6 +1175,8 @@ class PgContextRepository:
         kw_s = _s(keywords) or ""
         ans_kw_s = _s(answer_keywords) or ""
         msg_s = _s(message) or ""
+        if reject_corpus_learn_message(msg_s, source="learn_answer"):
+            return False
 
         async with get_session() as session:
             ctx_stmt = pg_insert(ContextRow).values(

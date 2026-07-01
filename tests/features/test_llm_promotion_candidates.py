@@ -8,12 +8,14 @@ import pytest
 from pallas.product.llm.config import clear_llm_config_cache
 from pallas.product.llm.promotion_candidates import (
     PROMOTION_SUPPORT_THRESHOLD,
+    PromotionCandidate,
     auto_promote_eligible_candidates_for_group,
     build_candidate_id,
     list_promotion_candidates,
     refresh_promotion_candidates_for_group,
     resolve_promotion_candidate,
     resolve_promotion_candidate_with_writeback,
+    writeback_promotion_candidate,
 )
 from pallas.product.llm.repeater_feedback import (
     append_feedback_entry,
@@ -271,3 +273,22 @@ async def test_auto_promote_eligible_candidates_writes_back(tmp_path, monkeypatc
     fake_repo.learn_answer.assert_awaited_once()
     pending = list_promotion_candidates(group_id=123, refresh=False)
     assert pending == []
+
+
+@pytest.mark.asyncio
+async def test_writeback_promotion_candidate_blocks_contaminated_reply(monkeypatch) -> None:
+    from pallas.product.llm.config import LlmConfig
+
+    monkeypatch.setattr(
+        "pallas.product.llm.config.get_llm_config",
+        lambda: LlmConfig(llm_corpus_learn_guard_enabled=True),
+    )
+    candidate = PromotionCandidate(
+        candidate_id="bad-celebration",
+        group_id=123,
+        trigger_text="晚安",
+        reply_text="希望每个庆典都能顺利举行",
+    )
+    updated = await writeback_promotion_candidate(candidate)
+    assert updated.writeback_status == "failed"
+    assert updated.writeback_message == "corpus contamination guard"

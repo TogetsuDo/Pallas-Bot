@@ -21,9 +21,7 @@ _SELF_ALIAS_POINTS_YOU_RE = re.compile(
     r"(?:指的是你|就是指你|指的是bot|指的是机器人)$",
     re.IGNORECASE,
 )
-_SELF_ALIAS_EQUALS_RE = re.compile(
-    r"^(?P<left>[\u4e00-\u9fffA-Za-z·]{1,12})\s*[=＝]\s*(?:我|你|bot|Bot|机器人)$"
-)
+_SELF_ALIAS_EQUALS_RE = re.compile(r"^(?P<left>[\u4e00-\u9fffA-Za-z·]{1,12})\s*[=＝]\s*(?:我|你|bot|Bot|机器人)$")
 _SELF_ALIAS_MEANS_RE = re.compile(
     r"^(?P<alias>[\u4e00-\u9fffA-Za-z·]{1,12})\s*(?:指的是|就是指|就是)\s*(?:你|我|bot|Bot|机器人)$"
 )
@@ -50,12 +48,24 @@ def extract_self_aliases(bot_persona: dict[str, Any] | None) -> list[str]:
 
 def compile_self_identity_prompt(bot_persona: dict[str, Any] | None = None) -> str:
     alias_text = "、".join(extract_self_aliases(bot_persona)[:6])
+    primary_alias = alias_text.split("、")[0] if alias_text else "牛牛"
     body = "\n".join([
         "【自称与群称呼】",
-        f"- 你是帕拉斯（Pallas）；群友常叫你「{alias_text.split('、')[0]}」等——这些称呼指你本人。",
+        f"- 群友常叫你「{primary_alias}」等——这些称呼指你本人。",
         "- 有人 @ 你或在句中喊上述名字时，默认是在跟你说话；用第一人称接话，不要当成第三者在聊。",
         "- 禁止把「牛牛」当外人夸奖（错误：「牛牛真棒」）；应理解成在说你，用「谢谢」「还行吧」等第一人称回应。",
-        "- 自称优先用「我」；必要时可用「牛牛」指代自己，但不要每句都加动物口癖或句尾 ASCII 颜文字。",
+        "- 自称优先用「我」；必要时可用群昵称指代自己，但不要每句都加动物口癖或句尾 ASCII 颜文字。",
+    ])
+    return wrap_stats_block("self_identity", body)
+
+
+def compile_repeater_self_identity_prompt(bot_persona: dict[str, Any] | None = None) -> str:
+    aliases = extract_self_aliases(bot_persona)
+    primary_alias = aliases[0] if aliases else "牛牛"
+    body = "\n".join([
+        "【群称呼】",
+        f"- 群友喊「{primary_alias}」等时是在跟你说话；用第一人称接，别把称呼当第三者在聊。",
+        "- 日常接话不必自我介绍帕拉斯或罗德岛，像群友顺口回一句即可。",
     ])
     return wrap_stats_block("self_identity", body)
 

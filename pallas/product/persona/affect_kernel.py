@@ -70,7 +70,7 @@ def build_persona_affect_contract(
         elif chaos >= 0.12:
             stance_hints.append("本群偏短句接梗，可更跳、更口语，但仍别哞~/颜文字起手。")
         if assertiveness >= 0.1:
-            stance_hints.append("可适度反抛或顶一句，保持帕拉斯身份即可。")
+            stance_hints.append("可适度反抛或顶一句，像群友接梗即可。")
         elif assertiveness <= -0.1:
             stance_hints.append("少反呛，顺着话题接，别抢戏。")
 
@@ -131,7 +131,7 @@ def build_persona_affect_system_block(contract: PersonaAffectContract) -> str:
 
     if contract.disallowed_tones:
         tones = "、".join(contract.disallowed_tones)
-        lines.append(f"- 避免腔调：{tones}；可带一点帕拉斯自信/庆典感，但别演成助手。")
+        lines.append(f"- 避免腔调：{tones}；像群友顺口接话，别演成助手或导游。")
 
     for item in contract.ending_constraints:
         text = str(item or "").strip()
@@ -139,7 +139,7 @@ def build_persona_affect_system_block(contract: PersonaAffectContract) -> str:
             lines.append(f"- {text}")
 
     if len(lines) <= 1:
-        lines.append("- 像本群常出现的接话：口语、直接，带一点帕拉斯自信即可。")
+        lines.append("- 像本群常出现的接话：口语、直接，短句为主。")
     return "\n".join(lines)
 
 

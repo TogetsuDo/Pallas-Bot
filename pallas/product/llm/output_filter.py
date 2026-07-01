@@ -13,42 +13,17 @@ from pallas.core.platform.ai_callback.task_types import (
     REPEATER_LLM_TASK_TYPES,
     REPEATER_POLISH_LITE_TASK_TYPE,
 )
+from pallas.product.llm import corpus_contamination as _corpus_contamination
+
+CHAT_HARD_BLOCK_PHRASES = _corpus_contamination.CHAT_HARD_BLOCK_PHRASES
+CHAT_SOFT_RETRY_PHRASES = _corpus_contamination.CHAT_SOFT_RETRY_PHRASES
+POLISH_LITE_HARD_BLOCK_PHRASES = _corpus_contamination.POLISH_LITE_HARD_BLOCK_PHRASES
+POLISH_LITE_SOFT_RETRY_PHRASES = _corpus_contamination.POLISH_LITE_SOFT_RETRY_PHRASES
 
 OutputFilterProfile = Literal["chat", "polish_lite"]
 OutputFilterTier = Literal["hard_block", "soft_retry"]
 
-# 来源：tools/eval_repeater_local.py export-filter-draft（评审后固化，运行时不再读 JSON）
-CHAT_HARD_BLOCK_PHRASES: tuple[str, ...] = (
-    "博士",
-    "您",
-    "继续聊",
-    "想聊",
-    "有什么想",
-    "有什么可以",
-    "换个话题",
-    "聊点什么",
-)
-
-CHAT_SOFT_RETRY_PHRASES: tuple[str, ...] = (
-    "聊聊吗",
-    "很高兴",
-    "嘻嘻",
-    "[嘻嘻]",
-)
-
-POLISH_LITE_HARD_BLOCK_PHRASES: tuple[str, ...] = (
-    "继续聊",
-)
-
-POLISH_LITE_SOFT_RETRY_PHRASES: tuple[str, ...] = (
-    "换个话题",
-)
-
-_FILTERED_TASK_TYPES = (
-    LEGACY_LLM_CHAT_TASK_TYPES
-    | REPEATER_LLM_TASK_TYPES
-    | frozenset({CHAT_DRUNK_TASK_TYPE})
-)
+_FILTERED_TASK_TYPES = LEGACY_LLM_CHAT_TASK_TYPES | REPEATER_LLM_TASK_TYPES | frozenset({CHAT_DRUNK_TASK_TYPE})
 
 
 @dataclass(frozen=True, slots=True)

@@ -16,10 +16,7 @@ from pallas.product.llm.client import submit_chat_task
 from pallas.product.llm.config import get_llm_config
 from pallas.product.llm.models import ChatSubmitRequest
 from pallas.product.llm.task_metrics import record_bot_llm_task
-from pallas.product.persona.compile_persona_prompt import (
-    load_base_system_prompt,
-    resolve_select_system_prompt_path,
-)
+from pallas.product.persona.compile_persona_prompt import resolve_select_system_prompt_path
 
 if TYPE_CHECKING:
     from nonebot.adapters.onebot.v11 import GroupMessageEvent
@@ -31,7 +28,7 @@ def load_select_system_prompt() -> str:
     path = resolve_select_system_prompt_path()
     if path.is_file():
         return path.read_text(encoding="utf-8").strip()
-    return load_base_system_prompt().strip()
+    return ""
 
 
 async def rank_select_candidates(

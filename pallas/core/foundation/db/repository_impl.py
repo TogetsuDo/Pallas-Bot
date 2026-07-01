@@ -60,15 +60,10 @@ class MongoContextRepository:
         message: str,
         append_on_existing: bool,
     ) -> None:
-        """
-        原子 upsert：
-          - 命中 (group_id, answer_keywords) 时：$inc count / $set time，
-            append_on_existing 时 $push message
-          - 未命中时：$push 新 Answer；第二步 filter 使用
-            $not $elemMatch 防止并发下两个 writer 同时 push 造成重复 answer
-          - 若第二步因并发被抢先，回退到第一步重试
-            increment，保证 count 精确累加
-        """
+        from pallas.product.llm.corpus_contamination import reject_corpus_learn_message
+
+        if reject_corpus_learn_message(message, source="mongo_upsert_answer"):
+            return
         collection = Context.get_pymongo_collection()
 
         increment_filter: dict[str, Any] = {

@@ -244,6 +244,10 @@ class LlmConfig(BaseModel):
     llm_output_filter_chat_soft_phrases: list[str] = Field(default_factory=list)
     llm_output_filter_polish_lite_hard_phrases: list[str] = Field(default_factory=list)
     llm_output_filter_polish_lite_soft_phrases: list[str] = Field(default_factory=list)
+    llm_corpus_learn_guard_enabled: bool = Field(default=True)
+    llm_corpus_cleanup_scheduled_enabled: bool = Field(default=True)
+    llm_corpus_cleanup_interval_sec: int = Field(default=86400, ge=3600, le=604800)
+    llm_corpus_cleanup_message_history_enabled: bool = Field(default=True)
     llm_tools_blacklist: list[str] = Field(default_factory=list)
     llm_tools_desc_max_len: int = Field(default=120, ge=32, le=512)
     llm_memory_rag_enabled: bool = Field(default=True)
@@ -318,7 +322,7 @@ def get_llm_config() -> LlmConfig:
         port = _env_int("LLM_AI_SERVER_PORT", _env_int("AI_SERVER_PORT", 9099))
         repeater_mode = resolve_llm_repeater_mode()
         fallback_enabled, polish_enabled, select_enabled = resolve_llm_repeater_flags()
-        from pallas.product.llm.output_filter import (
+        from pallas.product.llm.corpus_contamination import (
             CHAT_HARD_BLOCK_PHRASES,
             CHAT_SOFT_RETRY_PHRASES,
             POLISH_LITE_HARD_BLOCK_PHRASES,
@@ -388,6 +392,13 @@ def get_llm_config() -> LlmConfig:
             llm_output_filter_polish_lite_soft_phrases=_env_str_list_or_default(
                 "LLM_OUTPUT_FILTER_POLISH_LITE_SOFT_PHRASES",
                 POLISH_LITE_SOFT_RETRY_PHRASES,
+            ),
+            llm_corpus_learn_guard_enabled=_env_bool("LLM_CORPUS_LEARN_GUARD_ENABLED", True),
+            llm_corpus_cleanup_scheduled_enabled=_env_bool("LLM_CORPUS_CLEANUP_SCHEDULED", True),
+            llm_corpus_cleanup_interval_sec=_env_int("LLM_CORPUS_CLEANUP_INTERVAL_SEC", 86400),
+            llm_corpus_cleanup_message_history_enabled=_env_bool(
+                "LLM_CORPUS_CLEANUP_MESSAGE_HISTORY",
+                True,
             ),
             llm_tools_blacklist=_env_str_list("LLM_TOOLS_BLACKLIST"),
             llm_tools_desc_max_len=_env_int("LLM_TOOLS_DESC_MAX_LEN", 120),

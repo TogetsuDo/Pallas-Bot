@@ -25,13 +25,6 @@ from pallas.product.llm.kernel.memory_governance import (
 )
 
 _BLOCKED_SOURCE_TAGS = {"memory", "relationship", "tool", "knowledge"}
-_BLOCKED_REPLY_HINTS = (
-    "因为",
-    "通常",
-    "一般来说",
-    "总结一下",
-    "首先",
-)
 _MAX_REPLY_LEN = 32
 _MAX_CORRECTION_LEN = 120
 _TOP_REPLIES_LIMIT = 3
@@ -128,7 +121,9 @@ def should_collect_llm_repeater_feedback(
     normalized_tags = {str(tag).strip().lower() for tag in source_tags if str(tag).strip()}
     if normalized_tags & _BLOCKED_SOURCE_TAGS:
         return False
-    return not any(token in plain_reply for token in _BLOCKED_REPLY_HINTS)
+    from pallas.product.llm.corpus_contamination import is_feedback_reply_collectable
+
+    return is_feedback_reply_collectable(plain_reply)
 
 
 def build_feedback_entry(**kwargs: Any) -> LlmRepeaterFeedbackEntry:
@@ -429,7 +424,9 @@ def is_reply_safe_for_auto_promote(reply_text: str) -> bool:
     plain = str(reply_text or "").strip()
     if not plain or len(plain) > _MAX_REPLY_LEN:
         return False
-    if any(token in plain for token in _BLOCKED_REPLY_HINTS):
+    from pallas.product.llm.corpus_contamination import is_feedback_reply_collectable
+
+    if not is_feedback_reply_collectable(plain):
         return False
     from pallas.product.llm.feedback_learning import is_reply_safe_for_shaped_writeback
 

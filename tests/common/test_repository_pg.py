@@ -558,6 +558,28 @@ async def test_learn_answer_creates_context_when_missing(pg_engine):
 
 
 @pytest.mark.asyncio
+async def test_learn_answer_blocks_contaminated_message(pg_engine, monkeypatch) -> None:
+    from pallas.core.foundation.db.repository_pg import PgContextRepository
+    from pallas.product.llm.config import LlmConfig
+
+    monkeypatch.setattr(
+        "pallas.product.llm.config.get_llm_config",
+        lambda: LlmConfig(llm_corpus_learn_guard_enabled=True),
+    )
+    repo = PgContextRepository()
+    created = await repo.learn_answer(
+        keywords="learn-blocked",
+        group_id=1,
+        answer_keywords="ans",
+        answer_time=100,
+        message="希望每个庆典都能顺利举行",
+        append_on_existing=False,
+    )
+    assert created is False
+    assert await repo.find_by_keywords("learn-blocked") is None
+
+
+@pytest.mark.asyncio
 async def test_learn_answer_updates_existing_context(pg_engine):
     """learn_answer 命中已存在 Context 时应原子累加 trigger_count / answer.count。"""
     from pallas.core.foundation.db.modules import Context

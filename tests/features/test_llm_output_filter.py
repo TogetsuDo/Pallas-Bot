@@ -13,6 +13,19 @@ from pallas.product.llm.output_filter import (
 )
 
 
+def test_match_output_filter_chat_hard_block_celebration_template(monkeypatch) -> None:
+    from pallas.product.llm.config import LlmConfig
+
+    monkeypatch.setattr(
+        "pallas.product.llm.config.get_llm_config",
+        lambda: LlmConfig(llm_output_filter_chat_hard_phrases=list(CHAT_HARD_BLOCK_PHRASES)),
+    )
+    hit = match_output_filter("晚安！希望每个庆典都能顺利举行", "chat")
+    assert hit is not None
+    assert hit.tier == "hard_block"
+    assert hit.phrase == "希望每个庆典"
+
+
 def test_match_output_filter_chat_hard_block() -> None:
     hit = match_output_filter("博士您好，想聊点什么？", "chat")
     assert hit is not None
