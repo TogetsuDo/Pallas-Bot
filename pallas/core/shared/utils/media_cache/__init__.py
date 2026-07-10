@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import re
 from datetime import datetime, timedelta
 
@@ -44,22 +43,39 @@ def _image_capture_workers_running() -> bool:
 
 
 async def _insert_image_io(image_seg: MessageSegment) -> None:
+    """处理一条图片消息：下载成功才落盘（避免 issue #224 的 99.5% NULL 占位行）。"""
     cq_code = re.sub(r"\.image,.+?\]", ".image]", str(image_seg))
     cache = await image_cache_repo.find_by_cq_code(cq_code)
-    if not cache:
-        cache = ImageCache.model_construct(
-            cq_code=cq_code, base64_data=None, ref_times=1, date=int(str(datetime.now().date()).replace("-", ""))
+    if cache is None:
+        # 第一次见到这张图：背压下放弃下载（避免在高峰期烧流量），
+        # 否则尝试下载并直接以二进制形式落盘——这是 issue #223 BYTEA 改造的入口。
+        if image_capture_under_load():
+            return
+        url = image_seg.data.get("url")
+        if not url:
+            return
+        try:
+            rsp = await HTTPXClient.get(url)
+        except Exception as e:
+            # 临时的网络问题（超时 / DNS / 连接 reset）或 HTTPX 级别异常——
+            # 行为与"非 200 响应"对齐：放弃缓存这张图，不写 NULL 占位行（issue #224）。
+            # 外层 run_image_capture_consumer 还会兜底 logger.warning，但这里精细化一级
+            # 便于排查"为什么某张图没缓存"时区分网络/业务失败。
+            logger.warning("image cache download error: cq_code={} err={}", cq_code, e)
+            return
+        if not rsp or rsp.status_code != httpx.codes.OK:
+            return  # 下载失败就不缓存这张图，让它保持"未缓存"状态
+        cache = ImageCache(
+            cq_code=cq_code,
+            blob_data=rsp.content,
+            ref_times=1,
+            date=int(str(datetime.now().date()).replace("-", "")),
         )
         await image_cache_repo.insert(cache)
         return
+    # 已有缓存：只累加 ref_times + 刷鲜日期，不再补下载
+    # （补下载的"第三次后才下载"逻辑在历史里制造了 99.5% NULL 行，issue #224）
     cache.ref_times += 1
-    under_load = image_capture_under_load()
-    if cache.ref_times > 2 and cache.base64_data is None and not under_load:
-        url = image_seg.data.get("url")
-        if url:
-            rsp = await HTTPXClient.get(url)
-            if rsp and rsp.status_code == httpx.codes.OK:
-                cache.base64_data = base64.b64encode(rsp.content).decode()
     await image_cache_repo.save(cache)
 
 
@@ -133,12 +149,11 @@ async def insert_image(image_seg: MessageSegment):
 
 
 async def get_image(cq_code) -> bytes | None:
+    """按 cq_code 取出缓存的二进制图片；没有缓存或缓存为空时返回 None。"""
     cache = await image_cache_repo.find_by_cq_code(cq_code)
     if not cache:
         return None
-    if cache.base64_data is None:
-        return None
-    return base64.b64decode(cache.base64_data)
+    return cache.blob_data
 
 
 async def clear_image_cache(days: int = 5, times: int = 3):

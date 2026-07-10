@@ -20,6 +20,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Text,
     UniqueConstraint,
     delete,
@@ -211,7 +212,10 @@ class ImageCacheRow(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     cq_code: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
-    base64_data: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 改为原生二进制：PG DDL 为 BYTEA。Text → LargeBinary 是一次性破坏性变更，
+    # 历史数据由 tools/migrate_image_cache_to_bytea.py 负责（PG 侧执行
+    # ALTER TABLE ... TYPE BYTEA USING decode(base64_data, 'base64')）。
+    blob_data: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     ref_times: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     date: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
 
@@ -812,7 +816,7 @@ def row_to_image_cache(row: ImageCacheRow) -> ImageCache:
 
     return ImageCache.model_construct(
         cq_code=row.cq_code,
-        base64_data=row.base64_data,
+        blob_data=row.blob_data,
         ref_times=row.ref_times,
         date=row.date,
     )
@@ -1648,11 +1652,14 @@ class PgImageCacheRepository:
             return row_to_image_cache(row) if row else None
 
     async def insert(self, cache: ImageCache) -> None:
-        """并发下相同 cq_code 的第二次 insert 等价为 no-op。"""
+        """并发下相同 cq_code 的第二次 insert 等价为 no-op。
+
+        blob_data 为 bytes，二进制字段不需要 NUL 剥离（_s() 也不适用）。
+        """
         async with get_session() as session:
             stmt = pg_insert(ImageCacheRow).values(
                 cq_code=_s(cache.cq_code) or "",
-                base64_data=_s(cache.base64_data),
+                blob_data=cache.blob_data,
                 ref_times=cache.ref_times,
                 date=cache.date,
             )
@@ -1664,7 +1671,7 @@ class PgImageCacheRepository:
         async with get_session() as session:
             stmt = pg_insert(ImageCacheRow).values(
                 cq_code=_s(cache.cq_code) or "",
-                base64_data=_s(cache.base64_data),
+                blob_data=cache.blob_data,
                 ref_times=cache.ref_times,
                 date=cache.date,
             )
@@ -1673,7 +1680,7 @@ class PgImageCacheRepository:
                 set_={
                     "ref_times": stmt.excluded.ref_times,
                     "date": stmt.excluded.date,
-                    "base64_data": stmt.excluded.base64_data,
+                    "blob_data": stmt.excluded.blob_data,
                 },
             )
             await session.execute(stmt)
