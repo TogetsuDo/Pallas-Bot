@@ -753,22 +753,25 @@ async def test_blacklist_answers_and_reserve_do_not_clobber(pg_engine):
 
 @pytest.mark.asyncio
 async def test_image_cache_save_is_upsert(pg_engine):
-    """PgImageCacheRepository.save 必须对齐 Mongo save() 的 upsert 语义。"""
+    """PgImageCacheRepository.save 必须对齐 Mongo save() 的 upsert 语义。
+
+    字段名变更（base64_data → blob_data）+ 类型变 BYTEA（issue #223）。
+    """
     from pallas.core.foundation.db.modules import ImageCache
     from pallas.core.foundation.db.repository_pg import PgImageCacheRepository
 
     repo = PgImageCacheRepository()
-    ic = ImageCache.model_construct(cq_code="[CQ:image,file=x.image]", base64_data=None, ref_times=1, date=20250419)
+    ic = ImageCache.model_construct(cq_code="[CQ:image,file=x.image]", blob_data=None, ref_times=1, date=20250419)
     await repo.save(ic)
     assert await repo.find_by_cq_code("[CQ:image,file=x.image]") is not None
 
     ic.ref_times = 5
-    ic.base64_data = "b64"
+    ic.blob_data = b"\x89PNG\r\n\x1a\n"
     await repo.save(ic)
     got = await repo.find_by_cq_code("[CQ:image,file=x.image]")
     assert got is not None
     assert got.ref_times == 5
-    assert got.base64_data == "b64"
+    assert got.blob_data == b"\x89PNG\r\n\x1a\n"
 
 
 @pytest.mark.asyncio
@@ -778,20 +781,18 @@ async def test_image_cache_insert_is_no_op_on_duplicate(pg_engine):
     from pallas.core.foundation.db.repository_pg import PgImageCacheRepository
 
     repo = PgImageCacheRepository()
-    first = ImageCache.model_construct(
-        cq_code="[CQ:image,file=dup.image]", base64_data="v1", ref_times=1, date=20250419
-    )
+    first = ImageCache.model_construct(cq_code="[CQ:image,file=dup.image]", blob_data=b"v1", ref_times=1, date=20250419)
     await repo.insert(first)
 
     # 第二次 insert 应被 ON CONFLICT DO NOTHING 吃掉，原有值保持不变
     second = ImageCache.model_construct(
-        cq_code="[CQ:image,file=dup.image]", base64_data="v2", ref_times=99, date=20260101
+        cq_code="[CQ:image,file=dup.image]", blob_data=b"v2", ref_times=99, date=20260101
     )
     await repo.insert(second)
 
     got = await repo.find_by_cq_code("[CQ:image,file=dup.image]")
     assert got is not None
-    assert got.base64_data == "v1"
+    assert got.blob_data == b"v1"
     assert got.ref_times == 1
     assert got.date == 20250419
 

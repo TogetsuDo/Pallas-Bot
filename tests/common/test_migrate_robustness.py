@@ -402,13 +402,21 @@ async def test_migrate_bot_config_handles_auto_accept_legacy(pg_env):
 
 
 async def test_migrate_image_cache_upsert(pg_env):
-    """同 cq_code 多条在单批内 upsert 只剩最后一条；空 cq_code 脏数据被计入 failed。"""
+    """同 cq_code 多条在单批内 upsert 只剩最后一条；空 cq_code 脏数据被计入 failed。
+
+    同时覆盖历史 base64_data 字符串 → blob_data BYTEA 的迁移路径（issue #223）。
+    """
+    import base64 as _b64
+
     from bson import ObjectId
     from sqlalchemy import select
 
     from pallas.core.foundation.db.repository_pg import ImageCacheRow
 
     migrate = pg_env["migrate"]
+    # 真实 PNG 文件头的 base64 编码（验证 decode 路径能还原正确字节）
+    png_payload = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+    b64_payload = _b64.b64encode(png_payload).decode("ascii")
     docs = [
         {
             "_id": ObjectId(),
@@ -420,7 +428,7 @@ async def test_migrate_image_cache_upsert(pg_env):
         {
             "_id": ObjectId(),
             "cq_code": "[CQ:image,file=a.image]",
-            "base64_data": "b64",
+            "base64_data": b64_payload,
             "ref_times": 5,
             "date": 20250110,
         },
@@ -436,5 +444,6 @@ async def test_migrate_image_cache_upsert(pg_env):
         rows = (await session.execute(select(ImageCacheRow))).scalars().all()
     assert len(rows) == 1
     assert rows[0].ref_times == 5
-    assert rows[0].base64_data == "b64"
+    # 历史 base64 字符串已被解码为 BYTEA（issue #223）
+    assert rows[0].blob_data == png_payload
     assert stats.failed >= 1
