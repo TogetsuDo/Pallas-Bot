@@ -26,6 +26,7 @@
 | --- | --- |
 | 有 NVIDIA 显卡 | 建议 **≥6GB 显存** |
 | 纯 CPU | 能跑但慢，内存可能占 **10GB+** |
+| **无 GPU，用云端 API** | 可不跑 Ollama，接 DeepSeek/OpenAI 等；仍要轻量 AI 服务，见 [remote-only 部署](https://github.com/PallasBot/Pallas-Bot-AI/blob/main/docs/deploy/remote-only.md) |
 
 不玩 AI 可以完全跳过本节。
 

@@ -35,9 +35,10 @@ uv run pallas sync
 uv run pallas ai path
 uv run pallas ai setup
 uv run pallas ai setup --check-only
+uv run pallas ai setup --remote-only   # 无 GPU，纯第三方 API
 ```
 
-需同级目录 **Pallas-Bot-AI**，或设置 `PALLAS_AI_ROOT`。验收见 [安装验收 Checklist](../install/ga-install-checklist.md)。
+无 Ollama 部署见 [Pallas-Bot-AI · remote-only](https://github.com/PallasBot/Pallas-Bot-AI/blob/main/docs/deploy/remote-only.md)。
 
 ### 启停与部署脚本
 

@@ -58,6 +58,20 @@ uv run pallas ai setup
 
 Bot 已跑在其它端口时用 `--bot-port`；仅体检用 `--check-only`。
 
+### 无 GPU / 纯第三方 API（remote-only）
+
+服务器跑不动 Ollama 时，仍可用 DeepSeek、OpenAI 等 OpenAI 兼容 API 驱动 @ 闲聊与接话 LLM。需轻量 AI 仓（Redis + API + Celery），**不需要**本地模型。
+
+```bash
+# AI 仓：编辑 .env 填入 LLM_REMOTE_* 后
+./scripts/ai_bootstrap.sh --remote-only --bot-port 8088
+
+# 或 Bot 仓
+uv run pallas ai setup --remote-only --bot-port 8088
+```
+
+完整配置、Docker 仅起 `redis`+`pallasbot-ai`、验收与排障见 **[Pallas-Bot-AI · remote-only 部署](https://github.com/PallasBot/Pallas-Bot-AI/blob/main/docs/deploy/remote-only.md)**。
+
 ### Docker（仅 AI 栈）
 
 ```bash
