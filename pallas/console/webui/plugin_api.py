@@ -22,11 +22,48 @@ _REPEATER_FIELD_TO_ENV = {
     "fanout_max_bots": "PALLAS_REPEATER_FANOUT_MAX_BOTS",
 }
 
+_PB_STATS_FIELD_TO_ENV = {
+    "enabled": "PALLAS_COMMUNITY_STATS_ENABLED",
+    "endpoint": "PALLAS_COMMUNITY_STATS_ENDPOINT",
+    "token": "PALLAS_COMMUNITY_STATS_TOKEN",
+    "interval_sec": "PALLAS_COMMUNITY_STATS_INTERVAL_SEC",
+    "roster_public_qq": "PALLAS_COMMUNITY_STATS_ROSTER_PUBLIC_QQ",
+    "roster_public_profile": "PALLAS_COMMUNITY_STATS_ROSTER_PUBLIC_PROFILE",
+    "corpus_hot_snapshot_interval_sec": "PALLAS_COMMUNITY_STATS_CORPUS_HOT_SNAPSHOT_INTERVAL_SEC",
+}
+
 
 def plugin_field_env_key(plugin_name: str, field_name: str) -> str:
-    if plugin_name == "repeater":
+    canonical = canonical_plugin_id((plugin_name or "").strip())
+    if canonical == "repeater":
         return _REPEATER_FIELD_TO_ENV.get(field_name, field_name.upper())
+    if canonical == "pb_stats":
+        return _PB_STATS_FIELD_TO_ENV.get(field_name, field_name.upper())
     return field_name.upper()
+
+
+def plugin_config_field_groups(plugin_name: str, fields: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
+    canonical = canonical_plugin_id((plugin_name or "").strip())
+    if canonical != "pb_stats":
+        return None
+    visible = [f["name"] for f in fields if not f.get("ui_hidden")]
+    return [
+        {
+            "id": "reporting",
+            "title": "在线统计",
+            "field_names": [name for name in ("enabled", "interval_sec") if name in visible],
+        },
+        {
+            "id": "advanced",
+            "title": "自建中心（一般无需改）",
+            "field_names": [name for name in ("endpoint", "token") if name in visible],
+        },
+        {
+            "id": "roster",
+            "title": "社区主站展示",
+            "field_names": [name for name in ("roster_public_qq", "roster_public_profile") if name in visible],
+        },
+    ]
 
 
 def schedule_repeater_learn_reload() -> None:
@@ -74,6 +111,11 @@ def maybe_migrate_draw_config(cfg_obj: BaseModel) -> BaseModel:
 
 
 def plugin_config_model_by_name(plugin_name: str):
+    canonical = canonical_plugin_id((plugin_name or "").strip())
+    if canonical == "pb_core":
+        from packages.pb_core.config import Config
+
+        return None, "packages.pb_core", Config
     from pallas.console.webui.plugin_catalog import load_config_class_for_package, resolve_catalog_plugin_module
 
     p = find_loaded_plugin(plugin_name)
@@ -167,6 +209,10 @@ def plugin_config_payload(
     current_values: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """GET 用默认 ``current``；PUT 落盘后应传 ``validated``，避免 ``get_plugin_config`` 仍为旧内存。"""
+    if canonical_plugin_id((plugin_name or "").strip()) == "pb_core":
+        from packages.pb_core.config import pb_core_webui_payload
+
+        return pb_core_webui_payload(current_values=current_values)
     p, module_name, cfg_cls = plugin_config_model_by_name(plugin_name)
     cfg_obj = read_current_plugin_config(module_name, cfg_cls)
     if plugin_name == "draw":
@@ -180,21 +226,28 @@ def plugin_config_payload(
         default_value = None if f.default is PydanticUndefined else f.default
         from .field_meta import field_meta_for_model_field
 
-        fields.append(
-            field_meta_for_model_field(
-                key=key,
-                field=f,
-                env_key=plugin_field_env_key(plugin_name, key),
-                cur=cur,
-                default_value=default_value,
-            )
+        row = field_meta_for_model_field(
+            key=key,
+            field=f,
+            env_key=plugin_field_env_key(plugin_name, key),
+            cur=cur,
+            default_value=default_value,
         )
-    return {
+        extra = getattr(f, "json_schema_extra", None)
+        if isinstance(extra, dict) and extra.get("ui_hidden"):
+            row["ui_hidden"] = True
+        fields.append(row)
+    payload: dict[str, Any] = {
         "plugin": str(getattr(p, "name", "") or plugin_name) if p is not None else plugin_name,
         "module": module_name,
         "fields": fields,
         "unexpected_keys": plugin_unexpected_env_keys(plugin_name, cfg_cls),
+        "hot_reload": True,
     }
+    groups = plugin_config_field_groups(plugin_name, fields)
+    if groups:
+        payload["field_groups"] = groups
+    return payload
 
 
 def plugin_config_env_keys(plugin_name: str, cfg_cls: type[BaseModel]) -> set[str]:
@@ -270,6 +323,10 @@ def apply_plugin_config_patch(
     plugin_name: str,
     patch: dict[str, Any],
 ) -> dict[str, Any]:
+    if canonical_plugin_id((plugin_name or "").strip()) == "pb_core":
+        from packages.pb_core.config import apply_pb_core_patch
+
+        return apply_pb_core_patch(patch)
     _, module_name, cfg_cls = plugin_config_model_by_name(plugin_name)
     current = read_current_plugin_config(module_name, cfg_cls).model_dump(mode="python")
     allowed = set(cfg_cls.model_fields.keys())
@@ -300,6 +357,7 @@ def apply_plugin_config_patch(
         reload_metadata_after_plugin_config_save(plugin_name)
     except Exception:
         logger.exception("plugin config save: metadata index reload failed plugin={}", plugin_name)
-    if plugin_name == "repeater" and {"learn_concurrency", "learn_queue_max_size"} & normalized.keys():
+    canonical = canonical_plugin_id((plugin_name or "").strip())
+    if canonical == "repeater" and {"learn_concurrency", "learn_queue_max_size"} & normalized.keys():
         schedule_repeater_learn_reload()
     return plugin_config_payload(plugin_name, current_values=validated)

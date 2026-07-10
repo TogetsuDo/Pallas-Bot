@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from pydantic_core import PydanticUndefined
 
 from pallas.core.foundation.config.dotenv import env_value_to_str, upsert_env_dotenv_items
-from pallas.core.foundation.paths import PACKAGE_ROOT, PROJECT_ROOT
+from pallas.core.foundation.paths import PACKAGE_ROOT
 
 
 @lru_cache(maxsize=1)
@@ -179,27 +179,6 @@ def _ingress_dispatch_section() -> WebuiEnvSection:
     )
 
 
-def _repeater_learn_section() -> WebuiEnvSection:
-    from packages.repeater.learn_runtime_config import (
-        RepeaterLearnRuntimeConfig,
-        get_repeater_learn_runtime_config,
-    )
-
-    field_to_env = {
-        "learn_concurrency": "PALLAS_REPEATER_LEARN_CONCURRENCY",
-        "learn_queue_max_size": "PALLAS_REPEATER_LEARN_QUEUE_SIZE",
-    }
-    return WebuiEnvSection(
-        id="repeater_learn",
-        title="复读后台学习",
-        module_label="packages.repeater",
-        model_cls=RepeaterLearnRuntimeConfig,
-        read_current=get_repeater_learn_runtime_config,
-        field_to_env=field_to_env,
-        skip_fields=frozenset(),
-    )
-
-
 def _mail_section() -> WebuiEnvSection:
     from pallas.core.shared.utils.mail import SmtpConfig, get_smtp_config
 
@@ -290,9 +269,6 @@ def _base_section_by_id(section_id: str) -> WebuiEnvSection | None:
         builders["ingress_fanout"] = _ingress_fanout_section
     if (PACKAGE_ROOT / "core" / "platform" / "ingress" / "dispatch_runtime_config.py").is_file():
         builders["ingress_dispatch"] = _ingress_dispatch_section
-    repeater_learn_cfg = PROJECT_ROOT / "packages" / "repeater" / "learn_runtime_config.py"
-    if repeater_learn_cfg.is_file():
-        builders["repeater_learn"] = _repeater_learn_section
     from pallas.product.message_scrub.config import is_message_scrub_enabled
 
     if (PACKAGE_ROOT / "product" / "message_scrub" / "config.py").is_file() and is_message_scrub_enabled():
@@ -308,90 +284,30 @@ def _registered_sections() -> tuple[WebuiEnvSection, ...]:
     global _sections_cache
     if _sections_cache is not None:
         return _sections_cache
-    parts: list[WebuiEnvSection] = []
-    parts.extend((
-        _mail_section(),
+    parts: list[WebuiEnvSection] = [
         _llm_section(),
         _arknights_kb_section(),
-    ))
-    if (PACKAGE_ROOT / "product" / "control_plane" / "webui_config.py").is_file():
-        parts.append(_control_plane_section())
-    if (PACKAGE_ROOT / "core" / "platform" / "ingress" / "config.py").is_file():
-        parts.append(_ingress_fanout_section())
-    if (PACKAGE_ROOT / "core" / "platform" / "ingress" / "dispatch_runtime_config.py").is_file():
-        parts.append(_ingress_dispatch_section())
-    repeater_learn_cfg = PROJECT_ROOT / "packages" / "repeater" / "learn_runtime_config.py"
-    if repeater_learn_cfg.is_file():
-        parts.append(_repeater_learn_section())
-    from pallas.product.message_scrub.config import is_message_scrub_enabled
-
-    if (PACKAGE_ROOT / "product" / "message_scrub" / "config.py").is_file() and is_message_scrub_enabled():
-        parts.append(_message_scrub_section())
+    ]
     _sections_cache = tuple(parts)
     return _sections_cache
 
 
-_COMMON_CONFIG_SECTION_ORDER: tuple[str, ...] = (
+def list_webui_env_sections() -> list[dict[str, str]]:
+    """通用配置页已移除；段 payload 仍经 ``webui_env_section_payload`` 供 AI 内嵌与插件聚合。"""
+    return []
+
+
+_REMOVED_FROM_COMMON_CONFIG_LIST = frozenset({
     "mail",
-    "llm",
-    "arknights_kb",
-    "control_plane",
-    "corpus_federation",
-    "community_stats",
+    "message_scrub",
     "ingress_fanout",
     "ingress_dispatch",
-    "repeater_learn",
-    "message_scrub",
-    "service_gateways",
-)
+    "control_plane",
+    "corpus_federation",
+})
 
 
-def list_webui_env_sections() -> list[dict[str, str]]:
-    from .community_stats_section import COMMUNITY_STATS_SECTION_ID, COMMUNITY_STATS_TITLE
-    from .control_plane_section import CONTROL_PLANE_SECTION_ID, CONTROL_PLANE_TITLE
-    from .corpus_federation_section import CORPUS_FEDERATION_SECTION_ID, CORPUS_FEDERATION_TITLE
-    from .service_gateways_section import (
-        SERVICE_GATEWAYS_SECTION_ID,
-        SERVICE_GATEWAYS_TITLE,
-    )
-
-    by_id: dict[str, dict[str, str]] = {s.id: {"id": s.id, "title": s.title} for s in _registered_sections()}
-    by_id[CORPUS_FEDERATION_SECTION_ID] = {
-        "id": CORPUS_FEDERATION_SECTION_ID,
-        "title": CORPUS_FEDERATION_TITLE,
-    }
-    by_id[COMMUNITY_STATS_SECTION_ID] = {
-        "id": COMMUNITY_STATS_SECTION_ID,
-        "title": COMMUNITY_STATS_TITLE,
-    }
-    by_id[SERVICE_GATEWAYS_SECTION_ID] = {
-        "id": SERVICE_GATEWAYS_SECTION_ID,
-        "title": SERVICE_GATEWAYS_TITLE,
-    }
-    if CONTROL_PLANE_SECTION_ID in by_id:
-        by_id[CONTROL_PLANE_SECTION_ID]["title"] = CONTROL_PLANE_TITLE
-
-    ordered: list[dict[str, str]] = []
-    seen: set[str] = set()
-    for sid in _COMMON_CONFIG_SECTION_ORDER:
-        row = by_id.get(sid)
-        if row is None:
-            continue
-        ordered.append(row)
-        seen.add(sid)
-    for sid, row in by_id.items():
-        if sid not in seen:
-            ordered.append(row)
-    return ordered
-
-
-def get_webui_env_section(section_id: str) -> WebuiEnvSection:
-    from .community_stats_section import COMMUNITY_STATS_SECTION_ID
-    from .control_plane_section import CONTROL_PLANE_SECTION_ID
-    from .corpus_federation_section import CORPUS_FEDERATION_SECTION_ID
-
-    if section_id in (CORPUS_FEDERATION_SECTION_ID, CONTROL_PLANE_SECTION_ID, COMMUNITY_STATS_SECTION_ID):
-        raise ValueError(f"{section_id} 使用专用 payload，勿走 WebuiEnvSection")
+def _resolve_webui_env_section(section_id: str) -> WebuiEnvSection:
     from pallas.core.platform.bot_runtime.plugin_package_aliases import canonical_plugin_package
 
     sid = canonical_plugin_package((section_id or "").strip())
@@ -402,6 +318,18 @@ def get_webui_env_section(section_id: str) -> WebuiEnvSection:
         if s.id == sid:
             return s
     raise ValueError(f"未知 common-config: {section_id}")
+
+
+def get_webui_env_section(section_id: str) -> WebuiEnvSection:
+    sid = (section_id or "").strip()
+    if sid in _REMOVED_FROM_COMMON_CONFIG_LIST:
+        raise ValueError(f"{sid} 已迁至 pb_core 插件配置页")
+    from .control_plane_section import CONTROL_PLANE_SECTION_ID
+    from .corpus_federation_section import CORPUS_FEDERATION_SECTION_ID
+
+    if sid in (CORPUS_FEDERATION_SECTION_ID, CONTROL_PLANE_SECTION_ID):
+        raise ValueError(f"{sid} 已迁至 pb_core 插件配置页")
+    return _resolve_webui_env_section(sid)
 
 
 def webui_env_section_payload(
@@ -422,10 +350,6 @@ def webui_env_section_payload(
         from .corpus_federation_section import corpus_federation_payload
 
         return corpus_federation_payload(current_values=current_values)
-    if section_id == "community_stats":
-        from .community_stats_section import community_stats_payload
-
-        return community_stats_payload(current_values=current_values)
     if section_id == SERVICE_GATEWAYS_SECTION_ID:
         from .service_gateways_section import service_gateways_payload
 
@@ -434,7 +358,7 @@ def webui_env_section_payload(
         from pallas.core.foundation.config.repo_settings import purge_misplaced_ai_env_keys_from_webui
 
         purge_misplaced_ai_env_keys_from_webui()
-    s = get_webui_env_section(section_id)
+    s = _resolve_webui_env_section(section_id)
     cfg_obj = s.read_current()
     fields: list[dict[str, Any]] = []
     for key, f in s.model_cls.model_fields.items():
@@ -517,7 +441,6 @@ def _ingress_dispatch_payload_extras() -> dict[str, Any]:
 
 
 def apply_webui_env_section_patch(section_id: str, patch: dict[str, Any]) -> dict[str, Any]:
-    from .community_stats_section import COMMUNITY_STATS_SECTION_ID, apply_community_stats_patch
     from .control_plane_section import CONTROL_PLANE_SECTION_ID, apply_control_plane_patch
     from .corpus_federation_section import CORPUS_FEDERATION_SECTION_ID, apply_corpus_federation_patch
     from .service_gateways_section import (
@@ -529,11 +452,9 @@ def apply_webui_env_section_patch(section_id: str, patch: dict[str, Any]) -> dic
         return apply_control_plane_patch(patch)
     if section_id == CORPUS_FEDERATION_SECTION_ID:
         return apply_corpus_federation_patch(patch)
-    if section_id == COMMUNITY_STATS_SECTION_ID:
-        return apply_community_stats_patch(patch)
     if section_id == SERVICE_GATEWAYS_SECTION_ID:
         return apply_service_gateways_patch(patch)
-    s = get_webui_env_section(section_id)
+    s = _resolve_webui_env_section(section_id)
     current = s.read_current().model_dump(mode="python")
     allowed = set(s.field_to_env.keys()) - set(s.skip_fields)
     for k in patch:
@@ -572,26 +493,6 @@ def apply_webui_env_section_patch(section_id: str, patch: dict[str, Any]) -> dic
             clear_route_index_cache()
         except Exception:
             pass
-    elif section_id == "repeater_learn":
-        try:
-            import asyncio
-
-            from nonebot import logger
-
-            from packages.repeater.learn_queue import reload_repeater_learn_worker_runtime
-
-            try:
-                loop = asyncio.get_running_loop()
-                loop.create_task(reload_repeater_learn_worker_runtime())
-            except RuntimeError:
-                import asyncio as aio
-
-                aio.run(reload_repeater_learn_worker_runtime())
-            logger.info("repeater_learn: webui config saved, hot reloaded")
-        except Exception as e:
-            from nonebot import logger
-
-            logger.warning("repeater_learn hot reload failed: {}", e)
     elif section_id == "llm":
         try:
             from pallas.product.llm.config import clear_llm_config_cache
@@ -613,9 +514,12 @@ def apply_webui_env_section_patch(section_id: str, patch: dict[str, Any]) -> dic
 
 _COMMON_CONFIG_RAW_UNSUPPORTED = frozenset({
     "corpus_federation",
-    "community_stats",
     "service_gateways",
     "control_plane",
+    "mail",
+    "message_scrub",
+    "ingress_fanout",
+    "ingress_dispatch",
 })
 
 
@@ -624,7 +528,7 @@ def common_config_section_supports_raw(section_id: str) -> bool:
     if sid in _COMMON_CONFIG_RAW_UNSUPPORTED:
         return False
     try:
-        get_webui_env_section(sid)
+        _resolve_webui_env_section(sid)
     except ValueError:
         return False
     return True
@@ -635,7 +539,7 @@ def webui_env_section_raw_toml(section_id: str) -> str:
 
     if not common_config_section_supports_raw(section_id):
         raise ValueError(f"{section_id} 不支持 Raw TOML 编辑")
-    s = get_webui_env_section(section_id)
+    s = _resolve_webui_env_section(section_id)
     from pallas.core.foundation.config.repo_settings import _load_webui_json_upper
 
     env = _load_webui_json_upper()
@@ -666,7 +570,7 @@ def apply_webui_env_section_raw_toml(section_id: str, text: str) -> dict[str, An
     env_block = doc.get("env") if isinstance(doc.get("env"), dict) else doc
     if not isinstance(env_block, dict):
         raise ValueError("缺少 [env] 表")
-    s = get_webui_env_section(section_id)
+    s = _resolve_webui_env_section(section_id)
     reverse = {str(v).upper(): k for k, v in s.field_to_env.items()}
     allowed = set(s.field_to_env.keys()) - set(s.skip_fields)
     patch: dict[str, Any] = {}

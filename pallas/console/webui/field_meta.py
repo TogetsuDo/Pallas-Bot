@@ -97,6 +97,7 @@ def field_meta_for_model_field(*, key: str, field: Any, env_key: str, cur: Any, 
     default = None if default_value is PydanticUndefined else default_value
     label = webui_field_label(key)
     kind = field_kind_from_annotation(ann)
+    extra = _extra_dict(field)
     row: dict[str, Any] = {
         "name": key,
         "kind": kind,
@@ -106,7 +107,10 @@ def field_meta_for_model_field(*, key: str, field: Any, env_key: str, cur: Any, 
         "default": _jsonable_value(default),
         "current": _jsonable_value(cur),
     }
-    if label:
+    extra_label = extra.get("label")
+    if isinstance(extra_label, str) and extra_label.strip():
+        row["label"] = extra_label.strip()
+    elif label:
         row["label"] = label
     if choices is not None:
         row["choices"] = choices
@@ -124,7 +128,6 @@ def field_meta_for_model_field(*, key: str, field: Any, env_key: str, cur: Any, 
             row["secret"] = True
         if is_multiline_field(field):
             row["multiline"] = True
-    extra = _extra_dict(field)
     for ui_key in ("ui_group", "ui_order", "ui_hidden"):
         if ui_key in extra:
             row[ui_key] = extra[ui_key]

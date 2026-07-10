@@ -1,36 +1,10 @@
-"""复读后台 learn：WebUI 通用配置 / .env 运行时。"""
+"""复读后台 learn 运行时（读 repeater 插件配置，兼容旧调用方）。"""
 
 from __future__ import annotations
-
-from threading import Lock
-from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from pallas.console.webui.field_help import field_help
-from pallas.core.foundation.config.dotenv import repo_env_raw_value, repo_layered_dotenv_files_exist
-
-_config_lock = Lock()
-_cached: RepeaterLearnRuntimeConfig | None = None
-
-
-def _learn_env_str(name_upper: str, *, default: str = "") -> str:
-    raw = repo_env_raw_value(name_upper)
-    if raw is not None:
-        return raw.strip()
-    if not repo_layered_dotenv_files_exist():
-        try:
-            from nonebot import get_driver
-
-            cfg = get_driver().config
-            attr = name_upper.lower()
-            if attr in (getattr(cfg, "model_fields_set", None) or set()):
-                val = getattr(cfg, attr, None)
-                if val is not None:
-                    return str(val).strip()
-        except ValueError:
-            pass
-    return default
 
 
 class RepeaterLearnRuntimeConfig(BaseModel):
@@ -57,31 +31,16 @@ class RepeaterLearnRuntimeConfig(BaseModel):
         ),
     )
 
-    @classmethod
-    def from_env(cls) -> Self:
-        try:
-            concurrency = int(_learn_env_str("PALLAS_REPEATER_LEARN_CONCURRENCY", default="8") or "8")
-        except ValueError:
-            concurrency = 8
-        try:
-            queue_max = int(_learn_env_str("PALLAS_REPEATER_LEARN_QUEUE_SIZE", default="2048") or "2048")
-        except ValueError:
-            queue_max = 2048
-        return cls(
-            learn_concurrency=max(1, min(128, concurrency)),
-            learn_queue_max_size=max(64, min(20_000, queue_max)),
-        )
-
 
 def clear_repeater_learn_runtime_config_cache() -> None:
-    global _cached
-    with _config_lock:
-        _cached = None
+    """兼容旧调用；学习参数已并入 repeater 插件配置。"""
 
 
 def get_repeater_learn_runtime_config() -> RepeaterLearnRuntimeConfig:
-    global _cached
-    with _config_lock:
-        if _cached is None:
-            _cached = RepeaterLearnRuntimeConfig.from_env()
-        return _cached
+    from .config import get_repeater_config
+
+    cfg = get_repeater_config()
+    return RepeaterLearnRuntimeConfig(
+        learn_concurrency=cfg.learn_concurrency,
+        learn_queue_max_size=cfg.learn_queue_max_size,
+    )

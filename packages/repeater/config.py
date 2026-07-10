@@ -86,7 +86,7 @@ class Config(BaseModel, extra="ignore"):
         le=128,
         description=field_help(
             "后台同时学多少条群消息语料",
-            "机器性能好可适当加大；在「通用配置 → 复读后台学习」也可改",
+            "机器性能好可适当加大；在「复读 → 插件配置」也可改",
         ),
     )
     learn_queue_max_size: int = Field(

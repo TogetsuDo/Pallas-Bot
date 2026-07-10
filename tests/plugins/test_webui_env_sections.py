@@ -11,16 +11,24 @@ _REMOVED_COMMON_CONFIG_SECTIONS = frozenset({
     "pb_webui",
     "pb_protocol",
     "help",
+    "community_stats",
+    "repeater_learn",
+    "mail",
+    "message_scrub",
+    "ingress_fanout",
+    "ingress_dispatch",
+    "control_plane",
+    "corpus_federation",
 })
 
 
-def test_list_webui_env_sections_contains_llm_section():
+def test_list_webui_env_sections_is_empty():
     from pallas.console.webui import list_webui_env_sections, webui_env_section_payload
     from pallas.console.webui.env_sections import clear_webui_env_sections_cache
 
     clear_webui_env_sections_cache()
     rows = list_webui_env_sections()
-    assert any(r["id"] == "llm" for r in rows)
+    assert rows == []
     data = webui_env_section_payload("llm")
     env_keys = {f["env_key"] for f in data["fields"]}
     assert "LLM_CHAT_ENABLED" in env_keys
@@ -33,15 +41,6 @@ def test_list_webui_env_sections_contains_llm_section():
     assert "LLM_EMBEDDING_MODEL" in env_keys
     assert "LLM_OUTPUT_FILTER_ENABLED" in env_keys
     assert "LLM_OUTPUT_FILTER_CHAT_HARD_PHRASES" in env_keys
-
-
-def test_list_webui_env_sections_contains_ingress_dispatch():
-    from pallas.console.webui import list_webui_env_sections
-    from pallas.console.webui.env_sections import clear_webui_env_sections_cache
-
-    clear_webui_env_sections_cache()
-    rows = list_webui_env_sections()
-    assert any(r["id"] == "ingress_dispatch" for r in rows)
 
 
 def test_ingress_dispatch_section_payload_has_field_groups():
@@ -60,104 +59,11 @@ def test_ingress_dispatch_section_payload_has_field_groups():
 
 
 @skip_no_message_scrub
-def test_list_webui_env_sections_contains_control_plane():
-    from pallas.console.webui import list_webui_env_sections
-
-    rows = list_webui_env_sections()
-    assert any(r["id"] == "control_plane" for r in rows)
-
-
-def test_list_webui_env_sections_contains_message_scrub(monkeypatch: pytest.MonkeyPatch):
+def test_message_scrub_not_in_common_config_list(monkeypatch: pytest.MonkeyPatch):
     from pallas.console.webui import list_webui_env_sections
     from pallas.console.webui.env_sections import clear_webui_env_sections_cache
 
     monkeypatch.setenv("PALLAS_MESSAGE_SCRUB_ENABLED", "true")
-    clear_webui_env_sections_cache()
-    rows = list_webui_env_sections()
-    ids = {r["id"] for r in rows}
-    assert "message_scrub" in ids
-    clear_webui_env_sections_cache()
-
-
-def test_list_webui_env_sections_contains_message_scrub_by_default(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    from pallas.console.webui import list_webui_env_sections
-    from pallas.console.webui.env_sections import clear_webui_env_sections_cache
-
-    for key in (
-        "PALLAS_MESSAGE_SCRUB_ENABLED",
-        "PALLAS_INBOUND_FILTER_SUBSTRINGS",
-        "PALLAS_SCRUB_LEXICON_PATH",
-    ):
-        monkeypatch.delenv(key, raising=False)
-    phantom = tmp_path / "missing.toml"
-    monkeypatch.setattr(
-        "pallas.core.foundation.config.repo_settings.repo_env_path",
-        lambda: phantom,
-    )
-    monkeypatch.setattr(
-        "pallas.core.foundation.config.repo_settings.repo_config_path",
-        lambda: phantom,
-    )
-    monkeypatch.setattr(
-        "pallas.core.foundation.config.repo_settings.repo_webui_settings_path",
-        lambda: tmp_path / "missing.json",
-    )
-    monkeypatch.setattr(
-        "pallas.core.foundation.config.dotenv.merged_repo_dotenv_upper",
-        dict,
-    )
-    monkeypatch.setattr(
-        "pallas.core.foundation.config.dotenv.repo_layered_dotenv_files_exist",
-        lambda: True,
-    )
-    from pallas.core.foundation.deploy_profile import clear_deploy_profile_cache
-    from pallas.product.message_scrub import reload_message_scrub_caches
-
-    clear_deploy_profile_cache()
-    reload_message_scrub_caches()
-    clear_webui_env_sections_cache()
-    rows = list_webui_env_sections()
-    ids = {r["id"] for r in rows}
-    assert "message_scrub" in ids
-    clear_webui_env_sections_cache()
-
-
-def test_list_webui_env_sections_hides_message_scrub_when_disabled(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    from pallas.console.webui import list_webui_env_sections
-    from pallas.console.webui.env_sections import clear_webui_env_sections_cache
-
-    for key in (
-        "PALLAS_INBOUND_FILTER_SUBSTRINGS",
-        "PALLAS_SCRUB_LEXICON_PATH",
-    ):
-        monkeypatch.delenv(key, raising=False)
-    monkeypatch.setenv("PALLAS_MESSAGE_SCRUB_ENABLED", "false")
-    phantom = tmp_path / "missing.toml"
-    monkeypatch.setattr(
-        "pallas.core.foundation.config.repo_settings.repo_env_path",
-        lambda: phantom,
-    )
-    monkeypatch.setattr(
-        "pallas.core.foundation.config.repo_settings.repo_config_path",
-        lambda: phantom,
-    )
-    monkeypatch.setattr(
-        "pallas.core.foundation.config.repo_settings.repo_webui_settings_path",
-        lambda: tmp_path / "missing.json",
-    )
-    monkeypatch.setattr(
-        "pallas.core.foundation.config.dotenv.merged_repo_dotenv_upper",
-        dict,
-    )
-    monkeypatch.setattr(
-        "pallas.core.foundation.config.dotenv.repo_layered_dotenv_files_exist",
-        lambda: True,
-    )
-    from pallas.core.foundation.deploy_profile import clear_deploy_profile_cache
-    from pallas.product.message_scrub import reload_message_scrub_caches
-
-    clear_deploy_profile_cache()
-    reload_message_scrub_caches()
     clear_webui_env_sections_cache()
     rows = list_webui_env_sections()
     ids = {r["id"] for r in rows}
@@ -171,16 +77,16 @@ def test_list_webui_env_sections_excludes_plugin_migrated_sections():
 
     clear_webui_env_sections_cache()
     rows = list_webui_env_sections()
+    assert rows == []
     ids = {r["id"] for r in rows}
     assert _REMOVED_COMMON_CONFIG_SECTIONS.isdisjoint(ids)
-    assert "service_gateways" in ids
 
 
 def test_removed_common_config_sections_are_unknown():
     from pallas.console.webui.env_sections import get_webui_env_section
 
     for section_id in _REMOVED_COMMON_CONFIG_SECTIONS:
-        with pytest.raises(ValueError, match="未知 common-config"):
+        with pytest.raises(ValueError, match="pb_core|未知 common-config"):
             get_webui_env_section(section_id)
 
 
@@ -229,22 +135,15 @@ def test_field_to_env_uppercase_keys_matches_plugin_api():
     assert m["pallas_webui_enabled"] == "PALLAS_WEBUI_ENABLED"
 
 
-def test_common_config_raw_toml_roundtrip_mail(tmp_path, monkeypatch):
+def test_mail_patch_roundtrip_via_internal_section(tmp_path, monkeypatch):
     import json
 
-    from pallas.console.webui.env_sections import (
-        apply_webui_env_section_raw_toml,
-        webui_env_section_raw_toml,
-    )
+    from pallas.console.webui import apply_webui_env_section_patch
     from pallas.core.foundation.config import repo_settings as rs
 
     webui_file = tmp_path / "webui.json"
     monkeypatch.setattr(rs, "repo_webui_settings_path", lambda: webui_file)
-    text = webui_env_section_raw_toml("mail")
-    assert "[env]" in text
-    assert "# common-config: mail" in text
-    patched = f'{text.rstrip()}\nPALLAS_SMTP_SERVER = "smtp.example.com"\n'
-    apply_webui_env_section_raw_toml("mail", patched)
+    apply_webui_env_section_patch("mail", {"smtp_server": "smtp.example.com"})
     data = json.loads(webui_file.read_text(encoding="utf-8"))
     assert data["env"]["PALLAS_SMTP_SERVER"] == "smtp.example.com"
 

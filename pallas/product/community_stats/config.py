@@ -66,7 +66,7 @@ class CommunityStatsConfig(BaseModel):
         return self.roster_public_qq or self.roster_public_profile
 
 
-def _read_roster_public_flags() -> tuple[bool, bool]:
+def read_roster_public_flags() -> tuple[bool, bool]:
     legacy_raw = repo_env_raw_value(f"{_PREFIX}ROSTER_PUBLIC")
     qq_raw = repo_env_raw_value(f"{_PREFIX}ROSTER_PUBLIC_QQ")
     profile_raw = repo_env_raw_value(f"{_PREFIX}ROSTER_PUBLIC_PROFILE")
@@ -81,7 +81,7 @@ def _read_roster_public_flags() -> tuple[bool, bool]:
 
 @lru_cache(maxsize=1)
 def get_community_stats_config() -> CommunityStatsConfig:
-    roster_qq, roster_profile = _read_roster_public_flags()
+    roster_qq, roster_profile = read_roster_public_flags()
     return CommunityStatsConfig(
         enabled=_setting_bool(f"{_PREFIX}ENABLED", True),
         endpoint=_setting_str(f"{_PREFIX}ENDPOINT", "https://stats.pallasbot.top/v1/heartbeat"),
