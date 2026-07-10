@@ -166,7 +166,8 @@ def append_feedback_entry(entry: LlmRepeaterFeedbackEntry) -> None:
 
 
 def _iter_feedback_entries(path: Path):
-    with path.open(encoding="utf-8") as handle:
+    # entries.jsonl 可能被历史脏写或非 UTF-8 污染；replace 避免整条 feedback 链路中断
+    with path.open(encoding="utf-8", errors="replace") as handle:
         for raw_line in handle:
             line = raw_line.strip()
             if not line:

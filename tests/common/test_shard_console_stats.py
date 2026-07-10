@@ -5,7 +5,7 @@ from pallas.core.platform.shard import console_stats as mod
 
 def test_worker_stats_roundtrip_and_cluster_merge(tmp_path, monkeypatch):
     monkeypatch.setattr(mod, "plugin_data_dir", lambda name, create=True: tmp_path / name)
-    monkeypatch.setattr(mod, "is_sharding_active", lambda: True)
+    monkeypatch.setattr(mod.shard_ctx, "sharding_active", lambda: True)
     monkeypatch.setattr(mod, "bot_authoritative_shard_map", lambda: {"111": 0, "222": 1})
 
     bots0 = {
@@ -35,7 +35,7 @@ def test_worker_stats_roundtrip_and_cluster_merge(tmp_path, monkeypatch):
 
 def test_cluster_merge_prefers_authoritative_shard_over_stale_worker(tmp_path, monkeypatch):
     monkeypatch.setattr(mod, "plugin_data_dir", lambda name, create=True: tmp_path / name)
-    monkeypatch.setattr(mod, "is_sharding_active", lambda: True)
+    monkeypatch.setattr(mod.shard_ctx, "sharding_active", lambda: True)
     monkeypatch.setattr(mod, "bot_authoritative_shard_map", lambda: {"111": 0})
 
     stale = {
@@ -64,7 +64,7 @@ def test_cluster_merge_prefers_authoritative_shard_over_stale_worker(tmp_path, m
 
 def test_prune_stale_worker_stats_bots_sync(tmp_path, monkeypatch):
     monkeypatch.setattr(mod, "plugin_data_dir", lambda name, create=True: tmp_path / name)
-    monkeypatch.setattr(mod, "is_sharding_active", lambda: True)
+    monkeypatch.setattr(mod.shard_ctx, "sharding_active", lambda: True)
 
     class FakeReg:
         def bots_on_shard(self, shard_id: int) -> list[str]:
@@ -92,9 +92,43 @@ def test_prune_stale_worker_stats_bots_sync(tmp_path, monkeypatch):
     assert mod.read_worker_stats(99) == {}
 
 
+def test_load_worker_console_stats_for_boot_filters_bots_moved_to_other_shards(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "plugin_data_dir", lambda name, create=True: tmp_path / name)
+    monkeypatch.setattr(mod.shard_ctx, "sharding_active", lambda: True)
+    monkeypatch.setattr(mod, "bot_authoritative_shard_map", lambda: {"111": 0, "222": 1})
+
+    mod.write_worker_stats_sync(
+        shard_id=1,
+        bots={
+            "111": {
+                "day_key": "2026-07-04",
+                "by_plugin": {"repeater": {"day_runs": 99}},
+                "matcher_duration_log": [],
+                "msg": {},
+            },
+            "222": {
+                "day_key": "2026-07-04",
+                "by_plugin": {"repeater": {"day_runs": 3}},
+                "matcher_duration_log": [],
+                "msg": {},
+            },
+        },
+    )
+
+    boot = mod.load_worker_console_stats_for_boot(1)
+    assert boot == {
+        "222": {
+            "day_key": "2026-07-04",
+            "by_plugin": {"repeater": {"day_runs": 3}},
+            "matcher_duration_log": [],
+            "msg": {},
+        }
+    }
+
+
 def test_preserve_matcher_hist_on_fast_flush(tmp_path, monkeypatch):
     monkeypatch.setattr(mod, "plugin_data_dir", lambda name, create=True: tmp_path / name)
-    monkeypatch.setattr(mod, "is_sharding_active", lambda: True)
+    monkeypatch.setattr(mod.shard_ctx, "sharding_active", lambda: True)
 
     hist = [{"at": 100, "plugins": {"duel": 1}}]
     mod.write_worker_stats_sync(

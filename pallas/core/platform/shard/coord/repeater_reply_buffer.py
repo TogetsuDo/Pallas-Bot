@@ -124,6 +124,16 @@ def _record_tail_dup(records: list, record: dict[str, Any]) -> bool:
     return False
 
 
+async def _worker_interested_in_group(group_id: int) -> bool:
+    from pallas.core.platform.multi_bot.group_fleet_probe import list_local_fleet_bots_in_group
+
+    try:
+        local_ids = await list_local_fleet_bots_in_group(int(group_id))
+    except Exception:
+        return True
+    return bool(local_ids)
+
+
 async def apply_repeater_reply_record(record: dict[str, Any]) -> bool:
     from packages.repeater.model import Chat
 
@@ -157,6 +167,9 @@ async def ingest_repeater_reply_buffer_event(data: dict[str, Any]) -> None:
         return
     record = data.get("record")
     if not isinstance(record, dict):
+        return
+    if not await _worker_interested_in_group(int(record.get("group_id") or 0)):
+        _remember_event(event_id)
         return
     await apply_repeater_reply_record(record)
     _remember_event(event_id)

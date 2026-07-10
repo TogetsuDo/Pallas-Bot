@@ -59,6 +59,78 @@ async def test_apply_repeater_reply_record_merges_into_chat_reply_dict():
 
 
 @pytest.mark.asyncio
+async def test_ingest_repeater_reply_buffer_skips_group_without_local_interest(monkeypatch):
+    from packages.repeater.model import Chat
+    from pallas.core.platform.shard.coord import repeater_reply_buffer as mod
+
+    Chat._reply_dict.clear()
+
+    event = {
+        "event_id": "evt-no-local-interest",
+        "source_shard_id": 0,
+        "record": {
+            "group_id": 90010,
+            "bot_id": 80010,
+            "time": 123,
+            "pre_raw_message": "hello",
+            "pre_keywords": "hello_kw",
+            "reply": "world",
+            "reply_keywords": "world_kw",
+        },
+    }
+
+    settings = type("S", (), {"role": "worker", "shard_id": 1, "enabled": True})()
+    monkeypatch.setattr(mod, "get_shard_registry_settings", lambda: settings)
+    monkeypatch.setattr(mod.shard_ctx, "sharding_active", lambda: True)
+    monkeypatch.setattr(
+        "pallas.core.platform.multi_bot.group_fleet_probe.list_local_fleet_bots_in_group",
+        lambda _group_id: asyncio.sleep(0, result=[]),
+    )
+
+    await mod.ingest_repeater_reply_buffer_event(event)
+
+    assert Chat._reply_dict.get(90010) is None
+
+
+@pytest.mark.asyncio
+async def test_ingest_repeater_reply_buffer_keeps_group_when_local_probe_errors(monkeypatch):
+    from packages.repeater.model import Chat
+    from pallas.core.platform.shard.coord import repeater_reply_buffer as mod
+
+    Chat._reply_dict.clear()
+
+    event = {
+        "event_id": "evt-probe-error",
+        "source_shard_id": 0,
+        "record": {
+            "group_id": 90011,
+            "bot_id": 80011,
+            "time": 124,
+            "pre_raw_message": "hello",
+            "pre_keywords": "hello_kw",
+            "reply": "world",
+            "reply_keywords": "world_kw",
+        },
+    }
+
+    settings = type("S", (), {"role": "worker", "shard_id": 1, "enabled": True})()
+    monkeypatch.setattr(mod, "get_shard_registry_settings", lambda: settings)
+    monkeypatch.setattr(mod.shard_ctx, "sharding_active", lambda: True)
+
+    async def _raise(_group_id: int) -> list[int]:
+        raise RuntimeError("probe failed")
+
+    monkeypatch.setattr(
+        "pallas.core.platform.multi_bot.group_fleet_probe.list_local_fleet_bots_in_group",
+        _raise,
+    )
+
+    await mod.ingest_repeater_reply_buffer_event(event)
+
+    assert Chat._reply_dict[90011][80011][-1]["reply"] == "world"
+
+
+@pytest.mark.asyncio
 async def test_ban_searches_other_bot_reply_cache():
     from packages.repeater.ban_manager import BanManager
 
@@ -106,7 +178,7 @@ async def test_schedule_publish_repeater_reply_record_does_not_drop_burst(monkey
         await asyncio.sleep(0.002)
         return fn(*args, **kwargs)
 
-    monkeypatch.setattr(mod, "is_sharding_active", lambda: True)
+    monkeypatch.setattr(mod.shard_ctx, "sharding_active", lambda: True)
     monkeypatch.setattr(
         mod,
         "publish_repeater_reply_record_sync",
@@ -141,7 +213,7 @@ def test_publish_reply_record_sharding_without_redis_skips_publish(monkeypatch) 
     from pallas.core.platform.shard.coord import repeater_reply_buffer as mod
 
     monkeypatch.setattr(mod, "publish_repeater_reply_buffer_redis_sync", lambda env: False)
-    monkeypatch.setattr(mod, "is_sharding_active", lambda: True)
+    monkeypatch.setattr(mod.shard_ctx, "sharding_active", lambda: True)
     monkeypatch.setattr(
         mod,
         "get_shard_registry_settings",

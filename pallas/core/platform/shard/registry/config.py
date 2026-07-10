@@ -53,7 +53,7 @@ class ShardRegistrySettings(BaseModel):
         description="worker 分片编号（0 起；test 分片可为 99 等）；hub/unified 忽略。",
     )
     bots_per_shard: int = Field(
-        default=5,
+        default=7,
         ge=1,
         le=32,
         description="每个 worker 进程目标承载的牛牛账号数。",
@@ -100,7 +100,7 @@ def get_shard_registry_settings() -> ShardRegistrySettings:
         enabled=_env_bool("PALLAS_SHARD_ENABLED", False),
         role=role,
         shard_id=_env_int("PALLAS_SHARD_ID", 0),
-        bots_per_shard=_env_int("PALLAS_SHARD_BOTS_PER", 5),
+        bots_per_shard=_env_int("PALLAS_SHARD_BOTS_PER", 7),
         hub_port=_env_int("PALLAS_SHARD_HUB_PORT", _env_int("PORT", 8088)),
         worker_base_port=_env_int("PALLAS_SHARD_WORKER_BASE_PORT", 8090),
         ws_path=_env_str("PALLAS_SHARD_WS_PATH", "/onebot/v11/ws") or "/onebot/v11/ws",

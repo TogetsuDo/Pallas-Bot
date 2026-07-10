@@ -6,6 +6,7 @@ from typing import Any
 _COUNTERS = (
     "events",
     "early_worker_gate",
+    "early_plugin_disabled",
     "early_plugin_command",
     "early_fanout_bypass",
     "early_message_scrub",
@@ -57,6 +58,7 @@ def record_repeater_ingress_early_discard(reason: str) -> None:
     _rollover_if_needed()
     mapping = {
         "worker_gate": "early_worker_gate",
+        "plugin_disabled": "early_plugin_disabled",
         "plugin_command": "early_plugin_command",
         "fanout_bypass": "early_fanout_bypass",
         "message_scrub": "early_message_scrub",

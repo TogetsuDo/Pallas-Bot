@@ -19,8 +19,7 @@ from pallas.core.platform.federate.peer_bots import (
 from pallas.core.platform.ingress.claim_gate import (
     IngressClaimError,
     ingress_gate_runtime_active,
-    shard_worker_ingress_claims,
-    unified_ingress_once_claim,
+    run_ingress_message_claim,
 )
 from pallas.core.platform.ingress.dream_host_gate import dream_session_ingress_passes
 from pallas.core.platform.ingress.fanout_bypass import ingress_fanout_bypasses_claim
@@ -131,16 +130,31 @@ async def ingress_group_message_gate(bot, event) -> None:
             raise IgnoredException("federate group owner mismatch")
 
         at_fleet = message_at_fleet_bot(event)
-        early_once_done = False
-        if not sharding_active and ingress_once_claim_safe_before_host_gates(
+        ingress_claim_done = False
+
+        if pallas_ats and self_id not in pallas_ats:
+            outcome = "not_at_target"
+            if metrics:
+                record_ingress_early_discard("not_at_target")
+            raise IgnoredException("not at-target bot")
+
+        safe_before_host_gates = ingress_once_claim_safe_before_host_gates(
             int(event.group_id),
             plain,
             at_fleet_bot=at_fleet,
-        ):
+        )
+        if safe_before_host_gates:
             try:
-                await unified_ingress_once_claim(event, body=body, user_id=user_id)
-                early_once_done = True
-                timer.mark("once_claim")
+                for mark in await run_ingress_message_claim(
+                    event,
+                    body=body,
+                    user_id=user_id,
+                    self_id=self_id,
+                    sharding_active=sharding_active,
+                    metrics=metrics,
+                ):
+                    timer.mark(mark)
+                ingress_claim_done = True
             except IngressClaimError as err:
                 outcome = err.outcome
                 if metrics and err.record_claim_lost:
@@ -164,11 +178,17 @@ async def ingress_group_message_gate(bot, event) -> None:
                 record_ingress_early_discard("dream_host")
             raise IgnoredException("dream host gate")
 
-        if not early_once_done:
+        if not ingress_claim_done:
             try:
-                await unified_ingress_once_claim(event, body=body, user_id=user_id)
-                if not sharding_active:
-                    timer.mark("once_claim")
+                for mark in await run_ingress_message_claim(
+                    event,
+                    body=body,
+                    user_id=user_id,
+                    self_id=self_id,
+                    sharding_active=sharding_active,
+                    metrics=metrics,
+                ):
+                    timer.mark(mark)
             except IngressClaimError as err:
                 outcome = err.outcome
                 if metrics and err.record_claim_lost:
@@ -178,12 +198,6 @@ async def ingress_group_message_gate(bot, event) -> None:
         if metrics:
             record_ingress_event()
 
-        if pallas_ats and self_id not in pallas_ats:
-            outcome = "not_at_target"
-            if metrics:
-                record_ingress_early_discard("not_at_target")
-            raise IgnoredException("not at-target bot")
-
         if not await claim_federate_group_message_ingress(event, plain=plain, body=body):
             outcome = "federate_lost"
             if metrics:
@@ -192,21 +206,6 @@ async def ingress_group_message_gate(bot, event) -> None:
         timer.mark("federate")
 
         if sharding_active:
-            try:
-                for mark in await shard_worker_ingress_claims(
-                    event,
-                    body=body,
-                    user_id=user_id,
-                    self_id=self_id,
-                ):
-                    timer.mark(mark)
-            except IngressClaimError as err:
-                outcome = err.outcome
-                if metrics and err.record_claim_lost:
-                    record_ingress_claim(won=False)
-                raise IgnoredException(str(err)) from err
-            if metrics:
-                record_ingress_claim(won=True)
             return
 
         if metrics:

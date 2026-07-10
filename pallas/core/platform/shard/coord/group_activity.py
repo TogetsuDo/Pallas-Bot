@@ -14,6 +14,11 @@ from pallas.core.platform.shard.coord.coord_redis_store import (
     read_json_sync,
     setex_json_sync,
 )
+from pallas.core.platform.shard.coord.gate_read_cache import (
+    gate_read_cache_get,
+    gate_read_cache_invalidate,
+    gate_read_cache_key_activity,
+)
 from pallas.core.platform.shard.registry.config import get_shard_registry_settings
 
 ActivityGate = Literal["ok", "busy"]
@@ -53,10 +58,14 @@ class GroupActivityLock:
         return coord_key(self.namespace, group_id)
 
     def read(self, group_id: int) -> dict[str, Any] | None:
-        return read_json_sync(self.key(group_id))
+        gid = int(group_id)
+        key = gate_read_cache_key_activity(self.namespace, gid)
+        return gate_read_cache_get(key, lambda: read_json_sync(self.key(gid)))
 
     def store(self, group_id: int, data: dict[str, Any]) -> None:
-        setex_json_sync(self.key(group_id), data, self._ttl(data))
+        gid = int(group_id)
+        setex_json_sync(self.key(gid), data, self._ttl(data))
+        gate_read_cache_invalidate(gate_read_cache_key_activity(self.namespace, gid))
 
     def _ttl(self, data: dict[str, Any]) -> int:
         until = float(data.get("until") or 0)
@@ -65,12 +74,15 @@ class GroupActivityLock:
         return int(self.busy_ttl_sec)
 
     def _mutate(self, group_id: int, fn, *, retries: int = 8) -> dict[str, Any] | None:
-        return mutate_json_sync(
-            self.key(group_id),
+        gid = int(group_id)
+        result = mutate_json_sync(
+            self.key(gid),
             fn,
             ttl_sec_fn=self._ttl,
             retries=retries,
         )
+        gate_read_cache_invalidate(gate_read_cache_key_activity(self.namespace, gid))
+        return result
 
     def is_orphan_lock(self, data: dict[str, Any] | None) -> bool:
         if not data or not data.get("busy"):

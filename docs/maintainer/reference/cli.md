@@ -29,6 +29,16 @@ uv run pallas sync
 - 更新依赖
 - 部署前后做一次统一同步
 
+### AI Runtime 安装
+
+```bash
+uv run pallas ai path
+uv run pallas ai setup
+uv run pallas ai setup --check-only
+```
+
+需同级目录 **Pallas-Bot-AI**，或设置 `PALLAS_AI_ROOT`。验收见 [安装验收 Checklist](../install/ga-install-checklist.md)。
+
 ### 启停与部署脚本
 
 这两个脚本你仍会频繁用到：

@@ -37,6 +37,7 @@ _PATCHED = False
 _ORIGINAL_HANDLE_EVENT = None
 _ORIGINAL_ADAPTER_HANDLE_EVENTS: dict[object, object] = {}
 _OVERLOAD_SELECTED_THRESHOLD = 24
+_MATCHER_DISPATCH_BATCH = 8
 
 
 def matcher_dispatch_enabled() -> bool:
@@ -57,6 +58,21 @@ def overload_selected_threshold() -> int:
         return max(1, int(str(raw).strip()))
     except ValueError:
         return scaled_dispatch_int(_OVERLOAD_SELECTED_THRESHOLD, per_bot=1, cap=48)
+
+
+def matcher_dispatch_batch_size() -> int:
+    raw = repo_env_raw_value("PALLAS_MATCHER_DISPATCH_BATCH")
+    if raw is None:
+        return scaled_dispatch_int(_MATCHER_DISPATCH_BATCH, per_bot=1, cap=16)
+    try:
+        return max(1, int(str(raw).strip()))
+    except ValueError:
+        return scaled_dispatch_int(_MATCHER_DISPATCH_BATCH, per_bot=1, cap=16)
+
+
+def matcher_dispatch_batches(selected_matchers: list[type]) -> list[list[type]]:
+    batch_size = matcher_dispatch_batch_size()
+    return [selected_matchers[i : i + batch_size] for i in range(0, len(selected_matchers), batch_size)]
 
 
 async def patched_handle_event(bot: Bot, event: Event) -> None:
@@ -158,9 +174,12 @@ async def patched_handle_event(bot: Bot, event: Event) -> None:
                 nb_message.StopPropagation: handle_stop_propagation,
                 Exception: nb_message._handle_exception("<r><bg #f8bbd0>Error when checking Matcher.</bg #f8bbd0></r>"),
             }):
-                async with nb_message.anyio.create_task_group() as tg:
-                    for matcher in selected_matchers:
-                        tg.start_soon(nb_message.run_coro_with_shield, run_selected_matcher(matcher))
+                for batch in matcher_dispatch_batches(selected_matchers):
+                    if break_flag:
+                        break
+                    async with nb_message.anyio.create_task_group() as tg:
+                        for matcher in batch:
+                            tg.start_soon(nb_message.run_coro_with_shield, run_selected_matcher(matcher))
 
         if show_log:
             nb_message.logger.debug("Checking for matchers completed")

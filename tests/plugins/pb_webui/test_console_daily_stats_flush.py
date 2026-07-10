@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import packages.pb_webui.extended_api as ext
 from packages.pb_webui import daily_stats_store
 
@@ -64,3 +66,81 @@ def test_daily_stats_store_skips_rewrite_when_batch_is_unchanged(tmp_path, monke
     second = stats.read_text(encoding="utf-8")
 
     assert first == second
+
+
+def test_flush_worker_shard_console_stats_skips_non_local_stale_bots(monkeypatch) -> None:
+    ext._MSG_STATS.clear()
+    ext._PLUGIN_RUN_STATS.clear()
+    ext._CONSOLE_CAL_DAY.clear()
+
+    ext._PLUGIN_RUN_STATS["111"] = {"day_key": "2026-07-04", "by_plugin": {"repeater": {"day_runs": 99}}}
+    ext._PLUGIN_RUN_STATS["222"] = {"day_key": "2026-07-04", "by_plugin": {"repeater": {"day_runs": 3}}}
+    ext._MSG_STATS["111"] = {"day_key": "2026-07-04", "day_sent": 0, "day_received": 0}
+    ext._MSG_STATS["222"] = {"day_key": "2026-07-04", "day_sent": 1, "day_received": 2}
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(ext, "_shard_worker_console", lambda: True)
+    monkeypatch.setattr("nonebot.get_bots", lambda: {"222": object()})
+    monkeypatch.setattr(
+        "pallas.core.platform.shard.registry.config.get_shard_registry_settings",
+        lambda: SimpleNamespace(shard_id=1),
+    )
+    monkeypatch.setattr(
+        "pallas.core.platform.shard.presence.filter_local_qq_ids_for_presence",
+        lambda local_qq_ids: local_qq_ids,
+    )
+    monkeypatch.setattr(
+        "pallas.core.platform.shard.presence.reconcile_local_worker_presence_sync",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "pallas.core.platform.shard.console_stats.write_worker_stats_sync",
+        lambda **kwargs: captured.update(kwargs),
+    )
+    monkeypatch.setattr(
+        "pallas.core.platform.shard.console_stats.process_memory_snapshot",
+        dict,
+    )
+    monkeypatch.setattr(
+        "pallas.core.platform.shard.ingress_metrics.ingress_metrics_snapshot",
+        dict,
+    )
+    monkeypatch.setattr(
+        "pallas.core.platform.ingress.dispatch_metrics.dispatch_metrics_snapshot",
+        dict,
+    )
+    monkeypatch.setattr(
+        "pallas.core.platform.shard.repeater_ingress_metrics.repeater_ingress_metrics_snapshot",
+        dict,
+    )
+    monkeypatch.setattr(
+        "pallas.core.platform.shard.coord_pending.coord_pending_snapshot_sync",
+        dict,
+    )
+    monkeypatch.setattr(
+        "pallas.product.llm.task_metrics.llm_task_metrics_snapshot",
+        dict,
+    )
+
+    ext.flush_worker_shard_console_stats_sync()
+
+    assert captured["shard_id"] == 1
+    assert captured["bots"] == {
+        "222": {
+            "day_key": "2026-07-04",
+            "by_plugin": {"repeater": {"day_runs": 3}},
+            "matcher_duration_log": [],
+            "msg": {
+                "day_api_counts": {},
+                "day_api_total": 0,
+                "day_key": "2026-07-04",
+                "day_received": 2,
+                "day_sent": 1,
+                "received": 0,
+                "sent": 0,
+                "api_call_buckets": [],
+                "msg_traffic_buckets": [],
+            },
+        }
+    }

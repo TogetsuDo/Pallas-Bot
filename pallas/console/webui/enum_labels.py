@@ -49,6 +49,10 @@ FIELD_CHOICE_LABELS: dict[str, dict[str, str]] = {
         "embedding": "纯向量",
         "vector": "纯向量（同 embedding）",
     },
+    "pallas_image_runtime_mode": {
+        "ai_service_runtime": "AI 服务统一执行（推荐）",
+        "plugin_runtime": "插件直连图像网关",
+    },
 }
 
 

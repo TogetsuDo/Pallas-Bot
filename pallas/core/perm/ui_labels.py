@@ -42,7 +42,6 @@ COMMAND_LABEL_FALLBACKS: dict[str, str] = {
     "bot_status.test_mail": "测试邮件",
     "connectivity.probe": "牛牛连通",
     "draw.draw": "牛牛画画",
-    "draw.gateway": "牛牛网关",
     "drink.drink": "牛牛喝酒 / 牛牛干杯 / 牛牛继续喝",
     "drink.sober_up": "牛牛醒一醒 / 牛牛别喝了",
     "dream.ban_cleanup": "梦库清理（不可以）",

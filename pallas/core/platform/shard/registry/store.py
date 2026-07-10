@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import threading
+from operator import itemgetter
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -41,7 +43,7 @@ class ShardRegistry(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     version: int = 1
-    bots_per_shard: int = 5
+    bots_per_shard: int = 7
     hub_port: int = 8088
     worker_base_port: int = 8090
     ws_path: str = "/onebot/v11/ws"
@@ -377,6 +379,96 @@ def clear_shard_registry_cache() -> None:
     get_shard_registry_settings.cache_clear()
 
 
+def production_bot_activity_scores() -> dict[str, float]:
+    try:
+        from pallas.core.platform.shard.console_stats import (
+            bot_authoritative_shard_map,
+            iter_worker_shard_ids,
+            read_worker_stats_file,
+        )
+    except Exception:
+        return {}
+    auth = bot_authoritative_shard_map()
+    by_qq: dict[str, list[tuple[int, dict[str, Any], float]]] = {}
+    for sid_shard in iter_worker_shard_ids():
+        data = read_worker_stats_file(sid_shard)
+        try:
+            updated = float(data.get("updated_at") or 0.0)
+        except (TypeError, ValueError):
+            updated = 0.0
+        bots = data.get("bots")
+        if not isinstance(bots, dict):
+            continue
+        for qq, rec in bots.items():
+            key = str(qq).strip()
+            if not key or not isinstance(rec, dict):
+                continue
+            by_qq.setdefault(key, []).append((int(sid_shard), rec, updated))
+    scores: dict[str, float] = {}
+    for qq, entries in by_qq.items():
+        target = auth.get(qq)
+        if target is not None:
+            matched = [entry for entry in entries if entry[0] == target]
+            if matched:
+                entries = matched
+        _, rec, _ = max(entries, key=itemgetter(2))
+        total_runs = 0
+        total_ms = 0.0
+        for row in (rec.get("by_plugin") or {}).values():
+            if not isinstance(row, dict):
+                continue
+            total_runs += int(row.get("day_runs") or 0)
+            total_ms += float(row.get("day_duration_ms_sum") or 0.0)
+        scores[qq] = max(float(total_ms), float(total_runs) * 50.0)
+    return scores
+
+
+def _count_rebalance_assignments(prod_bots: list[str], *, limit: int) -> dict[str, int]:
+    new_assignments: dict[str, int] = {}
+    shard_id = 0
+    count_on_shard = 0
+    for qq in prod_bots:
+        if count_on_shard >= limit:
+            shard_id += 1
+            count_on_shard = 0
+        new_assignments[qq] = shard_id
+        count_on_shard += 1
+    return new_assignments
+
+
+def _activity_rebalance_assignments(
+    prod_bots: list[str],
+    *,
+    limit: int,
+    activity_scores: dict[str, float],
+) -> tuple[dict[str, int], dict[int, float]]:
+    worker_count = max(1, (len(prod_bots) + limit - 1) // limit)
+    ordered = sorted(
+        prod_bots,
+        key=lambda qq: (
+            -float(activity_scores.get(qq, 0.0)),
+            qq,
+        ),
+    )
+    new_assignments: dict[str, int] = {}
+    shard_loads: dict[int, float] = dict.fromkeys(range(worker_count), 0.0)
+    shard_counts: dict[int, int] = dict.fromkeys(range(worker_count), 0)
+    for qq in ordered:
+        candidates = [sid for sid, count in shard_counts.items() if count < limit]
+        picked = min(
+            candidates,
+            key=lambda sid: (
+                float(shard_loads.get(sid, 0.0)),
+                int(shard_counts.get(sid, 0)),
+                sid,
+            ),
+        )
+        new_assignments[qq] = picked
+        shard_counts[picked] = int(shard_counts.get(picked, 0)) + 1
+        shard_loads[picked] = float(shard_loads.get(picked, 0.0)) + float(activity_scores.get(qq, 0.0))
+    return new_assignments, shard_loads
+
+
 def assign_bot_to_shard(bot_id: str, *, registry: ShardRegistry | None = None) -> int:
     """将牛牛 QQ 登记到负载最轻的生产分片；返回 shard_id。"""
     reg = registry or get_shard_registry()
@@ -426,6 +518,66 @@ def assign_bot_to_shard(bot_id: str, *, registry: ShardRegistry | None = None) -
 
         logging.getLogger(__name__).debug("worker scale schedule skipped: %s", err)
     return picked
+
+
+def rebalance_production_assignments(
+    *,
+    registry: ShardRegistry | None = None,
+    save: bool = True,
+    strategy: str = "count",
+    activity_scores: dict[str, float] | None = None,
+) -> dict[str, object]:
+    """按 bots_per_shard 重排生产牛牛分片，并压缩多余空分片。"""
+    reg = registry or get_shard_registry()
+    apply_registry_settings_from_env(reg)
+    test_ids = test_shard_ids(reg)
+    limit = max(1, int(reg.bots_per_shard))
+    prod_bots = sorted(
+        (str(k).strip() for k, sid in reg.assignments.items() if int(sid) not in test_ids and str(k).strip()),
+        key=lambda qq: (int(reg.assignments[qq]), qq),
+    )
+    kept_test = {str(k).strip(): int(v) for k, v in reg.assignments.items() if int(v) in test_ids}
+    mode = str(strategy or "count").strip().lower()
+    if mode not in {"count", "activity"}:
+        raise ValueError(f"unsupported rebalance strategy: {strategy}")
+    shard_loads: dict[int, float] = {}
+    if mode == "activity":
+        activity = activity_scores if activity_scores is not None else production_bot_activity_scores()
+        if any(float(activity.get(qq, 0.0)) > 0.0 for qq in prod_bots):
+            prod_assignments, shard_loads = _activity_rebalance_assignments(
+                prod_bots,
+                limit=limit,
+                activity_scores=activity,
+            )
+        else:
+            mode = "count"
+            prod_assignments = _count_rebalance_assignments(prod_bots, limit=limit)
+    else:
+        prod_assignments = _count_rebalance_assignments(prod_bots, limit=limit)
+    new_assignments: dict[str, int] = {**kept_test, **prod_assignments}
+    before = dict(reg.assignments)
+    reg.assignments = new_assignments
+    _ensure_shard_rows(reg)
+    moved = sum(1 for qq, sid in new_assignments.items() if qq not in test_ids and before.get(qq) != sid)
+    if save:
+        save_shard_registry(reg)
+    return {
+        "strategy": mode,
+        "bots_per_shard": reg.bots_per_shard,
+        "production_bots": len(prod_bots),
+        "worker_shards": _normal_worker_need(reg),
+        "moved": moved,
+        "assignments": [
+            {
+                "shard_id": s.id,
+                "port": s.port,
+                "count": reg.count_on_shard(s.id),
+                **({"score": round(float(shard_loads.get(s.id, 0.0)), 1)} if mode == "activity" else {}),
+            }
+            for s in reg.shards
+            if not is_test_shard_record(s, reg)
+        ],
+    }
 
 
 def rebalance_hint() -> dict[str, object]:

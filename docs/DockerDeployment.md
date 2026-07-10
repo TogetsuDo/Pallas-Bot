@@ -3,7 +3,7 @@
 使用 **Docker Compose** 运行官方镜像，适合生产环境统一版本、隔离依赖。需预先安装 [Docker](https://docs.docker.com/get-docker/) 与 Compose 插件（`docker compose version` 有输出即可）。
 
 ::: tip 导航
-[README](../README.md) · [标准部署](Deployment.md) · [配置要点](Config.md) · [连接 QQ](guide/connect-qq.md) · [多进程分片](architecture/bot_process_sharding.md) · [FAQ](FAQ.md)
+[README](../README.md) · [标准部署](Deployment.md) · [配置要点](Config.md) · [连接 QQ](guide/connect-qq.md) · [多进程分片](architecture/bot_process_sharding.md) · [安装验收 Checklist](maintainer/install/ga-install-checklist.md) · [FAQ](FAQ.md)
 :::
 
 ## 部署前检查清单

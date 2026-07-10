@@ -36,7 +36,7 @@ def build_candidate_id(*, group_id: int, trigger_text: str, reply_text: str) -> 
 
 
 def _iter_candidates(path):
-    with path.open(encoding="utf-8") as handle:
+    with path.open(encoding="utf-8", errors="replace") as handle:
         for raw_line in handle:
             line = raw_line.strip()
             if not line:

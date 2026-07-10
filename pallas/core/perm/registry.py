@@ -82,7 +82,6 @@ DEFAULT_COMMAND_PERMISSIONS: dict[str, PermissionLevel] = {
     "sing.ncm_login": "superuser",
     "sing.ncm_logout": "superuser",
     "draw.draw": "everyone",
-    "draw.gateway": "everyone",
     "connectivity.probe": "everyone",
     "repeater.ban": "staff",
     "repeater.ban_latest": "staff",

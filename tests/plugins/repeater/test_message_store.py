@@ -22,6 +22,7 @@ async def test_message_insert(beanie_fixture):
     # Setup: Initialize MessageStore state
     MessageStore._message_lock = asyncio.Lock()
     MessageStore._message_dict = defaultdict(list)
+    MessageStore._synced_prefix_counts = {}
     MessageStore._late_save_time = 0
 
     try:
@@ -59,6 +60,7 @@ async def test_message_insert(beanie_fixture):
     finally:
         # Cleanup
         MessageStore._message_dict.clear()
+        MessageStore._synced_prefix_counts = {}
         MessageStore._late_save_time = 0
 
 
@@ -73,6 +75,7 @@ async def test_sync_persistence(beanie_fixture):
     # Setup: Initialize MessageStore state
     MessageStore._message_lock = asyncio.Lock()
     MessageStore._message_dict = defaultdict(list)
+    MessageStore._synced_prefix_counts = {}
     MessageStore._late_save_time = 100
     MessageStore.SAVE_COUNT_THRESHOLD = 5
     MessageStore.SAVE_RESERVED_SIZE = 100
@@ -104,6 +107,7 @@ async def test_sync_persistence(beanie_fixture):
     finally:
         # Cleanup
         MessageStore._message_dict.clear()
+        MessageStore._synced_prefix_counts = {}
         MessageStore._late_save_time = 0
 
 
@@ -118,6 +122,7 @@ async def test_get_random_message(beanie_fixture):
     # Setup: Initialize MessageStore state
     MessageStore._message_lock = asyncio.Lock()
     MessageStore._message_dict = defaultdict(list)
+    MessageStore._synced_prefix_counts = {}
     MessageStore._late_save_time = 0
 
     try:
@@ -152,6 +157,7 @@ async def test_get_random_message(beanie_fixture):
     finally:
         # Cleanup
         MessageStore._message_dict.clear()
+        MessageStore._synced_prefix_counts = {}
         MessageStore._late_save_time = 0
 
 
@@ -166,6 +172,7 @@ async def test_topics_callback_called(beanie_fixture):
     # Setup: Initialize MessageStore state
     MessageStore._message_lock = asyncio.Lock()
     MessageStore._message_dict = defaultdict(list)
+    MessageStore._synced_prefix_counts = {}
     MessageStore._late_save_time = 0
 
     try:
@@ -203,4 +210,48 @@ async def test_topics_callback_called(beanie_fixture):
     finally:
         # Cleanup
         MessageStore._message_dict.clear()
+        MessageStore._synced_prefix_counts = {}
+        MessageStore._late_save_time = 0
+
+
+@pytest.mark.asyncio
+async def test_periodic_sync_if_buffered_skips_empty_buffer(beanie_fixture):
+    from packages.repeater.message_store import MessageStore
+
+    MessageStore._message_lock = asyncio.Lock()
+    MessageStore._message_dict = defaultdict(list)
+    MessageStore._synced_prefix_counts = {}
+    MessageStore._late_save_time = 0
+
+    try:
+        with patch("packages.repeater.message_store.MessageStore._sync", new_callable=AsyncMock) as mock_sync:
+            ok = await MessageStore.periodic_sync_if_buffered()
+
+        assert ok is False
+        mock_sync.assert_not_awaited()
+    finally:
+        MessageStore._message_dict.clear()
+        MessageStore._synced_prefix_counts = {}
+        MessageStore._late_save_time = 0
+
+
+@pytest.mark.asyncio
+async def test_periodic_sync_if_buffered_flushes_pending_messages(beanie_fixture):
+    from packages.repeater.message_store import MessageStore
+
+    MessageStore._message_lock = asyncio.Lock()
+    MessageStore._message_dict = defaultdict(list)
+    MessageStore._synced_prefix_counts = {}
+    MessageStore._late_save_time = 100
+    MessageStore._message_dict[12345].append(type("Message", (), {"time": 101})())
+
+    try:
+        with patch("packages.repeater.message_store.MessageStore._sync", new_callable=AsyncMock) as mock_sync:
+            ok = await MessageStore.periodic_sync_if_buffered()
+
+        assert ok is True
+        mock_sync.assert_awaited_once()
+    finally:
+        MessageStore._message_dict.clear()
+        MessageStore._synced_prefix_counts = {}
         MessageStore._late_save_time = 0

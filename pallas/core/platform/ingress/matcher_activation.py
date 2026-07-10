@@ -8,6 +8,8 @@ from nonebot.consts import CMD_KEY
 from nonebot.rule import TrieRule
 
 from pallas.core.foundation.command_prefix import strip_leading_command_marks
+from pallas.core.perm.registry import resolved_level
+from pallas.core.perm.runtime_meta import get_command_permission_meta
 from pallas.core.platform.ingress.matcher_rule_prefilter import apply_matcher_rule_prefilter
 from pallas.core.platform.ingress.plugin_command_plaintext import is_plugin_command_plaintext
 from pallas.core.platform.ingress.route_index import (
@@ -110,6 +112,53 @@ def event_command_traffic(
     return legacy_command_traffic(plain)
 
 
+def matcher_command_permission_meta(matcher: type[Matcher]) -> tuple[str, str] | None:
+    permission = getattr(matcher, "permission", None)
+    meta = get_command_permission_meta(permission)
+    if meta is None:
+        return None
+    command_id, scene = meta
+    return command_id, scene or "both"
+
+
+def _group_sender_role(event: Event | None) -> str:
+    sender = getattr(event, "sender", None)
+    role = getattr(sender, "role", None)
+    return str(role or "").strip().lower()
+
+
+def matcher_permission_prefilter_should_skip(matcher: type[Matcher], event: Event | None) -> bool:
+    if event is None:
+        return False
+    meta = matcher_command_permission_meta(matcher)
+    if meta is None:
+        return False
+    command_id, scene = meta
+    is_group_event = getattr(event, "group_id", None) is not None
+    if scene == "private" and is_group_event:
+        return True
+    if scene == "group" and not is_group_event:
+        return True
+    if not is_group_event:
+        return False
+
+    from pallas.core.perm.config import get_cmd_perm_config
+
+    level = resolved_level(command_id, get_cmd_perm_config().command_permission_overrides)
+    if level != "group_moderator":
+        return False
+    return _group_sender_role(event) not in {"owner", "admin"}
+
+
+def apply_matcher_permission_prefilter(
+    matchers: list[type[Matcher]],
+    event: Event | None,
+) -> list[type[Matcher]]:
+    if not matchers or event is None:
+        return matchers
+    return [matcher for matcher in matchers if not matcher_permission_prefilter_should_skip(matcher, event)]
+
+
 def select_priority_matchers(
     priority_matchers: list[type[Matcher]],
     *,
@@ -141,7 +190,8 @@ def select_priority_matchers(
     if event is None:
         return selected
     plain, raw_text = event_dispatch_texts(event)
-    return apply_matcher_rule_prefilter(selected, event, plain, raw_text)
+    selected = apply_matcher_rule_prefilter(selected, event, plain, raw_text)
+    return apply_matcher_permission_prefilter(selected, event)
 
 
 def filter_chatter_matchers(

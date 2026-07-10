@@ -15,6 +15,7 @@ def test_repeater_ingress_metrics_snapshot_and_merge():
     clear_repeater_ingress_metrics_for_tests()
     record_repeater_ingress_event()
     record_repeater_ingress_event()
+    record_repeater_ingress_early_discard("plugin_disabled")
     record_repeater_ingress_early_discard("plugin_command")
     record_repeater_ingress_early_discard("cross_bot_claim")
     record_repeater_ingress_early_discard("message_scrub")
@@ -37,6 +38,7 @@ def test_repeater_ingress_metrics_snapshot_and_merge():
 
     snap = repeater_ingress_metrics_snapshot()
     assert snap["events"] == 2
+    assert snap["early_plugin_disabled"] == 1
     assert snap["early_plugin_command"] == 1
     assert snap["early_cross_bot_claim"] == 1
     assert snap["early_message_scrub"] == 1

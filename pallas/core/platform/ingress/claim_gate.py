@@ -59,6 +59,32 @@ async def unified_ingress_once_claim(
     mark_unified_ingress_once_won(event, body=body)
 
 
+async def run_ingress_message_claim(
+    event: GroupMessageEvent,
+    *,
+    body: str,
+    user_id: int,
+    self_id: int,
+    sharding_active: bool,
+    metrics: bool,
+) -> list[str]:
+    """统一 / 分片 ingress claim 单入口；返回 timer mark 名列表。"""
+    if not sharding_active:
+        await unified_ingress_once_claim(event, body=body, user_id=user_id)
+        return ["once_claim"]
+    marks = await shard_worker_ingress_claims(
+        event,
+        body=body,
+        user_id=user_id,
+        self_id=self_id,
+    )
+    if metrics:
+        from pallas.core.platform.shard.ingress_metrics import record_ingress_claim
+
+        record_ingress_claim(won=True)
+    return marks
+
+
 async def shard_worker_ingress_claims(
     event: GroupMessageEvent,
     *,

@@ -11,6 +11,7 @@ from pallas.core.foundation.config import user_is_admin_of_any_bot, user_is_bot_
 
 from .config import get_cmd_perm_config
 from .registry import resolved_level
+from .runtime_meta import mark_command_permission_meta
 
 
 async def satisfies_command_permission(bot: Bot, event: Event, command_id: str) -> bool:
@@ -67,7 +68,7 @@ def permission_for_command(command_id: str) -> Permission:
     async def _checker(bot: Bot, event: Event) -> bool:
         return await satisfies_command_permission(bot, event, command_id)
 
-    return Permission(_checker)
+    return mark_command_permission_meta(Permission(_checker), command_id=command_id, scene="both")
 
 
 def group_message_permission_for_command(command_id: str) -> Permission:
@@ -79,7 +80,7 @@ def group_message_permission_for_command(command_id: str) -> Permission:
             return False
         return await inner(bot, event)
 
-    return Permission(_checker)
+    return mark_command_permission_meta(Permission(_checker), command_id=command_id, scene="group")
 
 
 def group_or_private_message_permission_for_command(command_id: str) -> Permission:
@@ -93,7 +94,7 @@ def group_or_private_message_permission_for_command(command_id: str) -> Permissi
             return False
         return await inner(bot, event)
 
-    return Permission(_checker)
+    return mark_command_permission_meta(Permission(_checker), command_id=command_id, scene="both")
 
 
 def private_message_permission_for_command(command_id: str) -> Permission:
@@ -105,4 +106,4 @@ def private_message_permission_for_command(command_id: str) -> Permission:
             return False
         return await inner(bot, event)
 
-    return Permission(_checker)
+    return mark_command_permission_meta(Permission(_checker), command_id=command_id, scene="private")

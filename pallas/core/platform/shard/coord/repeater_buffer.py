@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from packages.repeater.model import ChatData
 
 _REDIS_CHANNEL = "pallas:repeater_buffer"
-_MAX_GROUP_TAIL = 256
 _seen_event_ids: deque[str] = deque(maxlen=8000)
 _seen_set: set[str] = set()
 _redis_listener_started = False
@@ -124,6 +123,16 @@ def _message_tail_dup(group_msgs: list, msg: dict[str, Any]) -> bool:
     return False
 
 
+async def _worker_interested_in_group(group_id: int) -> bool:
+    from pallas.core.platform.multi_bot.group_fleet_probe import list_local_fleet_bots_in_group
+
+    try:
+        local_ids = await list_local_fleet_bots_in_group(int(group_id))
+    except Exception:
+        return True
+    return bool(local_ids)
+
+
 async def ingest_repeater_buffer_event(data: dict[str, Any]) -> None:
     event_id = str(data.get("event_id") or "")
     if not event_id or event_id in _seen_set:
@@ -135,6 +144,9 @@ async def ingest_repeater_buffer_event(data: dict[str, Any]) -> None:
         return
     msg = data.get("msg")
     if not isinstance(msg, dict):
+        return
+    if not await _worker_interested_in_group(int(msg.get("group_id") or 0)):
+        _remember_event(event_id)
         return
     await apply_repeater_buffer_message(msg)
     _remember_event(event_id)
@@ -162,8 +174,9 @@ async def apply_repeater_buffer_message(msg: dict[str, Any]) -> bool:
                 time=int(msg["time"]),
             )
         )
-        if len(group_msgs) > _MAX_GROUP_TAIL:
-            del group_msgs[: len(group_msgs) - _MAX_GROUP_TAIL]
+        tail_limit = max(1, int(MessageStore.SAVE_RESERVED_SIZE))
+        if len(group_msgs) > tail_limit:
+            del group_msgs[: len(group_msgs) - tail_limit]
     topics = msg.get("topics")
     if isinstance(topics, list):
         await Chat.merge_recent_topics(group_id, [str(item) for item in topics])

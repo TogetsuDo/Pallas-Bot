@@ -10,6 +10,11 @@ from pallas.core.platform.shard.coord.coord_redis_store import (
     mutate_json_sync,
     read_json_sync,
 )
+from pallas.core.platform.shard.coord.gate_read_cache import (
+    gate_read_cache_get,
+    gate_read_cache_invalidate,
+    gate_read_cache_key_owned,
+)
 
 
 def _gate_key(kind: str, plugin: str, group_id: int) -> str:
@@ -22,7 +27,9 @@ def _gate_ttl(data: dict[str, Any]) -> int:
 
 
 def _mutate_gate(kind: str, plugin: str, group_id: int, fn) -> dict[str, Any] | None:
-    return mutate_json_sync(_gate_key(kind, plugin, group_id), fn, ttl_sec_fn=_gate_ttl)
+    result = mutate_json_sync(_gate_key(kind, plugin, group_id), fn, ttl_sec_fn=_gate_ttl)
+    gate_read_cache_invalidate(gate_read_cache_key_owned(plugin, int(group_id)))
+    return result
 
 
 def try_acquire_broadcast_slot_sync(plugin: str, group_id: int, *, ttl_sec: float) -> bool:
@@ -101,14 +108,19 @@ def bind_owned_gate_sync(plugin: str, group_id: int, bot_id: int, *, gate_sec: f
 
 def read_owned_gate_bot_id_sync(plugin: str, group_id: int) -> int | None:
     """未过期 owned gate 的主持牛 QQ；无占位或已过期时返回 None。"""
-    data = read_json_sync(_gate_key("owned", plugin, int(group_id)))
-    if not data:
-        return None
-    until = float(data.get("until") or 0)
-    if time.time() >= until:
-        return None
-    owner = int(data.get("owner_bot_id") or 0)
-    return owner or None
+    gid = int(group_id)
+
+    def load() -> int | None:
+        data = read_json_sync(_gate_key("owned", plugin, gid))
+        if not data:
+            return None
+        until = float(data.get("until") or 0)
+        if time.time() >= until:
+            return None
+        owner = int(data.get("owner_bot_id") or 0)
+        return owner or None
+
+    return gate_read_cache_get(gate_read_cache_key_owned(plugin, gid), load)
 
 
 def is_owned_gate_holder_sync(plugin: str, group_id: int, bot_id: int) -> bool:
@@ -126,4 +138,6 @@ def release_owned_gate_sync(plugin: str, group_id: int) -> None:
     """释放群级 owned gate。"""
     from pallas.core.platform.shard.coord.coord_redis_store import delete_key_sync
 
-    delete_key_sync(_gate_key("owned", plugin, int(group_id)))
+    gid = int(group_id)
+    delete_key_sync(_gate_key("owned", plugin, gid))
+    gate_read_cache_invalidate(gate_read_cache_key_owned(plugin, gid))

@@ -216,6 +216,34 @@ def bot_authoritative_shard_map() -> dict[str, int]:
     return out
 
 
+def filter_bots_for_authoritative_shard(
+    shard_id: int,
+    bots: dict[str, dict[str, Any]],
+    *,
+    local_qq_ids: set[int] | None = None,
+) -> dict[str, dict[str, Any]]:
+    if not bots:
+        return bots
+    target = int(shard_id)
+    auth = bot_authoritative_shard_map()
+    local_keys = {str(int(qq)) for qq in (local_qq_ids or set())}
+    if not auth and not local_keys:
+        return bots
+    kept: dict[str, dict[str, Any]] = {}
+    for qq, rec in bots.items():
+        key = str(qq).strip()
+        if key in local_keys:
+            kept[key] = rec
+            continue
+        authoritative_shard = auth.get(key)
+        if authoritative_shard is not None and int(authoritative_shard) != target:
+            continue
+        if local_qq_ids is not None and authoritative_shard is None:
+            continue
+        kept[key] = rec
+    return kept
+
+
 def load_cluster_console_stats_by_sid() -> dict[str, dict[str, Any]]:
     """hub：按牛牛归属分片合并 worker stats，避免迁分片后旧 worker 快照覆盖/拼进总日志。"""
     if not shard_ctx.sharding_active():
@@ -283,7 +311,7 @@ def prune_stale_worker_stats_bots_sync() -> int:
 
 
 def load_worker_console_stats_for_boot(shard_id: int) -> dict[str, dict[str, Any]]:
-    return read_worker_stats(shard_id)
+    return filter_bots_for_authoritative_shard(int(shard_id), read_worker_stats(shard_id))
 
 
 def trim_worker_duration_logs_sync(*, shard_id: int, cap: int) -> None:

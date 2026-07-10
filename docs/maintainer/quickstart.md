@@ -21,6 +21,8 @@
 5. 按需接入 AI runtime
 6. 如果账号数量和负载较大，再进入分片部署
 
+安装验收走查见 **[4.0 安装验收 Checklist](install/ga-install-checklist.md)**（从 0 新装 / 升级 / 全栈 Docker）。
+
 ## 第一步：先跑起本体
 
 动手前先备好：

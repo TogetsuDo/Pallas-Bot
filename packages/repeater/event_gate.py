@@ -51,6 +51,15 @@ async def build_repeater_event_context(bot_id: int, event: GroupMessageEvent):
         record_repeater_ingress_early_discard("worker_gate")
         return None
 
+    try:
+        from packages.help.plugin_manager import is_plugin_disabled
+
+        if await is_plugin_disabled("repeater", int(event.group_id), int(bot_id)):
+            record_repeater_ingress_early_discard("plugin_disabled")
+            return None
+    except Exception:
+        pass
+
     plain_body = event.get_plaintext()
     if plain_body and is_plugin_command_plaintext(plain_body):
         record_repeater_ingress_early_discard("plugin_command")

@@ -62,6 +62,36 @@ async def test_build_repeater_event_context_bypasses_command_before_message_trac
 
 
 @pytest.mark.asyncio
+async def test_build_repeater_event_context_bypasses_disabled_plugin_before_message_tracking(monkeypatch):
+    from packages.repeater import event_gate
+
+    event = _FakeEvent(plain_text="hello")
+    tracked = False
+    recorded: list[str] = []
+
+    async def fake_remember(*_args, **_kwargs) -> bool:
+        nonlocal tracked
+        tracked = True
+        return True
+
+    async def fake_disabled(*_args, **_kwargs) -> bool:
+        return True
+
+    monkeypatch.setattr(event_gate, "repeater_worker_handles_message", lambda _bot_id: True)
+    monkeypatch.setattr(event_gate, "ingress_fanout_bypasses_claim", lambda _plain: False)
+    monkeypatch.setattr(event_gate, "remember_group_message_id", fake_remember)
+    monkeypatch.setattr(event_gate, "record_repeater_ingress_event", lambda: recorded.append("event"))
+    monkeypatch.setattr(event_gate, "record_repeater_ingress_early_discard", lambda reason: recorded.append(reason))
+    monkeypatch.setattr("packages.help.plugin_manager.is_plugin_disabled", fake_disabled)
+
+    result = await event_gate.build_repeater_event_context(100, event)
+
+    assert result is None
+    assert tracked is False
+    assert recorded == ["event", "plugin_disabled"]
+
+
+@pytest.mark.asyncio
 async def test_build_repeater_event_context_non_sharding_claims_once(monkeypatch):
     from packages.repeater import event_gate
 

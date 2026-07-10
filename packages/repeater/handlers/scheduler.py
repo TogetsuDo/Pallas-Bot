@@ -10,8 +10,11 @@ from nonebot.exception import ActionFailed
 from nonebot_plugin_apscheduler import scheduler
 
 from pallas.core.platform.ingress.message_load import should_pause_tasks
+from pallas.core.platform.shard import context as shard_ctx
 
+from ..message_store import MessageStore
 from ..model import Chat
+from ..runtime_stats import prune_repeater_runtime_caches
 from ..shard_opt import repeater_maintenance_runs_on_worker, repeater_scheduler_runs_on_worker
 
 
@@ -68,3 +71,19 @@ async def update_data():
         return
     await Chat.sync()
     await Chat.clearup_context()
+
+
+@scheduler.scheduled_job("interval", minutes=10)
+async def prune_runtime_caches() -> None:
+    if shard_ctx.sharding_active() and shard_ctx.is_hub():
+        return
+    removed = await prune_repeater_runtime_caches()
+    if any(int(value) > 0 for value in removed.values()):
+        logger.info("repeater.runtime_cache_pruned {}", removed)
+
+
+@scheduler.scheduled_job("interval", minutes=10)
+async def sync_message_store_periodically() -> None:
+    if shard_ctx.sharding_active() and shard_ctx.is_hub():
+        return
+    await MessageStore.periodic_sync_if_buffered()

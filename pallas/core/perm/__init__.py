@@ -23,6 +23,7 @@ from .menu_display import (
     trigger_condition_with_effective_perm,
 )
 from .registry import DEFAULT_COMMAND_PERMISSIONS, VALID_LEVELS, normalize_level, resolved_level
+from .runtime_meta import get_command_permission_meta
 
 __all__ = [
     "command_perm_list",
@@ -32,6 +33,7 @@ __all__ = [
     "VALID_LEVELS",
     "clear_cmd_perm_cache",
     "get_cmd_perm_config",
+    "get_command_permission_meta",
     "group_message_permission_for_command",
     "group_or_private_message_permission_for_command",
     "normalize_level",

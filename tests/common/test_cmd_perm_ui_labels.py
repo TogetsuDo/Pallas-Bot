@@ -11,7 +11,7 @@ def test_command_perm_ui_labels_without_plugins():
             assert "…" not in cmd["label"]
     draw = next(pg for pg in ui["plugins"] if pg["plugin"] == "draw")
     labels = {c["command_id"]: c["label"] for c in draw["commands"]}
-    assert labels["draw.gateway"] == "牛牛网关"
+    assert "draw.gateway" not in labels
     assert labels["draw.draw"] == "牛牛画画"
 
 

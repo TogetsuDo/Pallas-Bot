@@ -77,6 +77,8 @@ docker compose -f docker-compose.llm.yml up -d
 
 详细变量见 [Pallas-Bot-AI README](https://github.com/PallasBot/Pallas-Bot-AI/blob/main/README.md) 与 [LLM 与 AI 运维](../operate/llm-and-ai.md)。
 
+从 0 安装验收见 [安装验收 Checklist](ga-install-checklist.md)。
+
 ## 接入前要确认的四件事
 
 ### 1. 运行地址与服务可达

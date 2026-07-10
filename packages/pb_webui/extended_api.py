@@ -179,6 +179,15 @@ _UNIFIED_STATS_SYNC_STARTED = False
 _REPEATER_HISTORY_SYNC_STARTED = False
 _WORKER_STATS_FAST_FLUSH_SEC = 3.0
 _WORKER_STATS_HIST_FLUSH_SEC = 30.0
+_WORKER_SHARD_STATS_FAST_FLUSH_SEC = 10.0
+
+
+def _worker_stats_fast_flush_sec() -> float:
+    if _shard_worker_console():
+        return _WORKER_SHARD_STATS_FAST_FLUSH_SEC
+    return _WORKER_STATS_FAST_FLUSH_SEC
+
+
 # repeater 指标历史按小时落盘；与 repeater_metrics_history._MAX_LINES(24*14) 的 14 天窗口对齐
 _REPEATER_HISTORY_FLUSH_SEC = 3600.0
 _EMPTY_MATCHER_HIST_SERIES: dict[str, list[Any]] = {
@@ -1589,10 +1598,15 @@ async def flush_unified_console_live_stats_async(*, include_hist: bool = False) 
 
 
 def flush_worker_shard_console_stats_sync(*, include_hist: bool = False) -> None:
+    from packages.repeater.runtime_stats import repeater_runtime_cache_snapshot
     from pallas.core.platform.ingress.dispatch_metrics import (
         dispatch_metrics_snapshot as ingress_dispatch_metrics_snapshot,
     )
-    from pallas.core.platform.shard.console_stats import process_memory_snapshot, write_worker_stats_sync
+    from pallas.core.platform.shard.console_stats import (
+        filter_bots_for_authoritative_shard,
+        process_memory_snapshot,
+        write_worker_stats_sync,
+    )
     from pallas.core.platform.shard.coord_pending import coord_pending_snapshot_sync
     from pallas.core.platform.shard.ingress_metrics import ingress_metrics_snapshot
     from pallas.core.platform.shard.presence import (
@@ -1606,6 +1620,7 @@ def flush_worker_shard_console_stats_sync(*, include_hist: bool = False) -> None
     if not _shard_worker_console():
         return
     shard_id = int(get_shard_registry_settings().shard_id)
+    local_qq: set[int] = set()
     try:
         from nonebot import get_bots
 
@@ -1614,14 +1629,17 @@ def flush_worker_shard_console_stats_sync(*, include_hist: bool = False) -> None
         reconcile_local_worker_presence_sync(shard_id=shard_id, local_qq_ids=local_qq)
     except Exception:
         pass
+    snapshot = _collect_worker_console_stats_snapshot(include_hist=include_hist)
+    snapshot = filter_bots_for_authoritative_shard(shard_id, snapshot, local_qq_ids=local_qq)
     write_worker_stats_sync(
         shard_id=shard_id,
-        bots=_collect_worker_console_stats_snapshot(include_hist=include_hist),
+        bots=snapshot,
         preserve_matcher_hist=not include_hist,
         worker_meta={
             "ingress": ingress_metrics_snapshot(),
             "ingress_dispatch": ingress_dispatch_metrics_snapshot(),
             "repeater_ingress": repeater_ingress_metrics_snapshot(),
+            "repeater_cache": repeater_runtime_cache_snapshot(),
             "coord_pending": coord_pending_snapshot_sync(),
             "process_memory": process_memory_snapshot(),
             "llm_task": llm_task_metrics_snapshot(),
@@ -1769,7 +1787,7 @@ def start_worker_shard_console_stats_sync() -> None:
                 await flush_today_console_daily_stats_disk_async()
             except Exception:  # noqa: BLE001
                 pass
-            await asyncio.sleep(_WORKER_STATS_FAST_FLUSH_SEC)
+            await asyncio.sleep(_worker_stats_fast_flush_sec())
 
     async def _hist_loop() -> None:
         while True:
@@ -1798,7 +1816,7 @@ def start_unified_console_stats_sync() -> None:
                 await flush_today_console_daily_stats_disk_async()
             except Exception:  # noqa: BLE001
                 pass
-            await asyncio.sleep(_WORKER_STATS_FAST_FLUSH_SEC)
+            await asyncio.sleep(_worker_stats_fast_flush_sec())
 
     async def _hist_loop() -> None:
         while True:

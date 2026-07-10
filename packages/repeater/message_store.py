@@ -35,6 +35,7 @@ class MessageStore:
 
     # Class variables
     _message_dict: dict[int, list[MessageModel]] = defaultdict(list)
+    _synced_prefix_counts: dict[int, int] = {}
     _message_lock = asyncio.Lock()
     _late_save_time = 0
 
@@ -52,7 +53,10 @@ class MessageStore:
         trigger_keywords: list[str] | None = None
 
         async with MessageStore._message_lock:
-            MessageStore._message_dict[group_id].append(
+            group_msgs = MessageStore._message_dict[group_id]
+            if not group_msgs:
+                MessageStore._synced_prefix_counts[group_id] = 0
+            group_msgs.append(
                 MessageModel.model_construct(
                     group_id=group_id,
                     user_id=chat_data.user_id,
@@ -102,15 +106,20 @@ class MessageStore:
             cur_time = int(time.time())
 
         async with MessageStore._message_lock:
+            if MessageStore._late_save_time == 0:
+                MessageStore._synced_prefix_counts.clear()
             save_list: list[MessageModel] = [
                 msg
-                for group_msgs in MessageStore._message_dict.values()
-                for msg in group_msgs
-                if msg.time > MessageStore._late_save_time
+                for group_id, group_msgs in MessageStore._message_dict.items()
+                for msg in group_msgs[min(MessageStore._synced_prefix_counts.get(group_id, 0), len(group_msgs)) :]
             ]
             if not save_list:
                 return
-            syncing_ids = {id(msg) for msg in save_list}
+            sync_boundaries = {
+                group_id: len(group_msgs)
+                for group_id, group_msgs in MessageStore._message_dict.items()
+                if len(group_msgs) > min(MessageStore._synced_prefix_counts.get(group_id, 0), len(group_msgs))
+            }
 
         try:
             await message_repo.bulk_insert(save_list)
@@ -125,21 +134,33 @@ class MessageStore:
             # 已同步的消息保留最后 SAVE_RESERVED_SIZE 条供随机采样，
             # 未同步的新消息全部保留，留给下一轮 _sync
             new_dict: dict[int, list[MessageModel]] = {}
+            new_synced_prefix_counts: dict[int, int] = {}
             for group_id, group_msgs in MessageStore._message_dict.items():
-                synced: list[MessageModel] = []
-                unsynced: list[MessageModel] = []
-                for msg in group_msgs:
-                    if id(msg) in syncing_ids:
-                        synced.append(msg)
-                    else:
-                        unsynced.append(msg)
+                prior_synced_prefix = min(MessageStore._synced_prefix_counts.get(group_id, 0), len(group_msgs))
+                sync_boundary = min(sync_boundaries.get(group_id, prior_synced_prefix), len(group_msgs))
+                synced = group_msgs[:sync_boundary]
+                unsynced = group_msgs[sync_boundary:]
                 if len(synced) > MessageStore.SAVE_RESERVED_SIZE:
                     synced = synced[-MessageStore.SAVE_RESERVED_SIZE :]
-                new_dict[group_id] = synced + unsynced
+                combined = synced + unsynced
+                if not combined:
+                    continue
+                new_dict[group_id] = combined
+                new_synced_prefix_counts[group_id] = len(synced)
             MessageStore._message_dict.clear()
             MessageStore._message_dict.update(new_dict)
+            MessageStore._synced_prefix_counts = new_synced_prefix_counts
 
             MessageStore._late_save_time = cur_time
+
+    @staticmethod
+    async def periodic_sync_if_buffered() -> bool:
+        async with MessageStore._message_lock:
+            has_buffered = any(group_msgs for group_msgs in MessageStore._message_dict.values())
+        if not has_buffered:
+            return False
+        await MessageStore._sync()
+        return True
 
     @staticmethod
     async def get_random_message_from_each_group() -> dict[int, MessageModel]:

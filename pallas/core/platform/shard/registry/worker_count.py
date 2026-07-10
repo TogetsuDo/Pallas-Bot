@@ -10,7 +10,12 @@ from urllib.parse import urlparse
 if TYPE_CHECKING:
     from pathlib import Path
 
-from pallas.core.platform.shard.registry.store import ShardRegistry, _normal_worker_need
+from pallas.core.platform.shard.registry.store import (
+    ShardRegistry,
+    _normal_worker_need,
+    is_test_shard_record,
+    test_shard_ids,
+)
 
 
 def _normalize_ws_path(path: str) -> str:
@@ -18,11 +23,40 @@ def _normalize_ws_path(path: str) -> str:
     return p if p.startswith("/") else f"/{p}"
 
 
+def _test_assigned_qqs(reg: ShardRegistry) -> set[str]:
+    test_ids = test_shard_ids(reg)
+    return {str(k) for k, v in reg.assignments.items() if int(v) in test_ids}
+
+
+def _test_only_ws_ports(reg: ShardRegistry) -> set[int]:
+    """仅由 test 分片占用的 WS 端口（不与 normal 分片共用）。"""
+    test_ports = {int(s.port) for s in reg.shards if is_test_shard_record(s, reg)}
+    normal_ports = {int(s.port) for s in reg.shards if not is_test_shard_record(s, reg)}
+    return test_ports - normal_ports
+
+
+def _is_production_account(item: dict, reg: ShardRegistry | None) -> bool:
+    if not item.get("enabled", True):
+        return False
+    if reg is None:
+        return True
+    qq = str(item.get("qq") or item.get("id") or "").strip()
+    if qq and qq in _test_assigned_qqs(reg):
+        return False
+    url = str(item.get("ws_url", "")).strip()
+    if url:
+        parsed = urlparse(url)
+        if parsed.port is not None and int(parsed.port) in _test_only_ws_ports(reg):
+            return False
+    return True
+
+
 def _need_from_accounts_ws(
     accounts_path: Path,
     *,
     worker_base_port: int,
     ws_path: str,
+    registry: ShardRegistry | None = None,
 ) -> int:
     need = 0
     expected_path = _normalize_ws_path(ws_path)
@@ -32,7 +66,7 @@ def _need_from_accounts_ws(
         return need
     items = raw.values() if isinstance(raw, dict) else raw
     for item in items:
-        if not isinstance(item, dict) or not item.get("enabled", True):
+        if not isinstance(item, dict) or not _is_production_account(item, registry):
             continue
         url = str(item.get("ws_url", "")).strip()
         if not url:
@@ -50,7 +84,7 @@ def _need_from_accounts_ws(
 
 def calc_production_worker_count(
     *,
-    bots_per_shard: int = 5,
+    bots_per_shard: int = 7,
     worker_base_port: int | None = None,
     accounts_path: Path | None = None,
     registry: ShardRegistry | None = None,
@@ -78,7 +112,7 @@ def calc_production_worker_count(
         try:
             raw = json.loads(accounts_path.read_text(encoding="utf-8"))
             items = raw.values() if isinstance(raw, dict) else raw
-            enabled = sum(1 for v in items if isinstance(v, dict) and v.get("enabled", True))
+            enabled = sum(1 for v in items if isinstance(v, dict) and _is_production_account(v, reg))
             if enabled > 0:
                 need = max(need, math.ceil(enabled / bots_per))
         except (json.JSONDecodeError, OSError, TypeError):
@@ -89,6 +123,7 @@ def calc_production_worker_count(
                 accounts_path,
                 worker_base_port=base,
                 ws_path=ws_path,
+                registry=reg,
             ),
         )
 

@@ -16,11 +16,7 @@ def connectivity_message_permission() -> Permission:
         is_private = await permission.PRIVATE(bot, event)
         if not (is_group or is_private):
             return False
-        return await satisfies_command_permission(
-            bot,
-            event,
-            "connectivity.probe",
-        ) or await satisfies_command_permission(bot, event, "draw.gateway")
+        return await satisfies_command_permission(bot, event, "connectivity.probe")
 
     return Permission(_checker)
 
