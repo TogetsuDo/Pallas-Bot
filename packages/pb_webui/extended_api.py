@@ -1648,6 +1648,14 @@ def flush_worker_shard_console_stats_sync(*, include_hist: bool = False) -> None
 
 
 async def flush_worker_shard_console_stats_async(*, include_hist: bool = False) -> None:
+    # QQ 健康探测较重，只挂在慢刷（hist）路径，避免每 3s 打 get_status。
+    if include_hist:
+        try:
+            from pallas.core.platform.shard.presence_health import apply_presence_qq_health_probes
+
+            await apply_presence_qq_health_probes()
+        except Exception:
+            pass
     await asyncio.to_thread(flush_worker_shard_console_stats_sync, include_hist=include_hist)
 
 

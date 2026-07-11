@@ -15,6 +15,7 @@ from pallas.core.platform.shard.presence import (
     note_worker_bot_connected,
     note_worker_bot_disconnected,
 )
+from pallas.core.platform.shard.presence_health import clear_health_quarantine
 
 _connected_bots: set[int] = set()
 _hooks_registered = False
@@ -44,6 +45,7 @@ async def on_bot_connect(bot: Bot) -> None:
         note_connected_bot(qq)
         note_bot_session_seen(qq)
         await clear_protocol_bot_offline(qq)
+        clear_health_quarantine(qq)
         try:
             initialized = await ensure_bot_runtime_storage(qq)
             if initialized:

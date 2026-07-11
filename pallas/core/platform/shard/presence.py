@@ -327,10 +327,12 @@ def clear_protocol_bot_offline_sync(*, qq: int) -> None:
 
 
 def filter_local_qq_ids_for_presence(local_qq_ids: set[int]) -> set[int]:
-    if not _PROTOCOL_OFFLINE_QQS:
+    from pallas.core.platform.shard.presence_health import health_quarantine_qq_ids
+
+    blocked = set(_PROTOCOL_OFFLINE_QQS) | set(health_quarantine_qq_ids())
+    if not blocked:
         return local_qq_ids
-    offline = _PROTOCOL_OFFLINE_QQS
-    return {qq for qq in local_qq_ids if qq not in offline}
+    return {qq for qq in local_qq_ids if qq not in blocked}
 
 
 async def mark_protocol_bot_offline(qq: int) -> None:
