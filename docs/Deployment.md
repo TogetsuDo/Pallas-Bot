@@ -80,21 +80,23 @@ cp config/pallas.example.toml config/pallas.toml
 编辑 **`config/pallas.toml`**，至少完成：
 
 1. **`[bootstrap] superusers`**：填写你的 QQ 号（超管，用于控制台与高危操作）。
-2. **`db_backend`**：设为 `mongodb` 或 `postgresql`。
-3. **`[bootstrap.mongo]`** 或 **`[bootstrap.postgres]`**：填写数据库地址、库名、账号密码（与步骤 4 中实际库一致）。
+2. **`db_backend`**：新装默认 `postgresql`；3.x 升级可继续 `mongodb`。
+3. **`[bootstrap.postgres]`** 或 **`[bootstrap.mongo]`**：填写数据库地址、库名、账号密码（与步骤 4 中实际库一致）。
 
-示例（MongoDB）：
+示例（PostgreSQL，4.0 默认）：
 
 ```toml
 [bootstrap]
 host = "0.0.0.0"
 port = 8088
 superusers = ["你的QQ号"]
-db_backend = "mongodb"
+db_backend = "postgresql"
 
-[bootstrap.mongo]
+[bootstrap.postgres]
 host = "127.0.0.1"
-port = 27017
+port = 5432
+user = "pallas"
+password = "pallas"
 db = "PallasBot"
 ```
 
@@ -112,17 +114,17 @@ uv run python tools/migrate_env_to_pallas.py
 
 ## 步骤 4：准备数据库
 
-任选 **MongoDB** 或 **PostgreSQL**，保证 Bot 所在机器能连通。
+新装推荐 **PostgreSQL**（`uv sync --extra pg`）；也可继续用 **MongoDB**。
 
+- PostgreSQL：[官方下载](https://www.postgresql.org/download/) · 权限与可选扩展见 [deploy/pg/README.md](../deploy/pg/README.md)
 - MongoDB：[Windows 安装](https://www.runoob.com/mongodb/mongodb-window-install.html) · [Linux 安装](https://www.runoob.com/mongodb/mongodb-linux-install.html)
-- PostgreSQL：[官方下载](https://www.postgresql.org/download/) · 使用 PG 时需已执行 `uv sync --extra pg`
 
-库表由 Pallas-Bot **首次启动时自动初始化**，无需手工建表（PG 需库已存在，见 [Docker 部署 · PG 排障](DockerDeployment.md#pg-日志-fatal-database-pallasbot-does-not-exist)）。
+库表由 Pallas-Bot **首次启动时自动初始化**，无需手工建表（PG 需目标库已存在；勿依赖超级用户）。详见 [Docker 部署 · PG 排障](DockerDeployment.md#pg-日志-fatal-database-pallasbot-does-not-exist)。
 
 **如何确认成功**：
 
-- MongoDB：`mongosh` 或客户端能连上 `pallas.toml` 中的 host/port。
 - PostgreSQL：`psql -h ... -U ... -d ...` 可登录，且库名与 `pallas.toml` 中 `db` 一致。
+- MongoDB：`mongosh` 或客户端能连上 `pallas.toml` 中的 host/port。
 
 ---
 

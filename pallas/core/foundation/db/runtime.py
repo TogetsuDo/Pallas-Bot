@@ -13,7 +13,7 @@ _BACKEND_ALIASES: dict[str, str] = {
 }
 
 
-def normalize_db_backend_name(raw: object, *, default: str = "mongodb") -> str:
+def normalize_db_backend_name(raw: object, *, default: str = "postgresql") -> str:
     text = str(raw or "").strip().lower()
     if not text:
         return default
@@ -21,7 +21,7 @@ def normalize_db_backend_name(raw: object, *, default: str = "mongodb") -> str:
 
 
 def get_db_backend() -> str:
-    """读取当前配置的数据库后端名称，默认为 mongodb。"""
+    """读取当前配置的数据库后端名称，默认为 postgresql（4.0 新装默认）。"""
     try:
         import nonebot
 
@@ -30,7 +30,7 @@ def get_db_backend() -> str:
             return normalize_db_backend_name(backend)
     except Exception:
         pass
-    return normalize_db_backend_name(os.getenv("DB_BACKEND", "mongodb"))
+    return normalize_db_backend_name(os.getenv("DB_BACKEND", "postgresql"))
 
 
 def is_mongodb_backend(backend: str | None = None) -> bool:

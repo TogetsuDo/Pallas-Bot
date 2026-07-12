@@ -16,6 +16,7 @@ port = 5432
 user = "pallas"
 password = "pallas"
 db = "PallasBot"
+# auto_create_db = true   # 仅本地：库不存在时 CREATE DATABASE（需 CREATEDB；Compose/托管勿开）
 
 # [bootstrap.mongo]  # 3.x 升级沿用 Mongo 时取消注释，并设 db_backend = "mongodb"
 # host = "127.0.0.1"   # 根目录 docker-compose.yml 容器内为 mongodb

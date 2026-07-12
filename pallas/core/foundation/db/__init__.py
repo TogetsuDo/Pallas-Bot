@@ -283,15 +283,25 @@ def make_pg_image_cache() -> ImageCacheRepository:
     return PgImageCacheRepository()
 
 
+def _cfg_bool(key: str, default: bool = False) -> bool:
+    raw = _cfg(key, "true" if default else "false").strip().lower()
+    return raw in {"1", "true", "yes", "on"}
+
+
 async def init_postgresql_db() -> None:
-    """初始化 PostgreSQL 连接"""
+    """初始化 PostgreSQL 连接。
+
+    默认只连 ``PG_DB`` 做建表/迁移，不要求 CREATEDB / 超级用户。
+    可选 ``PG_AUTO_CREATE_DB=true``：连维护库 ``postgres`` 并 ``CREATE DATABASE``（本地开发）。
+    ``pg_stat_statements`` 在 schema 事务外尝试启用，失败仅降级诊断。
+    """
     import re
 
     from nonebot.log import logger
     from sqlalchemy import text
     from sqlalchemy.ext.asyncio import create_async_engine
 
-    from .repository_pg import dispose_pg, init_pg
+    from .repository_pg import dispose_pg, init_pg, try_enable_pg_stat_statements
 
     pg_host_raw = _cfg("PG_HOST", "")
     if pg_host_raw:
@@ -315,18 +325,18 @@ async def init_postgresql_db() -> None:
 
     logger.info("数据库：连接 PostgreSQL {}:{} db={}", host, port, db_name)
 
-    admin_engine = create_async_engine(f"{base_url}/postgres", isolation_level="AUTOCOMMIT")
-    try:
-        async with admin_engine.connect() as conn:
-            result = await conn.execute(text("SELECT 1 FROM pg_database WHERE datname = :db"), {"db": db_name})
-            if result.scalar() is None:
-                logger.info("数据库：PostgreSQL {} 不存在，正在创建", db_name)
-                # PG 不支持给 identifier 绑占位符，只能拼接；上面 [A-Za-z0-9_-]
-                # 的正则已保证 db_name 无注入风险。
-                await conn.execute(text(f'CREATE DATABASE "{db_name}"'))  # noqa: S608
-                logger.info("数据库：PostgreSQL {} 已创建", db_name)
-    finally:
-        await admin_engine.dispose()
+    if _cfg_bool("PG_AUTO_CREATE_DB", default=False):
+        admin_engine = create_async_engine(f"{base_url}/postgres", isolation_level="AUTOCOMMIT")
+        try:
+            async with admin_engine.connect() as conn:
+                result = await conn.execute(text("SELECT 1 FROM pg_database WHERE datname = :db"), {"db": db_name})
+                if result.scalar() is None:
+                    logger.info("数据库：PostgreSQL {} 不存在，正在创建（PG_AUTO_CREATE_DB）", db_name)
+                    # PG 不支持给 identifier 绑占位符；db_name 已由上方正则约束。
+                    await conn.execute(text(f'CREATE DATABASE "{db_name}"'))  # noqa: S608
+                    logger.info("数据库：PostgreSQL {} 已创建", db_name)
+        finally:
+            await admin_engine.dispose()
 
     engine = create_async_engine(
         f"{base_url}/{db_name}",
@@ -336,7 +346,17 @@ async def init_postgresql_db() -> None:
         pool_pre_ping=True,
         connect_args={"server_settings": pg_session_server_settings()},
     )
-    await init_pg(engine)
+    try:
+        await init_pg(engine)
+    except Exception:
+        await engine.dispose()
+        logger.error(
+            "数据库：无法初始化 PostgreSQL 库 {!r}。请确认库已存在，或设置 PG_AUTO_CREATE_DB=true "
+            "（需 CREATEDB）。托管 PG 请先手动建库，见 deploy/pg/README.md",
+            db_name,
+        )
+        raise
+    await try_enable_pg_stat_statements(engine)
     logger.info(
         "数据库：PostgreSQL {} 已连接 pool={}+{} recycle={}s",
         db_name,

@@ -422,12 +422,25 @@ def _ensure_pg_context_answer_message_reply_index(connection) -> None:
 
 
 def _ensure_pg_stat_statements_extension(connection) -> None:
-    """启用 pg_stat_statements。失败时降级为仅无该视图的诊断。"""
+    """启用 pg_stat_statements（仅应在独立 autocommit 连接中调用）。
+
+    勿放在 schema 迁移同一事务内：非超级用户失败会污染事务，导致整次 init 回滚。
+    """
+    connection.execute(text("CREATE EXTENSION IF NOT EXISTS pg_stat_statements"))
+
+
+async def try_enable_pg_stat_statements(engine: AsyncEngine) -> bool:
+    """可选诊断扩展：独立短事务，失败回滚本事务且不阻断启动。"""
     try:
-        connection.execute(text("CREATE EXTENSION IF NOT EXISTS pg_stat_statements"))
-    except Exception:
-        # 例如服务端未配置 shared_preload_libraries；保持启动成功，由诊断层输出 unavailable。
-        pass
+        async with engine.begin() as conn:
+            await conn.run_sync(_ensure_pg_stat_statements_extension)
+        return True
+    except Exception as exc:
+        logger.warning(
+            "数据库：跳过 pg_stat_statements（需扩展权限或 shared_preload_libraries），诊断将降级。详情: {}",
+            exc,
+        )
+        return False
 
 
 def is_pg_initialized() -> bool:
@@ -510,7 +523,6 @@ async def init_pg(engine: AsyncEngine) -> None:
         await conn.run_sync(_ensure_pg_message_group_user_time_index)
         await conn.run_sync(_ensure_pg_context_answer_reply_index)
         await conn.run_sync(_ensure_pg_context_answer_message_reply_index)
-        await conn.run_sync(_ensure_pg_stat_statements_extension)
 
 
 async def dispose_pg() -> None:

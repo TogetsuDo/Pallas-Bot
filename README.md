@@ -62,7 +62,7 @@ uv sync                 # 安装依赖
 
 # 主配置（首次部署）
 cp config/pallas.example.toml config/pallas.toml
-# 编辑 [bootstrap]：监听、SUPERUSERS、DB_BACKEND、MONGO_* 或 PG_*
+# 编辑 [bootstrap]：监听、superusers、[bootstrap.postgres]（或 3.x 用 mongo）
 
 # 开始运行（单进程）
 uv run nb run

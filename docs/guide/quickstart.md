@@ -62,11 +62,13 @@ cp config/pallas.example.toml config/pallas.toml
 host = "0.0.0.0"          # 监听所有网卡；仅本机玩可写 127.0.0.1
 port = 8088
 superusers = ["你的QQ号"]  # 超管，可填多个
-db_backend = "mongodb"
+db_backend = "postgresql"
 
-[bootstrap.mongo]
-host = "127.0.0.1"        # Docker 里连 compose 数据库时改为 mongodb
-port = 27017
+[bootstrap.postgres]
+host = "127.0.0.1"        # Docker 里连 compose 数据库时改为 postgres
+port = 5432
+user = "pallas"
+password = "pallas"
 db = "PallasBot"
 ```
 
