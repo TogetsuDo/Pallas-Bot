@@ -33,10 +33,12 @@ def _runs_path() -> Path:
 
 
 def save_behavior_patterns(patterns: list[BehaviorPattern]) -> None:
-    _patterns_path().write_text(
-        json.dumps([item.model_dump(mode="json") for item in patterns], ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    from pallas.core.foundation.fs_lock import atomic_write_text, interprocess_file_lock
+
+    path = _patterns_path()
+    body = json.dumps([item.model_dump(mode="json") for item in patterns], ensure_ascii=False, indent=2)
+    with interprocess_file_lock(path.with_suffix(path.suffix + ".lock")):
+        atomic_write_text(path, body)
 
 
 def list_behavior_patterns() -> list[BehaviorPattern]:
@@ -75,9 +77,14 @@ def delete_behavior_pattern(pattern_id: str) -> bool:
 
 
 def append_behavior_run(run: BehaviorRun) -> None:
+    from pallas.core.foundation.fs_lock import interprocess_file_lock
+
     path = _runs_path()
-    with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(run.model_dump(mode="json"), ensure_ascii=False) + "\n")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(run.model_dump(mode="json"), ensure_ascii=False) + "\n"
+    with interprocess_file_lock(path.with_suffix(path.suffix + ".lock")):
+        with path.open("a", encoding="utf-8") as f:
+            f.write(line)
 
 
 def list_behavior_runs(*, limit: int = 50) -> list[BehaviorRun]:
@@ -135,10 +142,12 @@ def update_behavior_run_annotation(
         break
     if updated is None:
         return None
+    from pallas.core.foundation.fs_lock import atomic_write_text, interprocess_file_lock
+
     path = _runs_path()
-    with path.open("w", encoding="utf-8") as f:
-        for item in rows:
-            f.write(json.dumps(item.model_dump(mode="json"), ensure_ascii=False) + "\n")
+    body = "".join(json.dumps(item.model_dump(mode="json"), ensure_ascii=False) + "\n" for item in rows)
+    with interprocess_file_lock(path.with_suffix(path.suffix + ".lock")):
+        atomic_write_text(path, body)
     return updated
 
 
@@ -165,10 +174,12 @@ def settle_behavior_run_outcome(
         break
     if updated is None:
         return None
+    from pallas.core.foundation.fs_lock import atomic_write_text, interprocess_file_lock
+
     path = _runs_path()
-    with path.open("w", encoding="utf-8") as f:
-        for item in rows:
-            f.write(json.dumps(item.model_dump(mode="json"), ensure_ascii=False) + "\n")
+    body = "".join(json.dumps(item.model_dump(mode="json"), ensure_ascii=False) + "\n" for item in rows)
+    with interprocess_file_lock(path.with_suffix(path.suffix + ".lock")):
+        atomic_write_text(path, body)
     if updated.selected_pattern_ids and score_delta:
         patterns = list_behavior_patterns()
         changed = False

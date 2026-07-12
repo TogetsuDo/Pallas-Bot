@@ -7,8 +7,9 @@ from .prompt_guard import sanitize_prompt_literal
 
 _CQ_CODE_RE = re.compile(r"\[CQ:[^\]]+\]", re.IGNORECASE)
 _AT_PLAIN_RE = re.compile(r"@[^\s@，,。！!？?：:;；]{1,24}")
-_EXPRESSION_REF_MIN_LEN = 5
-_EXPRESSION_REF_MIN_CJK = 3
+# 群聊短接话常见 3～4 字；过严会漏掉「然后呢」「懂了吗」等可用参考
+_EXPRESSION_REF_MIN_LEN = 3
+_EXPRESSION_REF_MIN_CJK = 2
 _EXPRESSION_REF_MAX_LEN = 48
 
 

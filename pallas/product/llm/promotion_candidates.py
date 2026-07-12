@@ -59,11 +59,13 @@ def _load_candidates_index() -> dict[str, PromotionCandidate]:
 
 
 def _write_candidates_index(rows: dict[str, PromotionCandidate]) -> None:
+    from pallas.core.foundation.fs_lock import atomic_write_text, interprocess_file_lock
+
     path = promotion_candidates_path()
     ordered = sorted(rows.values(), key=lambda item: (-int(item.last_seen_at), item.candidate_id))
-    with path.open("w", encoding="utf-8") as handle:
-        for item in ordered:
-            handle.write(json.dumps(item.model_dump(mode="json"), ensure_ascii=False) + "\n")
+    body = "".join(json.dumps(item.model_dump(mode="json"), ensure_ascii=False) + "\n" for item in ordered)
+    with interprocess_file_lock(path.with_suffix(path.suffix + ".lock")):
+        atomic_write_text(path, body)
 
 
 def feedback_entry_support_weight(item: LlmRepeaterFeedbackEntry) -> int:
@@ -106,7 +108,10 @@ def _aggregate_trigger_reply_support(
 def is_auto_promote_eligible(candidate: PromotionCandidate) -> bool:
     if candidate.promoted or str(candidate.rejected_reason or "").strip():
         return False
-    if not is_reply_safe_for_auto_promote(candidate.reply_text):
+    if not is_reply_safe_for_auto_promote(
+        candidate.reply_text,
+        trigger_text=str(candidate.trigger_text or ""),
+    ):
         return False
     if not str(candidate.trigger_text or "").strip():
         return False
@@ -230,7 +235,12 @@ def _chat_keywords(text: str, *, group_id: int) -> str:
 
 
 async def writeback_promotion_candidate(candidate: PromotionCandidate) -> PromotionCandidate:
+    from pallas.core.foundation.db import init_postgresql_db, is_postgresql_backend
     from pallas.core.foundation.db.context_repo_access import get_shared_context_repository
+    from pallas.core.foundation.db.repository_pg import is_pg_initialized
+
+    if is_postgresql_backend() and not is_pg_initialized():
+        await init_postgresql_db()
 
     now = int(time.time())
     trigger_keywords = _chat_keywords(candidate.trigger_text, group_id=int(candidate.group_id))

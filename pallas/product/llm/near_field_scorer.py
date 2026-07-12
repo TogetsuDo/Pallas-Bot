@@ -143,8 +143,8 @@ def select_scored_expression_candidates(
     trigger_keywords: list[str],
     query_text: str,
     limit: int = 3,
-    reference_min_len: int = 5,
-    reference_min_cjk: int = 3,
+    reference_min_len: int = 3,
+    reference_min_cjk: int = 2,
 ) -> list[str]:
     normalized_keywords = [str(item or "").strip() for item in trigger_keywords if str(item or "").strip()]
     topical_rows: list[dict[str, object]] = []

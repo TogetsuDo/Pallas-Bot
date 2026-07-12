@@ -197,6 +197,7 @@ async def test_resolve_promotion_candidate_with_writeback_persists_status(tmp_pa
         "pallas.core.foundation.db.context_repo_access.get_shared_context_repository",
         lambda: fake_repo,
     )
+    monkeypatch.setattr("pallas.core.foundation.db.is_postgresql_backend", lambda: False)
 
     updated = await resolve_promotion_candidate_with_writeback(candidate_id, action="promote")
 
@@ -263,6 +264,7 @@ async def test_auto_promote_eligible_candidates_writes_back(tmp_path, monkeypatc
         "pallas.core.foundation.db.context_repo_access.get_shared_context_repository",
         lambda: fake_repo,
     )
+    monkeypatch.setattr("pallas.core.foundation.db.is_postgresql_backend", lambda: False)
 
     promoted = await auto_promote_eligible_candidates_for_group(group_id=123)
 
@@ -283,6 +285,7 @@ async def test_writeback_promotion_candidate_blocks_contaminated_reply(monkeypat
         "pallas.product.llm.config.get_llm_config",
         lambda: LlmConfig(llm_corpus_learn_guard_enabled=True),
     )
+    monkeypatch.setattr("pallas.core.foundation.db.is_postgresql_backend", lambda: False)
     candidate = PromotionCandidate(
         candidate_id="bad-celebration",
         group_id=123,

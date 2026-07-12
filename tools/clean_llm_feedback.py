@@ -26,19 +26,21 @@ from pallas.core.platform.ai_callback.task_types import (  # noqa: E402
 )
 from pallas.product.llm.behavior import BehaviorOutcome  # noqa: E402
 from pallas.product.llm.behavior_store import _runs_path, list_behavior_runs  # noqa: E402
+from pallas.product.llm.corpus_contamination import FEEDBACK_META_BLOCK_PHRASES  # noqa: E402
 from pallas.product.llm.feedback_learning import is_reply_safe_for_shaped_writeback  # noqa: E402
 from pallas.product.llm.promotion_candidates import (  # noqa: E402
     _load_candidates_index,
     _write_candidates_index,
-    is_reply_safe_for_auto_promote,
 )
-from pallas.product.llm.corpus_contamination import FEEDBACK_META_BLOCK_PHRASES  # noqa: E402
 from pallas.product.llm.repeater_feedback import (  # noqa: E402
     _BLOCKED_SOURCE_TAGS,
     _MAX_REPLY_LEN,
     LlmRepeaterFeedbackEntry,
     _load_all_feedback_entries,
     _write_feedback_entries,
+    feedback_reply_max_len,
+    is_reply_safe_for_auto_promote,
+    is_systemish_promote_text,
     should_collect_llm_repeater_feedback,
 )
 
@@ -307,6 +309,28 @@ def is_meme_ok(plain: str) -> bool:
     return plain in _MEME_OK or trimmed in _MEME_OK
 
 
+def is_natural_short_corpus_reply(*, user: str, plain: str) -> bool:
+    """短接话产品形态：2～8 字、有汉字、可贴题或在 meme 白名单，不算「过短碎片」。"""
+    if is_meme_ok(plain):
+        return True
+    cleaned = clean_expression_reference_text(plain)
+    if not cleaned or len(cleaned) > 8:
+        return False
+    if len(cleaned) < 2:
+        return False
+    cjk = sum(1 for char in cleaned if "\u4e00" <= char <= "\u9fff")
+    if cjk < 1:
+        return False
+    if is_usable_expression_reference(cleaned, min_len=2, min_cjk=1):
+        return True
+    # 「懂了」「然后呢」等：有用户侧字重叠或极短自然应答
+    if shared_cjk(user, cleaned) and cjk >= 1:
+        return True
+    if 2 <= len(cleaned) <= 4 and cjk >= 2:
+        return True
+    return False
+
+
 def classify_bad_entry(entry: LlmRepeaterFeedbackEntry) -> list[str]:
     """Return human-readable reasons; empty list means keep eligible."""
     reasons: list[str] = []
@@ -353,17 +377,13 @@ def classify_bad_entry(entry: LlmRepeaterFeedbackEntry) -> list[str]:
         reasons.append("画画半句")
 
     if route in _CORPUS_ROUTES or (route in _POLISH_ROUTES and len(plain) <= 16):
-        if not is_meme_ok(plain) and not is_usable_expression_reference(
-            clean_expression_reference_text(reply),
-            min_len=4,
-            min_cjk=2,
-        ):
+        if not is_natural_short_corpus_reply(user=user, plain=plain):
             if len(plain) <= 8:
                 reasons.append("过短碎片")
 
     if not is_llm_long_reply(route, plain):
         user_cjk = sum(1 for char in user if "\u4e00" <= char <= "\u9fff")
-        if user_cjk >= 4 and len(plain) <= 3 and not is_meme_ok(plain):
+        if user_cjk >= 4 and len(plain) <= 3 and not is_natural_short_corpus_reply(user=user, plain=plain):
             reasons.append("长问短答")
         if len(user) >= 18 and len(plain) <= 5 and not is_meme_ok(plain) and not shared_cjk(user, plain):
             if any(marker in user for marker in _QUESTION_MARKERS) or user_cjk >= 6:
@@ -407,15 +427,19 @@ def classify_bad_entry(entry: LlmRepeaterFeedbackEntry) -> list[str]:
                 reasons.append("接话不贴题")
 
         task = _TASK_FOR_ROUTE.get(route, LLM_CHAT_TASK_TYPE if route.startswith("plain") else "")
-        if task and not should_collect_llm_repeater_feedback(
-            task_type=task,
-            group_id=entry.group_id,
-            user_text=user,
-            reply_text=plain if len(plain) <= _MAX_REPLY_LEN else plain[:_MAX_REPLY_LEN],
-            source_tags=entry.source_tags,
-        ):
-            if len(plain) <= _MAX_REPLY_LEN or not route.startswith("plain"):
-                reasons.append("反哺不应收录")
+        if task:
+            max_allowed = feedback_reply_max_len(task_type=task, llm_route=route)
+            clipped = plain if len(plain) <= max_allowed else plain[:max_allowed]
+            if not should_collect_llm_repeater_feedback(
+                task_type=task,
+                group_id=entry.group_id,
+                user_text=user,
+                reply_text=clipped,
+                source_tags=entry.source_tags,
+                llm_route=route,
+            ):
+                if len(plain) <= max_allowed or not route.startswith("plain"):
+                    reasons.append("反哺不应收录")
 
     if not reasons:
         if any(token in reply for token in _SOFT_TEMPLATE):
@@ -552,7 +576,14 @@ def run_cleanup(*, apply: bool, restore_length_only: bool, preview_limit: int) -
             reply_text=str(candidate.reply_text or ""),
             llm_route="corpus_select",
         )
-        if classify_bad_entry(fake) or not is_reply_safe_for_auto_promote(candidate.reply_text):
+        if (
+            classify_bad_entry(fake)
+            or is_systemish_promote_text(str(candidate.trigger_text or ""), str(candidate.reply_text or ""))
+            or not is_reply_safe_for_auto_promote(
+                candidate.reply_text,
+                trigger_text=str(candidate.trigger_text or ""),
+            )
+        ):
             cand_hits += 1
 
     inv_before = sum(1 for entry in entries if not entry.eligible_for_bias)
@@ -610,15 +641,25 @@ def run_cleanup(*, apply: bool, restore_length_only: bool, preview_limit: int) -
             reply_text=str(candidate.reply_text or ""),
             llm_route="corpus_select",
         )
-        if classify_bad_entry(fake) or not is_reply_safe_for_auto_promote(candidate.reply_text):
+        if (
+            classify_bad_entry(fake)
+            or is_systemish_promote_text(str(candidate.trigger_text or ""), str(candidate.reply_text or ""))
+            or not is_reply_safe_for_auto_promote(
+                candidate.reply_text,
+                trigger_text=str(candidate.trigger_text or ""),
+            )
+        ):
             candidate.rejected_reason = "auto_clean_tool"
             candidates[cid] = candidate
             cand_changed += 1
 
     _write_feedback_entries(entries)
-    with _runs_path().open("w", encoding="utf-8") as handle:
-        for item in runs:
-            handle.write(json.dumps(item.model_dump(mode="json"), ensure_ascii=False) + "\n")
+    from pallas.core.foundation.fs_lock import atomic_write_text, interprocess_file_lock
+
+    runs_path = _runs_path()
+    runs_body = "".join(json.dumps(item.model_dump(mode="json"), ensure_ascii=False) + "\n" for item in runs)
+    with interprocess_file_lock(runs_path.with_suffix(runs_path.suffix + ".lock")):
+        atomic_write_text(runs_path, runs_body)
     if cand_changed:
         _write_candidates_index(candidates)
 

@@ -58,6 +58,15 @@ def test_classify_keeps_meme_corpus() -> None:
     assert classify_bad_entry(entry) == []
 
 
+def test_classify_keeps_natural_short_corpus() -> None:
+    entry = build_entry(
+        user_text="哦哦",
+        reply_text="懂了",
+        llm_route="corpus_select",
+    )
+    assert classify_bad_entry(entry) == []
+
+
 def test_classify_insult_mismatch() -> None:
     entry = build_entry(
         user_text="我去你个屎赶紧爬走",
@@ -65,3 +74,15 @@ def test_classify_insult_mismatch() -> None:
         llm_route="corpus_select",
     )
     assert "骂战乱接" in classify_bad_entry(entry)
+
+
+def test_systemish_promote_text_blocks_welcome() -> None:
+    from pallas.product.llm.repeater_feedback import is_reply_safe_for_auto_promote, is_systemish_promote_text
+
+    assert is_systemish_promote_text("欢迎老师加入本群，请遵守群规哦~", "大佬们好")
+    assert not is_reply_safe_for_auto_promote(
+        "大佬们好",
+        trigger_text="欢迎老师加入本群，请遵守群规哦~",
+    )
+    assert is_systemish_promote_text("🤔", "（亚托莉思考中…）")
+    assert not is_systemish_promote_text("哦哦", "懂了")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from collections import deque
 from pathlib import Path
@@ -26,10 +27,17 @@ from pallas.product.llm.kernel.memory_governance import (
 
 _BLOCKED_SOURCE_TAGS = {"memory", "relationship", "tool", "knowledge"}
 _MAX_REPLY_LEN = 32
+_MAX_PLAIN_CHAT_FEEDBACK_LEN = 120
 _MAX_CORRECTION_LEN = 120
 _TOP_REPLIES_LIMIT = 3
 _TOP_SCENES_LIMIT = 5
 _RECENT_WINDOW_MULTIPLIER = 4
+
+_SYSTEM_PROMOTE_BLOCK_RE = re.compile(
+    r"(欢迎(?:新人|进群|老师|加入)|进群欢迎|发言管理规则|警告一次|群公告|"
+    r"投食成功|管理/开关|/bilibanshi|本群未开启|"
+    r"亚托莉|思考中|（发呆）|\(发呆\))"
+)
 
 _FEEDBACK_TASK_TYPES = frozenset({
     LLM_CHAT_TASK_TYPE,
@@ -96,6 +104,24 @@ def is_feedback_task_type(task_type: str) -> bool:
     return str(task_type or "").strip().lower() in _FEEDBACK_TASK_TYPES
 
 
+def feedback_reply_max_len(*, task_type: str = "", llm_route: str = "") -> int:
+    """corpus 短接话保持 32；plain 闲聊可更长以便反哺观测。"""
+    route = str(llm_route or "").strip().lower()
+    task = str(task_type or "").strip().lower()
+    if route.startswith("plain_") or task == LLM_CHAT_TASK_TYPE:
+        return _MAX_PLAIN_CHAT_FEEDBACK_LEN
+    return _MAX_REPLY_LEN
+
+
+def is_systemish_promote_text(*texts: str) -> bool:
+    """欢迎/警告/管理句等不应进入自动晋升写回。"""
+    for raw in texts:
+        plain = str(raw or "").strip()
+        if plain and _SYSTEM_PROMOTE_BLOCK_RE.search(plain):
+            return True
+    return False
+
+
 def should_collect_llm_repeater_feedback(
     *,
     task_type: str,
@@ -104,6 +130,7 @@ def should_collect_llm_repeater_feedback(
     reply_text: str,
     source_tags: list[str],
     fallback_text: str = "",
+    llm_route: str = "",
 ) -> bool:
     normalized_task = str(task_type or "").strip().lower()
     if normalized_task not in _FEEDBACK_TASK_TYPES:
@@ -116,7 +143,8 @@ def should_collect_llm_repeater_feedback(
     if not trigger_text:
         return False
     plain_reply = str(reply_text or "").strip()
-    if not plain_reply or len(plain_reply) > _MAX_REPLY_LEN:
+    max_len = feedback_reply_max_len(task_type=normalized_task, llm_route=llm_route)
+    if not plain_reply or len(plain_reply) > max_len:
         return False
     normalized_tags = {str(tag).strip().lower() for tag in source_tags if str(tag).strip()}
     if normalized_tags & _BLOCKED_SOURCE_TAGS:
@@ -150,16 +178,21 @@ def build_feedback_entry(**kwargs: Any) -> LlmRepeaterFeedbackEntry:
 
 
 def append_feedback_entry(entry: LlmRepeaterFeedbackEntry) -> None:
+    from pallas.core.foundation.fs_lock import interprocess_file_lock
+
     path = feedback_entries_path()
-    needs_leading_newline = False
-    if path.exists() and path.stat().st_size > 0:
-        with path.open("rb") as existing:
-            existing.seek(-1, os.SEEK_END)
-            needs_leading_newline = existing.read(1) != b"\n"
-    with path.open("a", encoding="utf-8") as handle:
-        if needs_leading_newline:
-            handle.write("\n")
-        handle.write(json.dumps(entry.model_dump(mode="json"), ensure_ascii=False) + "\n")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(entry.model_dump(mode="json"), ensure_ascii=False) + "\n"
+    with interprocess_file_lock(path.with_suffix(path.suffix + ".lock")):
+        needs_leading_newline = False
+        if path.exists() and path.stat().st_size > 0:
+            with path.open("rb") as existing:
+                existing.seek(-1, os.SEEK_END)
+                needs_leading_newline = existing.read(1) != b"\n"
+        with path.open("a", encoding="utf-8") as handle:
+            if needs_leading_newline:
+                handle.write("\n")
+            handle.write(line)
     from pallas.product.llm.promotion_candidates import note_feedback_entry_for_promotion
 
     note_feedback_entry_for_promotion(entry)
@@ -190,11 +223,13 @@ def _dedupe_key(entry: LlmRepeaterFeedbackEntry) -> str:
 
 
 def _write_feedback_entries(rows: list[LlmRepeaterFeedbackEntry]) -> None:
+    from pallas.core.foundation.fs_lock import atomic_write_text, interprocess_file_lock
+
     path = feedback_entries_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
-        for item in rows:
-            handle.write(json.dumps(item.model_dump(mode="json"), ensure_ascii=False) + "\n")
+    body = "".join(json.dumps(item.model_dump(mode="json"), ensure_ascii=False) + "\n" for item in rows)
+    with interprocess_file_lock(path.with_suffix(path.suffix + ".lock")):
+        atomic_write_text(path, body)
 
 
 def _load_all_feedback_entries() -> list[LlmRepeaterFeedbackEntry]:
@@ -421,9 +456,11 @@ def list_group_feedback_entries(*, group_id: int, limit: int = 50) -> list[LlmRe
     return deduped[-max(1, int(limit)) :]
 
 
-def is_reply_safe_for_auto_promote(reply_text: str) -> bool:
+def is_reply_safe_for_auto_promote(reply_text: str, *, trigger_text: str = "") -> bool:
     plain = str(reply_text or "").strip()
     if not plain or len(plain) > _MAX_REPLY_LEN:
+        return False
+    if is_systemish_promote_text(plain, trigger_text):
         return False
     from pallas.product.llm.corpus_contamination import is_feedback_reply_collectable
 

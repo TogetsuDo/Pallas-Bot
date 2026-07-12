@@ -48,8 +48,9 @@ def test_format_situational_expression_pairs_pairs_trigger_with_candidate() -> N
 
 def test_is_usable_expression_reference_rejects_cq_and_fragments() -> None:
     assert not is_usable_expression_reference("[CQ:at,qq=123] 你快")
-    assert not is_usable_expression_reference("你快")
+    assert not is_usable_expression_reference("诶")
     assert not is_usable_expression_reference("3498")
+    assert is_usable_expression_reference("然后呢")
     assert is_usable_expression_reference("你都喊成这样了，还不进来那也太不给面子了")
 
 
