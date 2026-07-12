@@ -6150,7 +6150,11 @@ def register_extended_api(
             raise HTTPException(status_code=400, detail=str(e)) from e
         return {"ok": True, "data": data}
 
-    @router.put(f"{x}/plugins/{{plugin_name}}/config", include_in_schema=True)
+    @router.put(
+        f"{x}/plugins/{{plugin_name}}/config",
+        include_in_schema=True,
+        response_model=_ApiOkResponse[_PluginConfigData],
+    )
     async def _plugin_config_put(
         plugin_name: str,
         body: _PluginConfigUpdateBody,

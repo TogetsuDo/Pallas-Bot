@@ -25,6 +25,40 @@ def test_corpus_auto_enroll_default_off(monkeypatch):
     clear_corpus_config_cache()
 
 
+def test_auto_enroll_auto_follows_community_enabled(monkeypatch):
+    def fake_raw(key: str):
+        if key == "PALLAS_CORPUS_AUTO_ENROLL":
+            return "auto"
+        if key == "PALLAS_CORPUS_COMMUNITY_ENABLED":
+            return "true"
+        return None
+
+    monkeypatch.setattr("pallas.product.corpus.config.repo_env_raw_value", fake_raw)
+    monkeypatch.setattr("pallas.product.corpus.config.community_manual_configured", lambda: False)
+    monkeypatch.setattr("pallas.product.corpus.config.persisted_community_configured", lambda: False)
+    clear_corpus_config_cache()
+    assert auto_enroll_enabled() is True
+    from pallas.product.corpus.config import corpus_composite_enabled
+
+    assert corpus_composite_enabled() is True
+    clear_corpus_config_cache()
+
+
+def test_auto_enroll_auto_stays_off_when_community_off(monkeypatch):
+    def fake_raw(key: str):
+        if key == "PALLAS_CORPUS_AUTO_ENROLL":
+            return "auto"
+        if key == "PALLAS_CORPUS_COMMUNITY_ENABLED":
+            return "false"
+        return None
+
+    monkeypatch.setattr("pallas.product.corpus.config.repo_env_raw_value", fake_raw)
+    monkeypatch.setattr("pallas.product.corpus.config.community_manual_configured", lambda: False)
+    clear_corpus_config_cache()
+    assert auto_enroll_enabled() is False
+    clear_corpus_config_cache()
+
+
 def test_community_auto_mode_does_not_enable_from_persisted_enrollment(monkeypatch):
     monkeypatch.setattr(
         "pallas.product.corpus.config.repo_env_raw_value",

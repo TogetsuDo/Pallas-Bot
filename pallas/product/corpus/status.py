@@ -14,6 +14,7 @@ from pallas.product.corpus.config import (
     fed_configured,
     get_corpus_config,
     is_community_corpus_wanted,
+    remote_corpus_find_mode,
     resolve_enabled,
     resolved_community_api_base,
     resolved_community_api_base_urls,
@@ -116,6 +117,7 @@ async def build_corpus_status_snapshot() -> dict[str, Any]:
 
     return {
         "composite_active": corpus_composite_enabled(cfg),
+        "remote_find_mode": remote_corpus_find_mode(cfg),
         "merge_order": list(cfg.merge_order),
         "merge_strategy": str(cfg.merge_strategy or "local_first"),
         "on_remote_failure": str(cfg.on_remote_failure or "local_only"),

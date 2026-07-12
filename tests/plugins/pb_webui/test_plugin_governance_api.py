@@ -274,3 +274,31 @@ def test_plugin_config_get_resolves_official_pip_plugin_short_name(monkeypatch) 
     assert payload["ok"] is True
     assert payload["data"]["module"]
     assert payload["data"]["fields"]
+
+
+def test_plugin_config_get_preserves_field_groups_in_response_model(monkeypatch) -> None:
+    """GET 经 response_model 序列化后须保留 field_groups，否则前端会退回单组面板。"""
+    monkeypatch.setattr(
+        mod,
+        "plugin_config_payload",
+        lambda _name: {
+            "plugin": "pb_core",
+            "module": "pb_core.config",
+            "fields": [{"name": "enabled", "type": "bool", "value": True}],
+            "unexpected_keys": [],
+            "field_groups": [
+                {"id": "core", "title": "核心", "field_names": ["enabled"]},
+                {"id": "mail", "title": "邮件", "field_names": ["smtp_user"]},
+            ],
+            "hot_reload": True,
+        },
+    )
+    client = _build_client(monkeypatch)
+    response = client.get("/pallas/api/plugins/pb_core/config")
+
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    groups = data.get("field_groups") or []
+    assert len(groups) == 2
+    assert groups[0]["id"] == "core"
+    assert data.get("hot_reload") is True

@@ -81,7 +81,7 @@ class CorpusFederationWebuiConfig(BaseModel):
         description=field_help(
             "是否自动向社区登记本机语料访问凭证",
             "开启共享语料后，程序会向社区中心登记并保存口令，一般无需手填",
-            "已有手动口令时可保持关闭",
+            "选「自动」时与「使用社区共享接话库」同步；已有手动口令时可关闭",
         ),
     )
     community_contribute: _TRI = Field(

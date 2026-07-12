@@ -42,6 +42,7 @@ async def test_build_corpus_status_snapshot_shape(monkeypatch, tmp_path):
     clear_corpus_config_cache()
     snap = await build_corpus_status_snapshot()
     assert snap["composite_active"] is True
+    assert snap["remote_find_mode"] in {"off", "sync", "prefetch"}
     assert snap["sources"]["local"]["enabled"] is True
     assert snap["sources"]["community"]["enrolled"] is True
     assert snap["sources"]["community"]["contribute"] is False

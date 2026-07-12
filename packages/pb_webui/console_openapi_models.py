@@ -203,10 +203,22 @@ class PluginGovernanceData(BaseModel):
 
 
 class PluginConfigData(BaseModel):
+    """插件 / 通用配置表单载荷。须声明 field_groups 等扩展键，否则 GET 的 response_model 会剥掉分组。"""
+
+    model_config = ConfigDict(extra="allow")
+
     plugin: str
     module: str = ""
     fields: list[dict[str, Any]] = Field(default_factory=list)
     unexpected_keys: list[dict[str, str]] = Field(default_factory=list)
+    field_groups: list[dict[str, Any]] = Field(default_factory=list)
+    hot_reload: bool | None = None
+    gateway_editor: bool | None = None
+    supports_connectivity_check: bool | None = None
+    llm_model_admin: bool | None = None
+    dev_mode_hot_reload: bool | None = None
+    command_perm_ui: dict[str, Any] | None = None
+    command_limits_ui: dict[str, Any] | None = None
 
 
 class PluginConfigRawData(BaseModel):

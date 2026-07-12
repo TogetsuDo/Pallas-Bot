@@ -84,8 +84,18 @@ def community_configured() -> bool:
 
 
 def auto_enroll_enabled() -> bool:
+    """是否自动向社区登记语料凭证。
+
+    ``true`` / ``false`` 强制开闭；``auto`` 表示跟随「使用社区共享接话库」：
+    已显式开启共享语料时自动登记，避免 WebUI 默认 ``auto`` 被当成关闭导致
+    多源状态一直显示未启用。
+    """
     flag = parse_tristate(setting_str(f"{_PREFIX}AUTO_ENROLL", "false"), default=False)
-    return flag is True
+    if flag is True:
+        return True
+    if flag is False:
+        return False
+    return is_community_corpus_wanted()
 
 
 def is_community_corpus_wanted(cfg: CorpusConfig | None = None) -> bool:
