@@ -32,8 +32,8 @@ from pallas.product.llm.promotion_candidates import (  # noqa: E402
     _write_candidates_index,
     is_reply_safe_for_auto_promote,
 )
+from pallas.product.llm.corpus_contamination import FEEDBACK_META_BLOCK_PHRASES  # noqa: E402
 from pallas.product.llm.repeater_feedback import (  # noqa: E402
-    _BLOCKED_REPLY_HINTS,
     _BLOCKED_SOURCE_TAGS,
     _MAX_REPLY_LEN,
     LlmRepeaterFeedbackEntry,
@@ -41,6 +41,9 @@ from pallas.product.llm.repeater_feedback import (  # noqa: E402
     _write_feedback_entries,
     should_collect_llm_repeater_feedback,
 )
+
+# 原 _BLOCKED_REPLY_HINTS，已迁至 corpus_contamination.FEEDBACK_META_BLOCK_PHRASES
+_BLOCKED_REPLY_HINTS = FEEDBACK_META_BLOCK_PHRASES
 from pallas.product.persona.dynamic_expression import (  # noqa: E402
     clean_expression_reference_text,
     is_usable_expression_reference,
