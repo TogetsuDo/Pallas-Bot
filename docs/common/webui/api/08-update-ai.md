@@ -20,7 +20,8 @@
 | GET | `/ai-extension/config` | | 扩展配置 |
 | PUT | `/ai-extension/config` | 是 | 保存配置 |
 | POST | `/ai-extension/test` | 是 | 探测 AI 服务 |
-| GET | `/ai-extension/logs` | | 扩展日志 tail |
+| GET | `/ai-extension/logs` | | 扩展日志 tail（kind: uvicorn / celery / celery-media） |
+| GET | `/ai-extension/logs/stream` | | 扩展日志 SSE 实时流 |
 | GET | `/ai-extension/ncm/status` | | 网易云登录状态 |
 | POST | `/ai-extension/ncm/send-sms` | 是 | 发送验证码 |
 | POST | `/ai-extension/ncm/verify-sms` | 是 | 验证登录 |

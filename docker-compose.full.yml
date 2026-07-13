@@ -17,6 +17,8 @@
 # 验证:
 #   curl -s http://127.0.0.1:8088/pallas/api/health
 #   curl -s http://127.0.0.1:9099/health
+#
+# AI 日志：pallasbot-ai 写入 ./pallas-bot-ai/logs/；pallasbot 只读挂到 /ai-logs 供 WebUI SSE。
 
 name: pallas-full
 
@@ -48,6 +50,8 @@ services:
       - ./pallas-bot/config/pallas.toml:/app/config/pallas.toml
       - ./pallas-bot/data:/app/data
       - ./pallas-bot/local/plugins:/app/local/plugins
+      # 与 pallasbot-ai 共享 AI 服务落盘日志，供 WebUI SSE 跟读（挂载点为 /ai-logs）
+      - ./pallas-bot-ai/logs:/ai-logs:ro
     depends_on:
       postgres:
         condition: service_healthy

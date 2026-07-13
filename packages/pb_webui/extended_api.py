@@ -509,28 +509,15 @@ def _ai_extension_config_path():
 
 
 def _ai_extension_log_roots() -> list[Path]:
-    """允许的日志根目录：仓库根 + 同级 Pallas-Bot-AI 根。"""
-    repo_root = Path(__file__).resolve().parents[3]
-    ai_root = (repo_root.parent / "Pallas-Bot-AI").resolve()
-    return [repo_root.resolve(), ai_root]
+    from pallas.console.web.ai_extension_logs import ai_extension_log_roots
+
+    return ai_extension_log_roots(Path(__file__).resolve().parents[3])
 
 
 def _is_allowed_log_path(path_s: str) -> bool:
-    """限制日志读取仅落在白名单根内，挡住 /etc/passwd 等任意文件读取。"""
-    s = (path_s or "").strip()
-    if not s:
-        return False
-    try:
-        p = Path(s).resolve()
-    except (OSError, RuntimeError):
-        return False
-    for root in _ai_extension_log_roots():
-        try:
-            if p == root or p.is_relative_to(root):
-                return True
-        except (OSError, RuntimeError):
-            continue
-    return False
+    from pallas.console.web.ai_extension_logs import is_allowed_log_path
+
+    return is_allowed_log_path(path_s, _ai_extension_log_roots())
 
 
 def _normalize_ai_extension_config(raw: dict[str, Any] | None) -> dict[str, Any]:
@@ -547,17 +534,13 @@ def _normalize_ai_extension_config(raw: dict[str, Any] | None) -> dict[str, Any]
         health_paths = ["/health", "/api/health"]
     if not health_paths:
         health_paths = ["/health", "/api/health"]
+    from pallas.console.web.ai_extension_logs import normalize_ai_extension_log_paths
+
     root = Path(__file__).resolve().parents[3]
-    default_ai_root = (root.parent / "Pallas-Bot-AI").resolve()
-    default_uvicorn_log = str(default_ai_root / "logs" / "app.log")
-    default_celery_log = str(default_ai_root / "logs" / "celery.log")
-    uvicorn_log_file = str(d.get("uvicorn_log_file", "")).strip() or default_uvicorn_log
-    celery_log_file = str(d.get("celery_log_file", "")).strip() or default_celery_log
-    # 任一路径越界即回退默认值，避免被持票攻击者污染配置后读任意文件
-    if not _is_allowed_log_path(uvicorn_log_file):
-        uvicorn_log_file = default_uvicorn_log
-    if not _is_allowed_log_path(celery_log_file):
-        celery_log_file = default_celery_log
+    log_paths = normalize_ai_extension_log_paths(d, bot_repo_root=root)
+    uvicorn_log_file = log_paths["uvicorn_log_file"]
+    celery_log_file = log_paths["celery_log_file"]
+    celery_media_log_file = log_paths["celery_media_log_file"]
     timeout_sec = d.get("timeout_sec", 8)
     try:
         timeout_i = int(timeout_sec)
@@ -571,6 +554,7 @@ def _normalize_ai_extension_config(raw: dict[str, Any] | None) -> dict[str, Any]
         "health_paths": health_paths,
         "uvicorn_log_file": uvicorn_log_file,
         "celery_log_file": celery_log_file,
+        "celery_media_log_file": celery_media_log_file,
         "timeout_sec": timeout_i,
     }
 
@@ -4146,6 +4130,7 @@ class _AiExtensionConfigBody(BaseModel):
     health_paths: list[str] = Field(default_factory=lambda: ["/health", "/api/health"], max_length=8)
     uvicorn_log_file: str = Field(default="", max_length=500)
     celery_log_file: str = Field(default="", max_length=500)
+    celery_media_log_file: str = Field(default="", max_length=500)
     timeout_sec: int = Field(default=8, ge=2, le=30)
 
 
@@ -7985,11 +7970,13 @@ def register_extended_api(
 
     @router.get(f"{x}/ai-extension/logs", include_in_schema=True)
     async def _ai_extension_logs(
-        kind: Literal["uvicorn", "celery"] = Query(default="uvicorn"),
+        kind: Literal["uvicorn", "celery", "celery-media"] = Query(default="uvicorn"),
         n: int = Query(default=200, ge=1, le=2000),
     ) -> JSONResponse:
+        from pallas.console.web.ai_extension_logs import resolve_log_path_for_kind
+
         cfg = _load_ai_extension_config()
-        path_s = str(cfg["uvicorn_log_file"] if kind == "uvicorn" else cfg["celery_log_file"])
+        path_s = resolve_log_path_for_kind(cfg, kind)
         # 防御深度：即便规范化阶段已校验，读取前再检一次，杜绝持久化污染绕过
         if not _is_allowed_log_path(path_s):
             return JSONResponse(
@@ -8025,17 +8012,18 @@ def register_extended_api(
 
     @router.get(f"{x}/ai-extension/logs/stream", include_in_schema=True)
     async def _ai_extension_logs_stream(
-        kind: Literal["uvicorn", "celery"] = Query(default="uvicorn"),
+        kind: Literal["uvicorn", "celery", "celery-media"] = Query(default="uvicorn"),
         last_event_id: int | None = Query(
             default=None,
             description="断点续传：仅发送字节偏移大于该值的新行",
         ),
         last_event_id_header: int | None = Header(default=None, alias="Last-Event-ID"),
     ) -> StreamingResponse:
+        from pallas.console.web.ai_extension_logs import resolve_log_path_for_kind
         from pallas.console.web.ai_log_sse import iter_ai_log_file_sse
 
         cfg = _load_ai_extension_config()
-        path_s = str(cfg["uvicorn_log_file"] if kind == "uvicorn" else cfg["celery_log_file"])
+        path_s = resolve_log_path_for_kind(cfg, kind)
         if not _is_allowed_log_path(path_s):
 
             async def _denied() -> Any:
