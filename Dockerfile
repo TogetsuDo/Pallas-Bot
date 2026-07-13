@@ -17,7 +17,7 @@ RUN apt-get update && \
     pip install uv && \
     rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml ./
+COPY pyproject.toml LICENSE ./
 
 # perf：jieba-next；pg：PostgreSQL 后端
 # deploy-shard：见 deploy/README.md

@@ -16,8 +16,10 @@ from pallas.console.webui.plugin_catalog import (
 )
 from pallas.console.webui.plugin_package_assets import (
     PACKAGE_ASSET_CANDIDATE_PATHS,
-    PUBLIC_PREFIX as PLUGIN_ASSETS_PUBLIC_PREFIX,
     resolve_plugin_package_asset_file,
+)
+from pallas.console.webui.plugin_package_assets import (
+    PUBLIC_PREFIX as PLUGIN_ASSETS_PUBLIC_PREFIX,
 )
 from pallas.console.webui.plugin_store_assets import load_snapshot
 from pallas.core.foundation.paths import plugin_data_dir, project_path
