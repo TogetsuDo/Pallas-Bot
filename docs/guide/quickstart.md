@@ -1,9 +1,9 @@
 # 五分钟跑起来
 
 ::: tip 读完你能做什么
-本机跑起一只牛 → 登录网页控制台 → 连上 QQ → 群里发 **牛牛帮助** 有回复。
+本机跑起一只牛 → 登录网页控制台 → 连上 QQ → 群里发 **牛牛帮助** 有回复。  
+先别开分片、先别装一堆扩展——通了再加。
 :::
-
 ## 你需要准备
 
 | 项 | 要求 |
@@ -92,11 +92,16 @@ uv run nb run
 2. 日志里打印 **Web 控制台初始口令**（也可在 `data/pallas_console/` 找回）  
 3. 浏览器打开 `http://127.0.0.1:8088/pallas/` 能出现登录页  
 
+![WebUI 登录示意图](/assets/guide/webui-login.svg)
+
 ::: tip 控制台地址
 - 本机：`http://127.0.0.1:8088/pallas/`  
 - 远程：把 `127.0.0.1` 换成服务器 IP，并放行 **8088** 端口  
 :::
 
+::: tip 恭喜通了（到这一步）
+能看到登录页，说明 Bot HTTP 与 WebUI 资源已经起来。口令在启动日志里。
+:::
 ---
 
 ## 5. 连接 QQ
@@ -122,9 +127,12 @@ Bot **不会**自己登录 QQ，需要 NapCat 等协议端转发消息。
 
 ## 你已经跑起来了
 
-▶ 想装决斗、MAA：[安装插件](install-plugins.md)  
-▶ 想用网页改配置：[使用指南](../user/README.md)  
-▶ 要上 VPS 长期跑：[标准部署](../Deployment.md)  
+群里 **牛牛帮助** 有回复 = 恭喜，今天的目标达成。
+
+▶ 想装决斗、MAA：[安装官方扩展](install-extensions.md)  
+▶ 想用网页改配置：[网页控制台](web-console.md)  
+▶ 要上 VPS 长期跑：[运维快速开始](../maintainer/quickstart.md)  
+▶ 排障：[排障](../maintainer/operate/troubleshooting.md) · [FAQ](../FAQ.md)  
 
 ---
 

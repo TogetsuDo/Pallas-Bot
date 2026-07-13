@@ -1,8 +1,29 @@
 # 常见问题
 
-> [五分钟跑起来](guide/quickstart.md) · [标准部署](Deployment.md) · [配置要点](Config.md)
+> [五分钟跑起来](guide/quickstart.md) · [运维快速开始](maintainer/quickstart.md) · [排障](maintainer/operate/troubleshooting.md) · [配置要点](Config.md)
 
 部署与使用中的常见问题。首次部署请先完成 [五分钟跑起来](guide/quickstart.md)。
+
+## 不确定属于哪一类？
+
+```mermaid
+flowchart TD
+  Start[遇到问题] --> Boot{启动就挂或打不开页面?}
+  Boot -->|是| Dep[看部署与配置 · FAQ 后半 / 排障]
+  Boot -->|否| QQ{QQ在线但群不回?}
+  QQ -->|是| Proto[连接协议端 · connect-qq]
+  QQ -->|否| AI{闲聊或记忆不生效?}
+  AI -->|是| Llm[运维 LLM 与 AI]
+  AI -->|否| Learn{语料或说话奇怪?}
+  Learn -->|是| LearnSec[下面学习机制]
+  Learn -->|否| Admin[使用与管理 / 号主]
+```
+
+专题页：
+
+- 运行时顺序：[排障](maintainer/operate/troubleshooting.md)
+- AI / 记忆：[LLM 与 AI](maintainer/operate/llm-and-ai.md)
+- 协议端：[连接 QQ](guide/connect-qq.md)
 
 ## 学习机制
 

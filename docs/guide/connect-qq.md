@@ -2,9 +2,9 @@
 
 ::: tip 先知道这件事
 Pallas-Bot **不直接登录 QQ**。  
-消息路径是：`QQ ←→ NapCat（协议端）←→ Pallas-Bot ←→ 数据库`。
+消息路径是：`QQ ←→ NapCat（协议端）←→ Pallas-Bot ←→ 数据库`。  
+牛「在线但不说话」，九成卡在协议端还没连上，或 WebSocket 指错了主机。
 :::
-
 ## 默认地址（按 `pallas.toml` 的 port）
 
 | 页面 | 地址 |
@@ -32,6 +32,12 @@ Pallas-Bot **不直接登录 QQ**。
 - 协议端页：实例 **在线**  
 - Web 控制台首页：能看到 **在线 Bot**  
 - QQ 群：发 `牛牛帮助` 有回复  
+
+![协议端已连接示意图](/assets/guide/protocol-online.svg)
+
+::: tip 恭喜通了
+实例显示在线，且群里 **牛牛帮助** 有图 = QQ 消息已经进牛肚子了。
+:::
 
 ::: details Docker 里用「Docker 模式」拉 NapCat
 需在 `docker-compose.yml` 给 `pallasbot` 服务挂载 `/var/run/docker.sock`（compose 注释里有说明）。  
@@ -81,4 +87,4 @@ Bot 与 NapCat **不在同一台机器**时，`<Bot主机>` 必须是 NapCat 能
 
 ---
 
-▶ 下一步：[安装插件](install-plugins.md) · [使用指南](../user/README.md)
+▶ 下一步：[安装官方扩展](install-extensions.md) · [网页控制台](web-console.md) · [排障](../maintainer/operate/troubleshooting.md)

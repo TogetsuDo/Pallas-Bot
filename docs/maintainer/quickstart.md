@@ -4,6 +4,10 @@
 
 不求一次讲完所有体系，先把环境跑起来。
 
+::: tip 先跑起来再折腾
+第一次装：单进程即可。消息怎么进牛肚子、要不要装扩展，可先瞄一眼 [4.0 启动说明](../guide/4.0-start.md) 里的两张图。卡住了去 [排障](operate/troubleshooting.md)。
+:::
+
 ## 跑通后你会有什么
 
 - 一套能启动的 `Pallas-Bot`
@@ -117,4 +121,6 @@ Bot 进程在跑，不代表 QQ 消息已经能进来。
 
 之后如果遇到「能启动但不回复」或「页面能开但状态不对」，直接转：
 
-- [排障](operate/troubleshooting.md)
+- [排障](operate/troubleshooting.md)（页首有决策树）
+- [LLM 与 AI](operate/llm-and-ai.md)（闲聊 / 记忆链路）
+- 上手分流：[选一条路](../guide/welcome.md)
