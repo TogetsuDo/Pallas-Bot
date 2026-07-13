@@ -159,11 +159,11 @@ A: 典型于 **Docker 镜像内运行**：容器里没有完整 `.git` 目录，
 
 ### Q: 怎样减少以后 `git pull` 跟上游冲突？
 
-A: 尽量**不要**在仓库里直接改已跟踪源码；自定义用 **`config/pallas.toml`**、**`data/`**（含 WebUI 的 `webui.json`）、**`local/plugins/`**（`extra_plugin_dirs`）以及文档允许的挂载路径。若必须改源码，建议 **fork** 后维护自己的分支。详见 [站点定制与更新](architecture/site-customization-and-updates.md)。
+A: 尽量**不要**在仓库里直接改已跟踪源码；自定义用 **`config/pallas.toml`**、**`data/`**（含 WebUI 的 `webui.json`）、**`local/plugins/`**（`extra_plugin_dirs`）以及文档允许的挂载路径。若必须改源码，建议 **fork** 后维护自己的分支。详见 [升级与站点定制](maintainer/deploy/upgrade.md)。
 
 ### Q: 控制台更新页显示的 deployment_mode 是什么？
 
-A: **`docker`**：请用镜像更新；**`release_tag`** / **`release_tag_dirty`** / **`dev_clone`**：分别表示发布 tag 干净目录、tag 上有本地改动、开发分支克隆；后三者可用 WebUI git 更新（dirty 时会自动 stash）。见 [站点定制与更新](architecture/site-customization-and-updates.md)。
+A: **`docker`**：请用镜像更新；**`release_tag`** / **`release_tag_dirty`** / **`dev_clone`**：分别表示发布 tag 干净目录、tag 上有本地改动、开发分支克隆；后三者可用 WebUI git 更新（dirty 时会自动 stash）。见 [升级与站点定制](maintainer/deploy/upgrade.md)。
 
 ## 部署排障
 

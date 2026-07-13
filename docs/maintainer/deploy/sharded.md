@@ -204,5 +204,4 @@ REDIS_URL = "redis://127.0.0.1:6379/0"
 
 - [维护者排障](../operate/troubleshooting.md)
 - [单进程部署](single-process.md)
-- [多进程分片架构细节](../../architecture/bot_process_sharding.md)
-- [中央入站调度](../../architecture/internal/central-ingress-dispatch.md)
+- [分片运行时（开发）](../../developer/architecture/shard-runtime.md)

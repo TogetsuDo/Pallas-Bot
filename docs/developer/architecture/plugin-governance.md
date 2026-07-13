@@ -44,9 +44,15 @@
 - 社区插件画像分层
 - 更细的装包后自动生效策略
 
+## 热重载与装包
+
+配置 / 元数据 / 代码三级，以及 `reload_policy` 与 `activation_policy` 对照，见 [Reload 与 Activation](../plugin-development/reload-and-activation.md)。
+
+运维侧检查清单：[热重载前检查](../../maintainer/operate/hot-reload-pre-reload-checklist.md)。
+
 ## 相关
 
 - [Core 与扩展](core-vs-extensions.md)
 - [元数据](../plugin-development/metadata.md)
 - [Reload 与 Activation](../plugin-development/reload-and-activation.md)
-- [热重载分级](../../architecture/hot-reload-tiers.md)
+- [Golden Plugin](../plugin-development/golden-plugin.md)

@@ -38,7 +38,7 @@ QQ 用户
 | 中 | `.env`（可选） | 老式 nb/pip 项 |
 | **高** | `data/pallas_config/webui.json` | 控制台保存的配置 |
 
-详见 [配置存储](../architecture/settings-storage.md)。
+详见 [配置存储](../developer/architecture/config-storage.md)。
 
 ## 插件从哪来
 
@@ -61,6 +61,6 @@ Pallas-Bot  ←HTTP→  Pallas-Bot-AI（可选）
 
 ## 多只牛（进阶）
 
-很多 QQ 号时可开 **hub + worker 分片**。见 [多进程分片](../architecture/bot_process_sharding.md)。
+很多 QQ 号时可开 **hub + worker 分片**。见 [多进程分片](../maintainer/deploy/sharded.md)。
 
 ▶ [五分钟跑起来](quickstart.md) · [使用指南](../user/README.md) · [进阶介绍](advanced.md)

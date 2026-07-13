@@ -12,7 +12,7 @@
 
 命令权限说明见 [cmd_perm](../cmd_perm/README.md)。
 
-**热重载分级**（配置 / 元数据 / 代码）：见 [hot-reload-tiers.md](../../architecture/hot-reload-tiers.md)。插件可在 `extra["reload_policy"]` 声明期望粒度（默认 `config_only`）。
+**热重载分级**（配置 / 元数据 / 代码）：见 [Reload 与 Activation](../../developer/plugin-development/reload-and-activation.md)。插件可在 `extra["reload_policy"]` 声明期望粒度（默认 `config_only`）。
 
 ### 三级与插件作者
 

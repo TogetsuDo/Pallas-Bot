@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCS = REPO_ROOT / "docs"
 
 # docs/ 相对路径 -> VitePress src/ 相对路径
-# 权威入口：maintainer/ + developer/；guide/plugins/common/architecture 保留兼容与素材
+# 权威入口：maintainer/ + developer/；guide / plugins / common / develop 兼容页
 FILE_MAP: dict[str, str] = {
     # --- Maintainer（运维权威）---
     "maintainer/quickstart.md": "maintainer/quickstart.md",
@@ -83,34 +83,13 @@ FILE_MAP: dict[str, str] = {
     "Config.md": "deploy/config.md",
     "FAQ.md": "deploy/faq.md",
     "Migration-v3.md": "about/migration.md",
-    # --- 素材：architecture / common / develop 兼容 ---
-    "architecture/settings-storage.md": "architecture/settings-storage.md",
-    "architecture/bot_process_sharding.md": "architecture/bot-process-sharding.md",
-    "architecture/site-customization-and-updates.md": (
-        "architecture/site-customization-and-updates.md"
-    ),
-    "architecture/plugin-convention.md": "architecture/plugin-convention.md",
-    "architecture/hot-reload-tiers.md": "architecture/hot-reload-tiers.md",
-    "architecture/ingress-pipeline.md": "architecture/ingress-pipeline.md",
+    # --- common / develop 兼容 ---
     "common/community_stats.md": "common/community_stats.md",
     "common/corpus/README.md": "common/corpus.md",
     "common/cmd_perm/README.md": "common/cmd_perm.md",
     "common/command_limits/README.md": "common/command_limits.md",
     "common/webui/README.md": "common/webui.md",
     "common/message_scrub/README.md": "common/message_scrub.md",
-    # --- Architecture internal（开发者深度材料，须上站避免 404）---
-    "architecture/internal/pallas-core-contract.md": "architecture/internal/pallas-core-contract.md",
-    "architecture/internal/core-plugin-unification-design.md": (
-        "architecture/internal/core-plugin-unification-design.md"
-    ),
-    "architecture/internal/pallas-package-layout.md": "architecture/internal/pallas-package-layout.md",
-    "architecture/internal/central-ingress-dispatch.md": (
-        "architecture/internal/central-ingress-dispatch.md"
-    ),
-    "architecture/internal/pallas-final-ai-shape.md": "architecture/internal/pallas-final-ai-shape.md",
-    "architecture/internal/pallas-ai-implementation.md": (
-        "architecture/internal/pallas-ai-implementation.md"
-    ),
     "plugins/README.md": "plugins/index.md",
     "develop/README.md": "develop/index.md",
     "develop/environment.md": "develop/environment.md",
@@ -180,27 +159,7 @@ def transform_for_vitepress(text: str) -> str:
     text = text.replace("../assets/brand-avatar.png", "/assets/brand-avatar.png")
     text = text.replace("./assets/brand-avatar.png", "/assets/brand-avatar.png")
     text = re.sub(r"(?<![./])assets/brand-avatar\.png", "/assets/brand-avatar.png", text)
-    # 深度架构 / 技能 / 源码：站内或 GitHub，避免相对路径 404
-    text = re.sub(
-        r"\]\((?:\.\./)*(architecture/internal/[a-z0-9_-]+)\.md([^)]*)\)",
-        r"](/\1\2)",
-        text,
-    )
-    text = re.sub(
-        r"\]\((?:\.\./)*architecture/hot-reload-tiers\.md([^)]*)\)",
-        r"](/architecture/hot-reload-tiers\1)",
-        text,
-    )
-    text = re.sub(
-        r"\]\((?:\.\./)*architecture/settings-storage\.md([^)]*)\)",
-        r"](/architecture/settings-storage\1)",
-        text,
-    )
-    text = re.sub(
-        r"\]\((?:\.\./)*architecture/bot_process_sharding\.md([^)]*)\)",
-        r"](/architecture/bot-process-sharding\1)",
-        text,
-    )
+    # 技能 / 源码：站内或 GitHub，避免相对路径 404
     text = re.sub(
         r"\]\((?:\.\./)*common/command_limits/README\.md([^)]*)\)",
         r"](/common/command_limits\1)",
@@ -219,11 +178,6 @@ def transform_for_vitepress(text: str) -> str:
     text = re.sub(
         r"\]\(\.\./CHANGELOG\.md([^)]*)\)",
         r"](https://github.com/PallasBot/Pallas-Bot/blob/main/CHANGELOG.md\1)",
-        text,
-    )
-    text = re.sub(
-        r"\]\(\.\./\.\./architecture/\)",
-        r"](/developer/architecture/overview)",
         text,
     )
     text = re.sub(
@@ -298,12 +252,27 @@ def transform_for_vitepress(text: str) -> str:
     )
     text = re.sub(
         r"\]\(architecture/bot_process_sharding\.md([^)]*)\)",
-        r"](/architecture/bot-process-sharding\1)",
+        r"](/maintainer/deploy/sharded\1)",
         text,
     )
     text = re.sub(
-        r"\]\(architecture/([a-z0-9_-]+)\.md([^)]*)\)",
-        r"](/architecture/\1\2)",
+        r"\]\(architecture/settings-storage\.md([^)]*)\)",
+        r"](/developer/architecture/config-storage\1)",
+        text,
+    )
+    text = re.sub(
+        r"\]\(architecture/site-customization-and-updates\.md([^)]*)\)",
+        r"](/maintainer/deploy/upgrade\1)",
+        text,
+    )
+    text = re.sub(
+        r"\]\(architecture/plugin-convention\.md([^)]*)\)",
+        r"](/developer/plugin-development/golden-plugin\1)",
+        text,
+    )
+    text = re.sub(
+        r"\]\(architecture/hot-reload-tiers\.md([^)]*)\)",
+        r"](/developer/plugin-development/reload-and-activation\1)",
         text,
     )
     text = re.sub(
@@ -430,13 +399,8 @@ def transform_for_vitepress(text: str) -> str:
         text,
     )
     text = re.sub(
-        r"\]\(\.\./architecture/bot_process_sharding\.md([^)]*)\)",
-        r"](/architecture/bot-process-sharding\1)",
-        text,
-    )
-    text = re.sub(
-        r"\]\(\.\./architecture/([a-z0-9_-]+)\.md([^)]*)\)",
-        r"](/architecture/\1\2)",
+        r"\]\(\.\./maintainer/deploy/sharded\.md([^)]*)\)",
+        r"](/maintainer/deploy/sharded\1)",
         text,
     )
     text = re.sub(
@@ -473,7 +437,7 @@ def transform_for_vitepress(text: str) -> str:
     )
     # 去掉站内链接里的 .md 后缀
     text = re.sub(
-        r"(\]\(/(?:deploy|plugins|architecture|common|about|guide|maintainer|developer|develop)"
+        r"(\]\(/(?:deploy|plugins|common|about|guide|maintainer|developer|develop)"
         r"/[a-zA-Z0-9_./-]+)\.md\)",
         r"\1)",
         text,

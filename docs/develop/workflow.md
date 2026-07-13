@@ -13,7 +13,7 @@
 ## 分支与 PR
 
 - 日常开发：从 `main` 或 `dev` 拉分支，向目标分支提 PR
-- **当前总纲 / 牛格 / 语料底盘**：见 [Pallas 核心契约](../architecture/internal/pallas-core-contract.md)、[AI 终态架构](../architecture/internal/pallas-final-ai-shape.md)
+- **架构与 AI 运维入口**：见 [架构总览](../developer/architecture/overview.md)、[LLM 与 AI](../maintainer/operate/llm-and-ai.md)
 - **一个 PR 只解决一类问题**（功能 / 修复 / 文档 / 重构勿混杂）
 - **最小必要改动**：避免无关格式化、大范围重排；历史问题在说明里标注「历史遗留」与「本次引入」
 
@@ -21,11 +21,11 @@
 
 | 主题 | 文档 |
 | --- | --- |
-| 目录与分层 | [Pallas 包布局与公开 API](../architecture/internal/pallas-package-layout.md) |
-| **当前总纲** | [Pallas 核心契约](../architecture/internal/pallas-core-contract.md)、[AI 终态架构](../architecture/internal/pallas-final-ai-shape.md) |
-| 插件组织 | [插件目录约定](../architecture/plugin-convention.md) |
+| 目录与分层 | [仓库布局](../developer/reference/repo-layout.md) |
+| 架构总览 | [架构总览](../developer/architecture/overview.md)、[LLM 与 AI](../maintainer/operate/llm-and-ai.md) |
+| 插件组织 | [Golden Plugin](../developer/plugin-development/golden-plugin.md) |
 | 命令权限 | [cmd_perm](../common/cmd_perm/README.md) |
-| 配置落盘 | [配置存储](../architecture/settings-storage.md) |
+| 配置落盘 | [配置存储](../developer/architecture/config-storage.md) |
 
 ## 提交前自检
 
@@ -66,7 +66,7 @@ chore(scope): …
 ## 文档改动
 
 - 用户向插件说明：`docs/plugins/<name>/README.md`（可复制 [TEMPLATE.md](../plugins/TEMPLATE.md)）
-- 架构与开发约定：`docs/architecture/`、`docs/develop/`
+- 架构与开发约定：`docs/developer/architecture/`、`docs/develop/`
 - 在线站由 CI 将主仓 `docs/` 同步至 [Pallas-Bot-Docs](https://github.com/PallasBot/Pallas-Bot-Docs)（见 [docs/README.md](../README.md#同步-web-文档)）
 
 本地预览同步结果：

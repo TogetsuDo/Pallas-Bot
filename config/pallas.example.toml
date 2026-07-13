@@ -1,6 +1,6 @@
 # 复制为 config/pallas.toml 后填写（勿提交密钥）。
 # 插件与通用项在 WebUI 保存 → data/pallas_config/webui.json（优先级最高）。
-# 说明：docs/architecture/settings-storage.md · 从旧 .env 迁移：uv run python tools/migrate_env_to_pallas.py
+# 说明：docs/developer/architecture/config-storage.md · 从旧 .env 迁移：uv run python tools/migrate_env_to_pallas.py
 
 # ── 最少配置（改 superusers + 数据库即可启动）────────────────────────
 [bootstrap]

@@ -52,6 +52,6 @@
 | 网页点保存 | `data/pallas_config/webui.json` |
 | 改端口 / 库 / 超管 | `config/pallas.toml`，然后 **重启** |
 
-详见 [配置存储](../architecture/settings-storage.md)。
+详见 [配置存储](../developer/architecture/config-storage.md)。
 
 ▶ [使用指南](../user/README.md) · [安装插件](install-plugins.md) · [连接 QQ](connect-qq.md)

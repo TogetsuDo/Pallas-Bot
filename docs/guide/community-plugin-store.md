@@ -57,7 +57,7 @@ extra_plugin_dirs = ["local/plugins"]
 
 未配置但目录下已有有效插件包时，启动也会自动纳入；仍建议写上，方便排障。
 
-Docker 挂载见 [站点定制 · Docker](../architecture/site-customization-and-updates.md#docker--外挂插件卷)。
+Docker 挂载见 [升级 · Docker 外挂插件](../maintainer/deploy/upgrade.md#docker--外挂插件卷)。
 
 ---
 

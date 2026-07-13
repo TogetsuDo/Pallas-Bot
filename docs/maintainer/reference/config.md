@@ -134,10 +134,24 @@
 - 这个键现在已经不应以 `.env` 为主入口
 - 或者已经被更高优先级的 WebUI 落盘覆盖
 
+## Docker 挂载与迁移
+
+| 宿主机 | 容器内 |
+| --- | --- |
+| `pallas-bot/config/pallas.toml` | `/app/config/pallas.toml` |
+| `pallas-bot/data/` | `/app/data/` |
+
+从旧 `.env` 一次性迁移：
+
+```bash
+uv run python tools/migrate_env_to_pallas.py
+```
+
 ## 推荐阅读顺序
 
-- 想理解合并顺序：看 [配置存储](../../architecture/settings-storage.md)
+- 想理解合并顺序与读取 API：看 [配置存储](../../developer/architecture/config-storage.md)
 - 想本机跑通：看 [五分钟跑起来](../../guide/quickstart.md)
 - 想查部署形态：看 [运维入口](../quickstart.md)
 - 想改运行中配置：看 [WebUI 运维](../operate/webui.md)
 - 想排查保存后不生效：看 [排障](../operate/troubleshooting.md)
+- 想站点定制与更新：看 [升级](../deploy/upgrade.md)

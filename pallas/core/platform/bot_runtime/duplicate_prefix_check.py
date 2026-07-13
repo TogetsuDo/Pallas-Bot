@@ -62,7 +62,7 @@ def run_duplicate_prefix_check() -> None:
     conflicts = collect_duplicate_command_prefixes()
     if not conflicts:
         return
-    doc = "docs/architecture/internal/pallas-ai-implementation.md"
+    doc = "docs/maintainer/install/ai-runtime.md"
     for item in conflicts:
         logger.error(
             '重复命令 prefix "{}" 对应多个插件模块: {}（见 {}）',

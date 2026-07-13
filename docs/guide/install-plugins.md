@@ -56,7 +56,7 @@ load_bundled_extra_plugins = "auto"
 ```
 
 未配置时，目录下已有合法插件也会自动加载。然后 **重启 Bot**。  
-与官方扩展 **同名时 local 优先**。细节：[站点定制](../architecture/site-customization-and-updates.md)。
+与官方扩展 **同名时 local 优先**。细节：[站点定制](../maintainer/deploy/upgrade.md)。
 
 ## 三、pip / nb 插件（老方式，可选）
 

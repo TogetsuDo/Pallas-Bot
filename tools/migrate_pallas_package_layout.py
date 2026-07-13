@@ -147,7 +147,7 @@ def create_api_facade() -> None:
     api_root = ROOT / "pallas" / "api"
     api_root.mkdir(parents=True, exist_ok=True)
     (api_root / "__init__.py").write_text(
-        '"""插件作者稳定入口；详见 docs/architecture/pallas-package-layout.md。"""\n',
+        '"""插件作者稳定入口；详见 docs/developer/architecture/pallas-package-layout.md。"""\n',
         encoding="utf-8",
     )
 

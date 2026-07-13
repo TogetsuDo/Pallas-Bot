@@ -138,7 +138,7 @@ db = "PallasBot"
 
 3. 其余插件与通用项在 Web 控制台保存，落盘 **`data/pallas_config/webui.json`**。
 
-合并顺序与读取 API 见 [配置存储](../architecture/settings-storage.md)。从旧 `.env` 一次性迁移：
+合并顺序与读取 API 见 [配置存储](../developer/architecture/config-storage.md)。从旧 `.env` 一次性迁移：
 
 ```bash
 uv run python tools/migrate_env_to_pallas.py
@@ -176,7 +176,7 @@ uv run pallas stop --mode unified
 
 ### 分片模式（可选）
 
-生产或多进程场景见 [多进程分片](../architecture/bot_process_sharding.md)。本地若需验证分片：
+生产或多进程场景见 [多进程分片](../maintainer/deploy/sharded.md)。本地若需验证分片：
 
 - 在 `pallas.toml` 的 `[env]` 配置 `REDIS_URL`（Python 端需 `redis` 包，见上文 [uv sync 与官方扩展](#uv-sync-与官方扩展必读)）
 - 使用 `uv run pallas run shard`（会探测 Redis；worker 已运行时跳过重复启动）
@@ -198,7 +198,7 @@ uv run pallas stop --mode shard
 extra_plugin_dirs = ["local/plugins"]
 ```
 
-详见 [站点定制与更新](../architecture/site-customization-and-updates.md)。
+详见 [站点定制与更新](../maintainer/deploy/upgrade.md)。
 
 ## 质量检查（与 CI 一致）
 

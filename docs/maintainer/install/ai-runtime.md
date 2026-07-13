@@ -182,5 +182,4 @@ Docker、多机或反代场景下，问题往往不在代码，而是：
 ## 相关阅读
 
 - [LLM 与 AI 运维](../operate/llm-and-ai.md)
-- [AI 实施与联调](../../architecture/internal/pallas-ai-implementation.md)
-- [AI 终态架构](../../architecture/internal/pallas-final-ai-shape.md)
+- [架构总览](../../developer/architecture/overview.md)

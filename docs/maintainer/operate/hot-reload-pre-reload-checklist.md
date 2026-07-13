@@ -1,6 +1,6 @@
 # 热重载 pre-reload 清理清单
 
-> 配合 [hot-reload-tiers.md](../../architecture/hot-reload-tiers.md) 与官方扩展 `activation_policy`。WebUI 保存插件配置或执行 `POST /plugins/{name}/reload` 前，维护者按本清单自检。
+> 配合 [Reload 与 Activation](../../developer/plugin-development/reload-and-activation.md) 与官方扩展 `activation_policy`。WebUI 保存插件配置或执行 `POST /plugins/{name}/reload` 前，维护者按本清单自检。
 
 ## 1. 配置级（`reload_policy: config_only`，默认）
 
@@ -59,5 +59,5 @@
 
 ## 相关
 
-- [hot-reload-tiers.md](../../architecture/hot-reload-tiers.md)
-- [core-plugin-unification-design.md](../../architecture/internal/core-plugin-unification-design.md)
+- [Reload 与 Activation](../../developer/plugin-development/reload-and-activation.md)
+- [Golden Plugin](../../developer/plugin-development/golden-plugin.md)

@@ -32,14 +32,14 @@ Pallas-Bot 多仓与主仓目录合同。
 | WebUI | `Pallas-Bot-WebUI` | `data/pb_webui/public/` |
 | AI 执行 | `Pallas-Bot-AI` | 主仓定义产品与编排边界 |
 | 官方玩法 | 对应扩展仓 | 主仓 `packages/` 未必有源码 |
-| 文档主线 | `docs/maintainer/`、`docs/developer/` | `docs/architecture/` 为深度资料 |
+| 文档主线 | `docs/maintainer/`、`docs/developer/` | 架构入口在 `docs/developer/architecture/` |
 
 ## 改动落点
 
 1. 主仓还是兄弟仓？
 2. 内核还是插件？
 3. 源码还是运行产物？
-4. 现行主线文档还是历史资料？
+4. 运维文档还是开发文档？
 
 ## 相关
 

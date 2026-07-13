@@ -28,10 +28,10 @@ pre-commit 策略：**全仓**基础文件卫生检查；**Ruff 覆盖 `pallas/`
 - **开发指南**：[docs/develop/README.md](docs/develop/README.md)（环境、流程、插件与 WebUI）。
 - **插件专项说明**：[docs/plugins/README.md](docs/plugins/README.md)（各子目录 `README.md` 与 `packages/<name>/` 对应）。
 - **命令权限（cmd_perm）**：[docs/common/cmd_perm/README.md](docs/common/cmd_perm/README.md)（可配置等级、WebUI 覆盖、帮助菜单「何人可用」）。
-- **运行配置存储**：[docs/architecture/settings-storage.md](docs/architecture/settings-storage.md)（`pallas.toml` + `webui.json`，勿再向根目录 `.env` 写入新项）。
-- **`pallas/` 内核分层**：[docs/architecture/common-layers.md](docs/architecture/common-layers.md)（3.x 历史对照 → 现行 `pallas/core`）
-- **内核插件统一化**：[docs/architecture/core-plugin-unification-design.md](docs/architecture/core-plugin-unification-design.md)（core golden 模板、`pb_*` 命名、分期 PR）。
-- **热重载分级**：[docs/architecture/hot-reload-tiers.md](docs/architecture/hot-reload-tiers.md)（配置 / 元数据 / 代码；`reload_policy`）。
+- **运行配置存储**：[docs/developer/architecture/config-storage.md](docs/developer/architecture/config-storage.md)（`pallas.toml` + `webui.json`，勿再向根目录 `.env` 写入新项）。
+- **`pallas/` 内核分层**：[docs/developer/architecture/overview.md](docs/developer/architecture/overview.md)（3.x 历史对照 → 现行 `pallas/core`）
+- **内核插件统一化**：[docs/developer/plugin-development/golden-plugin.md](docs/developer/plugin-development/golden-plugin.md)（core golden 模板、`pb_*` 命名、分期 PR）。
+- **热重载分级**：[docs/developer/plugin-development/reload-and-activation.md](docs/developer/plugin-development/reload-and-activation.md)（配置 / 元数据 / 代码；`reload_policy`）。
 - **常见问题与部署排障**：[docs/FAQ.md](docs/FAQ.md)。
 
 ## 运行配置（Agent 必读）
@@ -112,7 +112,7 @@ packages/<name>/
 - **口令型**：`plugin_sdk.message_command` + `bind_alias_handlers`；`command_permissions` / `command_limits` / `menu_data` 与命令 ID 一致。
 - **维护者向、无群口令**：`help_audience: maintainer`；说明写在 `menu_data` 或 WebUI 通用配置段（如 `pb_stats` → 段 ID `community_stats`）。
 - **配置热载**：插件页用 `install_hot_reload_config`；横切项在 `env_sections.py` 注册通用段。
-- **元数据热载**：频繁改 help/ingress 声明时设 `extra["reload_policy"]: "metadata"`（见 [hot-reload-tiers.md](docs/architecture/hot-reload-tiers.md)）。
+- **元数据热载**：频繁改 help/ingress 声明时设 `extra["reload_policy"]: "metadata"`（见 [hot-reload-tiers.md](docs/developer/plugin-development/reload-and-activation.md)）。
 - **分片**：hub-only 逻辑在 `startup.py` 用 `is_sharded_worker()` 守卫；hub 显式名单见 `roles.HUB_PLUGIN_MODULES`。
 
 完整 checklist：[docs/skills/pallas-plugin-development/references/08-golden-plugin-checklist.md](docs/skills/pallas-plugin-development/references/08-golden-plugin-checklist.md)。

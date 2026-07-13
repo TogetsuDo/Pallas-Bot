@@ -63,4 +63,4 @@
 | `backup.sh` / `backup_pg.sh` | shell 备份入口 |
 | `clear_old_image.py` | 清理旧画图缓存 |
 
-分片详情见 [多进程分片](../docs/architecture/bot_process_sharding.md)。
+分片详情见 [多进程分片](../docs/maintainer/deploy/sharded.md)。

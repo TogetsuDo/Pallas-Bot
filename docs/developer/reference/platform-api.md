@@ -46,4 +46,4 @@
 - [Internal API](internal-api.md)
 - [pallas.api Cookbook](../plugin-development/pallas-api-cookbook.md)
 - [分片运行时](../architecture/shard-runtime.md)
-- [包布局](../../architecture/internal/pallas-package-layout.md)
+- [包布局](../../developer/reference/repo-layout.md)

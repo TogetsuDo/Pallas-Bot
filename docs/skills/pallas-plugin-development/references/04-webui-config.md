@@ -52,7 +52,7 @@ extra={
 }
 ```
 
-改 Python 代码仍须重启；`full` 目前行为同 `metadata`。详见 [热重载分级](../../architecture/hot-reload-tiers.md)。
+改 Python 代码仍须重启；`full` 目前行为同 `metadata`。详见 [Reload 与 Activation](../../developer/plugin-development/reload-and-activation.md)。
 
 ## 4.6 通用配置段（非单插件页）
 

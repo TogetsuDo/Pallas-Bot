@@ -3,7 +3,7 @@
 启动前核对 **`config/pallas.toml`** 与 `data/` 持久化目录。
 
 ::: tip 导航
-[配置存储](architecture/settings-storage.md) · [标准部署](Deployment.md) · [Docker 部署](DockerDeployment.md) · [FAQ](FAQ.md)
+[配置存储](developer/architecture/config-storage.md) · [标准部署](Deployment.md) · [Docker 部署](DockerDeployment.md) · [FAQ](FAQ.md)
 :::
 
 ## 最少能跑
@@ -143,7 +143,7 @@ uv run python tools/migrate_env_to_pallas.py
 - `data/pallas_console/`
 - 整个 `data/`（含协议端实例、分片状态）
 
-恢复时保持路径与挂载一致；Docker 见 [配置存储 · Docker 挂载](architecture/settings-storage.md)。
+恢复时保持路径与挂载一致；Docker 见 [配置存储 · Docker 挂载](developer/architecture/config-storage.md)。
 :::
 
 ---
@@ -154,5 +154,5 @@ uv run python tools/migrate_env_to_pallas.py
 | --- | --- |
 | 分步部署验收 | [标准部署](Deployment.md) |
 | Docker 挂载与卷 | [Docker 部署](DockerDeployment.md) |
-| 合并顺序与热重载 | [配置存储](architecture/settings-storage.md) |
-| 站点插件与扩展 | [站点定制](architecture/site-customization-and-updates.md) |
+| 合并顺序与热重载 | [配置存储](developer/architecture/config-storage.md) |
+| 站点插件与扩展 | [站点定制](maintainer/deploy/upgrade.md) |

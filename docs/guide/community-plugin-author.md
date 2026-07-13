@@ -82,7 +82,7 @@ my_plugin/
 
 **推荐**：仓库放 `assets/icon.png`（可选 `cover.webp`、`avatar.png`），索引只写 `repository` 即可；装到 `local/plugins` 后控制台直接读包内文件。
 
-包内路径规则：[插件目录约定 · 包内视觉资源](../architecture/plugin-convention.md#插件包内视觉资源assets)。
+包内路径规则：[Golden Plugin · 包内视觉资源](../developer/plugin-development/golden-plugin.md#包内视觉资源assets)。
 
 索引单条示例（追加到 `index.json` 的 `plugins`）：
 
@@ -196,7 +196,7 @@ COMMUNITY_PLUGIN_INDEX_URL = "https://example.com/my-guild-index.json"
 | 项 | 位置 |
 | --- | --- |
 | 商店使用 | [community-plugin-store.md](community-plugin-store.md) |
-| 站点 `local/plugins` | [站点定制](../architecture/site-customization-and-updates.md) |
+| 站点 `local/plugins` | [站点定制](../maintainer/deploy/upgrade.md) |
 | 索引加载 | `src/console/webui/community_plugin_index.py` |
 | Git 安装 | `src/console/webui/community_plugin_install.py` |
 | 作者工具 | `tools/community_plugin_author.py` |

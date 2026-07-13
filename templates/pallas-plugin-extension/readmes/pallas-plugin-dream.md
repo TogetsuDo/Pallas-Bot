@@ -21,7 +21,7 @@ uv sync --extra plugins-dream
 - **hub 与每个 worker 须安装相同版本**；共享 **`data/`** 与 Redis 协调层。
 - 梦话漂流经本体 **`plugin_coord.dream`**；未安装扩展时不影响 core。
 
-详见：[多进程分片](https://PallasBot.github.io/Pallas-Bot-Docs/architecture/bot-process-sharding)
+详见：[多进程分片](https://PallasBot.github.io/Pallas-Bot-Docs/maintainer/deploy/sharded)
 
 ## 功能说明
 

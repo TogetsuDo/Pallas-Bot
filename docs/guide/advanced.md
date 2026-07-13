@@ -7,7 +7,7 @@
 | 文档 | 你会搞懂 |
 | --- | --- |
 | [理解架构](concepts.md) | 协议端、Pallas-Bot、库、控制台怎么串 |
-| [配置存储](../architecture/settings-storage.md) | `pallas.toml` 和 `webui.json` 谁覆盖谁 |
+| [配置存储](../developer/architecture/config-storage.md) | `pallas.toml` 和 `webui.json` 谁覆盖谁 |
 | [运维入口](../maintainer/quickstart.md) / [开发](../developer/index.md) | 正式文档主线 |
 
 ## 要上 VPS / 生产
@@ -36,8 +36,8 @@
 
 | 文档 | 你会搞懂 |
 | --- | --- |
-| [多进程分片](../architecture/bot_process_sharding.md) | hub、worker、Redis |
-| [站点定制](../architecture/site-customization-and-updates.md) | 更新时不弄丢自己的插件 |
+| [多进程分片](../maintainer/deploy/sharded.md) | hub、worker、Redis |
+| [站点定制](../maintainer/deploy/upgrade.md) | 更新时不弄丢自己的插件 |
 | [AI 扩展](ai.md) | 怎么接 Pallas-Bot-AI |
 | [语料联邦](../common/corpus/README.md) | 跨群接话库（多数站可跳过） |
 

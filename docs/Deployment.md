@@ -3,7 +3,7 @@
 面向 **VPS / 本机长期运行**。只想先跑通请看 [五分钟跑起来](guide/quickstart.md)。
 
 ::: tip 导航
-[五分钟跑起来](guide/quickstart.md) · [Docker](DockerDeployment.md) · [配置](Config.md) · [连接 QQ](guide/connect-qq.md) · [分片](architecture/bot_process_sharding.md) · [FAQ](FAQ.md)
+[五分钟跑起来](guide/quickstart.md) · [Docker](DockerDeployment.md) · [配置](Config.md) · [连接 QQ](guide/connect-qq.md) · [分片](maintainer/deploy/sharded.md) · [FAQ](FAQ.md)
 :::
 
 ## 部署前检查清单
@@ -20,7 +20,7 @@
 | 工具 | `git`、`Python 3.12+`（或由 `uv` 自动安装）、[`uv`](https://docs.astral.sh/uv/) |
 | 配置 | 将准备 **`config/pallas.toml`**（从示例复制，**非可选项**） |
 
-> 多牛、高负载生产环境可选用 [多进程分片](architecture/bot_process_sharding.md) 或 [Docker 部署](DockerDeployment.md)。
+> 多牛、高负载生产环境可选用 [多进程分片](maintainer/deploy/sharded.md) 或 [Docker 部署](DockerDeployment.md)。
 
 ---
 
@@ -108,7 +108,7 @@ uv run python tools/migrate_env_to_pallas.py
 
 **如何确认成功**：`config/pallas.toml` 为**文件**（非目录），且 `superusers`、数据库段已填写。勿将含密钥的文件提交到 git。
 
-插件与通用项可在首次启动后于 Web 控制台修改（落盘 `data/pallas_config/webui.json`），详见 [配置要点](Config.md) 与 [配置存储](architecture/settings-storage.md)。
+插件与通用项可在首次启动后于 Web 控制台修改（落盘 `data/pallas_config/webui.json`），详见 [配置要点](Config.md) 与 [配置存储](developer/architecture/config-storage.md)。
 
 ---
 
@@ -211,7 +211,7 @@ WantedBy=multi-user.target
 - **更新**：`git pull` + `uv sync` + 重启；Docker 见 [Docker 部署](DockerDeployment.md)
 :::
 
-自定义请尽量只改 **`config/pallas.toml`**、**`data/`**、**`local/plugins/`**。见 [站点定制与更新](architecture/site-customization-and-updates.md)。
+自定义请尽量只改 **`config/pallas.toml`**、**`data/`**、**`local/plugins/`**。见 [升级与站点定制](maintainer/deploy/upgrade.md)。
 
 ---
 
@@ -219,7 +219,7 @@ WantedBy=multi-user.target
 
 同一台机器长期运行**多只牛牛**且单进程卡顿时，可使用 **hub + worker**，共用 **`data/`** 与同一份 **`config/pallas.toml`**。
 
-- 启动：`./scripts/run_sharded_bot.sh start`（详见 [多进程分片架构说明](architecture/bot_process_sharding.md)）。
+- 启动：`./scripts/run_sharded_bot.sh start`（详见 [多进程分片架构说明](maintainer/deploy/sharded.md)）。
 - Redis：**必需**；请先配置 `REDIS_URL` 并安装 `coord-redis` / `deploy-shard`，否则分片 claim 无法正常工作。
 - 控制台与协议端管理仅访问 **hub** 端口（默认 `8088`）。
 - 切换前请备份 `data/`；Docker 示例见 [Docker 部署 · 多进程分片](DockerDeployment.md#多进程分片可选)。

@@ -128,9 +128,71 @@
 别把协议端、AI Runtime、WebUI 和主仓升级，混成一条不可回退的黑盒流程。
 :::
 
+## 站点定制：更新时不丢本地改动
+
+| 内容 | 放哪里 | 更新主仓时 |
+| --- | --- | --- |
+| 监听、数据库、超管 | `config/pallas.toml` | 不动 |
+| 插件 / 通用配置 | `data/pallas_config/webui.json` | 不动 |
+| 运行数据、协议实例 | `data/` | 不动 |
+| 站点自有插件 | `local/plugins/` + `extra_plugin_dirs` | 不动 |
+
+避免直接改已跟踪源码；否则「应用 Bot 更新」需要 stash / 手工合并。
+
+### 站点自有插件
+
+1. 在 `local/plugins/<插件名>/` 按 NoneBot 插件结构放置代码
+2. 在 `config/pallas.toml` 设置：
+
+```toml
+[bootstrap]
+extra_plugin_dirs = ["local/plugins"]
+```
+
+3. 重启 Bot（分片需重启 hub 与对应 worker）
+4. 与官方扩展 / 内置插件同名时 **优先加载 local**
+
+社区插件商店与官方扩展商店见 [社区插件商店](../../guide/community-plugin-store.md)、[安装插件](../../guide/install-plugins.md)。
+
+### 部署形态与更新方式
+
+控制台「版本与更新 → Bot 本体」检测 `deployment_mode`：
+
+| 模式 | 含义 | 推荐更新 |
+| --- | --- | --- |
+| `docker` | 非 git 工作副本 | `docker compose pull` + `up -d` |
+| `release_tag` | HEAD 在 Release tag 且干净 | WebUI「应用 Bot 更新」或 `git checkout --detach vX.Y.Z` |
+| `release_tag_dirty` | tag 上有本地改动 | 先迁定制到 `local/`；更新会 stash → checkout → stash pop |
+| `dev_clone` | 非精确 tag（如 `main`） | `git pull --ff-only --autostash` |
+
+Docker 可挂载 `./pallas-bot/local/plugins:/app/local/plugins`；镜像更新只替换代码，挂载的插件与 `data/`、`config/` 保留。
+
+### Docker 外挂插件卷
+
+[`docker-compose.yml`](https://github.com/PallasBot/Pallas-Bot/blob/main/docker-compose.yml) 可选挂载：
+
+```yaml
+- ./pallas-bot/local/plugins:/app/local/plugins
+```
+
+宿主机 `pallas-bot/config/pallas.toml` 中设置 `extra_plugin_dirs = ["local/plugins"]`。
+
+### 生产门禁：重复命令 prefix
+
+同时使用 local 整包覆盖与官方扩展时，可能出现同一口令被多个模块注册。生产建议：
+
+```toml
+[env]
+PALLAS_DUPLICATE_PREFIX_STRICT = "true"
+```
+
+检测到冲突时阻断启动。
+
 ## 相关阅读
 
 - [运维入口](../quickstart.md)
+- [配置参考](../reference/config.md)
+- [配置存储](../../developer/architecture/config-storage.md)
 - [WebUI](../install/webui.md)
 - [协议端](../install/protocol.md)
 - [LLM 与 AI 运维](../operate/llm-and-ai.md)

@@ -1,6 +1,17 @@
 # 分片运行时
 
-分片编码合同。部署脚本见 [maintainer/deploy/sharded](../../maintainer/deploy/sharded.md)。架构细节：[bot_process_sharding](../../architecture/bot_process_sharding.md)、[central-ingress-dispatch](../../architecture/internal/central-ingress-dispatch.md)。
+分片编码合同。部署与启停见 [分片部署](../../maintainer/deploy/sharded.md)。
+
+## 何时用分片
+
+单进程承载十余只及以上账号、事件循环或连接池压力明显时，在共享同一 `data/` 的前提下拆为 **1 hub + N worker**。仅 1～2 只账号时继续单进程即可。
+
+| 进程 | 职责 |
+| --- | --- |
+| Hub | WebUI、协议端管理、注册表、AI/MAA 回调入口；不接牛牛反向 WebSocket |
+| Worker | 群消息与玩法主路径；每进程约 `PALLAS_SHARD_BOTS_PER` 只账号 |
+
+跨进程 claim 依赖 Redis（`REDIS_URL` / `PALLAS_COORD_REDIS_URL`）；与 AI 仓可共用。详见 [分片部署](../../maintainer/deploy/sharded.md)。
 
 ## 拓扑
 

@@ -32,7 +32,7 @@ uv sync --extra plugins-protocol
 - 各牛牛账号的 `ws_url` 指向所属 **worker** 端口；共享 **`data/`**。
 - `run_sharded_bot.sh start` 会同步注册表与协议端配置。
 
-详见：[多进程分片](https://PallasBot.github.io/Pallas-Bot-Docs/architecture/bot-process-sharding)
+详见：[多进程分片](https://PallasBot.github.io/Pallas-Bot-Docs/maintainer/deploy/sharded)
 
 ## 功能说明
 

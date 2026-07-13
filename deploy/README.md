@@ -5,7 +5,7 @@
 | 模板 | uv 依赖 | 应用配置 | 说明 |
 | --- | --- | --- | --- |
 | `default` | `uv sync` | — | 单进程 |
-| `shard` | `uv sync --extra deploy-shard` | `uv run python tools/apply_deploy_profile.py shard` | hub + worker；见 [分片架构](docs/architecture/bot_process_sharding.md) |
+| `shard` | `uv sync --extra deploy-shard` | `uv run python tools/apply_deploy_profile.py shard` | hub + worker；见 [分片架构](docs/maintainer/deploy/sharded.md) |
 
 `deploy-shard` 与既有 `coord-redis` 均安装 `redis`；分片仅文件 claim 时可 `uv sync --extra shard`（无额外包）。
 

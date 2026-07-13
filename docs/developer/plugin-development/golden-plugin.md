@@ -92,14 +92,36 @@ get_config = plugin_webui.get
 | 维护者向（如 `pb_webui`、`pb_protocol`、`pb_stats`） | 可无群口令；`help_audience: maintainer`；说明落在 WebUI / 通用配置段 |
 | 群口令插件 | `handlers.py` + 完整 `menu_data` / 权限 / 冷却 |
 
-## 存储
+## 存储与路径
 
 | 场景 | API |
 | --- | --- |
 | 结构化状态 | `pallas.api.storage`（`get_plugin_storage` / `set_plugin_storage`） |
 | 大文件 / 缓存 / 导出 | `pallas.api.paths.plugin_data_dir` |
+| 全局资源 | `pallas.api.paths.resource_dir` |
 
-禁止硬编码散落相对路径与私有 JSON 布局。
+禁止硬编码散落相对路径与私有 JSON 布局。数据落 `data/<plugin_name>/`，资源落 `resource/`。
+
+复杂度上升时优先按业务能力拆文件（如 `renderer.py`、`ban_manager.py`）；边界清晰后再引入 `services/`、`repositories.py`。
+
+## 包内视觉资源（assets）
+
+控制台插件列表、商店与帮助图共用 `resolve_catalog_visuals()`。优先在包内放置：
+
+| 角色 | 推荐路径 |
+| --- | --- |
+| cover | `assets/cover.png` / `assets/cover.webp` |
+| icon | `assets/icon.png` / `assets/icon.webp` |
+| avatar | `assets/avatar.png` |
+
+对外 URL：`/pallas/plugin-assets/<plugin_id>/…`。无包内文件时回退商店快照与远程 URL。
+
+## 命令权限文案
+
+- `usage`、`menu_data.trigger_condition` **不写死**「群管 / 群主」等角色；「何人可用」由 `command_permission(s)` 与 WebUI 覆盖生成
+- 与发送者权限无关的条件（如本 Bot 须为 QQ 群管）写在 `detail_des` 或插件 README
+
+详见 [cmd_perm](../../common/cmd_perm/README.md)。
 
 ## 交付物
 
@@ -121,5 +143,6 @@ get_config = plugin_webui.get
 - [入门](getting-started.md)
 - [配置与 WebUI](config-and-webui.md)
 - [元数据](metadata.md)
+- [Reload 与 Activation](reload-and-activation.md)
 - [测试](testing.md)
-- [内核插件统一化](../../architecture/internal/core-plugin-unification-design.md)
+- [插件治理](../architecture/plugin-governance.md)

@@ -145,4 +145,4 @@
 - [命令权限](command-permissions.md)
 - [运维 API](../reference/api.md)
 - [开发者侧插件治理概览](../../developer/architecture/plugin-governance.md)
-- [热重载分级](../../architecture/hot-reload-tiers.md)
+- [热重载分级](../../developer/plugin-development/reload-and-activation.md)

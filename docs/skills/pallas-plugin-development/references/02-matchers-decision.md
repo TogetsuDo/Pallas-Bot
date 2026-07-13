@@ -126,8 +126,8 @@ await refresh_command_cooldown(event, "my_plugin.demo", 10)
 多进程分片或中央入站调度下，部分插件需声明 shard 行为或走 ingress gate。涉及：
 
 - `ingress_gate` 插件
-- `docs/architecture/central-ingress-dispatch.md`
-- `docs/architecture/bot_process_sharding.md`
+- `docs/developer/architecture/shard-runtime.md`
+- `docs/maintainer/deploy/sharded.md`
 
 **默认新插件**按单 matcher 编写即可；只有「全群消息洪峰」「多牛同群」类功能才需提前读上述文档。
 
