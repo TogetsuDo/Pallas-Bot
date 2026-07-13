@@ -169,15 +169,22 @@ async def _load_rules_for(action: str, target: str | None) -> list[Any]:
 def _rule_matches(rule: Any, action: str, target: str, subject: AclSubject) -> bool:
     if rule.action != action:
         return False
-    if rule.target != "*" and rule.target != target:
-        return False
+    rule_target = getattr(rule, "target", None) or ""
+    if rule_target != "*" and rule_target != target:
+        # 兼容规则写裸 command_id、评估传 cmd./plugin. 前缀（或相反）
+        bare = target.split(".", 1)[-1] if "." in target else target
+        if rule_target not in {bare, f"cmd.{bare}", f"plugin.{bare}"}:
+            if target not in {rule_target, f"cmd.{rule_target}", f"plugin.{rule_target}"}:
+                return False
     scope = getattr(rule, "target_scope", "全局")
     if scope != "全局":
         prefix = "cmd" if scope == "指令" else "plugin" if scope == "插件" else None
         if prefix is None:
             return False
-        if target != "*" and not target.startswith(prefix + "."):
-            return False
+        if target != "*":
+            has_prefix = target.startswith(prefix + ".") or action.startswith(prefix + ".")
+            if not has_prefix:
+                return False
     if not _role_matches(rule.role, subject):
         return False
     rule_subject = getattr(rule, "subject", None)

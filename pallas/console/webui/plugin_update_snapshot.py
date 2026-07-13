@@ -22,9 +22,11 @@ _SNAPSHOT_FILENAME = "plugin_update_snapshot.json"
 
 
 def _snapshot_path():
-    from packages.pb_webui.data_dir import pb_webui_data_dir
+    # 直接走 foundation 路径，避免 import packages.pb_webui
+    # （预导入会让后续 nonebot.load_plugin 报 already exists / not loaded as plugin）
+    from pallas.core.foundation.paths import plugin_data_dir
 
-    return pb_webui_data_dir() / _SNAPSHOT_FILENAME
+    return plugin_data_dir("pb_webui") / _SNAPSHOT_FILENAME
 
 
 def load_snapshot() -> dict[str, Any]:

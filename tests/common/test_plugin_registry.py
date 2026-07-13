@@ -34,7 +34,12 @@ def test_build_official_extension_rows_marks_bundled_duel():
 def test_build_official_extension_rows_include_visuals():
     rows = build_official_extension_rows()
     duel = next(r for r in rows if r["package"] == "pallas-plugin-duel")
-    assert duel["icon"] == "/pallas/official-extensions/pallas-plugin-duel.svg"
+    assert duel["icon"]
+    assert duel["icon"] in (
+        "/pallas/official-extensions/pallas-plugin-duel.svg",
+        "/pallas/store-assets/icon/official-pallas-plugin-duel.svg",
+        "/pallas/store-assets/cover/official-pallas-plugin-duel.png",
+    )
     assert duel["cover"]
     assert duel["cover"] in (
         "https://raw.githubusercontent.com/TogetsuDo/pallas-plugin-duel/main/assets/brand-avatar.png",

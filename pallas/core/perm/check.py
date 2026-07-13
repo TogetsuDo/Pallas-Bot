@@ -38,9 +38,11 @@ async def satisfies_command_permission(bot: Bot, event: Event, command_id: str) 
         gid = None
 
     action = f"cmd.{command_id}"
+    # 与 target_scope=指令 约定一致：target 带 cmd. 前缀
+    target = f"cmd.{command_id}"
     subject = AclSubject(user_id=uid, group_id=gid, bot_id=sid)
     try:
-        decision = await evaluate_acl(action=action, target=command_id, subject=subject)
+        decision = await evaluate_acl(action=action, target=target, subject=subject)
         if decision.source == "rule":
             return decision.allow
         if decision.source == "admin_bypass":
