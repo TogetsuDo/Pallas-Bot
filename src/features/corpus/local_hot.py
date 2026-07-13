@@ -149,9 +149,16 @@ async def aggregate_local_hot_keywords_mongo(
     limit: int,
     answers_per_keyword: int,
 ) -> list[dict[str, Any]]:
-    from src.foundation.db.modules import Context
+    from pydantic import BaseModel, Field
 
-    contexts = await Context.find_all().project(Context.keywords, Context.answers).to_list()
+    from src.foundation.db.modules import Answer, Context
+
+    # Beanie 2.x：project() 只接受单一 projection model，不能传多个字段表达式
+    class _ContextHotProjection(BaseModel):
+        keywords: str = ""
+        answers: list[Answer] = Field(default_factory=list)
+
+    contexts = await Context.find_all().project(_ContextHotProjection).to_list()
     buckets: dict[str, dict[str, Any]] = {}
     for ctx in contexts:
         label = plain_message_text(ctx.keywords)
