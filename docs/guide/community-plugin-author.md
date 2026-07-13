@@ -1,6 +1,6 @@
 # 写社区插件并上架
 
-这页给 **第三方 NoneBot 插件**作者：让站点能发现、安装你的插件，以及怎么自检、提交索引。
+要让站点发现并安装你的插件：先过目录约定，再用 CLI 自检，最后向索引仓提 PR。
 
 管理员怎么装：[社区插件商店](community-plugin-store.md)。插件结构：[Golden Plugin](../developer/plugin-development/golden-plugin.md)。
 

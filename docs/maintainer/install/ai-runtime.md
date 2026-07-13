@@ -1,6 +1,6 @@
 # AI Runtime
 
-这页帮你接入 AI Runtime，并在它没反应时分清问题出在哪一侧。
+接入 AI Runtime；没反应时分清问题在 Bot 侧还是 AI 侧。
 
 AI Runtime 由独立仓负责，Bot 通过回调和运行时协议跟它协作。把它当成“独立服务”，不是主仓里的普通插件。
 

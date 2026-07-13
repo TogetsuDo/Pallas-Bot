@@ -1,7 +1,5 @@
 # 连接 QQ / 协议端
 
-这页帮你把 QQ 接到 Pallas-Bot 上。
-
 **Pallas-Bot 不直接登录 QQ。** 路径是：
 
 ```text

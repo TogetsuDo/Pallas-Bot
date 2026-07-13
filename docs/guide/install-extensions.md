@@ -1,7 +1,6 @@
 # 安装官方扩展
 
-这页只讲 **官方扩展 pip 包**（决斗、MAA 等）。  
-自己写的、第三方的见 [安装插件](install-plugins.md)。
+**官方扩展**是 pip 包（决斗、MAA 等）。自己写的、第三方的见 [安装插件](install-plugins.md)。
 
 ::: tip 先分清两样东西
 - **core**（复读、帮助、控制台…）：`uv run nb run` 就有，不用装
