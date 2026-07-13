@@ -11,8 +11,10 @@ from pallas.core.foundation.config import user_is_admin_of_any_bot, user_is_bot_
 
 from .acl import AclSubject, evaluate_acl
 from .config import get_cmd_perm_config
+from .plugin_acl import plugin_acl_key
 from .registry import resolved_level
 from .runtime_meta import mark_command_permission_meta
+from .ui_labels import plugin_name_for_command_id
 
 
 async def satisfies_command_permission(bot: Bot, event: Event, command_id: str) -> bool:
@@ -37,18 +39,24 @@ async def satisfies_command_permission(bot: Bot, event: Event, command_id: str) 
     else:
         gid = None
 
+    subject = AclSubject(user_id=uid, group_id=gid, bot_id=sid)
+    plugin_key = plugin_acl_key(plugin_name_for_command_id(command_id))
     action = f"cmd.{command_id}"
     # 与 target_scope=指令 约定一致：target 带 cmd. 前缀
     target = f"cmd.{command_id}"
-    subject = AclSubject(user_id=uid, group_id=gid, bot_id=sid)
     try:
+        plugin_decision = await evaluate_acl(action=plugin_key, target=plugin_key, subject=subject)
+        if plugin_decision.source == "rule":
+            return plugin_decision.allow
+        if plugin_decision.source == "admin_bypass":
+            return True
         decision = await evaluate_acl(action=action, target=target, subject=subject)
         if decision.source == "rule":
             return decision.allow
         if decision.source == "admin_bypass":
             return True
     except Exception:
-        decision = None  # 引擎异常时回到 legacy cmd_perm
+        pass  # 引擎异常时回到 legacy cmd_perm
 
     cfg = get_cmd_perm_config()
     level = resolved_level(command_id, cfg.command_permission_overrides)

@@ -7,6 +7,8 @@ from nonebot.exception import IgnoredException
 from nonebot.internal.matcher import Matcher
 from nonebot.message import event_preprocessor, run_preprocessor
 
+from pallas.core.perm.acl import AclSubject, evaluate_acl
+from pallas.core.perm.plugin_acl import plugin_acl_key
 from pallas.core.platform.ingress.plugin_command_plaintext import is_plugin_command_plaintext
 from pallas.core.platform.ingress.policy_registry import text_matches_plugin_fanout
 from pallas.core.platform.multi_bot.dedup import try_claim_cross_bot_message
@@ -109,6 +111,23 @@ async def check_plugin_enabled(matcher: Matcher, bot: Bot, event: GroupMessageEv
 
     event_id = f"{bot.self_id}_{event.message_id}_{event.group_id}"
     group_id = event.group_id
+
+    try:
+        uid = int(event.user_id)
+    except Exception:
+        uid = None
+    if uid is not None:
+        plugin_key = plugin_acl_key(plugin_name)
+        acl_decision = await evaluate_acl(
+            action=plugin_key,
+            target=plugin_key,
+            subject=AclSubject(user_id=uid, group_id=group_id, bot_id=bot_id),
+        )
+        if acl_decision.source == "admin_bypass":
+            return
+        if acl_decision.source == "rule" and not acl_decision.allow:
+            logger.debug("bot [{}] plugin [{}] blocked for uid={} by acl", bot_id, plugin_name, uid)
+            raise IgnoredException(f"Plugin {plugin_name} blocked for user")
 
     disabled_names = _blocked_events.get(event_id)
     if disabled_names is None:

@@ -73,6 +73,14 @@ def test_plugin_governance_get_returns_commands_and_runtime(monkeypatch) -> None
     )
     monkeypatch.setattr("packages.help.visibility.load_help_hidden_plugins", lambda: ["help", "sing"])
     monkeypatch.setattr("packages.help.global_disable.load_global_disabled_plugins", lambda: ["sing"])
+
+    async def fake_list_blocked(_plugin: str) -> list[int]:
+        return [111, 222]
+
+    monkeypatch.setattr(
+        "pallas.core.perm.plugin_acl.list_plugin_blocked_user_ids",
+        fake_list_blocked,
+    )
     monkeypatch.setattr(
         "pallas.core.perm.schema.build_command_perm_ui",
         lambda _overrides: {
@@ -130,6 +138,7 @@ def test_plugin_governance_get_returns_commands_and_runtime(monkeypatch) -> None
     assert payload["data"]["perm_ui_filtered"]["levels"] == []
     assert payload["data"]["perm_ui_filtered"]["plugins"][0]["commands"][0]["command_id"] == "sing.play"
     assert payload["data"]["limits_ui_filtered"]["plugins"][0]["commands"][0]["command_id"] == "sing.play"
+    assert payload["data"]["blocked_user_ids"] == [111, 222]
     assert payload["data"]["activation_policy"] == "workers-restart"
 
 
@@ -176,6 +185,16 @@ def test_plugin_governance_put_filters_only_plugin_prefix(monkeypatch) -> None:
     )
     monkeypatch.setattr(mod, "drop_read_cache", lambda *a, **k: None)
 
+    async def fake_sync_blocked(plugin: str, user_ids: list[int]) -> list[int]:
+        assert plugin == "sing"
+        assert user_ids == [333]
+        return [333]
+
+    monkeypatch.setattr(
+        "pallas.core.perm.plugin_acl.sync_plugin_blocked_user_ids",
+        fake_sync_blocked,
+    )
+
     client = _build_client(monkeypatch)
     response = client.put(
         "/pallas/api/plugins/sing/governance",
@@ -190,6 +209,7 @@ def test_plugin_governance_put_filters_only_plugin_prefix(monkeypatch) -> None:
             },
             "global_disable": True,
             "help_hidden": True,
+            "blocked_user_ids": [333],
         },
     )
 
@@ -203,6 +223,7 @@ def test_plugin_governance_put_filters_only_plugin_prefix(monkeypatch) -> None:
     assert cleared == {"perm": True, "limits": True}
     assert payload["data"]["runtime"]["global_disable"] is True
     assert payload["data"]["runtime"]["help_hidden"] is True
+    assert payload["data"]["blocked_user_ids"] == [333]
 
 
 def test_plugin_governance_put_keeps_existing_overrides_and_honors_alias_prefix(monkeypatch) -> None:
@@ -243,6 +264,14 @@ def test_plugin_governance_put_keeps_existing_overrides_and_honors_alias_prefix(
     )
     monkeypatch.setattr(mod, "drop_read_cache", lambda *a, **k: None)
 
+    async def fake_sync_blocked(_plugin: str, user_ids: list[int]) -> list[int]:
+        return user_ids
+
+    monkeypatch.setattr(
+        "pallas.core.perm.plugin_acl.sync_plugin_blocked_user_ids",
+        fake_sync_blocked,
+    )
+
     client = _build_client(monkeypatch)
     response = client.put(
         "/pallas/api/plugins/relogin_bot/governance",
@@ -254,6 +283,7 @@ def test_plugin_governance_put_keeps_existing_overrides_and_honors_alias_prefix(
             "command_limit_overrides": {},
             "global_disable": False,
             "help_hidden": False,
+            "blocked_user_ids": [],
         },
     )
 

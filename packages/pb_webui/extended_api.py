@@ -4204,6 +4204,7 @@ class _PluginGovernanceBody(BaseModel):
     command_limit_overrides: dict[str, int] = Field(default_factory=dict)
     global_disable: bool = False
     help_hidden: bool = False
+    blocked_user_ids: list[int] = Field(default_factory=list)
 
 
 class _GroupFleetWhitelistEntryBody(BaseModel):
@@ -5407,6 +5408,7 @@ def register_extended_api(
         from pallas.core.limits.config import get_command_limits_config, normalize_command_limit_overrides
         from pallas.core.limits.schema import build_command_limits_ui
         from pallas.core.perm.config import get_cmd_perm_config
+        from pallas.core.perm.plugin_acl import list_plugin_blocked_user_ids
         from pallas.core.perm.schema import build_command_perm_ui
         from pallas.core.plugin_capabilities import build_plugin_capabilities_ui
 
@@ -5468,6 +5470,7 @@ def register_extended_api(
             list(plugin_row.get("commands") or []),
             menu_items,
         )
+        blocked_user_ids = await list_plugin_blocked_user_ids(target)
         return {
             "ok": True,
             "data": {
@@ -5488,6 +5491,7 @@ def register_extended_api(
                 "limits_ui_filtered": {
                     "plugins": [limits_row] if limits_row else [],
                 },
+                "blocked_user_ids": blocked_user_ids,
                 "reload_policy": plugin_row.get("reload_policy"),
                 "activation_policy": plugin_row.get("activation_policy"),
             },
@@ -5514,6 +5518,7 @@ def register_extended_api(
         from pallas.console.webui.plugin_api import upsert_env_dotenv_items
         from pallas.core.limits.config import get_command_limits_config, normalize_command_limit_overrides
         from pallas.core.perm.config import get_cmd_perm_config
+        from pallas.core.perm.plugin_acl import sync_plugin_blocked_user_ids
         from pallas.core.perm.ui_labels import plugin_name_for_command_id
 
         target_ids = {
@@ -5583,6 +5588,8 @@ def register_extended_api(
         disabled_saved = save_global_disabled_plugins(sorted(disabled))
         await invalidate_disabled_plugin_gate_cache(clear_all=True)
 
+        blocked_saved = await sync_plugin_blocked_user_ids(target, list(body.blocked_user_ids or []))
+
         drop_read_cache(("plugins", "plugins-capabilities", "home-overview"))
         return JSONResponse({
             "ok": True,
@@ -5590,6 +5597,7 @@ def register_extended_api(
                 "plugin": target,
                 "command_permission_overrides": perm_overrides,
                 "command_limit_overrides": limit_overrides,
+                "blocked_user_ids": blocked_saved,
                 "runtime": {
                     "global_disable": target in disabled_saved,
                     "help_hidden": target in hidden_saved,

@@ -198,8 +198,19 @@ class PluginGovernanceData(BaseModel):
     runtime: PluginGovernanceRuntimeData
     perm_ui_filtered: dict[str, Any] = Field(default_factory=dict)
     limits_ui_filtered: dict[str, Any] = Field(default_factory=dict)
+    blocked_user_ids: list[int] = Field(default_factory=list)
     reload_policy: str | None = None
     activation_policy: str | None = None
+
+
+class PluginGovernanceBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    command_permission_overrides: dict[str, str] = Field(default_factory=dict)
+    command_limit_overrides: dict[str, int] = Field(default_factory=dict)
+    global_disable: bool = False
+    help_hidden: bool = False
+    blocked_user_ids: list[int] = Field(default_factory=list)
 
 
 class PluginConfigData(BaseModel):
