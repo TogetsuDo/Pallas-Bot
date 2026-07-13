@@ -29,19 +29,19 @@ uv sync --dev --extra coord-redis --extra pg
 
 `uv sync` 会在虚拟环境中注册 **`pallas`** 命令（见下文「统一运维 CLI」）。
 
-## uv sync 与官方扩展（必读）
+## uv sync 与官方插件（必读）
 
 **`uv sync` 会把 `.venv` 严格对齐 lockfile 当前解析结果**，并卸载不在本次 sync 范围内的包。下列内容**不在**默认 `uv sync` 里，裸跑 sync 可能被清掉：
 
 | 类别 | 典型包 | 如何装 |
 | --- | --- | --- |
-| 官方扩展（8 个） | `pallas-plugin-protocol`、`pallas-plugin-duel` 等 | `uv run pallas ext install <package>` 或 WebUI 插件商店 |
+| 官方插件（8 个） | `pallas-plugin-protocol`、`pallas-plugin-duel` 等 | `uv run pallas ext install <package>` 或 WebUI 插件商店 |
 | 分片 Redis 客户端 | `redis` | `uv sync --extra coord-redis` 或 `uv pip install 'redis>=5.2,<6'` |
 | PostgreSQL 驱动 | `sqlalchemy`、`asyncpg` | `uv sync --extra pg` 或 `uv pip install 'sqlalchemy[asyncio]>=2.0' 'asyncpg>=0.29'` |
 
 因此：
 
-- **不要**在已装官方扩展、已配分片/PostgreSQL 的环境里反复执行**裸** `uv sync` / `uv sync --frozen`（不带你实际用到的 `--extra`）。
+- **不要**在已装官方插件、已配分片/PostgreSQL 的环境里反复执行**裸** `uv sync` / `uv sync --frozen`（不带你实际用到的 `--extra`）。
 - **仅想注册 `pallas` CLI、不动其它 pip 包**时，用：
   ```bash
   uv pip install -e . --no-deps
@@ -49,7 +49,7 @@ uv sync --dev --extra coord-redis --extra pg
 - **必须 sync 本体依赖**时，带上全部 extras，sync 后再补扩展：
   ```bash
   uv sync --extra coord-redis --extra pg   # 按 pallas.toml 实际 backend 调整
-  uv run pallas ext list                   # 查看应装的官方扩展
+  uv run pallas ext list                   # 查看应装的官方插件
   # 对 listed 里 installed=no 的逐个：
   uv run pallas ext install pallas-plugin-protocol
   # …
@@ -97,7 +97,7 @@ pallas status --mode shard
 uv run pallas sync              # 包装 uv sync
 uv run pallas update bot        # git 更新本体（可加 --restart）
 uv run pallas update webui      # 下载 WebUI dist
-uv run pallas ext list          # 官方扩展
+uv run pallas ext list          # 官方插件
 uv run pallas plugin reload …   # 按 reload_policy 重载
 uv run pallas plugin community …  # 社区插件 git 安装/更新
 uv run pallas deploy shard      # 应用 deploy 分片模板
@@ -178,7 +178,7 @@ uv run pallas stop --mode unified
 
 生产或多进程场景见 [多进程分片](../maintainer/deploy/sharded.md)。本地若需验证分片：
 
-- 在 `pallas.toml` 的 `[env]` 配置 `REDIS_URL`（Python 端需 `redis` 包，见上文 [uv sync 与官方扩展](#uv-sync-与官方扩展必读)）
+- 在 `pallas.toml` 的 `[env]` 配置 `REDIS_URL`（Python 端需 `redis` 包，见上文 [uv sync 与官方插件](#uv-sync-与官方插件必读)）
 - 使用 `uv run pallas run shard`（会探测 Redis；worker 已运行时跳过重复启动）
 
 ```bash

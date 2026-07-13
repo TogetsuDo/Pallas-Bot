@@ -4,7 +4,7 @@
 
 协议端负责把 QQ 侧连接带进 Pallas 运行时。它不是“Bot 本体的一部分”，而是独立的一层接入运行时。
 
-4.0 下，协议端一般通过官方扩展 `pallas-plugin-protocol` 管理，并在 WebUI 里有控制台页面。
+4.0 下，协议端一般通过官方插件 `pallas-plugin-protocol` 管理，并在 WebUI 里有控制台页面。
 
 ## 先分清两层
 

@@ -14,7 +14,7 @@ Pallas-Bot 开发者入口。第一次跑通见 [五分钟跑起来](/guide/quic
 | 角色 | 顺序 |
 | --- | --- |
 | 社区 / 站点插件 | [首插件](plugin-development/first-plugin.md) → [入门](plugin-development/getting-started.md) → [配置](plugin-development/config-and-webui.md) → [发布](plugin-development/publishing.md) |
-| 官方扩展 | [Core vs 扩展](architecture/core-vs-extensions.md) → [Golden](plugin-development/golden-plugin.md) → [元数据](plugin-development/metadata.md) → [发布](plugin-development/publishing.md) |
+| 官方插件 | [Core vs 扩展](architecture/core-vs-extensions.md) → [Golden](plugin-development/golden-plugin.md) → [元数据](plugin-development/metadata.md) → [发布](plugin-development/publishing.md) |
 | 主仓 / 平台 | [架构总览](architecture/overview.md) → [分片](architecture/shard-runtime.md) → [配置存储](architecture/config-storage.md) → [治理](architecture/plugin-governance.md) |
 
 按身份短索引：[Author](author/index.md)。

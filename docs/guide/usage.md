@@ -21,7 +21,7 @@
 | `牛牛轮盘` | 轮盘；`牛牛救一下` / `牛牛补一枪` |
 | （自然接话） | 学群友说话后复读接话 |
 
-## 要先装官方扩展
+## 要先装官方插件
 
 | 你发 | 要先装 |
 | --- | --- |
@@ -30,7 +30,7 @@
 | `牛牛做梦` | `pallas-plugin-dream` |
 | MAA 远控 | `pallas-plugin-maa` |
 
-步骤：[安装官方扩展](install-extensions.md)。
+步骤：[安装官方插件](install-extensions.md)。
 
 ## 要另起 AI
 

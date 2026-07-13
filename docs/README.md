@@ -9,7 +9,7 @@
 | 你是谁 | 去哪 | 能解决什么 |
 | --- | --- | --- |
 | 第一次装 | [五分钟跑起来](guide/quickstart.md) | 本机跑通、连 QQ、群里能回话 |
-| 要装扩展 / AI | [把玩法 / AI 也装上](guide/4.0-start.md) | 官方扩展、AI、记忆 |
+| 要装扩展 / AI | [把玩法 / AI 也装上](guide/4.0-start.md) | 官方插件、AI、记忆 |
 | 号主 / VPS 运维 | [运维入口](maintainer/quickstart.md) | Docker、分片、升级、排障、配置 |
 | 插件作者 | [Developer](developer/index.md) | 架构、插件开发、发布 |
 | 群友查口令 | [口令与功能](guide/usage.md) | 帮助菜单与玩法 |
@@ -49,7 +49,7 @@ flowchart LR
 | --- | --- |
 | [五分钟跑起来](guide/quickstart.md) | 唯一「跑通」入口 |
 | [运维入口](maintainer/quickstart.md) | 部署 / 升级 / 排障索引（不重复装本体） |
-| [安装官方扩展](guide/install-extensions.md) | 装 / 卸扩展 |
+| [安装官方插件](guide/install-extensions.md) | 装 / 卸扩展 |
 | [分片部署](maintainer/deploy/sharded.md) | hub / worker / Redis |
 | [排障](maintainer/operate/troubleshooting.md) | 排查顺序 |
 | [写第一个插件](developer/plugin-development/first-plugin.md) | 开发入门 |

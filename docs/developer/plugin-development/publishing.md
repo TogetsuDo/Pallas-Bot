@@ -6,13 +6,13 @@
 
 | 路径 | 归属 | 交付物 | 细节 |
 | --- | --- | --- | --- |
-| 官方扩展 PyPI | Official | wheel、Git tag、README、semver | [extension-pypi-publish](../../develop/extension-pypi-publish.md) |
+| 官方插件 PyPI | Official | wheel、Git tag、README、semver | [extension-pypi-publish](../../develop/extension-pypi-publish.md) |
 | 社区生态分发 | Community | README、metadata、图标、索引/Git | [community-plugin-author](../../guide/community-plugin-author.md) |
 | 站点本地投放 | `local/plugins/` | 可维护目录 + 最小 README/metadata | 本页「本地」节 |
 
 Core 不按独立插件发行，随主仓版本。
 
-## 官方扩展
+## 官方插件
 
 | MUST | 检查 |
 | --- | --- |

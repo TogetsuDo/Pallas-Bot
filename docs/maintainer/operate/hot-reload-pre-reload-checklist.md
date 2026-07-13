@@ -1,6 +1,6 @@
 # 热重载 pre-reload 清理清单
 
-> 配合 [Reload 与 Activation](../../developer/plugin-development/reload-and-activation.md) 与官方扩展 `activation_policy`。WebUI 保存插件配置或执行 `POST /plugins/{name}/reload` 前，维护者按本清单自检。
+> 配合 [Reload 与 Activation](../../developer/plugin-development/reload-and-activation.md) 与官方插件 `activation_policy`。WebUI 保存插件配置或执行 `POST /plugins/{name}/reload` 前，维护者按本清单自检。
 
 ## 1. 配置级（`reload_policy: config_only`，默认）
 
@@ -40,7 +40,7 @@
 | `workers-restart` | 分片环境重启 Worker；单进程重启 Bot |
 | `full-restart` | 需全栈重启（含 hub / 协议端） |
 
-## 4. 官方扩展安装后
+## 4. 官方插件安装后
 
 `extension_install` / 商店安装返回 `needs_restart` 与 `activation_action` 时：
 

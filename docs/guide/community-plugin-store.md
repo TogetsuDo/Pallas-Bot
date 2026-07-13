@@ -3,7 +3,7 @@
 从策展索引浏览第三方插件，用 git 装到 `local/plugins/<id>/`。
 
 路径：控制台 **插件商店 → 社区插件**。  
-与 **官方扩展**（pip）并存；**同名时 `local/plugins` 优先**。
+与 **官方插件**（pip）并存；**同名时 `local/plugins` 优先**。
 
 ---
 
@@ -91,7 +91,7 @@ Docker 挂载见 [升级 · Docker 外挂插件](../maintainer/deploy/upgrade.md
 
 ---
 
-## 和官方扩展、`auto` bundled 的关系
+## 和官方插件、`auto` bundled 的关系
 
 | 类型 | 安装方式 | 加载优先级 |
 | --- | --- | --- |
@@ -99,7 +99,7 @@ Docker 挂载见 [升级 · Docker 外挂插件](../maintainer/deploy/upgrade.md
 | 官方 pip 扩展 | `uv sync --extra` / 商店一键装 | 中 |
 | 仓库内 `src/plugins/` 副本 | 默认 **`load_bundled_extra_plugins = "auto"`**：pip 未装时用副本 | 低 |
 
-详见 [安装插件](install-plugins.md) 与 [安装官方扩展](install-extensions.md)。
+详见 [安装插件](install-plugins.md) 与 [安装官方插件](install-extensions.md)。
 
 ---
 

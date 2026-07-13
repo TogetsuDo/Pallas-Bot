@@ -9,7 +9,7 @@ Pallas-Bot 多仓与主仓目录合同。
 | `Pallas-Bot` | 运行时、内核、内置插件、WebUI 后端、分片与治理 |
 | `Pallas-Bot-WebUI` | 控制台前端源码 |
 | `Pallas-Bot-AI` | AI / 媒体任务 runtime |
-| 官方扩展仓 | 独立能力包（如 duel、draw、maa、who-is-spy） |
+| 官方插件仓 | 独立能力包（如 duel、draw、maa、who-is-spy） |
 | 社区扩展仓 | 第三方与站点定制 |
 | `Pallas-Bot-Docs` | VitePress 站点（由主仓 `docs/` sync） |
 

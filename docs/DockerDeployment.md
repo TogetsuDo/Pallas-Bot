@@ -189,8 +189,8 @@ uv run python tools/scripts/bot_watchdog.py --docker-container pallasbot --no-sp
 | 多进程分片 | `perf,pg,deploy-shard` | 需配置 `REDIS_URL` |
 | 4.0 core 仅接话 | `perf,pg` | 默认不装玩法扩展 |
 | 4.0 + 常用玩法 | `perf,pg,plugins-game` | 决斗 + 谁是卧底；仅用于镜像预装 |
-| 4.0 全官方扩展 | `perf,pg,deploy-full` | 决斗 + MAA + 谁是卧底 |
-| 4.0 全部官方扩展 | `perf,pg,deploy-all` | 11 个官方扩展包 |
+| 4.0 全官方插件 | `perf,pg,deploy-full` | 决斗 + MAA + 谁是卧底 |
+| 4.0 全部官方插件 | `perf,pg,deploy-all` | 11 个官方插件包 |
 
 示例：
 
@@ -253,5 +253,5 @@ docker build --build-arg BASE_IMAGE=docker.m.daocloud.io/library/python:3.12-sli
 | --- | --- |
 | 非 Docker 标准部署 | [标准部署](Deployment.md) |
 | 改配置项说明 | [配置要点](Config.md) |
-| 装官方扩展 | [安装官方扩展](guide/install-extensions.md) |
+| 装官方插件 | [安装官方插件](guide/install-extensions.md) |
 | 更多排错 | [FAQ](FAQ.md) |

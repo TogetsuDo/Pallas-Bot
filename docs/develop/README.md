@@ -13,4 +13,4 @@
 - [本地开发环境](environment.md)
 - [贡献与提交流程](workflow.md)
 - [WebUI 前端](webui.md)
-- [官方扩展 PyPI 发版](extension-pypi-publish.md)
+- [官方插件 PyPI 发版](extension-pypi-publish.md)

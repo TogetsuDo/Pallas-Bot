@@ -22,7 +22,7 @@
 
 ```text
 社区插件  →  pallas.api.*（L1）
-官方扩展  →  L1 + 文档化的 pallas.api.platform（L2）
+官方插件  →  L1 + 文档化的 pallas.api.platform（L2）
 主仓内部  →  L1/L2/L3；对外传播前先提升边界
 ```
 

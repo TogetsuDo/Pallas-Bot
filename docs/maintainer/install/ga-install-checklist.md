@@ -181,7 +181,7 @@ docker compose -f docker-compose.llm.yml up -d
 - [ ] 三仓 `dev-v2` CI 全绿
 - [ ] 本清单路径 **A + B** 至少在一种环境完整走通并记录
 - [ ] CHANGELOG / 4.0 迁移指南与 compose 默认一致
-- [ ] `pallas-core` wheel 构建与 PyPI 发布（随 GA tag）
+- [x] `pallas-core` wheel 构建与 PyPI 发布（`.github/workflows/publish-pypi-core.yml`，随 `v*` tag）
 - [ ] 镜像 tag 与 compose 中 `latest` 是否改为固定版本（发布策略）
 
 ---

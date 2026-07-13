@@ -34,7 +34,7 @@
 | 能力 | 位置 |
 | --- | --- |
 | reload 执行 | `pallas.core.plugin_reload` |
-| 官方扩展 activation 表 | `pallas.core.platform.bot_runtime.plugin_matrix.OFFICIAL_EXTENSION_ACTIVATION_POLICY` |
+| 官方插件 activation 表 | `pallas.core.platform.bot_runtime.plugin_matrix.OFFICIAL_EXTENSION_ACTIVATION_POLICY` |
 | WebUI 插件治理 API | `packages/pb_webui` / `pallas.console.webui` |
 | 元数据声明写法 | [元数据](../plugin-development/metadata.md) |
 

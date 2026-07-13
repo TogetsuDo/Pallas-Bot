@@ -1,6 +1,6 @@
 # pallas.api Cookbook
 
-扩展作者稳定入口。实现在 `pallas.core` / `pallas.product`；**社区扩展只允许 import `pallas.api.*`**（及模板约定的包内模块）。官方扩展可用 `pallas.api.platform`（见 [Platform API](../reference/platform-api.md)）。
+扩展作者稳定入口。实现在 `pallas.core` / `pallas.product`；**社区扩展只允许 import `pallas.api.*`**（及模板约定的包内模块）。官方插件可用 `pallas.api.platform`（见 [Platform API](../reference/platform-api.md)）。
 
 ## 安装 pallas-core
 
@@ -8,7 +8,7 @@
 | --- | --- |
 | 主仓全仓开发 | 根目录 `uv sync`；无需单独装包 |
 | 独立扩展仓（wheel） | `./scripts/build_core.sh` 后 `uv pip install build/pallas-core/dist/pallas_core-*.whl` |
-| PyPI | `uv add "pallas-core>=4.0.0,<5.0.0"` |
+| PyPI | `uv add "pallas-core>=4.0.0,<5.0.0"`（随主仓 `v*` tag 发布，见 [pallas-core 发版](../../develop/extension-pypi-publish.md#pallas-core主仓)） |
 
 模板：`templates/pallas-plugin-extension/pyproject.toml`。
 
@@ -88,7 +88,7 @@ from pallas.api.safety import is_message_scrub_blocked_async
 from pallas.api.ai_runtime_health import image_runtime_circuit_is_open
 ```
 
-## 平台协作（官方扩展 / 内置）
+## 平台协作（官方插件 / 内置）
 
 `pallas.api.platform`：多 Bot、分片、callback。社区插件默认禁止。导出表见 [Platform API](../reference/platform-api.md)。
 

@@ -98,7 +98,7 @@ Pallas-Bot **不会自己登录 QQ**，要靠 NapCat 等协议端。
 
 | 你想… | 打开 |
 | --- | --- |
-| 装决斗 / MAA | [安装官方扩展](install-extensions.md) |
+| 装决斗 / MAA | [安装官方插件](install-extensions.md) |
 | 改配置、看日志 | [网页控制台](web-console.md) |
 | Docker / 分片 / 升级 | [运维入口](../maintainer/quickstart.md) |
 | 卡住了 | [排障](../maintainer/operate/troubleshooting.md) · [FAQ](../FAQ.md) |

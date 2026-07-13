@@ -1,6 +1,26 @@
-# 官方扩展 PyPI 发版
+# 官方插件与 pallas-core PyPI 发版
 
-扩展包在 **PyPI** 以 `pallas-plugin-*` 发布；主仓 `pyproject.toml` 的 optional extras 直接依赖 PyPI，不再默认走 git 源。
+扩展包在 **PyPI** 以 `pallas-plugin-*` 发布；内核 SDK 以 **`pallas-core`** 发布（版本取自 `pallas/__init__.py` 的 `__version__`）。
+
+## pallas-core（主仓）
+
+| 项 | 说明 |
+| --- | --- |
+| 构建 | `./scripts/build_core.sh` |
+| CI | `.github/workflows/publish-pypi-core.yml` |
+| 触发 | push tag **`v*`**（须与 `pallas.__version__` 一致，如 `v4.0.0`） |
+| Trusted Publisher | PyPI 项目 `pallas-core` → 仓库 `Pallas-Bot` → workflow `publish-pypi-core.yml` |
+
+本地自检：
+
+```bash
+./scripts/build_core.sh
+unzip -l build/pallas-core/dist/*.whl | grep 'pallas/__init__'
+```
+
+发版：合并到 `main` / 发版分支后打 tag 并 push，例如 `git tag v4.0.0 && git push origin v4.0.0`。
+
+## 官方插件（独立仓）
 
 ## 一次性：PyPI Trusted Publisher
 
@@ -37,7 +57,7 @@ unzip -l dist/*.whl | grep __init__
 ```bash
 uv lock
 uv sync --dev --extra pg --extra coord-redis   # 与 CI 一致
-git add uv.lock && git commit -m "chore(deps): 官方扩展改 PyPI 锁定"
+git add uv.lock && git commit -m "chore(deps): 官方插件改 PyPI 锁定"
 ```
 
 3. 本地联调扩展仓改动时，可**临时**加 `[tool.uv.sources]` path/git，**勿提交**

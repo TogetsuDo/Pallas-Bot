@@ -60,7 +60,7 @@ extra={
 
 前提：`[bootstrap].extra_plugin_dirs` 含 `"local/plugins"`。
 
-### 官方扩展建议
+### 官方插件建议
 
 | 扩展 | activation_policy |
 | --- | --- |
@@ -85,7 +85,7 @@ activation_policy = workers-restart
 | 改命令权限 / CD | WebUI 命令权限 / 冷却页 |
 | 改 help / ingress 声明 | `reload_policy: metadata` 时保存可重建索引；或 `pallas plugin reload <name>` |
 | 改 Python 代码 | 重启 Bot（`full` 可尝试 reload，失败则重启） |
-| 安装官方扩展 | 插件商店；勾选「安装并重启」或手动重启 |
+| 安装官方插件 | 插件商店；勾选「安装并重启」或手动重启 |
 | 安装 / 更新社区插件 | 社区商店；unified 首次可热载，**更新须重启** |
 
 ## 规则

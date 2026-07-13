@@ -14,7 +14,7 @@
 | **Git 直装** | 运维自装 | WebUI **插件商店 → 社区插件 → 从 Git 安装**（无需索引） |
 | **手工投放** | 开发者 / 内网 | 复制目录到 `local/plugins/<id>/` |
 
-三种方式落点相同；**同名时 `local/plugins` 优先于官方扩展**。
+三种方式落点相同；**同名时 `local/plugins` 优先于官方插件**。
 
 ---
 
@@ -76,7 +76,7 @@ my_plugin/
 
 1. **已安装插件包内 `assets/`**（`/pallas/plugin-assets/<plugin_id>/…`）
 2. **商店资源快照缓存**（`/pallas/store-assets/…`）
-3. 索引 / 官方扩展条目中的 **`cover`**、**`icon`**、**`avatar`**（完整 URL）
+3. 索引 / 官方插件条目中的 **`cover`**、**`icon`**、**`avatar`**（完整 URL）
 4. 自动推断远程：`https://raw.githubusercontent.com/<owner>/<repo>/<ref>/assets/icon.png`（Gitee 同理）
 5. 作者 GitHub 头像（`author` 或仓库 owner）
 

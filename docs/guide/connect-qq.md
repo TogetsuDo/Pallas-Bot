@@ -67,4 +67,4 @@ QQ  ←→  NapCat（协议端）  ←→  Pallas-Bot  ←→  数据库
 | 在线但群无反应 | 确认牛在群；看运行日志有没有进消息 |
 | 要多只 QQ | 再建实例，或部署多只牛 |
 
-▶ [安装官方扩展](install-extensions.md) · [网页控制台](web-console.md) · [排障](../maintainer/operate/troubleshooting.md)
+▶ [安装官方插件](install-extensions.md) · [网页控制台](web-console.md) · [排障](../maintainer/operate/troubleshooting.md)

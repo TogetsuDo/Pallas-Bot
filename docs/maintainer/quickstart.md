@@ -12,7 +12,7 @@
 | Docker | [Docker 部署](deploy/docker.md) |
 | 单进程长跑 | [单进程部署](deploy/single-process.md) |
 | 多账号 / 分片 | [分片部署](deploy/sharded.md) |
-| 从旧版升级 | [升级](deploy/upgrade.md) · [从 3.x 迁到现行版本](../guide/4.0-migration.md) |
+| 从旧版升级 | [升级](deploy/upgrade.md) · [从 3.x 迁到 4.0](../guide/4.0-migration.md) |
 | 新装验收走查 | [安装验收 Checklist](install/ga-install-checklist.md) |
 | 排障 | [排障](operate/troubleshooting.md) |
 | 闲聊 / 记忆不生效 | [LLM 与 AI](operate/llm-and-ai.md) |
@@ -25,7 +25,7 @@
 | 本体 | [本体安装](install/bot.md) |
 | WebUI | [WebUI](install/webui.md) |
 | 协议端 | [协议端](install/protocol.md) |
-| 官方扩展 | [官方扩展](install/official-extensions.md) |
+| 官方插件 | [官方插件](install/official-extensions.md) |
 | AI Runtime | [AI Runtime](install/ai-runtime.md) |
 | 命令权限 | [命令权限](operate/command-permissions.md) |
 | Web 控制台日常 | [Web 控制台](operate/webui.md) |

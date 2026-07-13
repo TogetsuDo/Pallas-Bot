@@ -1,68 +1,107 @@
 # CLI 参考
 
-维护者日常最常用的命令入口（不展开内部实现）。
+维护者在 **Pallas-Bot 仓库根**用的命令行入口：`uv run pallas <子命令>`（无子命令时默认启动单进程 Bot）。
 
-## 最常用的命令
+**分工约定**：CLI 侧重 **拉代码、同步依赖、启停、升级 Bot/WebUI**；**官方插件的装/卸/更新、运行中配置** 优先在 [网页控制台](../../guide/web-console.md) 完成。
 
-### 官方扩展
+完整子命令：`uv run pallas --help`。
 
-```bash
-uv run pallas ext install pallas-plugin-duel
-uv run pallas ext uninstall pallas-plugin-duel
-```
+## 升级与维护（CLI 主战场）
 
-适合：
-
-- 安装官方扩展
-- 卸载官方扩展
-- 配合重启让新状态生效
-
-### 同步依赖
+### 无痛升级（3.x → 4.0 或版本对齐）
 
 ```bash
-uv run pallas sync
+uv run pallas maintenance run \
+  --update-bot \
+  --update-webui \
+  --sync-extra pg \
+  --dev
 ```
 
-适合：
+等价分步：
 
-- 拉齐环境
-- 更新依赖
-- 部署前后做一次统一同步
+```bash
+uv run pallas update bot
+uv run pallas update webui
+uv run pallas sync --dev --extra pg
+uv run pallas restart
+```
 
-### AI Runtime 安装
+升级完成后，若要补装或更新官方插件，登录控制台 **插件商店** 操作（不必为插件专门记 CLI）。
+
+### 依赖同步
+
+```bash
+uv run pallas sync --extra pg --extra coord-redis
+```
+
+### 启停
+
+```bash
+uv run pallas status
+uv run pallas restart
+uv run pallas stop
+uv run pallas run unified          # 单进程
+uv run pallas run shard            # 分片
+```
+
+## 官方插件（CLI 备选）
+
+日常装卸更新请用 **WebUI 插件商店**。CLI 仅在无 UI、脚本化或排障时使用：
+
+```bash
+uv run pallas ext list
+uv run pallas ext install pallas-plugin-duel --restart
+uv run pallas ext uninstall pallas-plugin-duel --restart
+```
+
+社区插件（git 索引）仍可用 CLI：
+
+```bash
+uv run pallas plugin install <id>
+uv run pallas plugin list
+```
+
+## AI Runtime
 
 ```bash
 uv run pallas ai path
 uv run pallas ai setup
 uv run pallas ai setup --check-only
-uv run pallas ai setup --remote-only   # 无 GPU，纯第三方 API
+uv run pallas ai setup --remote-only
 ```
 
-无 Ollama 部署见 [Pallas-Bot-AI · remote-only](https://github.com/PallasBot/Pallas-Bot-AI/blob/main/docs/deploy/remote-only.md)。
+## 体检
 
-### 启停与部署脚本
+```bash
+uv run pallas doctor
+```
 
-这两个脚本你仍会频繁用到：
+## 什么时候用 CLI vs WebUI
 
-- `./scripts/run_unified_bot.sh`
-- `./scripts/run_sharded_bot.sh`
+| 场景 | 优先 |
+| --- | --- |
+| 初次 clone、SSH 升级 Bot / WebUI | CLI |
+| `maintenance run` 拉齐本体与 dist | CLI |
+| 装 / 卸 / **更新**官方插件 | **WebUI 插件商店** |
+| 改插件配置、命令权限、治理 | **WebUI** |
+| 看运行态、分片聚合 | **WebUI** |
+| 无 `uv`、无 SSH，只有浏览器 | **WebUI** |
+| 批量脚本、CI、Docker 构建期 | CLI |
 
-单进程、分片、测试 worker 这几类场景里，它们仍是最稳定的运维入口。
+## 后续可聚合的方向
 
-## 什么时候优先用 CLI
+| 缺口 | 现状 | 说明 |
+| --- | --- | --- |
+| 官方插件更新 | 商店已有「更新」 | CLI 不必重复造轮子；缺省留给 WebUI |
+| AI 仓 git 对齐 | `pallas ai setup` | 升级时 AI 仓手动 `git pull` 或待 `pallas update ai` |
+| `.env` 迁移 | 独立脚本 | 待 `pallas config migrate` |
+| 全栈一键升级 | `maintenance` + 控制台 | Bot 侧 CLI，插件侧 WebUI |
 
-- 服务器上没有打开 WebUI
-- 需要脚本化操作
-- 想明确控制安装、同步、启停过程
-
-## 什么时候优先用 WebUI
-
-- 想直接通过插件商店安装扩展
-- 想改运行中配置
-- 想看运行态和聚合状态
+维护者清单：[升级](../deploy/upgrade.md)、[4.0 迁移指南](../../guide/4.0-migration.md)。
 
 ## 相关阅读
 
-- [安装官方扩展](../install/official-extensions.md)
+- [安装官方插件](../install/official-extensions.md)
+- [网页控制台](../../guide/web-console.md)
 - [分片部署](../deploy/sharded.md)
-- [单进程部署](../deploy/single-process.md)

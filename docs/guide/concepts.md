@@ -44,11 +44,11 @@ QQ 用户
 
 ```text
 本体 core（默认有）     → repeater、help、drink …
-官方扩展（要装）       → duel、maa、who_is_spy …
+官方插件（要装）       → duel、maa、who_is_spy …
 站点 local             → local/plugins/<名>/
 ```
 
-- 装官方扩展：[安装插件](install-plugins.md)
+- 装官方插件：[安装插件](install-plugins.md)
 - AI 另仓：[AI 扩展](ai.md)
 
 ## 和 AI 的关系

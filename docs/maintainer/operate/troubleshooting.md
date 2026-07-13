@@ -43,7 +43,7 @@ flowchart TD
 
 - 这是单进程还是分片部署
 - 是主仓源码部署、Docker 部署，还是混合目录部署
-- 问题发生在 core、官方扩展、协议端，还是 WebUI
+- 问题发生在 core、官方插件、协议端，还是 WebUI
 
 ::: warning 部署形态没分清，后面全白费
 连部署形态都没分清，后面大概率会看错日志、看错端口、看错仓库。
@@ -171,4 +171,4 @@ WebUI 运行资源：
 - [FAQ](../../FAQ.md)
 - [协议端](../install/protocol.md)
 - [分片部署](../deploy/sharded.md)
-- [官方扩展安装](../install/official-extensions.md)
+- [官方插件安装](../install/official-extensions.md)

@@ -24,7 +24,7 @@ Docker / 分片 / 升级 → **[运维入口](../maintainer/quickstart.md)**
 | --- | --- |
 | 最快跑起来 | [五分钟跑起来](quickstart.md) |
 | 连 QQ | [连接协议端](connect-qq.md) |
-| 装扩展 | [安装官方扩展](install-extensions.md) |
+| 装扩展 | [安装官方插件](install-extensions.md) |
 | 用网页改配置 | [网页控制台](web-console.md) |
 | 看群口令 | [口令与功能](usage.md) |
 | 排错 | [进阶](advanced.md) · [FAQ](../FAQ.md) · [排障](../maintainer/operate/troubleshooting.md) |

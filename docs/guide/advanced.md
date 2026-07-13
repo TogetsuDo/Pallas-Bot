@@ -28,7 +28,7 @@
 | 文档 | 你会搞懂 |
 | --- | --- |
 | [连接 QQ](connect-qq.md) | NapCat、WS、验收口令 |
-| [安装插件](install-plugins.md) | core / 官方扩展 / local |
+| [安装插件](install-plugins.md) | core / 官方插件 / local |
 | [使用指南](../user/README.md) | 日常网页操作 |
 | [网页控制台](web-console.md) | `/pallas/` 各面板 |
 

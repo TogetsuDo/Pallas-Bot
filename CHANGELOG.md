@@ -10,8 +10,8 @@
 
 - 内核目录 `pallas/` + 内置插件 `packages/`；移除历史 `src/` 布局
 - 稳定扩展入口 `pallas.api.*`（commands / config / perm / limits / metadata / paths / storage 等）
-- `pallas-core` wheel 构建脚本 `scripts/build_core.sh`（PyPI 预发布）
-- 官方扩展安装：`uv run pallas ext install`、控制台插件商店
+- `pallas-core` PyPI 包（`scripts/build_core.sh`；tag `v*` 触发 `.github/workflows/publish-pypi-core.yml`）
+- 官方插件安装：`uv run pallas ext install`、控制台插件商店
 - 配置合并：`config/pallas.toml` + `data/pallas_config/webui.json`（WebUI 落盘优先）
 - 首次 Setup Wizard、AI 配置体检向导（WebUI）
 - OpenAPI 导出 `openspec/pallas-console-v1.json` 与 WebUI codegen 客户端
@@ -22,7 +22,7 @@
 
 ### Changed
 
-- 默认仅加载 **core 插件**；玩法 / 协议 / AI 媒体等改 **官方扩展**
+- 默认仅加载 **core 插件**；玩法 / 协议 / AI 媒体等改 **官方插件**（pip）
 - 智能接话依赖 **Pallas-Bot-AI 4.0+**；`CHAT_ENABLE` / `OLLAMA_*` → `LLM_*`（见 [ollama 迁移](docs/guide/llm-migrate-from-ollama.md)）
 - WebUI 窄屏断点 ≤560px 规范（cmd 矩阵、插件配置、商店等）
 

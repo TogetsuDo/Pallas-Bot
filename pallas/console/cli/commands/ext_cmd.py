@@ -18,7 +18,7 @@ from pallas.core.platform.bot_runtime.plugin_matrix import (
 
 
 def register(sub: argparse._SubParsersAction) -> None:
-    parser = sub.add_parser("ext", help="官方扩展安装与管理")
+    parser = sub.add_parser("ext", help="官方插件安装与管理")
     ext_sub = parser.add_subparsers(dest="ext_command", required=True)
 
     list_parser = ext_sub.add_parser("list", help="列出官方扩展与安装状态")

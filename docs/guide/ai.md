@@ -47,6 +47,6 @@
 | 画画 | `pallas-plugin-draw` |
 | 随时闲聊 | core 插件 `llm_chat`（仍要 AI 在线） |
 
-扩展安装：[安装官方扩展](install-extensions.md)。运维细项：[LLM 与 AI](../maintainer/operate/llm-and-ai.md)。
+扩展安装：[安装官方插件](install-extensions.md)。运维细项：[LLM 与 AI](../maintainer/operate/llm-and-ai.md)。
 
 ▶ [安装插件](install-plugins.md) · [使用指南](../user/README.md)

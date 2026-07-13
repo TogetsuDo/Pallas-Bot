@@ -1,6 +1,6 @@
 # Platform API
 
-`pallas.api.platform`：官方扩展与内置插件的平台协作钩子。稳定性高于随意 `pallas.core.*` import，但仍次于面向社区的 `pallas.api.*` 其它子包。
+`pallas.api.platform`：官方插件与内置插件的平台协作钩子。稳定性高于随意 `pallas.core.*` import，但仍次于面向社区的 `pallas.api.*` 其它子包。
 
 模块文档串：`pallas/api/platform/__init__.py`。
 
