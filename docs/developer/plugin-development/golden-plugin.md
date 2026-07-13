@@ -1,6 +1,6 @@
 # Golden Plugin
 
-4.0 插件默认骨架与接入合同。新增 core 插件或回迁旧插件时按本页执行。完整 checklist：[08-golden-plugin-checklist](../../skills/pallas-plugin-development/references/08-golden-plugin-checklist.md)。
+现行插件默认骨架与接入合同。新增 core 插件或回迁旧插件时按本页执行。完整 checklist：[08-golden-plugin-checklist](../../skills/pallas-plugin-development/references/08-golden-plugin-checklist.md)。
 
 ## 目录合同
 

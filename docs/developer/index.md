@@ -1,6 +1,6 @@
 # Developer
 
-Pallas 4.0 开发者契约入口。维护者部署见 [`docs/maintainer/`](../maintainer/quickstart.md)。深度设计稿见 [`docs/architecture/`](../architecture/)（非主入口）。
+Pallas-Bot 开发者契约入口。维护者部署见 [`docs/maintainer/`](../maintainer/quickstart.md)。深度设计稿见 [`docs/architecture/`](../architecture/)（非主入口）。
 
 ## 读者分流
 
