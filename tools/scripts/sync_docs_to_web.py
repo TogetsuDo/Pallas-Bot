@@ -11,19 +11,84 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DOCS = REPO_ROOT / "docs"
 
 # docs/ 相对路径 -> VitePress src/ 相对路径
+# 权威入口：maintainer/ + developer/；guide/plugins/common/architecture 保留兼容与素材
 FILE_MAP: dict[str, str] = {
+    # --- Maintainer（运维权威）---
+    "maintainer/quickstart.md": "maintainer/quickstart.md",
+    "maintainer/install/bot.md": "maintainer/install/bot.md",
+    "maintainer/install/webui.md": "maintainer/install/webui.md",
+    "maintainer/install/protocol.md": "maintainer/install/protocol.md",
+    "maintainer/install/official-extensions.md": "maintainer/install/official-extensions.md",
+    "maintainer/install/ai-runtime.md": "maintainer/install/ai-runtime.md",
+    "maintainer/install/ga-install-checklist.md": "maintainer/install/ga-install-checklist.md",
+    "maintainer/deploy/single-process.md": "maintainer/deploy/single-process.md",
+    "maintainer/deploy/docker.md": "maintainer/deploy/docker.md",
+    "maintainer/deploy/sharded.md": "maintainer/deploy/sharded.md",
+    "maintainer/deploy/upgrade.md": "maintainer/deploy/upgrade.md",
+    "maintainer/operate/webui.md": "maintainer/operate/webui.md",
+    "maintainer/operate/llm-and-ai.md": "maintainer/operate/llm-and-ai.md",
+    "maintainer/operate/command-permissions.md": "maintainer/operate/command-permissions.md",
+    "maintainer/operate/plugin-governance.md": "maintainer/operate/plugin-governance.md",
+    "maintainer/operate/troubleshooting.md": "maintainer/operate/troubleshooting.md",
+    "maintainer/operate/hot-reload-pre-reload-checklist.md": (
+        "maintainer/operate/hot-reload-pre-reload-checklist.md"
+    ),
+    "maintainer/reference/config.md": "maintainer/reference/config.md",
+    "maintainer/reference/cli.md": "maintainer/reference/cli.md",
+    "maintainer/reference/api.md": "maintainer/reference/api.md",
+    "maintainer/reference/glossary.md": "maintainer/reference/glossary.md",
+    # --- Developer（开发权威）---
+    "developer/index.md": "developer/index.md",
+    "developer/author/index.md": "developer/author/index.md",
+    "developer/architecture/overview.md": "developer/architecture/overview.md",
+    "developer/architecture/core-vs-extensions.md": "developer/architecture/core-vs-extensions.md",
+    "developer/architecture/config-storage.md": "developer/architecture/config-storage.md",
+    "developer/architecture/plugin-governance.md": "developer/architecture/plugin-governance.md",
+    "developer/architecture/shard-runtime.md": "developer/architecture/shard-runtime.md",
+    "developer/plugin-development/getting-started.md": (
+        "developer/plugin-development/getting-started.md"
+    ),
+    "developer/plugin-development/golden-plugin.md": (
+        "developer/plugin-development/golden-plugin.md"
+    ),
+    "developer/plugin-development/metadata.md": "developer/plugin-development/metadata.md",
+    "developer/plugin-development/config-and-webui.md": (
+        "developer/plugin-development/config-and-webui.md"
+    ),
+    "developer/plugin-development/dynamic-config-panel.md": (
+        "developer/plugin-development/dynamic-config-panel.md"
+    ),
+    "developer/plugin-development/reload-and-activation.md": (
+        "developer/plugin-development/reload-and-activation.md"
+    ),
+    "developer/plugin-development/knowledge-sources.md": (
+        "developer/plugin-development/knowledge-sources.md"
+    ),
+    "developer/plugin-development/pallas-api-cookbook.md": (
+        "developer/plugin-development/pallas-api-cookbook.md"
+    ),
+    "developer/plugin-development/testing.md": "developer/plugin-development/testing.md",
+    "developer/plugin-development/publishing.md": "developer/plugin-development/publishing.md",
+    "developer/reference/repo-layout.md": "developer/reference/repo-layout.md",
+    "developer/reference/style-guide.md": "developer/reference/style-guide.md",
+    "developer/reference/platform-api.md": "developer/reference/platform-api.md",
+    "developer/reference/internal-api.md": "developer/reference/internal-api.md",
+    "developer/reference/console-api-response.md": "developer/reference/console-api-response.md",
+    # --- 兼容：根部署页 / FAQ ---
     "Deployment.md": "deploy/deployment.md",
     "DockerDeployment.md": "deploy/docker.md",
     "Config.md": "deploy/config.md",
     "FAQ.md": "deploy/faq.md",
     "Migration-v3.md": "about/migration.md",
-    "architecture/project-structure.md": "architecture/project-structure.md",
-    "architecture/plugin-convention.md": "architecture/plugin-convention.md",
+    # --- 素材：architecture / common / develop 兼容 ---
     "architecture/settings-storage.md": "architecture/settings-storage.md",
     "architecture/bot_process_sharding.md": "architecture/bot-process-sharding.md",
-    "architecture/site-customization-and-updates.md": "architecture/site-customization-and-updates.md",
-    "architecture/control-plane-corpus-federation.md": "architecture/control-plane-corpus-federation.md",
-    "architecture/common-layers.md": "architecture/common-layers.md",
+    "architecture/site-customization-and-updates.md": (
+        "architecture/site-customization-and-updates.md"
+    ),
+    "architecture/plugin-convention.md": "architecture/plugin-convention.md",
+    "architecture/hot-reload-tiers.md": "architecture/hot-reload-tiers.md",
+    "architecture/ingress-pipeline.md": "architecture/ingress-pipeline.md",
     "common/community_stats.md": "common/community_stats.md",
     "common/corpus/README.md": "common/corpus.md",
     "common/cmd_perm/README.md": "common/cmd_perm.md",
@@ -34,10 +99,8 @@ FILE_MAP: dict[str, str] = {
     "develop/environment.md": "develop/environment.md",
     "develop/workflow.md": "develop/workflow.md",
     "develop/webui.md": "develop/webui.md",
-    "develop/plugin/getting-started.md": "develop/plugin/getting-started.md",
-    "develop/plugin/structure.md": "develop/plugin/structure.md",
-    "develop/plugin/advanced.md": "develop/plugin/advanced.md",
-    "develop/plugin/cookbook.md": "develop/plugin/cookbook.md",
+    "develop/knowledge-sources.md": "develop/knowledge-sources.md",
+    # --- Guide 上手 ---
     "guide/quickstart.md": "guide/quickstart.md",
     "guide/connect-qq.md": "guide/connect-qq.md",
     "guide/install-extensions.md": "guide/install-extensions.md",
@@ -49,16 +112,14 @@ FILE_MAP: dict[str, str] = {
     "guide/concepts.md": "guide/concepts.md",
     "guide/welcome.md": "guide/welcome.md",
     "guide/4.0-start.md": "guide/4.0-start.md",
+    "guide/4.0-migration.md": "guide/4.0-migration.md",
     "user/README.md": "guide/usage-admin.md",
 }
 
 PLUGIN_NAMES = [
     "blacklist",
-    "block",
     "bot_status",
-    "callback",
     "chat",
-    "connectivity",
     "dream",
     "drink",
     "duel",
@@ -68,6 +129,8 @@ PLUGIN_NAMES = [
     "draw",
     "pb_protocol",
     "pb_webui",
+    "pb_core",
+    "pb_stats",
     "relogin_bot",
     "repeater",
     "request_handler",
@@ -75,25 +138,36 @@ PLUGIN_NAMES = [
     "sing",
     "who_is_spy",
     "llm_chat",
-    "pb_stats",
-    "community_stats",
+    "persona",
+    "take_name",
 ]
 
 for name in PLUGIN_NAMES:
     FILE_MAP[f"plugins/{name}/README.md"] = f"plugins/{name}.md"
 
-GITHUB_SRC = "https://github.com/PallasBot/Pallas-Bot/tree/main/src/"
+# 历史站内路径别名（Docs 仓旧链接）
+FILE_MAP["plugins/pb_webui/README.md"] = "plugins/pb_webui.md"
+FILE_MAP["plugins/pb_protocol/README.md"] = "plugins/pb_protocol.md"
+
+GITHUB_SRC = "https://github.com/PallasBot/Pallas-Bot/tree/main/pallas/"
 
 
 def transform_for_vitepress(text: str) -> str:
     """相对链接 -> VitePress 站内路径；源码路径 -> GitHub。"""
+    text = text.replace('../assets/brand-avatar.png', '/assets/logo.png')
+    text = text.replace('src="../assets/brand-avatar.png"', 'src="/assets/logo.png"')
     text = re.sub(
-        r"\]\(\.\./\.\./\.\./src/([^)#]+)\)",
+        r"\]\(\.\./\.\./\.\./(?:src|pallas)/([^)#]+)\)",
         rf"]({GITHUB_SRC}\1)",
         text,
     )
     text = re.sub(
-        r"\]\(\.\./\.\./src/([^)#]+)\)",
+        r"\]\(\.\./\.\./(?:src|pallas)/([^)#]+)\)",
+        rf"]({GITHUB_SRC}\1)",
+        text,
+    )
+    text = re.sub(
+        r"\]\(\.\./(?:src|pallas)/([^)#]+)\)",
         rf"]({GITHUB_SRC}\1)",
         text,
     )
@@ -150,21 +224,6 @@ def transform_for_vitepress(text: str) -> str:
     text = re.sub(
         r"\]\(corpus/README\.md([^)]*)\)",
         r"](/common/corpus\1)",
-        text,
-    )
-    text = re.sub(
-        r"\]\(\.\./architecture/control-plane-corpus-federation\.md([^)]*)\)",
-        r"](/architecture/control-plane-corpus-federation\1)",
-        text,
-    )
-    text = re.sub(
-        r"\]\(\.\./\.\./architecture/control-plane-corpus-federation\.md([^)]*)\)",
-        r"](/architecture/control-plane-corpus-federation\1)",
-        text,
-    )
-    text = re.sub(
-        r"\]\(architecture/control-plane-corpus-federation\.md([^)]*)\)",
-        r"](/architecture/control-plane-corpus-federation\1)",
         text,
     )
     text = re.sub(
@@ -262,7 +321,7 @@ def transform_for_vitepress(text: str) -> str:
     text = re.sub(r"\]\(Migration-v3\.md([^)]*)\)", r"](/about/migration\1)", text)
     text = re.sub(
         r"\]\(\.\./\.\./\.\./resource/([^)#]+)\)",
-        rf"]({GITHUB_SRC}../resource/\1)",
+        rf"](https://github.com/PallasBot/Pallas-Bot/tree/main/resource/\1)",
         text,
     )
     text = re.sub(
@@ -285,8 +344,8 @@ def transform_for_vitepress(text: str) -> str:
         rf"](https://github.com/PallasBot/Pallas-Bot/tree/main/scripts/\1)",
         text,
     )
-    text = re.sub(r"\]\(guide/([a-z]+)\.md([^)]*)\)", r"](/guide/\1\2)", text)
-    text = re.sub(r"\]\(\.\./guide/([a-z]+)\.md([^)]*)\)", r"](/guide/\1\2)", text)
+    text = re.sub(r"\]\(guide/([a-z0-9.-]+)\.md([^)]*)\)", r"](/guide/\1\2)", text)
+    text = re.sub(r"\]\(\.\./guide/([a-z0-9.-]+)\.md([^)]*)\)", r"](/guide/\1\2)", text)
     for guide_page in ("quickstart", "concepts", "welcome"):
         text = re.sub(
             rf"\]\({guide_page}\.md([^)]*)\)",
@@ -331,12 +390,44 @@ def transform_for_vitepress(text: str) -> str:
     text = re.sub(r"\]\(\.\./Migration-v3\.md([^)]*)\)", r"](/about/migration\1)", text)
     text = re.sub(r"\]\(develop/([a-z0-9_/-]+)\.md([^)]*)\)", r"](/develop/\1\2)", text)
     text = re.sub(r"\]\(\.\./develop/([a-z0-9_/-]+)\.md([^)]*)\)", r"](/develop/\1\2)", text)
-    # 去掉站内链接里的 .md 后缀
+    # 已带 maintainer/developer 前缀的链接
     text = re.sub(
-        r"(\](/(?:deploy|plugins|architecture|common|about|guide)/[a-zA-Z0-9_./-]+)\.md)",
-        r"\1",
+        r"\]\((?:\.\./)*(maintainer/[a-z0-9_./-]+)\.md([^)]*)\)",
+        r"](/\1\2)",
         text,
     )
+    text = re.sub(
+        r"\]\((?:\.\./)*(developer/[a-z0-9_./-]+)\.md([^)]*)\)",
+        r"](/\1\2)",
+        text,
+    )
+    # 去掉站内链接里的 .md 后缀
+    text = re.sub(
+        r"(\]\(/(?:deploy|plugins|architecture|common|about|guide|maintainer|developer|develop)"
+        r"/[a-zA-Z0-9_./-]+)\.md\)",
+        r"\1)",
+        text,
+    )
+    return text
+
+
+def rewrite_tree_relative_links(text: str, *, rel_src: str) -> str:
+    """把 maintainer/developer 树内相对链接改成 VitePress 绝对路径。"""
+    if rel_src.startswith("maintainer/"):
+        text = re.sub(
+            r"\]\((?:\.\./)?(install|deploy|operate|reference)/([a-z0-9_./-]+)\.md([^)]*)\)",
+            r"](/maintainer/\1/\2\3)",
+            text,
+        )
+        text = re.sub(r"\]\((?:\.\./)?quickstart\.md([^)]*)\)", r"](/maintainer/quickstart\1)", text)
+    elif rel_src.startswith("developer/"):
+        text = re.sub(
+            r"\]\((?:\.\./)?(architecture|plugin-development|reference|author)/"
+            r"([a-z0-9_./-]+)\.md([^)]*)\)",
+            r"](/developer/\1/\2\3)",
+            text,
+        )
+        text = re.sub(r"\]\((?:\.\./)?index\.md([^)]*)\)", r"](/developer/index\1)", text)
     return text
 
 
@@ -349,6 +440,7 @@ def sync(dest_root: Path) -> int:
             print(f"skip missing: {rel_src}")
             continue
         body = source.read_text(encoding="utf-8")
+        body = rewrite_tree_relative_links(body, rel_src=rel_src)
         out = src_root / rel_dst
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(transform_for_vitepress(body), encoding="utf-8")

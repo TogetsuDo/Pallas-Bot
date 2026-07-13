@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pallas.product.llm.tools.arknights import register_arknights_tools
 from pallas.product.llm.tools.mcp_bootstrap import clear_mcp_tools, register_mcp_tools
+from pallas.product.llm.tools.memory import register_memory_tools
 from pallas.product.llm.tools.plugin_bootstrap import clear_plugin_command_tools, register_plugin_command_tools
 
 _BOOTSTRAPPED = False
@@ -20,6 +21,7 @@ def ensure_llm_tools_bootstrapped(*, force: bool = False) -> None:
         clear_plugin_command_tools()
         clear_mcp_tools()
     register_arknights_tools()
+    register_memory_tools()
     register_plugin_command_tools()
     register_mcp_tools()
     _BOOTSTRAPPED = True

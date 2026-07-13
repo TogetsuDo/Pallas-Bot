@@ -64,8 +64,6 @@ def test_runtime_state_summary_metadata_includes_thresholds() -> None:
 
 def test_behavioral_learning_disabled_without_bias() -> None:
     clear_llm_config_cache()
-    policy = resolve_memory_read_policy(
-        LlmConfig(llm_chat_enabled=True, llm_repeater_bias_enabled=False)
-    )
+    policy = resolve_memory_read_policy(LlmConfig(llm_chat_enabled=True, llm_repeater_bias_enabled=False))
     assert policy.allow_behavioral_learning is False
     assert can_read_behavioral_learning(LlmConfig(llm_chat_enabled=True, llm_repeater_bias_enabled=False)) is False

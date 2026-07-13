@@ -230,6 +230,14 @@ mixed_data
 backups
 log
 data
+# 允许提交本地知识目录样例（其余 data/ 仍忽略）
+!data/
+data/*
+!data/pallas_knowledge/
+data/pallas_knowledge/*
+!data/pallas_knowledge/.gitignore
+!data/pallas_knowledge/README.md
+!data/pallas_knowledge/example.md
 # 压测本地参数（含口令/token）；仅提交 local.properties.example
 tools/jmeter/local.properties
 .shard_test_state/

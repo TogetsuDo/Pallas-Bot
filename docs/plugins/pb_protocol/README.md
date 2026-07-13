@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="../assets/brand-avatar.png" width="220" height="220" alt="协议端管理">
+  <img src="/assets/logo.png" width="220" height="220" alt="协议端管理">
 </p>
 
 <h1 align="center">协议端管理 pb_protocol</h1>

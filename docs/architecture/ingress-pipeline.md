@@ -58,4 +58,4 @@ flowchart TD
 
 - [分片运行时](../developer/architecture/shard-runtime.md)
 - [多进程分片](bot_process_sharding.md)
-- [前辈对标路线图](internal/benchmark-peer-bots-roadmap.md) · OPT-ARCH-012
+- [架构素材层说明](README.md)

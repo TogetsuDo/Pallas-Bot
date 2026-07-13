@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="../assets/brand-avatar.png" width="220" height="220" alt="随时闲聊">
+  <img src="/assets/logo.png" width="220" height="220" alt="随时闲聊">
 </p>
 
 <h1 align="center">随时闲聊 llm_chat</h1>

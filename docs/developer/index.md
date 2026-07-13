@@ -8,7 +8,8 @@
 2. [Core 与扩展](architecture/core-vs-extensions.md)
 3. [Golden Plugin](plugin-development/golden-plugin.md)
 4. [配置与 WebUI](plugin-development/config-and-webui.md)
-5. [发布](plugin-development/publishing.md)
+5. [知识源与本地 ingest](plugin-development/knowledge-sources.md)
+6. [发布](plugin-development/publishing.md)
 
 ## 你要理解的边界
 

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="../assets/brand-avatar.png" width="220" height="220" alt="牛牛核心">
+  <img src="/assets/logo.png" width="220" height="220" alt="牛牛核心">
 </p>
 
 <h1 align="center">牛牛核心 pb_core</h1>

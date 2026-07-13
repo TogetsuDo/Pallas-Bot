@@ -61,6 +61,8 @@ flowchart LR
 | [配置与 WebUI](developer/plugin-development/config-and-webui.md) | 配置落盘、插件页、热重载 |
 | [发布](developer/plugin-development/publishing.md) | 官方扩展、社区插件、PyPI |
 
-::: tip 关于旧文档
-`docs/guide`、`docs/develop`、`docs/architecture`、`docs/common` 现在只作迁移素材，不再是正式入口。普通用户文档会另起一套用户手册，不和开发文档混写。
+::: tip 文档入口
+**权威路径**：[`maintainer/`](maintainer/quickstart.md)（运维）与 [`developer/`](developer/index.md)（开发）。  
+`guide/` 保留上手页（如 [4.0 启动](guide/4.0-start.md)）；`architecture/` / `develop/` / `common/` 为素材或深度参考，不以它们为真相源。  
+在线站由主仓 `docs/` 同步到 [Pallas-Bot-Docs](https://PallasBot.github.io/Pallas-Bot-Docs/)。
 :::

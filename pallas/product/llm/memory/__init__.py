@@ -1,3 +1,4 @@
+from .auto_episode import maybe_auto_save_episode
 from .inject import (
     append_memory_context,
     append_relationship_context,
@@ -21,6 +22,7 @@ __all__ = [
     "extract_at_target",
     "is_llm_memory_store_available",
     "is_relationship_store_available",
+    "maybe_auto_save_episode",
     "parse_memory_teach",
     "parse_relationship_teach",
     "resolve_relationship_teach_target_id",

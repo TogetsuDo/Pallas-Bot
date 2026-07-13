@@ -6844,6 +6844,49 @@ def register_extended_api(
             raise HTTPException(status_code=500, detail=str(e)) from e
         return JSONResponse({"ok": True, "data": {"items": items, "count": len(items), "limit": limit}})
 
+    @router.post(f"{x}/llm/conversation-kernel/memory", include_in_schema=True)
+    async def _llm_conversation_kernel_memory_create(
+        body: dict[str, Any],
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        bot_id = int(body.get("bot_id") or 0)
+        group_id = body.get("group_id")
+        content = str(body.get("content") or "").strip()
+        if bot_id <= 0 or not content:
+            raise HTTPException(status_code=400, detail="bot_id and content required")
+        gid = int(group_id) if group_id is not None else None
+        try:
+            from pallas.product.llm.memory.store import save_memory_entry
+
+            ok = await save_memory_entry(bot_id, gid, content, source="teach")
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        if not ok:
+            raise HTTPException(status_code=400, detail="memory save rejected or unavailable")
+        return JSONResponse({"ok": True, "data": {"bot_id": bot_id, "group_id": gid}})
+
+    @router.get(f"{x}/llm/knowledge/sources", include_in_schema=True)
+    async def _llm_knowledge_sources_list() -> JSONResponse:
+        try:
+            from pallas.product.llm.knowledge.registry import list_active_knowledge_sources
+
+            rows = list_active_knowledge_sources()
+            items = [
+                {
+                    "source_id": row.source_id,
+                    "title": row.decl.title,
+                    "origin": str(row.origin),
+                    "plugin_name": row.plugin_name,
+                    "chunk_count": len(row.decl.chunks or []),
+                }
+                for row in rows
+            ]
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=500, detail=str(e)) from e
+        return JSONResponse({"ok": True, "data": {"items": items, "count": len(items)}})
+
     @router.post(f"{x}/llm/conversation-kernel/memory/delete", include_in_schema=True)
     async def _llm_conversation_kernel_memory_delete(
         body: dict[str, Any],

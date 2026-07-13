@@ -221,10 +221,10 @@ class LlmWebuiConfig(BaseModel):
         ),
     )
     llm_vector_retrieve: VectorRetrieveMode = Field(
-        default="keyword",
+        default="hybrid",
         description=field_help(
             "群记忆与知识源的检索方式",
-            "keyword=仅关键词；hybrid=关键词+向量（推荐，需 AI 仓 embeddings）；embedding=纯向量",
+            "hybrid=关键词+向量（默认，需 AI 仓 embeddings）；keyword=仅关键词；embedding=纯向量",
         ),
     )
     llm_embedding_model: str = Field(

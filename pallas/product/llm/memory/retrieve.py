@@ -1,7 +1,8 @@
-"""记忆条目相关性打分（关键词 + 可选 hybrid embedding）。"""
+"""记忆条目相关性打分（关键词 + 可选 hybrid embedding，支持行内向量缓存）。"""
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -52,13 +53,33 @@ def memory_embedding_text(*, keywords: str, content: str) -> str:
     return kw or body
 
 
+def parse_cached_embedding(raw: Any) -> list[float] | None:
+    if isinstance(raw, list) and raw:
+        try:
+            return [float(x) for x in raw]
+        except (TypeError, ValueError):
+            return None
+    if isinstance(raw, str) and raw.strip():
+        try:
+            data = json.loads(raw)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return None
+        return parse_cached_embedding(data)
+    return None
+
+
+def dump_embedding_json(vector: list[float]) -> str:
+    return json.dumps([float(x) for x in vector], separators=(",", ":"))
+
+
 def rank_memory_candidates(
     query_text: str,
     candidates: list[dict[str, Any]],
     *,
     mode: VectorRetrieveMode | None = None,
+    embedding_model: str | None = None,
 ) -> list[dict[str, Any]]:
-    """为记忆候选打分并降序排序；embedding API 不可用时回落关键词。"""
+    """为记忆候选打分并降序排序；优先用行内 embedding 缓存，缺失时批量请求。"""
     query = (query_text or "").strip()
     if not query or not candidates:
         return []
@@ -77,20 +98,29 @@ def rank_memory_candidates(
         scored.sort(key=lambda item: int(item.get("score") or 0), reverse=True)
         return [item for item in scored if int(item.get("score") or 0) > 0]
 
-    from pallas.product.llm.knowledge.embedding_client import fetch_embeddings_sync
+    from pallas.product.llm.knowledge.embedding_client import embedding_model_name, fetch_embeddings_sync
     from pallas.product.llm.knowledge.embedding_score import embedding_relevance_score
 
+    expected_model = (embedding_model or embedding_model_name()).strip() or "stub"
+    cached_vecs: dict[int, list[float]] = {}
     embed_inputs = [query]
-    indexed: list[tuple[int, dict[str, Any], int]] = []
-    for item in scored:
+    pending: list[tuple[int, int]] = []
+    for idx, item in enumerate(scored):
         text = memory_embedding_text(
             keywords=str(item.get("keywords") or ""),
             content=str(item.get("content") or ""),
         )
         if not text.strip():
             continue
+        cached = None
+        model_ok = str(item.get("embedding_model") or "").strip() == expected_model
+        if model_ok:
+            cached = parse_cached_embedding(item.get("embedding") or item.get("embedding_json"))
+        if cached is not None:
+            cached_vecs[idx] = cached
+            continue
         embed_inputs.append(text)
-        indexed.append((len(embed_inputs) - 1, item, int(item.get("score") or 0)))
+        pending.append((idx, len(embed_inputs) - 1))
 
     vectors = fetch_embeddings_sync(embed_inputs)
     if vectors is None or len(vectors) != len(embed_inputs):
@@ -98,8 +128,20 @@ def rank_memory_candidates(
         return [item for item in scored if int(item.get("score") or 0) > 0]
 
     query_vec = vectors[0]
-    for vec_idx, item, kw_score in indexed:
-        emb_score = embedding_relevance_score(query_vec, vectors[vec_idx])
+    for idx, pos in pending:
+        item = scored[idx]
+        vec = vectors[pos]
+        item["embedding"] = vec
+        item["embedding_model"] = expected_model
+        item["embedding_dirty"] = True
+        cached_vecs[idx] = vec
+
+    for idx, item in enumerate(scored):
+        kw_score = int(item.get("score") or 0)
+        vec = cached_vecs.get(idx)
+        if vec is None:
+            continue
+        emb_score = embedding_relevance_score(query_vec, vec)
         if active_mode == "hybrid":
             item["score"] = blend_hybrid_score(embedding_score=emb_score, keyword_score=kw_score)
         else:
