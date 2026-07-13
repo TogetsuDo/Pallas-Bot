@@ -75,7 +75,7 @@ src/plugins/<name>/
 | metadata | `help_audience: maintainer`；`menu_data` 一条说明 WebUI 通用配置段 |
 | pip | 扩展仓 README 指向主仓内置；`uv extra` 标记 deprecated 一周期 |
 
-**段 ID / env 键**：WebUI 通用配置段 ID **`community_stats` 暂保留**（避免站长已保存配置失效）；文档称「在线统计（pb_stats）」。
+**段 ID / env 键**：WebUI 通用配置段 ID **`community_stats` 暂保留**（避免已保存配置失效）；文档称「在线统计（pb_stats）」。
 
 ## CORE 插件清单与改造分级
 
@@ -145,7 +145,7 @@ flowchart LR
 | --- | --- |
 | `request_handler` 超大 diff | 独立 PR、仅搬代码不改逻辑 |
 | 分片 hub/worker 漏改 `pb_stats` 角色 | 沿用 `is_sharded_worker` 守卫；矩阵单测 |
-| 站长仍装 pip community-stats | 别名 + loader 去重；文档 deprecated |
+| 仍装 pip community-stats | 别名 + loader 去重；文档 deprecated |
 
 ## 验收总览
 

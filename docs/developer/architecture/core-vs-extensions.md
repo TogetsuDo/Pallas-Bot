@@ -24,7 +24,7 @@
 满足多数条目 → 官方扩展，不进 core：
 
 - 独立玩法或外部服务集成
-- 站长可按需安装 / 升级
+- 可按需安装 / 升级
 - 需要独立 semver、README、PyPI
 
 示例包：`duel`、`who_is_spy`、`maa`、`draw`、`dream`、`ai_media` 及协议相关扩展包。

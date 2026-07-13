@@ -2,7 +2,7 @@
 
 要让站点发现并安装你的插件：先过目录约定，再用 CLI 自检，最后向索引仓提 PR。
 
-管理员怎么装：[社区插件商店](community-plugin-store.md)。插件结构：[Golden Plugin](../developer/plugin-development/golden-plugin.md)。
+安装说明：[社区插件商店](community-plugin-store.md)。插件结构：[Golden Plugin](../developer/plugin-development/golden-plugin.md)。
 
 ---
 
@@ -11,7 +11,7 @@
 | 方式 | 谁用 | 做法 |
 | --- | --- | --- |
 | **索引收录** | 希望公开展示 | 向 [community-plugin-index](https://github.com/PallasBot/community-plugin-index) 提 PR |
-| **Git 直装** | 站点管理员 | WebUI **插件商店 → 社区插件 → 从 Git 安装**（无需索引） |
+| **Git 直装** | 运维自装 | WebUI **插件商店 → 社区插件 → 从 Git 安装**（无需索引） |
 | **手工投放** | 开发者 / 内网 | 复制目录到 `local/plugins/<id>/` |
 
 三种方式落点相同；**同名时 `local/plugins` 优先于官方扩展**。

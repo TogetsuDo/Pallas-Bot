@@ -23,7 +23,7 @@ Pallas-Bot 多仓与主仓目录合同。
 | `docs/` | maintainer / developer 主线 | 文档维护者 |
 | `config/` | 示例与部署模板 | 运维 / 平台 |
 | `data/` | 运行时数据（不入库） | — |
-| `local/plugins/` | 站点私有插件（不入库） | 站长 / 私有作者 |
+| `local/plugins/` | 站点私有插件（不入库） | 运维 / 私有作者 |
 
 ## 易混边界
 
