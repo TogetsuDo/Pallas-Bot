@@ -4,7 +4,7 @@
 
 ::: tip 先别慌
 今天只想「群里能回一句」→ 点 **[五分钟跑起来](quickstart.md)**。  
-要 4.0 全功能（扩展、AI、记忆）→ 点 **[4.0 启动说明](4.0-start.md)**。  
+要完整能力（扩展、AI、记忆）→ 点 **[启动说明](4.0-start.md)**。  
 维护 / VPS 长跑 → 点 **[运维快速开始](../maintainer/quickstart.md)**。
 :::
 
@@ -14,7 +14,7 @@
 | --- | --- |
 | 完全没接触过 Linux | [萌新引导](/noobook/) → [五分钟跑起来](quickstart.md) |
 | 会装软件，想今天跑起来 | **[五分钟跑起来](quickstart.md)** |
-| 要用 4.0 全功能 | [4.0 启动说明](4.0-start.md) |
+| 要用完整能力（扩展 / AI） | [启动说明](4.0-start.md) |
 | 牛已跑，要连 QQ | [连接协议端](connect-qq.md) |
 | 要装决斗、MAA | [安装官方扩展](install-extensions.md) |
 | 维护者 / VPS | [运维快速开始](../maintainer/quickstart.md) |

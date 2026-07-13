@@ -1,6 +1,6 @@
 # `@牛牛`、复读接话与 LLM 的关系
 
-> 适用：4.0 `llm_chat` + `repeater` + `Pallas-Bot-AI`
+> 适用：现行 `llm_chat` + `repeater` + `Pallas-Bot-AI`
 
 Pallas 里有两条看起来都像“牛牛在说话”的路径，但它们不是一回事：
 
@@ -123,4 +123,4 @@ Pallas 的默认顺序是：
 - 想看 `@牛牛` 怎么用：[`llm_chat`](../plugins/llm_chat/README.md)
 - 想看平时接话 / 复读：[`repeater`](../plugins/repeater/README.md)
 - 想看牛格和群味怎么来的：[`persona`](../plugins/persona/README.md)
-- 想看 4.0 开关总览：[`4.0-start`](./4.0-start.md)
+- 想看开关总览：[`启动说明`](./4.0-start.md)

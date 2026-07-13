@@ -71,7 +71,6 @@ FILE_MAP: dict[str, str] = {
     "developer/plugin-development/testing.md": "developer/plugin-development/testing.md",
     "developer/plugin-development/publishing.md": "developer/plugin-development/publishing.md",
     "developer/reference/repo-layout.md": "developer/reference/repo-layout.md",
-    "developer/reference/style-guide.md": "developer/reference/style-guide.md",
     "developer/reference/platform-api.md": "developer/reference/platform-api.md",
     "developer/reference/internal-api.md": "developer/reference/internal-api.md",
     "developer/reference/console-api-response.md": "developer/reference/console-api-response.md",

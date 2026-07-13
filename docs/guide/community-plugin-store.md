@@ -1,6 +1,6 @@
 # 社区插件商店
 
-Pallas 4.0 起，控制台 **插件商店 → 社区插件** 可从策展索引浏览第三方插件，并通过 git 安装到 `local/plugins/<id>/`。
+当前主线起，控制台 **插件商店 → 社区插件** 可从策展索引浏览第三方插件，并通过 git 安装到 `local/plugins/<id>/`。
 
 与 **官方扩展**（pip / `uv sync --extra`）并存；**同名时 `local/plugins` 优先**。
 
@@ -56,7 +56,7 @@ COMMUNITY_PLUGIN_INDEX_URL = "https://example.com/my-index.json"
 extra_plugin_dirs = ["local/plugins"]
 ```
 
-自 4.0 起，若 **未配置** 但 `local/plugins/` 下已有有效插件包（含 `__init__.py`），启动时也会 **自动纳入** 加载链；仍建议写上配置，便于文档与排障。
+若 **未配置** 但 `local/plugins/` 下已有有效插件包（含 `__init__.py`），启动时也会 **自动纳入** 加载链；仍建议写上配置，便于文档与排障。
 
 Docker 挂载示例见 [站点定制 · Docker](../architecture/site-customization-and-updates.md#docker--外挂插件卷)。
 

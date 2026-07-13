@@ -6,7 +6,7 @@
 ::: tip 和 core 的区别
 - **core**：复读、帮助、控制台……随 `uv run nb run` 就有  
 - **官方扩展**：通过插件商店或 `uv run pallas ext install pallas-plugin-xxx` 安装，**装完要重启 Bot**  
-拿不准装不装？先看 [4.0 启动说明 · 一分钟对照](4.0-start.md#一分钟对照)。
+拿不准装不装？先看 [启动说明 · 一分钟对照](4.0-start.md#一分钟对照)。
 :::
 
 ::: info 3.x 升级到 4.0

@@ -9,7 +9,7 @@
 | 项 | 要求 |
 | --- | --- |
 | Python | **3.12+**（推荐用 [uv](https://docs.astral.sh/uv/) 管理） |
-| 数据库 | **PostgreSQL**（4.0 默认）；本机或 Docker 起一个即可。从 3.x 升级可继续用 MongoDB |
+| 数据库 | **PostgreSQL**（现行默认）；本机或 Docker 起一个即可。从 3.x 升级可继续用 MongoDB |
 | QQ | 建议用小号；协议端可等 Bot 启动后再配 |
 
 ---

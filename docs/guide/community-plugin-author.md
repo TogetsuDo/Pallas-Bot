@@ -34,7 +34,7 @@ my_plugin/
 
 - **插件 ID**：小写字母开头，仅 `a-z` / `0-9` / `_`，最长 64；与 `local/plugins/<id>/` 目录名一致。
 - 可在 `__init__.py` 定义 `PLUGIN_ID = "my_plugin"`，便于与目录名对齐。
-- 依赖 Pallas 内核能力时，在 README 注明最低 **Pallas 4.0** 版本。
+- 依赖 Pallas-Bot 内核能力时，在 README 注明最低版本（如 **4.0.0**）。
 
 可选：接入 [cmd_perm](../common/cmd_perm/README.md) 的 `command_permissions`，帮助图会自动展示「何人可用」。
 
@@ -42,7 +42,7 @@ my_plugin/
 
 ## 版本与更新日志
 
-社区插件从 4.0 起开始正式做版本管理，约定如下：
+社区插件在当前主线起正式做版本管理，约定如下：
 
 - **版本号**：遵循[语义化版本](https://semver.org/lang/zh-CN/)（如 `0.1.0`）。在 `index.json` 条目里填可选字段 `version`，并与仓库的 git tag、`CHANGELOG.md` 对应。
 - **git tag**：发布一个版本时打 `vX.Y.Z`（如 `v0.1.0`），便于回溯与商店按 ref 安装。

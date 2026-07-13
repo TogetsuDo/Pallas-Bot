@@ -1,6 +1,6 @@
-# 从 legacy `ollama` 插件迁移到 4.0 `llm_chat`
+# 从 legacy `ollama` 插件迁移到现行 `llm_chat`
 
-> **适用**：3.x 使用 `plugins/ollama` 或 pip 包 `pallas-plugin-llm-chat` 的站点，升级到 **`dev` / 4.0** 后改用内置 **`llm_chat`** + **`features/llm`** + **Pallas-Bot-AI 4.0+**。
+> **适用**：3.x 使用 `plugins/ollama` 或 pip 包 `pallas-plugin-llm-chat` 的站点，升级到当前主线后改用内置 **`llm_chat`** + **`features/llm`** + **Pallas-Bot-AI（api ≥ 4.0.0）**。
 
 ## 变化摘要
 

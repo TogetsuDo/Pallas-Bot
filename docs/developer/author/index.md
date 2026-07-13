@@ -22,4 +22,3 @@
 ## 相关
 
 - [Developer](../index.md)
-- [文风](../reference/style-guide.md)
