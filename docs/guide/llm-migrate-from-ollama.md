@@ -1,26 +1,26 @@
-# 从 legacy `ollama` 插件迁移到现行 `llm_chat`
+# 从旧版 ollama 迁到 llm_chat
 
-> **适用**：3.x 使用 `plugins/ollama` 或 pip 包 `pallas-plugin-llm-chat` 的站点，升级到当前主线后改用内置 **`llm_chat`** + **`features/llm`** + **Pallas-Bot-AI（api ≥ 4.0.0）**。
+3.x 用过 `plugins/ollama` 或 pip 包 `pallas-plugin-llm-chat`？升级后请改用内置 **`llm_chat`** + **`features/llm`** + **Pallas-Bot-AI（api ≥ 4.0.0）**。
 
-## 变化摘要
+## 变了什么
 
-| 3.x | 4.0 |
+| 3.x | 现行 |
 | --- | --- |
-| `src/plugins/ollama/` 或 pip `pallas-plugin-llm-chat` | **core 内置** `llm_chat`（仓库内已无 `ollama` 插件目录） |
+| `src/plugins/ollama/` 或 pip `pallas-plugin-llm-chat` | **core 内置** `llm_chat`（仓库里已无 `ollama` 插件目录） |
 | 主仓直连 Ollama `/api/chat` | 主仓 → **Pallas-Bot-AI** → 统一 `/api/v1/chat/completions` |
 | `CHAT_ENABLE` / `OLLAMA_ENABLE` 等分散开关 | **`LLM_CHAT_ENABLED` 总闸** + `LLM_*` 子项 |
 | 无 repeater fallback/polish | `LLM_REPEATER_MODE`：`off` / `fallback` / `polish` / `both` |
 | 无方舟 tool | `features/llm/tools` + `ARKNIGHTS_KB_ENABLED` |
 
-酒后 `chat`、随时 @、接话 LLM **共用** `LLM_CHAT_ENABLED`；总闸关时子项不消耗资源。
+酒后 `chat`、随时 @、接话 LLM **共用** `LLM_CHAT_ENABLED`；总闸关时子项不耗资源。
 
 ## 配置键对照
 
-| 遗留键（`.env` / `webui.json`） | 4.0 键 | 说明 |
+| 遗留键（`.env` / `webui.json`） | 现行键 | 说明 |
 | --- | --- | --- |
 | `CHAT_ENABLE` | `LLM_CHAT_ENABLED` | 智能对话总闸 |
 | `OLLAMA_ENABLE` | `LLM_CHAT_ENABLED` | 同上，合并 |
-| `OLLAMA_HOST` / `OLLAMA_PORT` | — | 删除；改 **AI 仓** `AI_SERVER_HOST` / `AI_SERVER_PORT` |
+| `OLLAMA_HOST` / `OLLAMA_PORT` | — | 删掉；改 **AI 仓** `AI_SERVER_HOST` / `AI_SERVER_PORT` |
 | `OLLAMA_MODEL` | — | 改 AI 仓 `.env` 的 `LLM_MODEL` |
 | `OLLAMA_SYSTEM_PROMPT` 等 | `llm_chat` 插件页 | 可选自定义人设文件；默认走 `compile_persona_prompt` |
 | — | `LLM_REPEATER_MODE` | 接话 LLM，默认 `polish` |
@@ -30,9 +30,9 @@
 
 WebUI：**通用配置 → 智能对话与 AI 服务**；群风格开关在 **Bot 配置** 的 `group_style_enabled`。
 
-## AI 仓路径（legacy 兼容）
+## AI 仓路径（兼容旧客户端）
 
-Pallas-Bot-AI **4.0** 仍代理 deprecated 的 `/api/ollama/*`，供旧客户端过渡；**新功能禁止**再增 ollama 专用路径。
+Pallas-Bot-AI **4.0** 仍代理 deprecated 的 `/api/ollama/*`，方便旧客户端过渡；**新功能不要再加** ollama 专用路径。
 
 主仓默认请求：
 
@@ -44,7 +44,7 @@ Pallas-Bot-AI **4.0** 仍代理 deprecated 的 `/api/ollama/*`，供旧客户端
 ## 迁移步骤
 
 1. 备份 `config/pallas.toml`、`data/pallas_config/webui.json`、`.env`。
-2. 升级主仓到 4.0 线，`uv sync`（按需 `--extra` 装玩法扩展）。
+2. 升级主仓，`uv sync`（按需 `--extra` 装玩法扩展）。
 3. 部署 [Pallas-Bot-AI](https://github.com/PallasBot/Pallas-Bot-AI) **4.0** 分支，配置 `LLM_BACKEND_URL` / `LLM_MODEL`。
 4. 在 WebUI 打开 **`LLM_CHAT_ENABLED`**，填写 `AI_SERVER_HOST` / `AI_SERVER_PORT`。
 5. 删除或注释遗留 `CHAT_ENABLE`、`OLLAMA_*`；勿与 `LLM_*` 同名冲突。
@@ -59,7 +59,7 @@ uv run python tools/integration_repeater_llm.py --scenario both --ai-port 9099
 
 ## 口令与帮助
 
-| 3.x | 4.0 |
+| 3.x | 现行 |
 | --- | --- |
 | 插件名 `ollama` | 帮助项 **`随时闲聊`**（`llm_chat`） |
 | @牛牛 闲聊 | 不变；实现改走 `features/llm` |
@@ -67,6 +67,6 @@ uv run python tools/integration_repeater_llm.py --scenario both --ai-port 9099
 
 ## 延伸阅读
 
-- [4.0 启动说明](4.0-start.md)
+- [把玩法 / AI 也装上](4.0-start.md)
 - [Bot ↔ AI 仓契约](../architecture/internal/pallas-final-ai-shape.md)
 - [llm_chat 插件说明](../plugins/llm_chat/README.md)

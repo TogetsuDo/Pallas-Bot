@@ -1,8 +1,6 @@
 # 常见问题
 
-> [五分钟跑起来](guide/quickstart.md) · [运维快速开始](maintainer/quickstart.md) · [排障](maintainer/operate/troubleshooting.md) · [配置要点](Config.md)
-
-部署与使用中的常见问题。首次部署请先完成 [五分钟跑起来](guide/quickstart.md)。
+卡住了先看决策树；专题入口：[五分钟跑起来](guide/quickstart.md) · [运维快速开始](maintainer/quickstart.md) · [排障](maintainer/operate/troubleshooting.md) · [配置要点](Config.md)
 
 ## 不确定属于哪一类？
 
@@ -60,9 +58,15 @@ A: 这是主动发言功能，内容同样来源于学习到的群聊语料。
 
 ### Q: 管理员、号主、超管都是什么?
 
-A: **群管理员**指 QQ 群里的管理员。**号主**在本项目文档与帮助里即原「牛牛管理员 / 牛牛管理」所指：数据库 **`admins`** 数组里的 QQ，可控制该牛牛的部分能力（例如私聊「牛牛重新上号」）；通常应把实际运维该牛的 QQ 配进 **`admins`**。**超管**即 `config/pallas.toml` 的 **`[bootstrap] superusers`**（或环境变量 **`SUPERUSERS`**），对所有牛牛有最高权限。
+A:
 
-给牛牛增加/修改 **`admins`** 的方式见下文 [如何为牛牛配置号主（`admins`）](#faq-bot-admins)。
+| 角色 | 是谁 |
+| --- | --- |
+| **群管理员** | QQ 群里的管理员 |
+| **号主** | 该牛数据库 **`admins`** 里的 QQ（旧称「牛牛管理员」）；可管这只牛的部分能力，例如私聊「牛牛重新上号」 |
+| **超管** | `config/pallas.toml` 的 **`[bootstrap] superusers`**（或 **`SUPERUSERS`**），对所有牛最高权限 |
+
+运维该牛的人，通常应写进 **`admins`**。怎么配见下文 [如何为牛牛配置号主（`admins`）](#faq-bot-admins)。
 
 <a id="faq-bot-admins"></a>
 
@@ -72,7 +76,7 @@ A: **`account`** 为该牛牛的 QQ 号；**`admins`** 为 **QQ 号组成的 JSO
 
 **方式一：Web 控制台「实例与连接」（推荐）**
 
-1. 浏览器登录 Pallas Web 控制台（路径前缀见 `pallas_webui` 的 `PALLAS_WEBUI_HTTP_BASE`，常见为 `/pallas/`）。
+1. 浏览器登录 Pallas-Bot 控制台（路径前缀见 `pallas_webui` 的 `PALLAS_WEBUI_HTTP_BASE`，常见为 `/pallas/`）。
 2. 打开侧边栏 **「实例与连接」**。
 3. 在 **「NoneBot 框架」** 面板找到目标牛牛：若 **库配置** 为 **未入库**，点 **「初始化配置」**，添加号主 QQ 并保存。会在数据库中创建该牛的 `bot_config` 行，**不依赖**协议端或 `relogin_bot` 插件。
 4. 已在库中的牛牛可在 **「数据库中的实例」** 面板点编辑修改号主与其它选项。
@@ -140,9 +144,9 @@ A: **WebUI「数据库」页**有「数据库备份」面板；若未检测到 `
 
 ## 更新与版本
 
-### Q: Docker 部署和 git clone 部署，更新方式有什么区别？
+### Q: Docker 和 git clone，更新方式有啥区别？
 
-A: **Docker**：应用代码在镜像里，更新主要是 **`docker compose pull`** 后重建容器，一般**没有**本机仓库的 git 冲突问题；数据与配置应在卷（`data/`、`config/pallas.toml` 等）中，与镜像代码分离。**git clone**：更新是 **`git pull`**（或控制台「Bot 更新」在检测到 git 工作副本时执行的等价操作），若你修改了与上游**同一已跟踪文件**，可能出现合并冲突，需要本地处理后再拉。详见 [标准部署 - 后续更新](Deployment.md) 与 [Docker 部署](DockerDeployment.md)。
+A: **Docker**：代码在镜像里，更新主要是 **`docker compose pull`** 后重建容器，一般没有本机 git 冲突；数据与配置应在卷（`data/`、`config/pallas.toml` 等）里。**git clone**：更新是 **`git pull`**（或控制台「Bot 更新」在检测到 git 工作副本时的等价操作）；若你改过与上游同一已跟踪文件，可能冲突，需本地处理后再拉。详见 [标准部署 - 后续更新](Deployment.md) 与 [Docker 部署](DockerDeployment.md)。
 
 ### Q: `git pull --autostash` 能避免所有冲突吗？
 

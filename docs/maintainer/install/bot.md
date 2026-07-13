@@ -12,7 +12,7 @@
 想直接动手，看这几篇：
 
 - [五分钟跑起来](../../guide/quickstart.md)
-- [4.0 启动说明](../../guide/4.0-start.md)
+- [把玩法 / AI 也装上](../../guide/4.0-start.md)
 - [本地开发环境](../../develop/environment.md)
 
 ## 4.0 本体的角色

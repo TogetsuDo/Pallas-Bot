@@ -121,4 +121,4 @@ Pallas-Bot 的默认顺序是：
 - 想看 `@牛牛` 怎么用：[`llm_chat`](../plugins/llm_chat/README.md)
 - 想看平时接话 / 复读：[`repeater`](../plugins/repeater/README.md)
 - 想看牛格和群味怎么来的：[`persona`](../plugins/persona/README.md)
-- 想看开关总览：[`启动说明`](./4.0-start.md)
+- 想看开关总览：[`把玩法 / AI 也装上`](./4.0-start.md)
