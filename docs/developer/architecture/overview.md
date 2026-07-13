@@ -1,14 +1,8 @@
 # 架构总览
 
-这页给你一张 Pallas 4.0 当前可执行的架构地图，不论你维护本体、官方扩展还是社区插件。
+Pallas 4.0 可执行边界：主仓提供运行时与产品语义；WebUI / AI / 官方扩展为协作仓；玩法不回流成大一统 core。
 
-先记住几个核心判断：
-
-- 主仓负责运行时、平台能力、插件治理、语料底盘与产品语义。
-- WebUI 与 AI runtime 是独立仓，但都围绕主仓边界协作。
-- 大量玩法能力已经从主仓拆到官方扩展，别再让它们回流成“大而全 core”。
-
-## 总体结构
+## 拓扑
 
 ```mermaid
 flowchart LR
@@ -26,74 +20,55 @@ flowchart LR
     Core --> AI
 ```
 
-## 各层分别负责什么
+## 层职责
 
-| 层 | 主要职责 |
+| 层 | 职责 | 代码锚点 |
+| --- | --- | --- |
+| Core | 运行时、ingress、插件加载、cmd_perm / cooldown / help、WebUI 后端、分片、语料与产品记忆边界 | `pallas/`、`packages/` |
+| WebUI | 前端页面与交互；构建后同步到主仓运行目录 | 仓 `Pallas-Bot-WebUI` → `data/pb_webui/public/` |
+| AI | 媒体 / LLM 任务 runtime、队列、健康、callback | 仓 `Pallas-Bot-AI` |
+| Official Extensions | 官方维护、可独立安装的玩法与外部能力 | 兄弟仓 / PyPI |
+| Community Extensions | 第三方与站点私有能力 | Git / 本地 / 索引 |
+
+## 归属判定
+
+| 条件 | 归属 |
 | --- | --- |
-| `Pallas-Bot Core` | 运行时、消息入口、插件加载、权限/冷却/help、WebUI 后端、分片、语料与产品记忆边界 |
-| `Pallas-Bot-WebUI` | 前端页面、路由、样式、交互，构建后同步到主仓运行目录 |
-| `Pallas-Bot-AI` | 媒体与 AI 任务运行时、provider 编排、队列、健康、callback 基础设施 |
-| `Official Extensions` | 官方维护但不适合继续塞进 core 的玩法与外部能力 |
-| `Community Extensions` | 社区插件、站点私有插件、第三方能力 |
+| 全站点共用的平台基础设施或产品底盘 | Core |
+| 可独立发版、按需安装的玩法 / 外部集成 | Official Extension |
+| 第三方、实验、站点私有 | Community / `local/plugins/` |
 
-## 为什么要这样分
+细则：[Core 与扩展](core-vs-extensions.md)。
 
-4.0 的目标不是删功能，而是把“平台能力”和“玩法能力”拆开。
-
-- 平台能力必须稳定、可治理、可观测。
-- 玩法与外部能力可以独立演进、独立发布、独立安装。
-- AI 是增强层，不该反向吞掉 Bot 的产品边界。
-
-所以你每加一个能力，都面对一道很实际的判断题：
-
-- 这是所有站点都依赖的平台共性吗？是的话优先考虑 core。
-- 这是某类玩法、某个垂直能力、某个外部服务集成吗？优先考虑官方扩展或社区插件。
-
-## 当前稳定边界
-
-下面这些已经是当前事实，不是远期规划：
-
-- `core / official / community` 分层成立。
-- WebUI 源码仓与主仓运行产物分离。
-- AI callback 回到 Bot 的主链路已经建立。
-- 分片模式下，hub / worker / Redis 的职责边界已经明确。
-- 插件治理、命令权限、配置热重载都有统一入口，不应该各插件自造轮子。
-
-## 代码视角下的主仓结构
-
-4.0 现行主仓以 `pallas/` 和 `packages/` 为主：
+## 主仓路径
 
 | 路径 | 作用 |
 | --- | --- |
-| `pallas/` | 内核、平台、功能层、WebUI 后端、配置与运行时基础设施 |
-| `packages/` | 内置 core 插件 |
-| `tests/` | 内核、平台、插件、分片与回归测试 |
-| `docs/` | 架构、维护者文档、开发者文档、插件文档 |
+| `pallas/` | 内核、平台、产品、console |
+| `packages/` | 内置 core 插件（`pb_*` 等） |
+| `tests/` | 内核 / 平台 / 插件 / 分片回归 |
+| `docs/` | maintainer + developer 主线 |
+| `local/plugins/` | 站点私有插件（不入库） |
+| `data/` | 运行时数据（不入库） |
 
-## 开发者最常见的错误边界
+## 禁止假设
 
-### 把 WebUI 产物目录当成前端源码
+| 禁止 | 正确做法 |
+| --- | --- |
+| 把 `data/pb_webui/public/` 当前端源码 | 改 `Pallas-Bot-WebUI` 后同步产物 |
+| 把 AI runtime 当产品语义层 | 牛格 / 语料 / 人格边界留在主仓 |
+| 新玩法默认进 core | 先按 [Core vs 扩展](core-vs-extensions.md) 判定 |
+| 社区插件 import `pallas.core.*` | 只用 `pallas.api.*` |
 
-前端源码在 `Pallas-Bot-WebUI`，主仓 `data/pb_webui/public/` 只是运行产物。
-
-### 把 AI runtime 当成产品语义层
-
-AI 仓负责运行时，不负责牛格定义权、群味统计权和最终人格解释权。
-
-### 把所有新功能都往 core 塞
-
-如果一个能力本质上是玩法、外部系统接入或可独立安装的增强项，它通常不该直接进 core。
-
-## 建议阅读顺序
+## 阅读顺序
 
 1. [Core 与扩展](core-vs-extensions.md)
 2. [分片运行时](shard-runtime.md)
-3. [Golden Plugin](../plugin-development/golden-plugin.md)
-4. [配置存储](config-storage.md)
+3. [配置存储](config-storage.md)
+4. [Golden Plugin](../plugin-development/golden-plugin.md)
 
-## 深入阅读
+深度材料：
 
 - [Pallas 核心契约](../../architecture/internal/pallas-core-contract.md)
 - [内核插件统一化](../../architecture/internal/core-plugin-unification-design.md)
-- [AI 终态架构](../../architecture/internal/pallas-final-ai-shape.md)
-- [AI 实施与联调](../../architecture/internal/pallas-ai-implementation.md)
+- [包布局与公开 API](../../architecture/internal/pallas-package-layout.md)

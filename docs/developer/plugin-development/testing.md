@@ -1,63 +1,50 @@
 # 测试
 
-插件测试的目标不是“把所有路径都跑一遍”，而是证明你新增或修改的行为在 4.0 体系里仍然成立。
+证明插件在 4.0 治理面下行为成立，而非穷尽所有路径。
 
-## 至少覆盖哪些内容
+## 覆盖矩阵
 
-- 行为测试
-- 元数据测试
-- 配置与权限测试
-- 分片相关能力测试（如果有）
+| 层 | MUST 覆盖 | 目录 |
+| --- | --- | --- |
+| 行为 | 主命令 / 触发 / 关键输出 | `tests/plugins/<name>/` |
+| 元数据 | `command_permissions`、`menu_data`、`command_limits`、ID 一致、`reload_policy` | 同上 |
+| 配置 | 默认值、开关对行为的影响 | 同上 |
+| 分片 | 独占、claim、hosted activity、callback（若涉及） | `tests/plugins/` 或 `tests/platform/` |
 
-## 最少思路
+平台横切：`tests/common/`、`tests/platform/`。
 
-### 行为测试
+## 元数据最小例
 
-验证命令、触发条件和主要输出是否符合预期。
+```python
+from packages.blacklist import __plugin_meta__
 
-### 元数据测试
 
-验证 `command_permissions`、`menu_data`、`command_limits` 等声明是否完整、ID 是否一致。
-
-### 配置测试
-
-验证配置默认值、开关和关键参数是否会影响行为。
-
-### 分片相关测试
-
-如果插件涉及：
-
-- 同群独占
-- 跨 worker 协调
-- hosted activity
-- AI callback
-
-那至少要补一类分片下的行为验证。
-
-## 目录约定
-
-插件测试通常放在：
-
-```text
-tests/plugins/<plugin_name>/
+def test_blacklist_metadata_uses_sdk_declarations():
+    perms = __plugin_meta__.extra.get("command_permissions") or []
+    assert len(perms) == 3
+    assert __plugin_meta__.extra.get("reload_policy") == "metadata"
 ```
 
-如果是平台或跨插件行为，也可能落在：
+对照仓库内 `tests/plugins/*/test_*_metadata.py`。
 
-- `tests/common/`
-- `tests/platform/`
+## 不足的信号
 
-## 什么时候不够
+| 仅有 | 缺少 |
+| --- | --- |
+| 「函数可调用」 | 权限 / metadata 是否被平台理解 |
+| 单进程冒烟 | 分片下去重与独占 |
+| 无配置断言 | 热载语义与默认值 |
 
-只测“函数能调用”通常不够。对 4.0 插件来说，更重要的是：
+## 本地命令
 
-- 权限是否接对
-- metadata 是否能被平台理解
-- 配置和热重载语义是否一致
+```bash
+uv run pytest tests/plugins/<name>/ -q
+uv run ruff check pallas/ packages/
+```
 
-## 相关阅读
+流程：[environment](../../develop/environment.md)、[workflow](../../develop/workflow.md)。
 
-- [贡献与提交流程](../../develop/workflow.md)
-- [本地开发环境](../../develop/environment.md)
+## 相关
+
 - [Golden Plugin](golden-plugin.md)
-- 仓库内 `tests/plugins/*`
+- [元数据](metadata.md)

@@ -1,61 +1,18 @@
 # 配置与 WebUI
 
-Pallas 4.0 下，插件配置不再是“随便加个环境变量再读出来”。
+插件侧配置接入合同。合并顺序与读取 API 见 [配置存储](../architecture/config-storage.md)。
 
-记住三个基本事实：
+## 事实
 
-- 主配置以 `config/pallas.toml` 为基础
-- WebUI 统一落盘到 `data/pallas_config/webui.json`
-- 运行时最终读取的是合并后的配置，而不是你随手读到的某个单文件
+| 项 | 值 |
+| --- | --- |
+| 启动层主配置 | `config/pallas.toml` |
+| 遗留兼容 | `.env` / `.env.{ENVIRONMENT}`（只读合并，不新增主能力键） |
+| 运行态落盘 | `data/pallas_config/webui.json`（最高优先级） |
+| 插件页接法 | `pallas.api.config.install_hot_reload_config` |
+| 横切段 | 通用配置段（权限、gateway、scrub、ingress…） |
 
-## 先记住配置优先级
-
-当前合并顺序是：
-
-1. `config/pallas.toml`
-2. 遗留 `.env`
-3. `data/pallas_config/webui.json`
-
-最终以 WebUI 落盘为最高优先级覆盖。
-
-所以：
-
-- 不要再为主配置随意新增根目录 `.env` 键
-- 不要假设改了 `pallas.toml` 就一定是运行中的最终值
-- 不要在插件里私自维护另一套并行配置来源
-
-## 插件开发里最常见的两种配置接法
-
-### 1. 插件页配置
-
-这是最常见也最推荐的方式。
-
-典型做法：
-
-1. 在 `config.py` 定义 Pydantic 模型
-2. 使用 `install_hot_reload_config`
-3. 在业务代码中通过 `get_config()` 读取当前值
-
-这样做的好处是：
-
-- WebUI 能自动生成表单
-- 保存后可立即热重载
-- 配置来源与主仓治理方式一致
-
-### 2. 通用配置段
-
-如果你的配置本质上不是“某个单插件页面”，而是横切能力或全局能力的一部分，就该接到通用配置段，别自造一个独立存储点。
-
-典型例子包括：
-
-- 命令权限
-- service gateways
-- message scrub
-- ingress fanout
-
-## 插件代码应该怎么写
-
-推荐结构：
+## 插件页（推荐）
 
 ```python
 from pydantic import BaseModel, Field
@@ -71,61 +28,53 @@ plugin_webui = install_hot_reload_config(Config, config_module=__name__)
 get_config = plugin_webui.get
 ```
 
-业务代码里统一这样读：
-
 ```python
 cfg = get_config()
 if not cfg.enable:
-    ...
+    return
 ```
 
-::: warning 别长期复用旧快照
-不要在模块导入时就 `cfg = get_config()` 然后长期复用这个旧快照。那会让 WebUI 保存后的热重载失效。
-:::
+UI 字段元数据见 [DynamicConfigPanel](dynamic-config-panel.md)。
 
-## 什么时候需要热重载
+## 通用配置段
 
-如果一个配置项是面向运行中站点维护者调整的，默认就该考虑热重载。
+配置为平台横切项（多插件共享、非单插件私有页）时接到通用段，禁止自造存储点。
 
-例如：
+## 热载边界
 
-- 开关项
-- 命令文案
-- 阈值
-- 策略选择
+| 变更类型 | 期望 |
+| --- | --- |
+| 开关 / 文案 / 频率 / 策略枚举 | 应热载 |
+| Python 逻辑 / 复杂启动 / 深层结构 | 进程重启；勿伪装成热载 |
 
-如果改动的是 Python 代码本身、复杂启动流程或深层元数据结构，就别假装它是纯热重载问题。
+## 仓边界
 
-## 与 WebUI 的边界
+| 改动 | 仓库 |
+| --- | --- |
+| 表单 UI、路由、样式 | `Pallas-Bot-WebUI` |
+| 配置模型、保存、热载、API | 主仓 |
 
-分清两件事：
+## 新增配置项决策
 
-- WebUI 前端页面在 `Pallas-Bot-WebUI`
-- WebUI 后端配置、API、热重载逻辑在主仓
+| 问题 | 选项 |
+| --- | --- |
+| 启动层还是运行态？ | `pallas.toml` vs 插件页 / 通用段 |
+| 是否 WebUI 可改？ | 是 → 热载模型；否 → 启动层 |
+| 单插件还是横切？ | 插件页 vs 通用段 |
+| 分片下是否全 worker 一致？ | MUST 走统一读取入口 |
 
-所以：
+## 禁止
 
-- 表单展示、前端交互、页面布局：去前端仓
-- 配置模型、保存逻辑、运行时生效：改主仓
+| MUST NOT |
+| --- |
+| 为新主能力新增根目录 `.env` 键 |
+| 假设仅改 `pallas.toml` 即运行态终值 |
+| 模块 import 时缓存 `get_config()` |
+| 插件私有并行配置文件 |
 
-## 插件接配置前的判断题
-
-新增一个配置项前，先问：
-
-1. 这是主配置、插件配置，还是横切通用配置
-2. 站长是否需要通过 WebUI 修改
-3. 修改后是否应该立即生效
-4. 这个值是否真的应该属于该插件，而不是平台共性
-
-很多后续配置混乱，都是因为一开始没做这层判断。
-
-## 当前推荐入口
-
-- 现行开发文档先看这里和 [配置存储](../architecture/config-storage.md)
-- 旧的 `docs/common/webui/README.md` 仍保留大量细节，现在更适合作为底层参考
-
-## 相关阅读
+## 相关
 
 - [配置存储](../architecture/config-storage.md)
 - [Golden Plugin](golden-plugin.md)
-- [WebUI 配置底层说明](../../common/webui/README.md)
+- [WebUI 底层](../../common/webui/README.md)
+- [settings-storage](../../architecture/settings-storage.md)

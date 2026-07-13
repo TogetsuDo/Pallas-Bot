@@ -1,94 +1,49 @@
 # Platform API
 
-这页记录“值得被依赖的平台稳定入口”。它比内部实现更稳定，但不完全等于面向普通插件作者的最小 `pallas.api.*`。
+`pallas.api.platform`：官方扩展与内置插件的平台协作钩子。稳定性高于随意 `pallas.core.*` import，但仍次于面向社区的 `pallas.api.*` 其它子包。
 
-## 这页关注什么
+模块文档串：`pallas/api/platform/__init__.py`。
 
-重点关注这些类型的稳定导出：
+## 依赖分层
 
-- plugin capability
-- shard 协调入口
-- AI callback 相关入口
-- 维护者可复用的平台导出
+| 层 | 对象 | 社区插件 |
+| --- | --- | --- |
+| L1 | `pallas.api.commands` / `config` / `perm` / … | MUST |
+| L2 | `pallas.api.platform` | 默认禁止；仅当确需舰队 / 分片 / callback |
+| L3 | `pallas.core.*` / `console.*` / 深层 `product.*` | 禁止 |
 
-## 先区分三层
+社区插件若大量依赖 L2，通常边界过深，应提缺口升级为 L1 或改设计。
 
-在 4.0 里，最好先把依赖分成三层：
+## 导出分组（现行 `__all__`）
 
-1. `pallas.api.*`
-2. platform-level stable entry
-3. 内部实现
+| 分组 | 代表符号 |
+| --- | --- |
+| AI callback | `register_media_task_hooks`、`DRAW_IMAGE_TASK_TYPE` |
+| Bot 角色 | `bot_role`、`is_sharded_hub`、`is_sharded_worker`、`is_sharding_active` |
+| 发送不可用 | `is_bot_send_unavailable`、`log_bot_send_unavailable` |
+| Ingress | `text_matches_plugin_fanout`、`dream_session_ingress_passes` |
+| 多 Bot / claim | `try_claim_group_message_once`、`begin_group_exclusive_activity`、`claim_group_handler` |
+| 舰队 | `get_fleet_bot_ids`、`connected_bot_ids`、`list_local_fleet_bots_in_group` |
+| 分片在线 / 代发 | `get_cluster_online_bot_ids`、`send_group_message_as_bot`、`invoke_bot_action` |
+| LLM（平台协作） | `get_llm_config`、`llm_server_base_url`、`llm_command_tool_row` |
 
-区别不是“能不能 import”，而是“有没有稳定承诺”。
+完整列表以模块 `__all__` 为准；新增导出需同步本表。
 
-## 什么算 Platform API
+## 准入（进入本页的平台边界）
 
-Platform API 更接近这些场景：
+- 被多个模块长期依赖
+- 预期跨小版本保留
+- 可用语义描述，不暴露当前文件布局
+- 调用方无需理解大量内部实现
 
-- 主仓多个模块之间长期复用的稳定能力
-- 官方扩展或维护者向模块需要依赖的平台边界
-- 比普通社区插件入口更底层，但又不应随着内部重构随意漂移的导出
+## 禁止场景
 
-它通常不是给普通社区插件作者直接面向文档使用的第一入口。
+- 普通命令型插件仅为少写包装而跳过 L1
+- 把 Platform 当随意内部捷径
 
-## 和 Internal API 的区别
-
-- Internal API：现在能用，但不承诺稳定
-- Platform API：预计会被持续保留、适合主仓内外多个模块协作依赖
-
-## 和 `pallas.api.*` 的区别
-
-- `pallas.api.*`：面向插件作者的正式公开入口，应该是最优先选择。
-- Platform API：面向平台协作、官方扩展或主仓稳定边界的次级入口。
-
-如果你在写社区插件，却发现自己需要大量依赖 Platform API，通常说明边界已经开始过深。
-
-## 当前状态
-
-当前 4.0 下，真正稳定的公开插件契约仍以 `pallas.api.*` 为主，Platform API 仍在收口中。
-
-随着文档和导出继续收口，这里会逐步沉淀那些“不是给普通插件作者用、但又足够稳定值得依赖”的平台边界。
-
-## 当前推荐依赖顺序
-
-### 社区插件
-
-优先依赖：
-
-- `pallas.api.*`
-
-默认不要直接碰 Platform API。
-
-### 官方扩展与主仓协作模块
-
-优先依赖：
-
-- `pallas.api.*`
-- 已文档化的平台稳定边界
-
-只有在这两层都不够表达时，才考虑内部 API，而且要明确它只是临时实现依赖。
-
-## 什么时候不该用它
-
-这些情况通常不该直接走 Platform API：
-
-- 只是做一个普通命令型插件
-- 只是接入配置、权限、存储、帮助元数据
-- 只是想绕过 `pallas.api.*` 少写几层包装
-
-如果只是为了图省事跳过公开入口，后续重构成本会被放大。
-
-## 设计原则
-
-一条平台边界值得进这页，通常要满足：
-
-- 不止一个模块会依赖
-- 预期会在后续版本持续保留
-- 能够用清晰语义描述，而不是暴露当前文件布局
-- 不要求调用方理解大量内部实现细节
-
-## 相关阅读
+## 相关
 
 - [Internal API](internal-api.md)
-- [仓库结构](repo-layout.md)
-- [Pallas 包布局与公开 API](../../architecture/internal/pallas-package-layout.md)
+- [pallas.api Cookbook](../plugin-development/pallas-api-cookbook.md)
+- [分片运行时](../architecture/shard-runtime.md)
+- [包布局](../../architecture/internal/pallas-package-layout.md)

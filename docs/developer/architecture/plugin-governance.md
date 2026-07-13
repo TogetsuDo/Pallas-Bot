@@ -1,74 +1,50 @@
-# 插件治理与分层
+# 插件治理
 
-这页讲 core、官方扩展、社区扩展如何统一进入治理面，以及你写插件时该盯住哪几件事。
+治理面合同：声明 → 配置 → 生效 → 可见性。实现分散在 metadata、WebUI API 与 CLI，不是单一页面。
 
-```mermaid
-flowchart TB
-    Core[Core Plugin]
-    Official[Official Extension]
-    Community[Community Extension]
-    Governance[Governance]
+## 治理面
 
-    Core --> Governance
-    Official --> Governance
-    Community --> Governance
-```
+| 面 | 载体 | 作用 |
+| --- | --- | --- |
+| `reload_policy` | `PluginMetadata.extra` | 配置 / 元数据变更的热载粒度 |
+| `activation_policy` | 扩展矩阵 / 社区注册 | 安装·升级·卸载后的生效动作 |
+| `command_permissions` | `extra` + WebUI 覆盖 | 命令默认等级与运行时覆盖 |
+| `command_limits` | `extra` | 冷却声明 |
+| 帮助可见性 | `usage` / `menu_data` / `help_audience` | 帮助图与控制台展示 |
+| 安装 / 禁用 / 更新 | console / CLI | 包生命周期 |
 
-## 这张图说明什么
+## 稳定约定
 
-- core、官方扩展、社区扩展都会进入统一治理面
-- 治理不是单一页面，而是一组围绕声明、配置、生效方式和可见性的机制
-- 平台越统一声明方式，后续 WebUI、CLI 和自动化越容易稳定
+| 约定 | 说明 |
+| --- | --- |
+| `command_permissions` + `command_limits` | 现行命令治理基础；命令 ID 必须稳定 |
+| `reload_policy` ≠ `activation_policy` | 见 [Reload 与 Activation](../plugin-development/reload-and-activation.md) |
+| 无完整 metadata | 难以进入帮助与治理页 |
 
-## 核心治理面
+## 分层差异
 
-- `reload_policy`
-- `activation_policy`
-- 命令权限
-- cooldown
-- 帮助可见性
-- 全局禁用 / 安装 / 更新
+| 层 | 默认假设 |
+| --- | --- |
+| Core | 强 Golden 结构；随主仓版本 |
+| Official | 声明 `activation_policy`；PyPI 发版 |
+| Community | 公开 API；索引 / Git / 本地接入 |
 
-## 当前稳定的边界
+## 平台入口（实现）
 
-- `command_permissions` 与 `command_limits` 是现行治理基础
-- `reload_policy` 和 `activation_policy` 是两套不同语义
-- 插件能力聚合、帮助可见性、全局禁用已经有实际 API 和控制台入口
+| 能力 | 位置 |
+| --- | --- |
+| reload 执行 | `pallas.core.plugin_reload` |
+| 官方扩展 activation 表 | `pallas.core.platform.bot_runtime.plugin_matrix.OFFICIAL_EXTENSION_ACTIVATION_POLICY` |
+| WebUI 插件治理 API | `packages/pb_webui` / `pallas.console.webui` |
+| 元数据声明写法 | [元数据](../plugin-development/metadata.md) |
 
-## 还可能继续演进的实现
+## 演进中（非阻塞）
 
-- 单插件治理页的展示细节
+- 单插件治理页展示细节
 - 社区插件画像分层
-- 更细的安装后自动生效策略
+- 更细的装包后自动生效策略
 
-## 你最该关心的三件事
-
-### 1. 插件是否可被治理
-
-如果一个插件没有完整 metadata，它往往就很难进入现行治理页和帮助体系。
-
-### 2. 插件改动后怎样生效
-
-要分清：
-
-- 保存配置后的 reload
-- 安装或升级后的 activation
-
-### 3. 插件属于哪一层
-
-core、官方扩展、社区扩展虽然都会被治理，但默认假设和运维方式不完全相同。
-
-## 对应到平台能力
-
-治理相关的核心能力通常包括：
-
-- metadata 声明
-- 命令权限覆盖
-- 冷却展示与默认值
-- 单插件配置接口
-- 插件能力聚合接口
-
-## 相关阅读
+## 相关
 
 - [Core 与扩展](core-vs-extensions.md)
 - [元数据](../plugin-development/metadata.md)

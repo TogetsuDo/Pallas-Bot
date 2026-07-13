@@ -1,77 +1,49 @@
 # 插件开发入门
 
-第一次写 Pallas 4.0 插件？这页就是你的入口。
+最小闭环：可加载插件 → 元数据 / 权限 / 帮助对齐 → 配置热载（如需）→ 测试 + README。
 
-你要做的：
+## 放置位置
 
-- 先做出一个最小可运行插件
-- 再把它接进帮助、权限、配置、测试与文档
-- 从一开始就按 4.0 的结构和治理方式写，别沿用旧 `src.*` 时代的散装写法
-
-## 先理解你在写哪类插件
-
-Pallas 里常见的插件来源有三类：
-
-| 类型 | 放哪 | 适合什么 |
+| 类型 | 路径 | 用途 |
 | --- | --- | --- |
-| 站点私有插件 | `local/plugins/` | 本地定制、试验功能、未准备上游化 |
-| 内置 / core 插件 | `packages/` | 主仓内置能力 |
-| 官方或社区扩展 | 独立仓库 | 独立发布、独立安装、独立版本 |
+| 站点私有 | `local/plugins/` | 试验、未上游化 |
+| 内置 core | `packages/` | 随主仓发布 |
+| 官方 / 社区扩展 | 独立仓库 | 独立版本与安装 |
 
-只是想先写功能验证的话，优先从 `local/plugins/` 开始。
+验证优先从 `local/plugins/` 开始。
 
-## 一个最小插件至少要接什么
+## 完成定义（DoD）
 
-按 4.0 标准，“算完成”的插件不只是能响应命令。至少补齐：
+| 项 | 要求 |
+| --- | --- |
+| 入口 | Golden 目录；`__init__.py` 只做声明与注册 |
+| API | 社区扩展只 import `pallas.api.*` |
+| 权限 | `extra["command_permissions"]`；`usage` / `trigger_condition` 不写死角色 |
+| 帮助 | `usage` + `menu_data`；命令 ID 一致 |
+| 配置 | 有插件页则 `install_hot_reload_config` + `get_config()` |
+| 测试 | `tests/plugins/<name>/` 至少覆盖 metadata |
+| 文档 | `docs/plugins/<name>/README.md`（扩展仓则自有 README） |
 
-- 插件入口与元数据
-- 命令权限
-- 帮助文案
-- 配置接法
-- 最小测试
-- README
+## 实施顺序
 
-## 推荐学习顺序
+1. [Golden Plugin](golden-plugin.md) 定目录与 `__init__.py`
+2. `config.py` 接热载（有配置页时）
+3. `handlers.py` 写口令逻辑；`bind_alias_handlers` / `group_command`
+4. 补 metadata 测试与 README
+5. 需要发版时走 [发布](publishing.md)
 
-1. [Golden Plugin](golden-plugin.md)
-2. [配置与 WebUI](config-and-webui.md)
-3. [pallas.api Cookbook](pallas-api-cookbook.md)
-4. [测试](testing.md)
-5. [元数据](metadata.md)
+## 硬约束
 
-想要一个从零跟做的例子，先按 [Golden Plugin](golden-plugin.md) 和 [配置与 WebUI](config-and-webui.md) 这条主线继续补。
+| MUST | MUST NOT |
+| --- | --- |
+| 使用 `pallas.api.*` | 依赖旧 `src.*` 或 `pallas.core.*`（社区扩展） |
+| `__init__.py` 保持薄入口 | 把业务 / 持久化 / 长启动逻辑堆在入口 |
+| 权限走 `command_permissions` | 在帮助文案写死「仅群管」等角色 |
+| 配置走统一热载入口 | 自造并行配置文件或长期缓存 `get_config()` 快照 |
 
-## 当前插件开发的几个硬边界
-
-### 不再使用旧 `src.*` 作为社区入口
-
-现在的推荐 API 入口是 `pallas.api.*`。
-
-### 不要把所有逻辑塞进 `__init__.py`
-
-入口文件负责声明与注册，不负责承载全部实现。
-
-### 不要把权限写死在帮助文案里
-
-权限应通过 `command_permissions` 和运行时治理系统表达。
-
-### 不要跳过测试和 README
-
-::: tip 站点私有插件也别省
-哪怕是站点私有插件，也至少保留最小文档和最小验证。
-:::
-
-## 你现在可以怎么开始
-
-要立刻动手，最稳的顺序是：
-
-1. 先按 [Golden Plugin](golden-plugin.md) 定目录
-2. 在 `config.py` 接热重载配置
-3. 在 `__init__.py` 声明 metadata 和命令权限
-4. 在 `handlers.py` 写口令逻辑
-5. 补一个最小测试和 README
-
-## 相关阅读
+## 相关
 
 - [Golden Plugin](golden-plugin.md)
 - [配置与 WebUI](config-and-webui.md)
+- [pallas.api Cookbook](pallas-api-cookbook.md)
+- [测试](testing.md)

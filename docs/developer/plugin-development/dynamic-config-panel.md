@@ -1,6 +1,6 @@
-# DynamicConfigPanel 约定（OPT-WEB-011）
+# DynamicConfigPanel
 
-WebUI 通用组件 `DynamicConfigPanel.vue` 根据 Bot 返回的 `fields[]` 渲染插件/通用配置，并展示 **unexpected keys** 兜底区。
+WebUI 组件 `DynamicConfigPanel.vue` 根据 Bot 返回的 `fields[]` 渲染插件/通用配置，并展示 unexpected keys 兜底区。
 
 ## Pydantic `json_schema_extra`
 

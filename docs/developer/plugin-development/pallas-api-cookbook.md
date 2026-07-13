@@ -1,23 +1,16 @@
-# pallas.api Cookbook（扩展作者）
+# pallas.api Cookbook
 
-> 稳定入口一览。实现细节在 `pallas.core` / `pallas.product`，**社区与官方扩展只应 import `pallas.api.*`**（及模板约定的包内模块）。
+扩展作者稳定入口。实现在 `pallas.core` / `pallas.product`；**社区扩展只允许 import `pallas.api.*`**（及模板约定的包内模块）。官方扩展可用 `pallas.api.platform`（见 [Platform API](../reference/platform-api.md)）。
 
 ## 安装 pallas-core
 
-**全仓开发**（推荐）：在 Pallas-Bot 根目录 `uv sync`，`pallas` 由主仓提供，无需单独安装。
+| 场景 | 做法 |
+| --- | --- |
+| 主仓全仓开发 | 根目录 `uv sync`；无需单独装包 |
+| 独立扩展仓（wheel） | `./scripts/build_core.sh` 后 `uv pip install build/pallas-core/dist/pallas_core-*.whl` |
+| PyPI | `uv add "pallas-core>=4.0.0,<5.0.0"` |
 
-**独立扩展仓库**（预发布阶段）：
-
-```bash
-# 在主仓构建 wheel
-./scripts/build_core.sh
-uv pip install build/pallas-core/dist/pallas_core-*.whl
-
-# PyPI 正式发布后
-uv add "pallas-core>=4.0.0,<5.0.0"
-```
-
-扩展模板 `templates/pallas-plugin-extension/pyproject.toml` 已声明 `pallas-core` 依赖。
+模板：`templates/pallas-plugin-extension/pyproject.toml`。
 
 ## 命令与 handler
 
@@ -97,7 +90,7 @@ from pallas.api.ai_runtime_health import image_runtime_circuit_is_open
 
 ## 平台协作（官方扩展 / 内置）
 
-`pallas.api.platform` 暴露多 Bot 舰队、分片、callback 等钩子；**社区插件默认不依赖**。需要时查阅模块 `__all__` 与 maintainer 文档。
+`pallas.api.platform`：多 Bot、分片、callback。社区插件默认禁止。导出表见 [Platform API](../reference/platform-api.md)。
 
 ## 禁止 import
 

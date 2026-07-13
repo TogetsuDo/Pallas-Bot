@@ -1,96 +1,47 @@
 # Internal API
 
-这页帮你界定什么叫“内部 API”。
+可 import ≠ 对外契约。内部路径不承诺稳定，可在重构中移动或删除。
 
-在 Pallas 4.0 里，很多模块能被 import，不代表它们就是对外稳定契约。
+## 默认内部
 
-## 内部 API 是什么
+| 前缀 | 说明 |
+| --- | --- |
+| `pallas.core.*` | 运行时与平台实现（除非经 `pallas.api` re-export） |
+| `pallas.console.*` | WebUI / CLI 维护者向 |
+| 深层 `pallas.product.*` | 产品域实现；未文档化为公开入口则内部 |
 
-内部 API 指这些东西：
+## 允许依赖方
 
-- `pallas.core.*`
-- `pallas.console.*`
-- 大部分 `pallas.product.*` 的深层实现
-- 仅为了当前主仓内部协作存在的辅助函数和模块
+| 允许 | 禁止（默认） |
+| --- | --- |
+| 主仓自身 | 社区插件 |
+| 内置 `packages/` | PyPI 社区扩展 |
+| 文档显式批准的协作点 | 「当前能 import」即当长期 API |
 
-它们的共同点是：
+## 与公开层关系
 
-- 不承诺稳定
-- 可以在重构中移动或删除
-- 不适合作为社区插件或第三方扩展的长期依赖
+```text
+社区插件  →  pallas.api.*（L1）
+官方扩展  →  L1 + 文档化的 pallas.api.platform（L2）
+主仓内部  →  L1/L2/L3；对外传播前先提升边界
+```
 
-## 为什么这件事在 4.0 特别重要
+缺口流程：文档/设计提出需求 → 提升为 `pallas.api.*` 或 Platform → 再依赖。禁止先耦合再逼平台冻结布局。
 
-4.0 正在把历史上的 `src.*` 深层依赖收口到新的 `pallas` 包边界。
+## 禁止误用
 
-如果你继续把“当前 import 得到”当成“以后可以一直依赖”，那主仓后续所有目录整理、职责重划和实现替换都会被外部耦合锁死。
+| 误用 | 后果 |
+| --- | --- |
+| 为拿现成功能直 import 深层模块 | 与目录布局强耦合 |
+| 把 `pallas.console.*` 当插件 SDK | 维护者实现泄漏 |
+| 把产品域内部当 Platform | 语义与版本错位 |
 
-## 谁可以依赖
+## CI
 
-通常只有：
+`tools/check_plugin_imports.py` 与 `community_plugin_author check` 校验社区边界。
 
-- 主仓自身
-- 内置插件
-- 明确被文档允许的少量内核协作点
-
-社区插件和 PyPI 扩展默认不应直接依赖这些路径。
-
-## 典型内部路径应该怎么理解
-
-看到这些路径时，默认先按内部实现理解：
-
-- `pallas.core.*`
-- `pallas.console.*`
-- 深层 `pallas.product.*`
-- 为当前运行时或控制台服务的聚合 helper
-
-其中有些模块也许非常稳定，但在没被文档显式提到前，仍不该把它们当公开契约。
-
-## 为什么要分这个边界
-
-不把内部 API 和公开 API 分开，插件作者就会直接 import 当前实现细节，最后把主仓重构能力锁死。
-
-## 最常见的误用
-
-### 为了拿一个现成功能，直接 import 深层模块
-
-这通常会导致：
-
-- 插件和当前目录布局强耦合
-- 小重构也会引发外部 break
-
-### 把控制台实现当作插件公共能力
-
-`pallas.console.*` 里的很多东西是维护者向和 WebUI 向实现，不是给普通插件复用的稳定 SDK。
-
-### 把产品域内部实现当作平台 API
-
-某些 `pallas.product.*` 模块只是在主仓内承载产品逻辑，并不意味着它们对外稳定。
-
-## 推荐替代
-
-对插件作者来说，优先看：
-
-- `pallas.api.*`
-- 文档里明确标出来的现行入口
-
-当前公开入口不够用时，更合理的做法是：
-
-- 先在文档或设计里提出缺口
-- 再把需要的能力提升为正式公开边界
-
-而不是先绕过边界直接耦合内部实现。
-
-## 对主仓开发者的要求
-
-主仓开发者并不是“不能用内部 API”，而是要：
-
-- 清楚它只是当前实现边界
-- 不要把内部 helper 顺手传播成外部依赖
-- 当一个边界被多处稳定依赖时，考虑把它提升到 Platform API 或 `pallas.api.*`
-
-## 相关阅读
+## 相关
 
 - [Platform API](platform-api.md)
-- [写作与风格约定](style-guide.md)
-- [Pallas 包布局与公开 API](../../architecture/internal/pallas-package-layout.md)
+- [pallas.api Cookbook](../plugin-development/pallas-api-cookbook.md)
+- [包布局](../../architecture/internal/pallas-package-layout.md)

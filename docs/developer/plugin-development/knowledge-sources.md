@@ -1,6 +1,11 @@
-# 插件知识源与本地知识目录
+# 知识源与本地 ingest
 
-插件可通过 `PluginMetadata.extra['knowledge_sources']` 声明静态文本知识源；Bot 在 LLM 闲聊前统一检索并注入 system prompt。另支持从 `data/pallas_knowledge/` 加载 Markdown / JSONL。
+| 机制 | 入口 |
+| --- | --- |
+| 插件声明 | `PluginMetadata.extra['knowledge_sources']` |
+| 本地目录 | `data/pallas_knowledge/**/*.md` / `.jsonl` |
+
+Bot 在 LLM 闲聊前统一检索并注入 system prompt。AI 为可选能力；无 LLM 时本页不生效。
 
 ## 官方参考
 

@@ -1,10 +1,8 @@
 # 分片运行时
 
-这页帮你在写代码时按分片模式思考，而不是教你怎么启动脚本。
+分片编码合同。部署脚本见 [maintainer/deploy/sharded](../../maintainer/deploy/sharded.md)。架构细节：[bot_process_sharding](../../architecture/bot_process_sharding.md)、[central-ingress-dispatch](../../architecture/internal/central-ingress-dispatch.md)。
 
-记住一点：分片不是把单进程复制多份。hub、worker、Redis、协议端、AI callback 各有职责边界，代码要按这个边界写。
-
-## 运行时结构
+## 拓扑
 
 ```mermaid
 flowchart LR
@@ -26,82 +24,56 @@ flowchart LR
     W2 --> AI
 ```
 
-## 角色边界
+## 角色
 
-| 角色 | 你该如何理解 |
+| 角色 | 职责 | 代码锚点 |
+| --- | --- | --- |
+| Hub | 协调、控制台聚合、部分入口；非主要消息处理 | `is_sharded_hub` / `is_hub_role` |
+| Worker | 插件与群消息主路径 | `is_sharded_worker` |
+| Redis | 分片协调事实源（非可丢弃缓存） | 分片 coord / presence |
+| Protocol | 账号接入，连到 worker | 协议扩展 |
+
+角色探测：`from pallas.api.platform import is_sharded_hub, is_sharded_worker, is_sharding_active`。
+
+## 编码约束
+
+| MUST NOT | MUST |
 | --- | --- |
-| `hub` | 协调层、控制台聚合层、部分入口层，不是主要消息处理层 |
-| `worker` | 插件主要运行位置，绝大多数群消息逻辑都在这里执行 |
-| `Redis` | 分片下关键协调事实源，不再只是“可选优化” |
-| `Protocol` | 账号侧接入，最终反向连到 worker |
+| 假设 hub 本地已加载全部运行中插件 | 需要全局视图时走 worker 聚合 / registry |
+| 把进程内状态当集群全局状态 | 跨 worker 用 Redis / 共享注册表 |
+| 在 async 热路径做阻塞轮询 | 用既有 listener / pubsub 模式 |
 
-## 对代码设计意味着什么
+## 高频能力
 
-### 1. 不能假设 hub 能看到所有运行中插件
+| 能力 | 合同 | API（`pallas.api.platform`） |
+| --- | --- | --- |
+| 消息去重 / claim | 同条消息不可多 worker 重复响应 | `try_claim_group_message_once`、`claim_group_message_event`、`claim_group_handler` |
+| 群独占活动 | 同群同时一场 | `begin_group_exclusive_activity`、`try_begin_group_owned_gate` |
+| Fanout / host gate | ingress 策略与主持牛 | `text_matches_plugin_fanout`、`dream_session_ingress_passes` |
+| 跨分片发送 | 指定 bot 代发 | `send_group_message_as_bot`、`invoke_bot_action` |
+| Hub-only 启动逻辑 | 勿在 worker 重复挂载 | `startup.py` 内 `is_sharded_worker()` 守卫 |
 
-分片模式里，很多插件实际只运行在 worker。任何只依赖 hub 本地插件加载状态的判断，都可能失真。
+## 触发分片设计的改动
 
-### 2. 不能假设本地进程内状态就是全局状态
-
-如果能力跨 worker 生效，就必须考虑：
-
-- Redis 协调
-- 共享状态
-- 注册表
-- worker 聚合回传
-
-### 3. 不能把阻塞式轮询放在 async 热路径里
-
-分片场景下，协调 listener、pubsub、跨 worker 事件循环阻塞，都会很快放大成启动慢、掉连、抖动或大面积超时。
-
-## 分片下开发者最常碰到的三类能力
-
-### ingress 与 claim
-
-同一条消息最终由谁处理，不是简单“每个 worker 都跑一遍 matcher”。Pallas 在分片下依赖统一的 ingress / claim / fanout 策略，避免重复响应。
-
-### hosted activity
-
-像 `duel`、`who_is_spy` 这种“同群同时间只允许一场”的玩法，必须考虑主持牛、活动锁与跨 worker 独占。
-
-### worker 可观测
-
-WebUI 展示的大量状态来自 worker 汇总，不是 hub 本地推断。新增分片相关能力时，要考虑是否需要把状态写入既有 stats / observability 通道。
-
-## 开发新功能时的判断清单
-
-改动涉及下面任一项，就主动按分片思维设计：
+涉及任一项即按分片设计：
 
 - 同群多牛
 - 跨 worker 去重
-- 需要指定某只牛执行动作
+- 指定某 bot 执行动作
 - 群级独占活动
 - AI callback 回到发起 worker
-- WebUI 需要展示 worker 实时状态
+- WebUI 展示 worker 实时态
 
-## 分片下的常见错误
+## 禁止
 
-### 只在单进程里验证逻辑
+| 禁止 | 原因 |
+| --- | --- |
+| 仅在单进程验证上述能力 | 分片下会重复响应 / 丢状态 |
+| hub 读本地插件态做全局结论 | 遗漏 worker 专属插件 |
+| 把 Redis 当可丢弃缓存 | 协调层事实源 |
 
-单进程能跑，不代表分片下不会重复响应、丢状态或拿错事实源。
-
-### 在 hub 侧直接读取本地插件状态做全局结论
-
-这会遗漏 worker 专属插件和 worker 专属元数据。
-
-### 认为 Redis 只是缓存
-
-::: warning Redis 不是缓存
-在当前 4.0 分片设计里，Redis 已经是关键协调层的一部分。别把它当成可丢弃的缓存。
-:::
-
-## 推荐阅读顺序
-
-1. [多进程分片架构细节](../../architecture/bot_process_sharding.md)
-2. [中央入站调度](../../architecture/internal/central-ingress-dispatch.md)
-3. [维护者分片部署](../../maintainer/deploy/sharded.md)
-
-## 相关阅读
+## 相关
 
 - [架构总览](overview.md)
 - [Core 与扩展](core-vs-extensions.md)
+- [Platform API](../reference/platform-api.md)

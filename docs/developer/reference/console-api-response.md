@@ -1,4 +1,6 @@
-# 控制台 API 响应约定（OPT-WEB-013）
+# 控制台 API 响应约定
+
+实现：`pallas.console.webui.api_response`。
 
 ## 信封格式
 
@@ -20,8 +22,6 @@
   "data": null
 }
 ```
-
-实现：`pallas.console.webui.api_response`。
 
 ## 代码示例
 
