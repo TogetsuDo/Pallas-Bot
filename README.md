@@ -160,8 +160,8 @@ uv run nb run
 <a id="致谢"></a>
 ## 🙏 致谢
 
-- [**MaiBot**](https://github.com/Mai-with-u/MaiBot)：麦麦——学习与陪伴向聊天机器人
-- [**gsuid_core**](https://github.com/Genshin-bots/gsuid_core)：GsUID Core——插件核心与多 Bot 适配思路
+- [**MaiBot**](https://github.com/Mai-with-u/MaiBot)：学习与陪伴向聊天机器人项目
+- [**gsuid_core**](https://github.com/Genshin-bots/gsuid_core)：多 Bot 插件核心框架
 - [**ArknightsGameData**](https://github.com/Kengxxiao/ArknightsGameData)：明日方舟游戏数据；决斗干员表与知识库由远端同步其 `zh_CN/gamedata`
 - [**ArknightsGameResource**](https://github.com/yuanyan3060/ArknightsGameResource)：干员头像等资源；决斗 / 知识库头像由此拉取
 - [**MaaAssistantArknights**](https://github.com/MaaAssistantArknights/MaaAssistantArknights.git)：明日方舟长草助手 MAA ；本项目的远控能力基于其[远程控制协议](https://docs.maa.plus/zh-cn/protocol/remote-control-schema.html)实现
@@ -169,7 +169,7 @@ uv run nb run
 - [**jieba_next**](https://github.com/mxcoras/jieba-next)：Use Rust to Speed up jieba 高效、现代的中文分词库
 - [**beanie**](https://github.com/BeanieODM/beanie)：Asynchronous Python ODM for MongoDB
 - [**NapCat**](https://github.com/NapNeko/NapCatQQ)：现代化的基于 NTQQ 的 Bot 协议端实现
-- [**zhenxun_bot**](https://github.com/zhenxun-org/zhenxun_bot.git)：非常可爱的绪山真寻Bot
+- [**zhenxun_bot**](https://github.com/zhenxun-org/zhenxun_bot.git)：QQ 群聊机器人项目
 - [**Amiya-bot**](https://github.com/AmiyaBot/Amiya-Bot.git)：基于 AmiyaBot 框架的 QQ 聊天机器人
 - [**CustomMarkdownImage**](https://github.com/Monody-S/CustomMarkdownImage.git)：基于pillow的可自定义markdown渲染器
 
