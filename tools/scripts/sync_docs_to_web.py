@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -154,8 +155,10 @@ GITHUB_SRC = "https://github.com/PallasBot/Pallas-Bot/tree/main/pallas/"
 
 def transform_for_vitepress(text: str) -> str:
     """相对链接 -> VitePress 站内路径；源码路径 -> GitHub。"""
-    text = text.replace('../assets/brand-avatar.png', '/assets/logo.png')
-    text = text.replace('src="../assets/brand-avatar.png"', 'src="/assets/logo.png"')
+    # 插件 README 头像：主仓相对路径 -> Docs 公共静态资源（勿用站 logo）
+    text = text.replace("../assets/brand-avatar.png", "/assets/brand-avatar.png")
+    text = text.replace("./assets/brand-avatar.png", "/assets/brand-avatar.png")
+    text = re.sub(r"(?<![./])assets/brand-avatar\.png", "/assets/brand-avatar.png", text)
     text = re.sub(
         r"\]\(\.\./\.\./\.\./(?:src|pallas)/([^)#]+)\)",
         rf"]({GITHUB_SRC}\1)",
@@ -434,6 +437,12 @@ def rewrite_tree_relative_links(text: str, *, rel_src: str) -> str:
 def sync(dest_root: Path) -> int:
     src_root = dest_root / "src"
     count = 0
+    avatar_src = DOCS / "plugins" / "assets" / "brand-avatar.png"
+    avatar_dst = src_root / "public" / "assets" / "brand-avatar.png"
+    if avatar_src.is_file():
+        avatar_dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(avatar_src, avatar_dst)
+        print("sync plugins/assets/brand-avatar.png -> src/public/assets/brand-avatar.png")
     for rel_src, rel_dst in FILE_MAP.items():
         source = DOCS / rel_src
         if not source.is_file():

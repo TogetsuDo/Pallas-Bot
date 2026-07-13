@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="/assets/logo.png" width="220" height="220" alt="重新上号">
+  <img src="../assets/brand-avatar.png" width="220" height="220" alt="重新上号">
 </p>
 
 <h1 align="center">重新上号 relogin_bot</h1>

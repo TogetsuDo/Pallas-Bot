@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="/assets/logo.png" width="220" height="220" alt="MAA 远控">
+  <img src="../assets/brand-avatar.png" width="220" height="220" alt="MAA 远控">
 </p>
 
 <h1 align="center">MAA 远控 maa</h1>

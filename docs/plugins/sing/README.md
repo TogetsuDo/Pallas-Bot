@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="/assets/logo.png" width="220" height="220" alt="牛牛唱歌">
+  <img src="../assets/brand-avatar.png" width="220" height="220" alt="牛牛唱歌">
 </p>
 
 <h1 align="center">牛牛唱歌 sing</h1>

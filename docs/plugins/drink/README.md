@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="/assets/logo.png" width="220" height="220" alt="牛牛喝酒">
+  <img src="../assets/brand-avatar.png" width="220" height="220" alt="牛牛喝酒">
 </p>
 
 <h1 align="center">牛牛喝酒 drink</h1>

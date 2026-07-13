@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="/assets/logo.png" width="220" height="220" alt="牛牛黑名单">
+  <img src="../assets/brand-avatar.png" width="220" height="220" alt="牛牛黑名单">
 </p>
 
 <h1 align="center">牛牛黑名单 blacklist</h1>

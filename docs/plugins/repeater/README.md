@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="/assets/logo.png" width="220" height="220" alt="牛牛复读">
+  <img src="../assets/brand-avatar.png" width="220" height="220" alt="牛牛复读">
 </p>
 
 <h1 align="center">牛牛复读 repeater</h1>
