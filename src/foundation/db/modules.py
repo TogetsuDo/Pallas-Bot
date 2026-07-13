@@ -25,7 +25,8 @@ class BotConfigModule(Document):
     auto_accept_friend: bool = Field(default=False)
     auto_accept_group: bool = Field(default=False)
     security: bool = Field(default=False)
-    taken_name: dict[int, int] = Field(default_factory=dict)
+    # BSON 要求 string key；读写侧统一 str(group_id)，兼容历史 int key
+    taken_name: dict[str, int] = Field(default_factory=dict)
     drunk: dict[int, float] = Field(default_factory=dict)
     disabled_plugins: list[str] = Field(default_factory=list)
     community_roster_show_qq: bool = Field(default=True)
