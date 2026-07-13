@@ -9,7 +9,7 @@
 | 项 | 要求 |
 | --- | --- |
 | Python | **3.12+**（推荐用 [uv](https://docs.astral.sh/uv/) 管理） |
-| 数据库 | **MongoDB** 或 **PostgreSQL** 二选一，本机或 Docker 起一个即可 |
+| 数据库 | **PostgreSQL**（4.0 默认）；本机或 Docker 起一个即可。从 3.x 升级可继续用 MongoDB |
 | QQ | 建议用小号；协议端可等 Bot 启动后再配 |
 
 ---
@@ -30,14 +30,8 @@ cd Pallas-Bot
 ## 2. 安装依赖
 
 ```bash
-uv sync
-```
-
-::: details 打算用 PostgreSQL
-```bash
 uv sync --extra pg
 ```
-:::
 
 **如何确认成功**：
 
@@ -92,8 +86,6 @@ uv run nb run
 2. 日志里打印 **Web 控制台初始口令**（也可在 `data/pallas_console/` 找回）  
 3. 浏览器打开 `http://127.0.0.1:8088/pallas/` 能出现登录页  
 
-![WebUI 登录示意图](/assets/guide/webui-login.svg)
-
 ::: tip 控制台地址
 - 本机：`http://127.0.0.1:8088/pallas/`  
 - 远程：把 `127.0.0.1` 换成服务器 IP，并放行 **8088** 端口  
@@ -140,7 +132,7 @@ Bot **不会**自己登录 QQ，需要 NapCat 等协议端转发消息。
 
 | 现象 | 先看 |
 | --- | --- |
-| 数据库连不上 | Mongo/PG 是否已启动；`pallas.toml` 的 host/port/db 是否一致 |
+| 数据库连不上 | PostgreSQL 是否已启动；`pallas.toml` 的 host/port/db 是否一致（升级站若仍用 Mongo 则核对该段） |
 | 忘记控制台口令 | [FAQ](../FAQ.md) |
 | 协议端在线但群没反应 | 牛是否在群里；看 **运行日志** 是否收到消息 |
 | 更多 | [FAQ](../FAQ.md) |

@@ -6,7 +6,8 @@
 
 - Python 3.12
 - `uv`
-- 数据库 / Redis 可选，见 [配置参考](../reference/config.md)
+- 数据库：**PostgreSQL**（4.0 默认），见 [配置参考](../reference/config.md)；3.x 升级可继续 MongoDB
+- Redis：仅分片 / AI 等场景需要
 
 想直接动手，看这几篇：
 

@@ -16,7 +16,7 @@
 | 系统 | Linux（推荐）或 Windows；长期运行优先 Linux + systemd |
 | QQ 账号 | 使用**小号**登录协议端，勿用大号 |
 | 网络 | 服务器可访问数据库端口；若外网访问控制台，需开放 **HTTP 端口**（默认 `8088`） |
-| 数据库 | 已安装 **MongoDB** 或 **PostgreSQL**，或可连接远程实例 |
+| 数据库 | 已安装 **PostgreSQL**（4.0 默认），或可连接远程实例；3.x 升级可继续用 MongoDB |
 | 工具 | `git`、`Python 3.12+`（或由 `uv` 自动安装）、[`uv`](https://docs.astral.sh/uv/) |
 | 配置 | 将准备 **`config/pallas.toml`**（从示例复制，**非可选项**） |
 
@@ -114,17 +114,17 @@ uv run python tools/migrate_env_to_pallas.py
 
 ## 步骤 4：准备数据库
 
-新装推荐 **PostgreSQL**（`uv sync --extra pg`）；也可继续用 **MongoDB**。
+**4.0 新装默认 PostgreSQL**（`uv sync --extra pg`）。从 3.x 升级、已有 Mongo 数据的站点可继续用 MongoDB，不必为上 4.0 强迁。
 
 - PostgreSQL：[官方下载](https://www.postgresql.org/download/) · 权限与可选扩展见 [deploy/pg/README.md](../deploy/pg/README.md)
-- MongoDB：[Windows 安装](https://www.runoob.com/mongodb/mongodb-window-install.html) · [Linux 安装](https://www.runoob.com/mongodb/mongodb-linux-install.html)
+- MongoDB（升级沿用）：[Windows 安装](https://www.runoob.com/mongodb/mongodb-window-install.html) · [Linux 安装](https://www.runoob.com/mongodb/mongodb-linux-install.html)
 
 库表由 Pallas-Bot **首次启动时自动初始化**，无需手工建表（PG 需目标库已存在；勿依赖超级用户）。详见 [Docker 部署 · PG 排障](DockerDeployment.md#pg-日志-fatal-database-pallasbot-does-not-exist)。
 
 **如何确认成功**：
 
 - PostgreSQL：`psql -h ... -U ... -d ...` 可登录，且库名与 `pallas.toml` 中 `db` 一致。
-- MongoDB：`mongosh` 或客户端能连上 `pallas.toml` 中的 host/port。
+- MongoDB（若沿用）：`mongosh` 或客户端能连上 `pallas.toml` 中的 host/port。
 
 ---
 
