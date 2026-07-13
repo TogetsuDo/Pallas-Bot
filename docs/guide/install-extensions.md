@@ -5,7 +5,8 @@
 
 ::: tip 和 core 的区别
 - **core**：复读、帮助、控制台……随 `uv run nb run` 就有  
-- **官方扩展**：通过插件商店或 `uv run pallas ext install pallas-plugin-xxx` 安装，**装完要重启 Bot**
+- **官方扩展**：通过插件商店或 `uv run pallas ext install pallas-plugin-xxx` 安装，**装完要重启 Bot**  
+拿不准装不装？先看 [4.0 启动说明 · 一分钟对照](4.0-start.md#一分钟对照)。
 :::
 
 ::: info 3.x 升级到 4.0
@@ -30,6 +31,12 @@
 | 未安装 | 还没 pip 装 |
 | 已安装待重启 | pip 有了，重启后才会加载 |
 | 已加载 | 当前进程里已经在跑 |
+
+![插件商店示意图](/assets/guide/plugin-store.svg)
+
+::: tip 恭喜通了
+商店显示 **已加载**，且群里对应口令有反应（例如决斗）= 扩展真的进当前进程了。卡在「待重启」就再重启一次 Bot。
+:::
 
 ---
 

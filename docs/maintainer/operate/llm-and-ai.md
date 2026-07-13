@@ -2,12 +2,34 @@
 
 这页只关注运行中的 AI 链路是否正常，不讲插件开发和架构设计。
 
-## 最常看的四件事
+::: tip 先别慌
+@ 牛没回、记不住旧事，九成不是「模型坏了」，而是总闸没开、AI 仓没起来，或 embeddings / PG 还没通。先按下面三样查。
+:::
 
-- LLM 总开关是否打开
-- AI runtime 是否可达
-- callback 是否正常回到 Bot
-- 任务与会话状态是否可观察
+## 先查这三样
+
+1. **`LLM_CHAT_ENABLED`** 是否为开（总闸关着，后端再健康也不闲聊）
+2. **AI runtime** 是否可达（`AI_SERVER_HOST` / `AI_SERVER_PORT`，默认 `9099`）
+3. **callback** 是否回到 Bot（AI 任务成功 ≠ 群里一定有字）
+
+然后再看任务与会话状态是否可观察。
+
+## 闲聊 / 记忆不生效时怎么走
+
+```mermaid
+flowchart TD
+  Start[闲聊或记忆不生效] --> Gate{LLM_CHAT_ENABLED 已开?}
+  Gate -->|否| OpenGate[打开总闸并保存配置]
+  Gate -->|是| Reach{AI runtime 可达?}
+  Reach -->|否| FixAI[检查进程地址端口与网络]
+  Reach -->|是| Emb{需要向量检索?}
+  Emb -->|hybrid或embedding| EmbOk{embeddings 可用?}
+  EmbOk -->|否| Fallback[会回落关键词或修 AI embeddings]
+  EmbOk -->|是| Store{PG 记忆或 knowledge 有数据?}
+  Emb -->|只要关键词| Store
+  Store -->|否| Teach[教一句记住或检查 data/pallas_knowledge]
+  Store -->|是| Deeper[再查 callback 与 runtime-overview]
+```
 
 ## 先分清 Bot 和 AI Runtime
 
@@ -71,20 +93,33 @@
 - `wizard/status` 解决“AI 配置还差哪一步”
 - `runtime-overview` 解决“现在到底是哪一层在异常”
 
-## 记忆与 session 分层（7.6 最小集）
+## 记忆与 session 分层
 
-运行时 **session / task state** 以 **Pallas-Bot-AI** 为执行面：多轮上下文、队列中的任务状态、超长会话摘要写入等由 AI 仓承载；Bot 通过 `runtime-overview` 与 `/health` 观测，不在插件内重复维护 parallel 状态机。
-
-**Bot 侧产品记忆**（策略与注入，非 runtime 执行）：
+运行时 **session / task state** 以 **Pallas-Bot-AI** 为执行面；Bot 负责产品侧记忆策略与注入。
 
 | 层级 | 位置 | 用途 |
 |------|------|------|
 | 会话窗口 | Bot `session_store` + AI 回调 | 群内多轮可见历史 |
 | 超长摘要 | metadata `session_summary` → AI | 窗口外压缩上下文 |
-| 关系便签 `relationship_notes` | Bot PG（**二级来源**） | 轻量好感/关系线索；注入时服从 `LLM_RELATIONSHIP_NOTES_ENABLED` 与群策略 |
-| 知识源 / hybrid RAG | Bot `features/llm` | 业务检索与 trace，非 AI 仓 session 替代品 |
+| 群记忆（teach / auto_episode） | Bot PG `llm_memory_entry` | 「记住：」与启发式旧事；默认 **hybrid** 检索（`LLM_VECTOR_RETRIEVE`） |
+| 关系便签 | Bot PG | 对用户的稳定关系备注 |
+| 知识源 | 插件声明 + `data/pallas_knowledge/` | FAQ / 本地文档块注入 |
 
-排障时：会话「记不住了」先查 AI 任务与 callback；关系便签不生效再查 Bot PG 与 `relationship_notes` 开关，不要与 AI session backend 混为一谈。
+### 群记忆 / RAG 常用开关
+
+| 变量 | 默认 | 说明 |
+|------|------|------|
+| `LLM_MEMORY_RAG_ENABLED` | 开 | 群记忆读写与注入 |
+| `LLM_VECTOR_RETRIEVE` | `hybrid` | 关键词+向量；AI embeddings 不可用时回落关键词 |
+| `LLM_EMBEDDING_MODEL` | `stub` | 与 AI 仓一致 |
+| `LLM_MEMORY_AUTO_EPISODE_ENABLED` | 开 | 有价值发言自动写入 episode |
+| `LLM_KNOWLEDGE_SOURCES_ENABLED` | 开 | 知识源总闸 |
+| `LLM_KNOWLEDGE_FILE_INGEST_ENABLED` | 开 | 扫描 `data/pallas_knowledge/` |
+| `LLM_RELATIONSHIP_NOTES_ENABLED` | 开 | 关系备注 |
+
+模型也可通过 tools `memory.search` / `memory.save` 主动检索与写入。控制台：`GET/POST /pallas/api/llm/conversation-kernel/memory`、`GET /pallas/api/llm/knowledge/sources`。
+
+排障：会话「记不住」先查 AI 任务与 callback；群记忆不生效再查 PG、上述开关与 embeddings 连通性。
 
 ## callback 的判断思路
 
