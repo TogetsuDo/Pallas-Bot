@@ -59,7 +59,7 @@ from pallas.console.webui.console_login import (
     set_shared_console_login_token,
     verify_console_password,
 )
-from pallas.core.foundation.bot_version import get_pallas_bot_version_for_health
+from pallas.core.foundation.bot_version import get_pallas_bot_version_for_health, pallas_bot_repo_root
 from pallas.core.platform.shard import context as shard_ctx
 from pallas.product.llm.behavior import BehaviorPattern, BehaviorScene
 from pallas.product.llm.behavior_store import (
@@ -511,7 +511,7 @@ def _ai_extension_config_path():
 def _ai_extension_log_roots() -> list[Path]:
     from pallas.console.web.ai_extension_logs import ai_extension_log_roots
 
-    return ai_extension_log_roots(Path(__file__).resolve().parents[3])
+    return ai_extension_log_roots(pallas_bot_repo_root())
 
 
 def _is_allowed_log_path(path_s: str) -> bool:
@@ -536,7 +536,7 @@ def _normalize_ai_extension_config(raw: dict[str, Any] | None) -> dict[str, Any]
         health_paths = ["/health", "/api/health"]
     from pallas.console.web.ai_extension_logs import normalize_ai_extension_log_paths
 
-    root = Path(__file__).resolve().parents[3]
+    root = pallas_bot_repo_root()
     log_paths = normalize_ai_extension_log_paths(d, bot_repo_root=root)
     uvicorn_log_file = log_paths["uvicorn_log_file"]
     celery_log_file = log_paths["celery_log_file"]
@@ -4126,7 +4126,11 @@ class _AiExtensionConfigBody(BaseModel):
 
     base_url: str = Field(min_length=7, max_length=200)
     api_prefix: str = Field(default="/api", min_length=1, max_length=50)
-    token: str = Field(default="", max_length=300)
+    token: str = Field(
+        default="",
+        max_length=300,
+        description="Bearer Token；须与 AI 侧 PALLAS_AI_API_TOKEN 一致，供 /api/ops/logs 等 HTTP 回退鉴权",
+    )
     health_paths: list[str] = Field(default_factory=lambda: ["/health", "/api/health"], max_length=8)
     uvicorn_log_file: str = Field(default="", max_length=500)
     celery_log_file: str = Field(default="", max_length=500)
@@ -7973,42 +7977,17 @@ def register_extended_api(
         kind: Literal["uvicorn", "celery", "celery-media"] = Query(default="uvicorn"),
         n: int = Query(default=200, ge=1, le=2000),
     ) -> JSONResponse:
-        from pallas.console.web.ai_extension_logs import resolve_log_path_for_kind
+        from pallas.console.web.ai_extension_log_read import read_ai_extension_logs_payload
 
         cfg = _load_ai_extension_config()
-        path_s = resolve_log_path_for_kind(cfg, kind)
-        # 防御深度：即便规范化阶段已校验，读取前再检一次，杜绝持久化污染绕过
-        if not _is_allowed_log_path(path_s):
-            return JSONResponse(
-                {
-                    "ok": True,
-                    "data": {"kind": kind, "path": path_s, "lines": [], "error": "日志路径越界，已拒绝"},
-                },
-            )
-        p = Path(path_s)
-        if not await asyncio.to_thread(p.exists):
-            return JSONResponse(
-                {
-                    "ok": True,
-                    "data": {"kind": kind, "path": path_s, "lines": [], "error": "日志文件不存在"},
-                },
-            )
-        try:
-            text = await asyncio.to_thread(p.read_text, encoding="utf-8", errors="ignore")
-            lines = text.splitlines()[-int(n) :]
-            return JSONResponse(
-                {
-                    "ok": True,
-                    "data": {"kind": kind, "path": path_s, "lines": lines, "error": None},
-                },
-            )
-        except Exception as e:  # noqa: BLE001
-            return JSONResponse(
-                {
-                    "ok": True,
-                    "data": {"kind": kind, "path": path_s, "lines": [], "error": str(e)},
-                },
-            )
+        data = await read_ai_extension_logs_payload(
+            cfg,
+            kind,
+            n,
+            http_json=ai_extension_http_json,
+            is_allowed_log_path=_is_allowed_log_path,
+        )
+        return JSONResponse({"ok": True, "data": data})
 
     @router.get(f"{x}/ai-extension/logs/stream", include_in_schema=True)
     async def _ai_extension_logs_stream(
@@ -8019,7 +7998,11 @@ def register_extended_api(
         ),
         last_event_id_header: int | None = Header(default=None, alias="Last-Event-ID"),
     ) -> StreamingResponse:
-        from pallas.console.web.ai_extension_logs import resolve_log_path_for_kind
+        from pallas.console.web.ai_extension_log_remote import iter_remote_ai_extension_logs_sse
+        from pallas.console.web.ai_extension_logs import (
+            ai_extension_log_missing_message,
+            resolve_log_path_for_kind,
+        )
         from pallas.console.web.ai_log_sse import iter_ai_log_file_sse
 
         cfg = _load_ai_extension_config()
@@ -8044,9 +8027,24 @@ def register_extended_api(
                     "X-Accel-Buffering": "no",
                 },
             )
+        p = Path(path_s)
+        use_local = await asyncio.to_thread(p.is_file)
         resume_id = last_event_id if last_event_id is not None else last_event_id_header
+        if use_local:
+            stream = iter_ai_log_file_sse(
+                p,
+                kind=kind,
+                last_event_id=resume_id,
+                missing_message=ai_extension_log_missing_message(cfg, path_s=path_s),
+            )
+        else:
+            stream = iter_remote_ai_extension_logs_sse(
+                cfg,
+                kind,
+                http_json=ai_extension_http_json,
+            )
         return StreamingResponse(
-            iter_ai_log_file_sse(Path(path_s), kind=kind, last_event_id=resume_id),
+            stream,
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",

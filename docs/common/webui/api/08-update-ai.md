@@ -27,7 +27,18 @@
 | POST | `/ai-extension/ncm/verify-sms` | 是 | 验证登录 |
 | POST | `/ai-extension/ncm/logout` | 是 | 退出 NCM |
 
-配置落盘 `data/` 下 AI 扩展专用路径（见 `extended_api` 内 `_ai_extension_config_path`）。
+配置落盘 `data/pb_webui/ai_extension.json`（见仓库 `config/ai_extension.example.json`）。
+
+### Bearer Token 与运维日志
+
+| 侧 | 配置项 | 说明 |
+| --- | --- | --- |
+| AI 服务 | `PALLAS_AI_API_TOKEN`（`.env`） | 非空时 `GET /api/ops/logs` 要求 `Authorization: Bearer <token>` |
+| Bot WebUI | `token`（AI 配置 · AI 服务） | 与 AI 侧**相同**；Bot 拉取远端日志时自动携带 |
+
+两端 token **须一致**；AI 侧留空则不对 Bearer 校验（仅建议本地调试）。示例见 [Pallas-Bot-AI Deployment](https://github.com/PallasBot/Pallas-Bot-AI/blob/dev/docs/Deployment.md#api-bearer-token)。
+
+Bot 读日志顺序：本机落盘路径 → AI `GET /api/ops/logs` → 报错提示。
 
 ## 前端对应
 

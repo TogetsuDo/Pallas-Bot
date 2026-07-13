@@ -158,6 +158,8 @@ services:
       LLM_CATEGORIZER_MODEL: ${LLM_CATEGORIZER_MODEL:-qwen2.5:0.5b}
       LLM_AUTO_START: "false"
       CELERY_TASK_PACKAGES: llm
+      # 与 Bot WebUI「AI 服务」Bearer Token 一致；见 config/compose.env.example
+      PALLAS_AI_API_TOKEN: ${PALLAS_AI_API_TOKEN:-}
     networks:
       - pallas-full
     volumes:

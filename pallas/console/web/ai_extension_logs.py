@@ -88,8 +88,21 @@ def normalize_log_path_field(
 ) -> str:
     explicit = str(raw or "").strip()
     if explicit and is_allowed_log_path(explicit, allowed_roots):
-        return explicit
+        try:
+            explicit_path = Path(explicit)
+            if explicit_path.is_file():
+                return str(explicit_path.resolve())
+        except OSError:
+            pass
     picked = pick_existing_log_path(candidates, allowed_roots)
+    if picked:
+        try:
+            if Path(picked).is_file():
+                return picked
+        except OSError:
+            pass
+    if explicit and is_allowed_log_path(explicit, allowed_roots):
+        return explicit
     return picked or explicit
 
 
@@ -141,3 +154,33 @@ def resolve_log_path_for_kind(cfg: dict[str, Any], kind: str) -> str:
     if kind == "celery":
         return str(cfg.get("celery_log_file", ""))
     return str(cfg.get("uvicorn_log_file", ""))
+
+
+def ai_extension_base_url_is_local(base_url: str) -> bool:
+    from urllib.parse import urlparse
+
+    host = (urlparse((base_url or "").strip()).hostname or "").lower()
+    return host in {"127.0.0.1", "localhost", "::1"}
+
+
+def ai_extension_log_missing_message(
+    cfg: dict[str, Any],
+    *,
+    path_s: str = "",
+    remote_tried: bool = False,
+) -> str:
+    base_url = str(cfg.get("base_url", "")).strip()
+    path_hint = f"（{path_s}）" if path_s else ""
+    if remote_tried:
+        if base_url and not ai_extension_base_url_is_local(base_url):
+            return (
+                f"本机无日志{path_hint}，且无法从远端 AI 拉取。"
+                "请确认 AI 服务在线、网络可达，并已升级到支持 /api/ops/logs 的版本。"
+            )
+        return f"本机无日志{path_hint}，且无法从 AI 服务 HTTP 拉取。请确认 AI 服务已启动并可访问。"
+    if base_url and not ai_extension_base_url_is_local(base_url):
+        return f"未找到 Bot 本机可读日志{path_hint}。将尝试通过 AI HTTP 接口拉取；若仍失败请检查 AI 服务连通性。"
+    return (
+        f"未找到本地 AI 日志文件{path_hint}。"
+        "请确认 AI 服务已在本机启动，或将日志路径留空以自动探测同级 Pallas-Bot-AI/logs。"
+    )

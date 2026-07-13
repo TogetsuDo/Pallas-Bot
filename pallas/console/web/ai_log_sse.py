@@ -63,6 +63,7 @@ async def iter_ai_log_file_sse(
     last_event_id: int | None = None,
     poll_interval_sec: float = 0.75,
     initial_tail_bytes: int = 64_000,
+    missing_message: str | None = None,
 ) -> AsyncIterator[str]:
     """跟读本地日志文件；``id`` 为读完该行后的文件字节偏移。
 
@@ -75,7 +76,7 @@ async def iter_ai_log_file_sse(
                 "type": "error",
                 "kind": kind,
                 "path": path_s,
-                "error": "日志文件不存在",
+                "error": missing_message or "日志文件不存在",
             },
         )
         return

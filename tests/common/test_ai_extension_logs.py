@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from pallas.console.web.ai_extension_logs import (
+    ai_extension_base_url_is_local,
+    ai_extension_log_missing_message,
     default_celery_log_path,
     default_celery_media_log_path,
     default_uvicorn_log_path,
     is_allowed_log_path,
     log_path_candidates,
     normalize_ai_extension_log_paths,
+    normalize_log_path_field,
     pick_existing_log_path,
     resolve_log_path_for_kind,
 )
@@ -74,6 +79,51 @@ def test_is_allowed_log_path_under_ai_root(tmp_path) -> None:
     allowed = [bot_root.resolve(), ai_root.resolve()]
     assert is_allowed_log_path(str(target), allowed)
     assert not is_allowed_log_path("/etc/passwd", allowed)
+
+
+def test_explicit_missing_path_falls_back_to_existing(tmp_path) -> None:
+    bot_root = tmp_path / "Pallas-Bot"
+    bot_root.mkdir()
+    ai_root = tmp_path / "Pallas-Bot-AI"
+    logs = ai_root / "logs"
+    logs.mkdir(parents=True)
+    (logs / "uvicorn.log").write_text("live\n", encoding="utf-8")
+
+    docker_mount = tmp_path / "ai-logs"
+    docker_mount.mkdir()
+    allowed = [bot_root.resolve(), ai_root.resolve(), docker_mount.resolve()]
+    candidates = [docker_mount / "uvicorn.log", logs / "uvicorn.log"]
+    explicit = str(docker_mount / "uvicorn.log")
+
+    resolved = normalize_log_path_field(explicit, candidates, allowed)
+    assert resolved.endswith("uvicorn.log")
+    assert Path(resolved).is_file()
+    assert "Pallas-Bot-AI" in resolved
+
+
+def test_normalize_recovers_from_wrong_saved_path(tmp_path) -> None:
+    bot_root = tmp_path / "Bots" / "Pallas-Bot"
+    bot_root.mkdir(parents=True)
+    ai_root = tmp_path / "Bots" / "Pallas-Bot-AI"
+    logs = ai_root / "logs"
+    logs.mkdir(parents=True)
+    (logs / "uvicorn.log").write_text("ok\n", encoding="utf-8")
+
+    wrong_saved = str(tmp_path / "Pallas-Bot-AI" / "logs" / "uvicorn.log")
+    out = normalize_ai_extension_log_paths({"uvicorn_log_file": wrong_saved}, bot_repo_root=bot_root)
+    assert Path(out["uvicorn_log_file"]).is_file()
+    assert out["uvicorn_log_file"].endswith("Pallas-Bot-AI/logs/uvicorn.log")
+
+
+def test_ai_extension_log_missing_message_remote() -> None:
+    cfg = {"base_url": "http://192.168.1.10:9099"}
+    msg = ai_extension_log_missing_message(cfg, path_s="/ai-logs/uvicorn.log")
+    assert "HTTP" in msg
+    assert ai_extension_base_url_is_local("http://127.0.0.1:9099")
+    assert not ai_extension_base_url_is_local("http://ai.example.com:9099")
+
+    failed = ai_extension_log_missing_message(cfg, path_s="/ai-logs/uvicorn.log", remote_tried=True)
+    assert "远端" in failed
 
 
 def test_default_paths_fallback_to_first_candidate(tmp_path) -> None:
