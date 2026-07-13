@@ -4164,6 +4164,16 @@ class _AiNcmVerifySmsBody(BaseModel):
     ctcode: int = Field(default=86, ge=1, le=999)
 
 
+class _AiInstallBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["clone", "bootstrap", "clone_and_bootstrap"] = "clone_and_bootstrap"
+    no_start: bool = False
+    remote_only: bool = False
+    with_media: bool = False
+    use_gpu: bool = False
+
+
 class _HelpMenuVisibilityBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -8012,6 +8022,132 @@ def register_extended_api(
                     "data": {"kind": kind, "path": path_s, "lines": [], "error": str(e)},
                 },
             )
+
+    @router.get(f"{x}/ai-extension/logs/stream", include_in_schema=True)
+    async def _ai_extension_logs_stream(
+        kind: Literal["uvicorn", "celery"] = Query(default="uvicorn"),
+        last_event_id: int | None = Query(
+            default=None,
+            description="断点续传：仅发送字节偏移大于该值的新行",
+        ),
+        last_event_id_header: int | None = Header(default=None, alias="Last-Event-ID"),
+    ) -> StreamingResponse:
+        from pallas.console.web.ai_log_sse import iter_ai_log_file_sse
+
+        cfg = _load_ai_extension_config()
+        path_s = str(cfg["uvicorn_log_file"] if kind == "uvicorn" else cfg["celery_log_file"])
+        if not _is_allowed_log_path(path_s):
+
+            async def _denied() -> Any:
+                payload = {
+                    "type": "error",
+                    "kind": kind,
+                    "path": path_s,
+                    "error": "日志路径越界，已拒绝",
+                }
+                yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+            return StreamingResponse(
+                _denied(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+        resume_id = last_event_id if last_event_id is not None else last_event_id_header
+        return StreamingResponse(
+            iter_ai_log_file_sse(Path(path_s), kind=kind, last_event_id=resume_id),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    @router.get(f"{x}/ai-extension/install/status", include_in_schema=True)
+    async def _ai_extension_install_status() -> JSONResponse:
+        from pallas.console.cli.ai_install import ai_install_status
+
+        data = await asyncio.to_thread(ai_install_status)
+        return JSONResponse({"ok": True, "data": data})
+
+    @router.post(f"{x}/ai-extension/install", include_in_schema=True)
+    async def _ai_extension_install(
+        body: _AiInstallBody,
+        token: str | None = Query(default=None),
+        x_pallas_token: str | None = Header(default=None, alias="X-Pallas-Token"),
+    ) -> JSONResponse:
+        _check_pallas_write_token(plugin_config, x_pallas_token=x_pallas_token, token=token)
+        from pallas.console.cli.ai_install import clone_ai_repo, run_ai_bootstrap_captured
+        from pallas.console.cli.ai_ops import resolve_ai_repo_root
+        from pallas.console.webui.ai_install_progress import create_ai_install_job, run_ai_install_job
+
+        job = create_ai_install_job(body.action)
+
+        def _runner(j: Any) -> None:
+            try:
+                ai_root = None
+                if body.action in ("clone", "clone_and_bootstrap"):
+                    j.push("running", "正在克隆 Pallas-Bot-AI…")
+                    existing = resolve_ai_repo_root()
+                    if existing is not None:
+                        if body.action == "clone":
+                            j.result = {"ai_root": str(existing), "skipped_clone": True}
+                            j.push("done", "已检测到 AI 仓，跳过克隆", result=j.result)
+                            return
+                        j.push("running", "已检测到 AI 仓，跳过克隆")
+                        ai_root = existing
+                    else:
+                        ai_root = clone_ai_repo()
+                        j.push("running", f"克隆完成: {ai_root}")
+                if body.action in ("bootstrap", "clone_and_bootstrap"):
+                    ai_root = ai_root or resolve_ai_repo_root()
+                    if ai_root is None:
+                        j.push("failed", error="未找到 Pallas-Bot-AI，请先克隆")
+                        return
+                    j.push("running", "正在运行 ai_bootstrap.sh…")
+                    code, output = run_ai_bootstrap_captured(
+                        ai_root=ai_root,
+                        no_start=body.no_start,
+                        remote_only=body.remote_only,
+                        with_media=body.with_media,
+                        use_gpu=body.use_gpu,
+                    )
+                    j.result = {
+                        "ai_root": str(ai_root),
+                        "exit_code": code,
+                        "output_tail": output[-8000:],
+                    }
+                    if code != 0:
+                        j.push("failed", error=f"bootstrap 退出码 {code}", result=j.result)
+                        return
+                    j.message = "bootstrap 完成"
+                    j.result = j.result
+                elif body.action == "clone":
+                    j.result = {"ai_root": str(ai_root)}
+                    j.message = "克隆完成"
+            except Exception as e:  # noqa: BLE001
+                j.push("failed", error=str(e))
+
+        asyncio.create_task(run_ai_install_job(job, _runner))
+        return JSONResponse({"ok": True, "data": {"job_id": job.job_id, "action": job.action}})
+
+    @router.get(f"{x}/ai-extension/install/jobs/{{job_id}}/stream", include_in_schema=True)
+    async def _ai_extension_install_job_stream(job_id: str) -> StreamingResponse:
+        from pallas.console.webui.ai_install_progress import iter_ai_install_job_sse
+
+        return StreamingResponse(
+            iter_ai_install_job_sse(job_id.strip()),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     @router.get(f"{x}/ai-extension/ncm/status", include_in_schema=True)
     async def _ai_extension_ncm_status() -> JSONResponse:
