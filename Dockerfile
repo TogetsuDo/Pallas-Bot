@@ -17,7 +17,9 @@ RUN apt-get update && \
     pip install uv && \
     rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml LICENSE README.md ./
+COPY pyproject.toml LICENSE ./
+# .dockerignore 排除了 *.md；给 hatchling 提供最小 README 以满足 pyproject readme=
+RUN printf '%s\n' '# Pallas-Bot' > README.md
 
 # perf：jieba-next；pg：PostgreSQL 后端
 # deploy-shard：见 deploy/README.md
