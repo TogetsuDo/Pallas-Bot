@@ -1,6 +1,6 @@
-# Pallas-Bot 4.0 文档
+# Pallas-Bot 文档
 
-牛牛的文档分两条线：**维护者**怎么把它跑起来、管起来；**插件开发者**怎么给它加能力。
+牛牛文档按用途分四条线：**上手**（跑通）、**使用**（口令与控制台）、**运维**（部署与排障）、**开发**（写插件）。
 
 > 在线阅读：[Pallas-Bot-Docs](https://PallasBot.github.io/Pallas-Bot-Docs/)
 
@@ -8,11 +8,13 @@
 
 | 你是谁 | 去哪 | 能解决什么 |
 | --- | --- | --- |
-| 号主、运维、部署维护者 | [Maintainer](maintainer/quickstart.md) | 安装、部署、协议端、AI、扩展、排障 |
-| 本体维护者、扩展 / 插件作者 | [Developer](developer/index.md) | 架构、插件开发、治理、发布、接口 |
-| 普通用户 | [用户手册](user/README.md) | 后续单独建设，这轮先不重写 |
+| 第一次装 | [五分钟跑起来](guide/quickstart.md) | 本机跑通、连 QQ、群里能回话 |
+| 要装扩展 / AI | [把玩法 / AI 也装上](guide/4.0-start.md) | 官方扩展、AI、记忆 |
+| 号主 / VPS 运维 | [运维入口](maintainer/quickstart.md) | Docker、分片、升级、排障、配置 |
+| 插件作者 | [Developer](developer/index.md) | 架构、插件开发、发布 |
+| 群友查口令 | [口令与功能](guide/usage.md) | 帮助菜单与玩法 |
 
-## 4.0 长什么样
+## 长什么样
 
 ```mermaid
 flowchart LR
@@ -39,30 +41,21 @@ flowchart LR
 - **WebUI** — 控制台界面，源码独立仓，构建产物同步回主仓。
 - **Protocol Runtime** — QQ 协议接入，单进程和分片都支持。
 - **AI Runtime** — 媒体与 AI 任务，通过 callback 回到 Bot。
-- **Official / Community Extensions** — 4.0 后从本体拆出去的玩法与能力。
+- **Official / Community Extensions** — 从本体拆出去的玩法与能力。
 
-## 维护者常去的几页
-
-| 页面 | 干什么 |
-| --- | --- |
-| [快速开始](maintainer/quickstart.md) | 从零跑起一套 4.0 环境 |
-| [安装官方扩展](maintainer/install/official-extensions.md) | 装 / 卸 / 重启扩展，Docker 预装 |
-| [分片部署](maintainer/deploy/sharded.md) | hub / worker / Redis / 协议端 / 分片日志 |
-| [WebUI](maintainer/install/webui.md) | 前端仓边界、构建产物、线上资源同步 |
-| [排障](maintainer/operate/troubleshooting.md) | 配置、角色、日志、聚合状态的排查顺序 |
-
-## 开发者常去的几页
+## 常去的几页
 
 | 页面 | 干什么 |
 | --- | --- |
-| [架构总览](developer/architecture/overview.md) | Pallas 4.0 的整体边界 |
-| [Core 与扩展](developer/architecture/core-vs-extensions.md) | 本体 / 官方扩展 / 社区扩展怎么分 |
-| [Golden Plugin](developer/plugin-development/golden-plugin.md) | 官方推荐的插件骨架 |
-| [配置与 WebUI](developer/plugin-development/config-and-webui.md) | 配置落盘、插件页、热重载 |
-| [发布](developer/plugin-development/publishing.md) | 官方扩展、社区插件、PyPI |
+| [五分钟跑起来](guide/quickstart.md) | 唯一「跑通」入口 |
+| [运维入口](maintainer/quickstart.md) | 部署 / 升级 / 排障索引（不重复装本体） |
+| [安装官方扩展](guide/install-extensions.md) | 装 / 卸扩展 |
+| [分片部署](maintainer/deploy/sharded.md) | hub / worker / Redis |
+| [排障](maintainer/operate/troubleshooting.md) | 排查顺序 |
+| [写第一个插件](developer/plugin-development/first-plugin.md) | 开发入门 |
+| [Golden Plugin](developer/plugin-development/golden-plugin.md) | 官方推荐插件骨架 |
 
 ::: tip 文档入口
-**权威路径**：[`maintainer/`](maintainer/quickstart.md)（运维）与 [`developer/`](developer/index.md)（开发）。  
-`guide/` 保留上手页（如 [4.0 启动](guide/4.0-start.md)）；`architecture/` / `develop/` / `common/` 为素材或深度参考，不以它们为真相源。  
-在线站由主仓 `docs/` 同步到 [Pallas-Bot-Docs](https://PallasBot.github.io/Pallas-Bot-Docs/)。
+在线站由主仓 `docs/` 同步到 [Pallas-Bot-Docs](https://PallasBot.github.io/Pallas-Bot-Docs/)。  
+权威路径：上手看 `guide/`，运维看 `maintainer/`，开发看 `developer/`。
 :::

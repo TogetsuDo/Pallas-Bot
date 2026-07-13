@@ -2,7 +2,7 @@
 
 维护者从 **0** 安装时按本清单走查。每条打勾前请写下 **日期 / 环境**（OS、有无 GPU、Docker 版本），失败项记现象与日志路径。
 
-**相关文档**：[Docker 部署](../../DockerDeployment.md) · [AI Runtime](ai-runtime.md) · [快速开始](../quickstart.md) · [升级](../deploy/upgrade.md)
+**相关文档**：[Docker 部署](../../DockerDeployment.md) · [AI Runtime](ai-runtime.md) · [运维入口](../quickstart.md) · [升级](../deploy/upgrade.md)
 
 ---
 

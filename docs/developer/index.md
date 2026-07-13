@@ -1,6 +1,6 @@
 # Developer
 
-Pallas-Bot 开发者入口。运维见 [`docs/maintainer/`](/maintainer/quickstart)。
+Pallas-Bot 开发者入口。第一次跑通见 [五分钟跑起来](/guide/quickstart)；运维索引见 [运维入口](/maintainer/quickstart)。
 
 ## 从这里动手（推荐）
 

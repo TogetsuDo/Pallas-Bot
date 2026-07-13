@@ -130,7 +130,7 @@
 
 ## 相关阅读
 
-- [快速开始](../quickstart.md)
+- [运维入口](../quickstart.md)
 - [WebUI](../install/webui.md)
 - [协议端](../install/protocol.md)
 - [LLM 与 AI 运维](../operate/llm-and-ai.md)

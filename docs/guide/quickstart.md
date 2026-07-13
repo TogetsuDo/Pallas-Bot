@@ -93,7 +93,7 @@ Pallas-Bot **不会自己登录 QQ**，要靠 NapCat 等协议端。
 
 ## 通了之后
 
-▶ [安装官方扩展](install-extensions.md) · [网页控制台](web-console.md) · [运维快速开始](../maintainer/quickstart.md)  
+▶ [安装官方扩展](install-extensions.md) · [网页控制台](web-console.md) · [运维入口](../maintainer/quickstart.md)  
 ▶ 卡住了：[排障](../maintainer/operate/troubleshooting.md) · [FAQ](../FAQ.md)
 
 ## 排障速查

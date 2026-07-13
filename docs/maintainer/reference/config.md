@@ -137,6 +137,7 @@
 ## 推荐阅读顺序
 
 - 想理解合并顺序：看 [配置存储](../../architecture/settings-storage.md)
-- 想快速部署：看 [快速开始](../quickstart.md)
+- 想本机跑通：看 [五分钟跑起来](../../guide/quickstart.md)
+- 想查部署形态：看 [运维入口](../quickstart.md)
 - 想改运行中配置：看 [WebUI 运维](../operate/webui.md)
 - 想排查保存后不生效：看 [排障](../operate/troubleshooting.md)

@@ -1,6 +1,6 @@
 # 常见问题
 
-卡住了先看决策树；专题入口：[五分钟跑起来](guide/quickstart.md) · [运维快速开始](maintainer/quickstart.md) · [排障](maintainer/operate/troubleshooting.md) · [配置要点](Config.md)
+卡住了先看决策树；专题入口：[五分钟跑起来](guide/quickstart.md) · [运维入口](maintainer/quickstart.md) · [排障](maintainer/operate/troubleshooting.md) · [配置要点](Config.md)
 
 ## 不确定属于哪一类？
 
