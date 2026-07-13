@@ -1,63 +1,46 @@
 # AI 扩展
 
-::: tip 一句话
-**Pallas-Bot** 管 QQ 消息；**Pallas-Bot-AI** 管唱歌、画画、部分对话模型。  
-两个都要跑，并在控制台里填 AI 的地址。
-:::
-
----
+**Pallas-Bot** 管 QQ 消息；**Pallas-Bot-AI** 管唱歌、画画、部分对话。  
+两个都要跑，并在控制台填 AI 地址。不玩 AI 可以整节跳过——复读、喝酒、轮盘不受影响。
 
 ## 能做什么
 
 | 能力 | 群里怎么说（示例） |
 | --- | --- |
 | 翻唱 / 点歌 | `牛牛唱歌 …`、`牛牛点歌 …` |
-| 酒后对话 | 喝酒状态下智能聊天 |
+| 酒后对话 | 喝酒状态下的智能聊天 |
 | 文生图 | `牛牛画画 …`（需 draw 扩展） |
-| 随时闲聊 | @ 牛 或控制台打开的 LLM 口令 |
+| 随时闲聊 | @ 牛；见 [闲聊与复读](llm-and-repeater.md) |
 
 精确口令以 **牛牛帮助** 为准。
 
----
-
-## 硬件建议
+## 硬件
 
 | 方案 | 说明 |
 | --- | --- |
-| 有 NVIDIA 显卡 | 建议 **≥6GB 显存** |
-| 纯 CPU | 能跑但慢，内存可能占 **10GB+** |
-| **无 GPU，用云端 API** | 可不跑 Ollama，接 DeepSeek/OpenAI 等；仍要轻量 AI 服务，见 [remote-only 部署](https://github.com/PallasBot/Pallas-Bot-AI/blob/main/docs/deploy/remote-only.md) |
+| 有 NVIDIA 显卡 | 建议 **≥6GB** 显存 |
+| 纯 CPU | 能跑但慢，内存可能 **10GB+** |
+| 无 GPU、用云端 API | 可不跑本地大模型；仍要轻量 AI 服务，见 [remote-only](https://github.com/PallasBot/Pallas-Bot-AI/blob/main/docs/deploy/remote-only.md) |
 
-不玩 AI 可以完全跳过本节。
+## 三步接上
 
----
+1. **部署 Pallas-Bot-AI**  
+   按 [仓库文档](https://github.com/PallasBot/Pallas-Bot-AI) 启动，记下地址（如 `http://127.0.0.1:5000`）。
 
-## 怎么接上（三步）
+2. **在控制台填地址**  
+   `/pallas/` → **通用配置** 或对应插件页 → 填 AI URL / 密钥。
 
-### 1. 部署 Pallas-Bot-AI
+3. **验收**  
+   群里发 `牛牛连通`，或试一条唱歌 / 画画口令。
 
-按 [Pallas-Bot-AI 仓库](https://github.com/PallasBot/Pallas-Bot-AI) 文档安装并启动服务（记下地址，如 `http://127.0.0.1:5000`）。
+## 和扩展的关系
 
-### 2. 在控制台填地址
+| 能力 | 包 |
+| --- | --- |
+| 唱歌、酒后聊天 | 多在 `pallas-plugin-ai-media` |
+| 画画 | `pallas-plugin-draw` |
+| 随时闲聊 | core 插件 `llm_chat`（仍要 AI 在线） |
 
-登录 `/pallas/` → **通用配置** 或对应插件页 → 填写 AI 服务 URL / 密钥（按页面说明）。
-
-### 3. 验收
-
-群里发 `牛牛连通`，或试一条唱歌/画画口令。
-
-**如何确认成功**：`牛牛连通` 返回正常；唱歌/画画有图或音频返回。
-
----
-
-## 和官方扩展的关系
-
-- 唱歌、酒后聊天多在 **`pallas-plugin-ai-media`**  
-- 画画在 **`pallas-plugin-draw`**  
-- 随时闲聊 core 插件 **`llm_chat`** 随 Bot 自带，但仍要 AI 服务在线  
-
-扩展安装：[安装官方扩展](install-extensions.md)。
-
----
+扩展安装：[安装官方扩展](install-extensions.md)。运维细项：[LLM 与 AI](../maintainer/operate/llm-and-ai.md)。
 
 ▶ [安装插件](install-plugins.md) · [使用指南](../user/README.md)

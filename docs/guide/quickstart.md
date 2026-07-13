@@ -1,65 +1,53 @@
 # 五分钟跑起来
 
-::: tip 读完你能做什么
-本机跑起一只牛 → 登录网页控制台 → 连上 QQ → 群里发 **牛牛帮助** 有回复。  
-先别开分片、先别装一堆扩展——通了再加。
-:::
-## 你需要准备
+把 **Pallas-Bot** 在本机跑通：能开控制台 → 能连 QQ → 群里 **牛牛帮助** 有回复。  
+先别开分片，也先别装一堆扩展。
+
+## 准备
 
 | 项 | 要求 |
 | --- | --- |
-| Python | **3.12+**（推荐用 [uv](https://docs.astral.sh/uv/) 管理） |
-| 数据库 | **PostgreSQL**（现行默认）；本机或 Docker 起一个即可。从 3.x 升级可继续用 MongoDB |
-| QQ | 建议用小号；协议端可等 Bot 启动后再配 |
+| Python | **3.12+**（推荐 [uv](https://docs.astral.sh/uv/)） |
+| 数据库 | **PostgreSQL**（现行默认）；本机或 Docker 起一个空库即可 |
+| QQ | 建议小号；协议端可以等 Bot 起来再配 |
 
----
+从 3.x 升级的站点若仍用 MongoDB，可暂时保留，新站请用 PostgreSQL。
 
-## 1. 克隆仓库
-
-在打算放牛的目录执行：
+## 1. 克隆
 
 ```bash
 git clone https://github.com/PallasBot/Pallas-Bot.git
 cd Pallas-Bot
 ```
 
-**如何确认成功**：目录里有 `pyproject.toml`、`config/pallas.example.toml`。
+目录里应有 `pyproject.toml`、`config/pallas.example.toml`。
 
----
-
-## 2. 安装依赖
+## 2. 装依赖
 
 ```bash
 uv sync --extra pg
-```
-
-**如何确认成功**：
-
-```bash
 uv run python -c "import nonebot"
 ```
 
 无报错即可。
 
----
-
-## 3. 写主配置
+## 3. 写配置
 
 ```bash
 cp config/pallas.example.toml config/pallas.toml
 ```
 
-用编辑器打开 `config/pallas.toml`，**至少改这三项**：
+打开 `config/pallas.toml`，至少改这些：
 
 ```toml
 [bootstrap]
-host = "0.0.0.0"          # 监听所有网卡；仅本机玩可写 127.0.0.1
+host = "0.0.0.0"          # 仅本机可写 127.0.0.1
 port = 8088
-superusers = ["你的QQ号"]  # 超管，可填多个
+superusers = ["你的QQ号"]
 db_backend = "postgresql"
 
 [bootstrap.postgres]
-host = "127.0.0.1"        # Docker 里连 compose 数据库时改为 postgres
+host = "127.0.0.1"        # Docker 连 compose 库时改为 postgres
 port = 5432
 user = "pallas"
 password = "pallas"
@@ -67,42 +55,32 @@ db = "PallasBot"
 ```
 
 ::: warning 别提交密钥
-`pallas.toml` 已在 `.gitignore`，不要推到公开仓库。
+`pallas.toml` 已在 `.gitignore`，不要推进公开仓库。
 :::
 
-**如何确认成功**：`config/pallas.toml` 是普通**文件**（不是文件夹），且 `superusers` 已填。
-
----
-
-## 4. 启动 Bot
+## 4. 启动
 
 ```bash
 uv run nb run
 ```
 
-**如何确认成功**（对照日志）：
+日志里应能看到：
 
-1. 没有数据库 `connection refused` 之类致命错误  
-2. 日志里打印 **Web 控制台初始口令**（也可在 `data/pallas_console/` 找回）  
-3. 浏览器打开 `http://127.0.0.1:8088/pallas/` 能出现登录页  
+1. 没有数据库 `connection refused`  
+2. **Web 控制台初始口令**（也可在 `data/pallas_console/` 找回）  
+3. 浏览器打开 `http://127.0.0.1:8088/pallas/` 出现登录页  
 
-::: tip 控制台地址
-- 本机：`http://127.0.0.1:8088/pallas/`  
-- 远程：把 `127.0.0.1` 换成服务器 IP，并放行 **8088** 端口  
+::: tip 地址
+本机用 `127.0.0.1`；远程把主机换成服务器 IP，并放行 **8088**。
 :::
 
-::: tip 恭喜通了（到这一步）
-能看到登录页，说明 Bot HTTP 与 WebUI 资源已经起来。口令在启动日志里。
-:::
----
+## 5. 连 QQ
 
-## 5. 连接 QQ
+Pallas-Bot **不会自己登录 QQ**，要靠 NapCat 等协议端。
 
-Bot **不会**自己登录 QQ，需要 NapCat 等协议端转发消息。
-
-1. 浏览器打开 `http://<主机>:8088/protocol/console/`  
-2. 用与控制台相同方式登录  
-3. **新建实例** → 选 NapCat → 手机 QQ 扫码  
+1. 打开 `http://<主机>:8088/protocol/console/`  
+2. 用与控制台相同口令登录  
+3. **新建实例** → NapCat → 手机扫码  
 4. 实例状态为 **在线**
 
 群里发：
@@ -111,28 +89,17 @@ Bot **不会**自己登录 QQ，需要 NapCat 等协议端转发消息。
 牛牛帮助
 ```
 
-应收到帮助图。逐步说明见 [连接 QQ / 协议端](connect-qq.md)。
+有帮助图就通了。细节见 [连接 QQ](connect-qq.md)。
 
-**如何确认成功**：控制台 **协议端实例** 显示在线，且群内 **牛牛帮助** 有回复。
+## 通了之后
 
----
-
-## 你已经跑起来了
-
-群里 **牛牛帮助** 有回复 = 恭喜，今天的目标达成。
-
-▶ 想装决斗、MAA：[安装官方扩展](install-extensions.md)  
-▶ 想用网页改配置：[网页控制台](web-console.md)  
-▶ 要上 VPS 长期跑：[运维快速开始](../maintainer/quickstart.md)  
-▶ 排障：[排障](../maintainer/operate/troubleshooting.md) · [FAQ](../FAQ.md)  
-
----
+▶ [安装官方扩展](install-extensions.md) · [网页控制台](web-console.md) · [运维快速开始](../maintainer/quickstart.md)  
+▶ 卡住了：[排障](../maintainer/operate/troubleshooting.md) · [FAQ](../FAQ.md)
 
 ## 排障速查
 
 | 现象 | 先看 |
 | --- | --- |
-| 数据库连不上 | PostgreSQL 是否已启动；`pallas.toml` 的 host/port/db 是否一致（升级站若仍用 Mongo 则核对该段） |
+| 数据库连不上 | PostgreSQL 是否启动；`pallas.toml` 的 host/port/库名 |
 | 忘记控制台口令 | [FAQ](../FAQ.md) |
-| 协议端在线但群没反应 | 牛是否在群里；看 **运行日志** 是否收到消息 |
-| 更多 | [FAQ](../FAQ.md) |
+| 协议端在线但群没反应 | 牛是否在群；**运行日志**是否收到消息 |
