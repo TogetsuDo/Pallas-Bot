@@ -5,13 +5,17 @@ import sys
 import nonebot
 import pytest
 
+from pallas.core.foundation.paths import PROJECT_ROOT
 from pallas.core.platform.bot_runtime.plugin_loader import (
     _discover_plugin_modules,
     _short_name,
     load_plugins_for_role,
 )
+from pallas.core.platform.bot_runtime.plugin_matrix import CORE_PLUGIN_NAMES
 from pallas.core.platform.bot_runtime.roles import UNIFIED_SKIP_PLUGIN_NAMES
 from pallas.core.platform.shard.registry.config import get_shard_registry_settings
+
+_PACKAGES = PROJECT_ROOT / "packages"
 
 
 @pytest.fixture(autouse=True)
@@ -31,8 +35,13 @@ def test_unified_skip_plugin_names():
 def test_discover_plugin_modules_excludes_underscore_packages():
     names = {_short_name(m) for m in _discover_plugin_modules(load_bundled_extra=True)}
     assert "ingress_gate" not in names
-    assert "relogin_forward" in names
-    assert "maa_hub" in names
+    # 4.0 slim：核心插件在 packages/；分片/扩展插件已外置，仅在目录存在时断言
+    for core in ("repeater", "help", "pb_core"):
+        assert core in names
+    if (_PACKAGES / "relogin_forward").is_dir():
+        assert "relogin_forward" in names
+    if (_PACKAGES / "maa_hub").is_dir():
+        assert "maa_hub" in names
 
 
 def test_discover_plugin_modules_slim_skips_extra():
@@ -45,14 +54,18 @@ def test_discover_plugin_modules_slim_skips_extra():
     assert "pb_protocol" not in names
 
 
-def test_discover_plugin_modules_auto_includes_extra_without_pip(monkeypatch):
+def test_discover_plugin_modules_auto_respects_pip_extra(monkeypatch):
     monkeypatch.setattr(
         "pallas.core.platform.bot_runtime.plugin_matrix.pip_extra_installed_for_plugin",
         lambda _name: False,
     )
     names = {_short_name(m) for m in _discover_plugin_modules(load_bundled_extra="auto")}
-    assert "duel" in names
-    assert "draw" not in names  # pip 扩展，不在 packages/
+    # duel 仅当仍以 packages/duel 捆绑时才会出现
+    if (_PACKAGES / "duel").is_dir():
+        assert "duel" in names
+    else:
+        assert "duel" not in names
+    assert "draw" not in names
 
 
 def test_discover_plugin_modules_auto_skips_extra_when_pip_installed(monkeypatch):
@@ -64,7 +77,7 @@ def test_discover_plugin_modules_auto_skips_extra_when_pip_installed(monkeypatch
     assert "duel" not in names
 
 
-def test_unified_role_skips_shard_only_plugins(monkeypatch: pytest.MonkeyPatch):
+def test_unified_role_loads_core_and_skips_shard_only(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("PALLAS_SHARD_ENABLED", raising=False)
     monkeypatch.delenv("PALLAS_BOT_ROLE", raising=False)
     monkeypatch.setenv("PALLAS_LOAD_BUNDLED_EXTRA", "1")
@@ -76,8 +89,9 @@ def test_unified_role_skips_shard_only_plugins(monkeypatch: pytest.MonkeyPatch):
     loaded = {p.name for p in nonebot.get_loaded_plugins()}
     assert "relogin_forward" not in loaded
     assert "maa_hub" not in loaded
-    assert "relogin_bot" in loaded
-    assert "maa" in loaded
+    for name in CORE_PLUGIN_NAMES:
+        if (_PACKAGES / name).is_dir():
+            assert name in loaded
     assert "ingress_gate" not in loaded
 
 
@@ -90,6 +104,8 @@ def test_unified_role_slim_skips_bundled_extra(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_worker_role_skips_maa_hub(monkeypatch: pytest.MonkeyPatch):
+    if not (_PACKAGES / "maa").is_dir():
+        pytest.skip("maa 未捆绑于 4.0 slim packages/")
     monkeypatch.setenv("PALLAS_SHARD_ENABLED", "true")
     monkeypatch.setenv("PALLAS_BOT_ROLE", "worker")
     monkeypatch.setenv("PALLAS_LOAD_BUNDLED_EXTRA", "1")

@@ -50,14 +50,16 @@ jobs:
 
       - name: Run core plugin matrix tests
         run: |
+          # registry / coord 与 loader 分进程：loader 会 nonebot.load_plugin，
+          # 同进程内再 import packages.* 或二次 load 易触发插件槽冲突
           uv run pytest \
             tests/common/test_plugin_matrix.py \
-            tests/common/test_plugin_loader_unified.py \
-            tests/common/test_plugin_coord.py \
             tests/common/test_plugin_registry.py \
+            tests/common/test_plugin_coord.py \
             tests/common/test_shard_coord_duel_group.py \
             tests/common/test_shard_coord_spy_group.py \
             -q
+          uv run pytest tests/common/test_plugin_loader_unified.py -q
 
       - name: Check console OpenAPI spec drift
         run: |

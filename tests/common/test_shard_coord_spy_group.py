@@ -63,6 +63,7 @@ async def test_reclaim_orphan_spy_group_without_session(fake_coord_redis, monkey
 
 
 def test_spy_prep_room_metadata(fake_coord_redis, monkeypatch) -> None:
+    pytest.importorskip("packages.who_is_spy.group_lock")
     from packages.who_is_spy.group_lock import mark_spy_prep_room, read_spy_prep_room
 
     monkeypatch.setattr(shard_ctx, "sharding_active", lambda: True)
@@ -81,6 +82,7 @@ def test_spy_prep_room_metadata(fake_coord_redis, monkeypatch) -> None:
 
 
 def test_spy_prep_players_and_snapshot(fake_coord_redis, monkeypatch) -> None:
+    pytest.importorskip("packages.who_is_spy.coord_store")
     from packages.who_is_spy.coord_store import read_prep_players, write_game_snapshot, write_prep_players
     from packages.who_is_spy.models import Game, Player
 

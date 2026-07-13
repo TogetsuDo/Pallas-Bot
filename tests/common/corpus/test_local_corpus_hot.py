@@ -29,3 +29,39 @@ async def test_build_local_corpus_hot_payload_shape() -> None:
     assert payload["mode"] == "pool"
     assert payload["window_sec"] == 0
     assert payload["items"][0]["keywords"] == "你好"
+
+
+@pytest.mark.asyncio
+async def test_aggregate_local_hot_keywords_mongo_uses_single_projection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Beanie 2.x project() 只接受一个 projection model（issue #227）。"""
+    import pallas.core.foundation.db.modules as modules
+    from pallas.product.corpus import local_hot as mod
+
+    calls: list[object] = []
+
+    class _FakeFind:
+        def project(self, projection_model):
+            calls.append(projection_model)
+            return self
+
+        async def to_list(self):
+            return []
+
+    class _FakeContext:
+        @staticmethod
+        def find_all():
+            return _FakeFind()
+
+    monkeypatch.setattr(modules, "Context", _FakeContext)
+
+    rows = await mod.aggregate_local_hot_keywords_mongo(
+        scope="global",
+        group_id=None,
+        limit=10,
+        answers_per_keyword=3,
+    )
+    assert rows == []
+    assert len(calls) == 1
+    assert getattr(calls[0], "__name__", "") == "_ContextHotProjection"

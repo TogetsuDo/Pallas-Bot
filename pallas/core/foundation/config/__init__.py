@@ -231,18 +231,31 @@ class BotConfig(Config):
         返回在该群夺舍的账号
         """
         user_ids = await self._find("taken_name")
-        user_id = user_ids.get(self.group_id) if user_ids else None
-        return user_id
+        if not user_ids:
+            return None
+        gid = self.group_id
+        raw = user_ids.get(str(gid))
+        if raw is None:
+            raw = user_ids.get(gid)
+        try:
+            return int(raw) if raw is not None else None
+        except (TypeError, ValueError):
+            return None
 
     async def update_taken_name(self, user_id: int) -> None:
         """
-        更新夺舍的账号
+        更新夺舍的账号（Mongo 要求 dict key 为字符串）。
         """
         user_ids = await self._find("taken_name")
-        if user_ids is None:
-            user_ids = {}
-        user_ids[self.group_id] = user_id
-        await self._update("taken_name", user_ids)
+        normalized: dict[str, int] = {}
+        if user_ids:
+            for key, value in user_ids.items():
+                try:
+                    normalized[str(key)] = int(value)
+                except (TypeError, ValueError):
+                    continue
+        normalized[str(self.group_id)] = int(user_id)
+        await self._update("taken_name", normalized)
 
 
 async def get_bot_admins(bot_id: int) -> list[int]:

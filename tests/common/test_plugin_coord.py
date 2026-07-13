@@ -30,6 +30,7 @@ def test_maa_coord_stub_without_plugin(monkeypatch) -> None:
 
 
 def test_dream_coord_roundtrip_with_plugin() -> None:
+    pytest.importorskip("packages.dream.payload")
     from packages.dream.payload import DriftPayload, drift_payload_from_dict, drift_payload_to_dict
 
     payload = DriftPayload(nickname="博士", text="梦话", image_bytes=b"\x89PNG")
