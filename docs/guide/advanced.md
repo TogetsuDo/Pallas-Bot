@@ -25,7 +25,7 @@
 | [标准部署](../Deployment.md) | 分步部署、systemd、备份 |
 | [Docker 部署](../DockerDeployment.md) | Compose、卷、镜像里带哪些扩展 |
 
-数据库：**MongoDB 和 PostgreSQL 二选一**；表结构首次启动自动建，不用手搓 SQL（PG 需先建好空库）。
+数据库：**PostgreSQL**（4.0 默认）；表结构首次启动自动建，不用手搓 SQL（需先建好空库）。从 3.x 升级可继续用 MongoDB。
 
 ---
 

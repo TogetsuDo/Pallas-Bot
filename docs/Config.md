@@ -55,26 +55,10 @@ db = "PallasBot"
 | --- | --- | --- |
 | `superusers` | 超管 QQ 列表 | 至少一名可信管理员 |
 | `host` / `port` | HTTP 监听 | 反代后仍常为 `0.0.0.0` + 应用端口 |
-| `db_backend` | `mongodb` 或 `postgresql` | 与已安装/编排的数据库一致 |
+| `db_backend` | `postgresql`（4.0 默认）或 `mongodb`（3.x 升级沿用） | 与已安装/编排的数据库一致 |
 | `access_token` | HTTP API 鉴权 | 公网或不可信网络建议设置 |
 
-::: details MongoDB
-```toml
-[bootstrap]
-db_backend = "mongodb"
-
-[bootstrap.mongo]
-host = "127.0.0.1"
-port = 27017
-user = ""
-password = ""
-db = "PallasBot"
-```
-
-Docker Compose 默认栈中 Bot 容器内 host 为 **`mongodb`**（由 compose 注入），见 [Docker 部署](DockerDeployment.md)。
-:::
-
-::: details PostgreSQL
+::: details PostgreSQL（4.0 默认）
 ```toml
 [bootstrap]
 db_backend = "postgresql"
@@ -89,6 +73,22 @@ db = "PallasBot"
 ```
 
 需已执行 `uv sync --extra pg`。Docker 内置 Postgres 时另备 `config/compose.env`，且 **`PG_DB` 与数据卷初始化库名一致**。应用账号只需能连目标库并建表；**不必**超级用户。扩展见 [deploy/pg/README.md](../deploy/pg/README.md)。
+:::
+
+::: details MongoDB（3.x 升级沿用）
+```toml
+[bootstrap]
+db_backend = "mongodb"
+
+[bootstrap.mongo]
+host = "127.0.0.1"
+port = 27017
+user = ""
+password = ""
+db = "PallasBot"
+```
+
+Docker Compose 升级栈中 Bot 容器内 host 为 **`mongodb`**（由 compose 注入），见 [Docker 部署](DockerDeployment.md)。
 :::
 
 **如何确认数据库配置正确**：启动 Bot 无 `connection refused` / 认证失败；日志完成 `init_db`；控制台可打开且无持久 5xx。

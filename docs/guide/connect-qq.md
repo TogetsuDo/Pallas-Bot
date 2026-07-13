@@ -33,8 +33,6 @@ Pallas-Bot **不直接登录 QQ**。
 - Web 控制台首页：能看到 **在线 Bot**  
 - QQ 群：发 `牛牛帮助` 有回复  
 
-![协议端已连接示意图](/assets/guide/protocol-online.svg)
-
 ::: tip 恭喜通了
 实例显示在线，且群里 **牛牛帮助** 有图 = QQ 消息已经进牛肚子了。
 :::
