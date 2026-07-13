@@ -113,7 +113,12 @@ FILE_MAP: dict[str, str] = {
     "guide/welcome.md": "guide/welcome.md",
     "guide/4.0-start.md": "guide/4.0-start.md",
     "guide/4.0-migration.md": "guide/4.0-migration.md",
+    "guide/community-plugin-store.md": "guide/community-plugin-store.md",
+    "guide/community-plugin-author.md": "guide/community-plugin-author.md",
+    "guide/llm-and-repeater.md": "guide/llm-and-repeater.md",
+    "guide/llm-migrate-from-ollama.md": "guide/llm-migrate-from-ollama.md",
     "user/README.md": "guide/usage-admin.md",
+    "develop/extension-pypi-publish.md": "develop/extension-pypi-publish.md",
 }
 
 PLUGIN_NAMES = [
