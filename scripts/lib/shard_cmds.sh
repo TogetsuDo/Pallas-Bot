@@ -43,7 +43,7 @@ cmd_start_hub_only() {
   echo "  汇总       hub $([[ "${hub_ok}" -eq 1 ]] && echo 运行中 || echo 未就绪)"
   if [[ "${hub_ok}" -eq 1 ]]; then
     echo "  WebUI      ${hub_url}/pallas/"
-    echo "  协议端     ${hub_url}/protocol/console/"
+    echo "  协议端     ${hub_url}/pallas/protocol/"
   fi
   echo ""
   echo "  常用命令"
@@ -244,7 +244,7 @@ cmd_start() {
   echo "  汇总       hub $([[ "${hub_ok}" -eq 1 ]] && echo 运行中 || echo 未就绪) · worker ${worker_running}/${workers} 运行"
   if [[ "${hub_ok}" -eq 1 ]]; then
     echo "  WebUI      ${hub_url}/pallas/"
-    echo "  协议端     ${hub_url}/protocol/console/"
+    echo "  协议端     ${hub_url}/pallas/protocol/"
   fi
   echo ""
   echo "  常用命令"

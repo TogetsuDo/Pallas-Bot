@@ -64,7 +64,7 @@ usage() {
 
 启动后可在浏览器打开（将 PORT 换成你的 hub 端口）:
   WebUI    http://127.0.0.1:PORT/pallas/
-  协议端   http://127.0.0.1:PORT/protocol/console/
+  协议端   http://127.0.0.1:PORT/pallas/protocol/
 
 运行日志目录: data/pallas_shard/logs/  （WebUI 日志页可查看各 worker）
 
