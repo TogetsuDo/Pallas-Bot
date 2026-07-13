@@ -439,7 +439,7 @@ async def send_function_detail_image(
 ) -> None:
     from .draw_function_detail import draw_function_detail_image
 
-    cache_key = f"function_v1|{data.display_name}|{data.index}/{data.total}|{data.func_name}|suffix={_help_image_cache_suffix()}"
+    cache_key = f"function_v1|{data.display_name}|{data.index}/{data.total}|{data.func_name}|suffix={_help_image_cache_suffix()}"  # noqa: E501
     image = draw_function_detail_image(data)
     image_data = await render_v3_image_bytes(cache_key, image, group_id=group_id, style_name="detail_v1")
     await matcher.finish(MessageSegment.image(image_data))

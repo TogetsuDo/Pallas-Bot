@@ -147,10 +147,13 @@ def pb_core_webui_payload(*, current_values: dict[str, Any] | None = None) -> di
         fields.extend(part_fields)
         groups = part.get("field_groups")
         if groups:
-            field_groups.extend({
-                **group,
-                "id": f"{section_id}__{group.get('id', 'default')}",
-            } for group in groups)
+            field_groups.extend(
+                {
+                    **group,
+                    "id": f"{section_id}__{group.get('id', 'default')}",
+                }
+                for group in groups
+            )
         elif part_fields:
             field_groups.append({
                 "id": section_id,

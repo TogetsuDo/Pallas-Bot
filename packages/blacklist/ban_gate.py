@@ -42,19 +42,149 @@ _group_self_fetch_tasks_lock = asyncio.Lock()
 
 
 async def apply_user_banned_change(user_id: int, banned: bool) -> None:
-    """WebUI / 命令写入 user_config.banned 后同步本进程快照与门禁。"""
+    """WebUI / 命令写入 user_config.banned 后同步 ACL 行、本进程快照与门禁。"""
     await patch_user_banned(user_id, banned)
+    await _sync_acl_user_banned(user_id, banned)
     await invalidate_user_ban_gate_cache(user_id)
 
 
 async def apply_group_banned_change(group_id: int, banned: bool) -> None:
     await patch_group_banned(group_id, banned)
+    await _sync_acl_group_banned(group_id, banned)
     await invalidate_group_ban_gate_cache(group_id)
 
 
 async def apply_group_blocked_users_change(group_id: int, user_ids: list[int]) -> None:
     await patch_group_blocked_users(group_id, user_ids)
+    await _sync_acl_group_blocked_users(group_id, user_ids)
     await invalidate_group_ban_gate_cache(group_id)
+
+
+async def _sync_acl_user_banned(user_id: int, banned: bool) -> None:
+    try:
+        from pallas.core.foundation.db import make_acl_repository
+
+        repo = make_acl_repository()
+    except Exception:
+        return
+    role = "用户"
+    subj = f"u:{int(user_id)}"
+    try:
+        if banned:
+            await repo.upsert_rule(
+                role=role,
+                subject=subj,
+                action="event.receive",
+                target_scope="全局",
+                target="*",
+                effect="deny",
+                priority=2000,
+                source="system",
+            )
+        else:
+            await repo.delete_by_signature(
+                role=role,
+                subject=subj,
+                action="event.receive",
+                target_scope="全局",
+                target="*",
+            )
+    except Exception:
+        from nonebot import logger
+
+        logger.exception("ban_gate: failed to mirror user ban into ACL uid={}", user_id)
+
+
+async def _sync_acl_group_banned(group_id: int, banned: bool) -> None:
+    try:
+        from pallas.core.foundation.db import make_acl_repository
+        from pallas.core.perm.acl import ACL_TARGET_GROUP_BAN
+
+        repo = make_acl_repository()
+    except Exception:
+        return
+    role = "群"
+    subj = f"g:{int(group_id)}"
+    try:
+        if banned:
+            await repo.upsert_rule(
+                role=role,
+                subject=subj,
+                action="event.receive",
+                target_scope="全局",
+                target=ACL_TARGET_GROUP_BAN,
+                effect="deny",
+                priority=2000,
+                source="system",
+            )
+        else:
+            await repo.delete_by_signature(
+                role=role,
+                subject=subj,
+                action="event.receive",
+                target_scope="全局",
+                target=ACL_TARGET_GROUP_BAN,
+            )
+    except Exception:
+        from nonebot import logger
+
+        logger.exception("ban_gate: failed to mirror group ban into ACL gid={}", group_id)
+
+
+async def _sync_acl_group_blocked_users(group_id: int, user_ids: list[int]) -> None:
+    """将 GroupConfig.blocked_user_ids 与 ACL 表 reconcile：
+    当前列表里的人在 ACL 中以 deny 形式存在；
+    不在列表里的历史 deny 行同步删除。
+    """
+    try:
+        from pallas.core.foundation.db import make_acl_repository
+        from pallas.core.perm.acl import group_block_target
+
+        repo = make_acl_repository()
+    except Exception:
+        return
+    target_prefix = group_block_target(group_id)
+    new_uids = {int(u) for u in user_ids}
+    try:
+        # 1) upsert 当前 uid 集合（命中即 priority=1000 deny）
+        for uid in new_uids:
+            await repo.upsert_rule(
+                role="用户",
+                subject=f"u:{uid}",
+                action="event.receive",
+                target_scope="全局",
+                target=target_prefix,
+                effect="deny",
+                priority=1000,
+                source="system",
+            )
+        # 2) 列出该 group 全部历史 ACL 行，剔除仍存在于 new_uids 的，差集删除
+        all_rules = await repo.list_matching_rules(action="event.receive", target=target_prefix)
+        stale_uids: set[int] = set()
+        for r in all_rules:
+            if r.role != "用户":
+                continue
+            subj = getattr(r, "subject", "") or ""
+            if not subj.startswith("u:"):
+                continue
+            try:
+                rid = int(subj[2:])
+            except ValueError:
+                continue
+            if rid not in new_uids:
+                stale_uids.add(rid)
+        for rid in stale_uids:
+            await repo.delete_by_signature(
+                role="用户",
+                subject=f"u:{rid}",
+                action="event.receive",
+                target_scope="全局",
+                target=target_prefix,
+            )
+    except Exception:
+        from nonebot import logger
+
+        logger.exception("ban_gate: failed to mirror group blocked users into ACL gid={}", group_id)
 
 
 async def invalidate_user_ban_gate_cache(uids: int | Iterable[int]) -> None:

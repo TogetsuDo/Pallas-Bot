@@ -492,12 +492,15 @@ async def handle_llm_chat(bot: Bot, event: Event):
         except Exception:
             persona_dict = None
     self_aliases = extract_self_aliases(persona_dict)
-    llm_user_text = normalize_llm_chat_user_text(
-        msg,
-        plain=plain,
-        bot_self_id=int(bot.self_id),
-        mention_names=self_aliases,
-    ) or (plain or msg).strip()
+    llm_user_text = (
+        normalize_llm_chat_user_text(
+            msg,
+            plain=plain,
+            bot_self_id=int(bot.self_id),
+            mention_names=self_aliases,
+        )
+        or (plain or msg).strip()
+    )
     await TaskManager.add_task(
         request_id,
         {

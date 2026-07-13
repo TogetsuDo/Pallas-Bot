@@ -149,9 +149,7 @@ async def submit_chat_task(request: ChatSubmitRequest, *, cfg: LlmConfig | None 
             metadata["hybrid_retrieval_trace"] = request.hybrid_retrieval_trace
         rewrite_meta = request.llm_rewrite_metadata
         if isinstance(rewrite_meta, dict):
-            metadata.update({
-                key: value for key, value in rewrite_meta.items() if value is not None and value != ""
-            })
+            metadata.update({key: value for key, value in rewrite_meta.items() if value is not None and value != ""})
         from pallas.product.llm.runtime_debug import append_request_snapshot
 
         snapshot_id = append_request_snapshot(

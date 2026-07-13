@@ -66,10 +66,7 @@ def build_persona_shaping_summary(
 
     affect_block = str(meta.get("persona_affect_block") or sections.get("【本轮牛格塑形】") or "").strip()
     dynamic_expression = str(
-        meta.get("dynamic_expression_hint")
-        or sections.get("【情境触发】")
-        or sections.get("【表达习惯参考】")
-        or ""
+        meta.get("dynamic_expression_hint") or sections.get("【情境触发】") or sections.get("【表达习惯参考】") or ""
     ).strip()
     if not dynamic_expression:
         trigger = sections.get("【情境触发】", "").strip()

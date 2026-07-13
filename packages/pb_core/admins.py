@@ -62,10 +62,15 @@ async def add_bot_admins(bot_id: int, admin_ids: list[int]) -> tuple[bool, list[
     """
     确保 bot_config 行存在，并合并号主 QQ。
 
+    数据真相：写入 admin_members（scope="bot"）；同时镜像到 BotConfig.admins 以便
+    未完成迁移时回退。
+
     返回 (是否新建行, 合并后的 admins, 本次新增 QQ)。
     """
     from pallas.core.foundation.config.bot_admins_cache import invalidate_bot_admins_cache
+    from pallas.core.foundation.db import make_admin_repository
 
+    admin_repo = make_admin_repository()
     repo = make_bot_config_repository()
     _, created = await repo.get_or_create(bot_id, disabled_plugins=[])
     doc = await repo.get(bot_id, ignore_cache=True)
@@ -81,6 +86,31 @@ async def add_bot_admins(bot_id: int, admin_ids: list[int]) -> tuple[bool, list[
         await repo.upsert_field(bot_id, "admins", merged)
         await repo.invalidate_cache()
         await invalidate_bot_admins_cache(bot_id)
+        for admin_id in added:
+            try:
+                await admin_repo.upsert_member(
+                    user_id=int(admin_id),
+                    scope="bot",
+                    bot_id=int(bot_id),
+                )
+            except Exception as exc:
+                from nonebot import logger
+
+                logger.warning(
+                    "add_bot_admins: 写入 admin_members 失败 bot_id={} uid={} err={}",
+                    bot_id,
+                    admin_id,
+                    exc,
+                )
+        # ACL 引擎 cache 依赖 admin_members 变更需失效
+        try:
+            from pallas.core.perm.acl import clear_acl_cache
+
+            clear_acl_cache()
+        except Exception:
+            from nonebot import logger
+
+            logger.warning("add_bot_admins: 失效 ACL 引擎 cache 失败", exc_info=True)
     return created, merged, added
 
 
