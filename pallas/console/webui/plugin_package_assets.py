@@ -16,9 +16,7 @@ from pallas.core.foundation.paths import PROJECT_ROOT
 
 PUBLIC_PREFIX = "/pallas/plugin-assets"
 _PLUGIN_ID_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
-_ALL_CANDIDATE_RELS = frozenset(
-    dict.fromkeys((*COVER_CANDIDATE_PATHS, *ICON_CANDIDATE_PATHS, *AVATAR_CANDIDATE_PATHS))
-)
+_ALL_CANDIDATE_RELS = frozenset(dict.fromkeys((*COVER_CANDIDATE_PATHS, *ICON_CANDIDATE_PATHS, *AVATAR_CANDIDATE_PATHS)))
 PACKAGE_ASSET_CANDIDATE_PATHS = tuple(_ALL_CANDIDATE_RELS)
 _PKGVIS_REVISION_TTL_SEC = 300.0
 _pkgvis_revision_cache: tuple[float, str] = (0.0, "")
