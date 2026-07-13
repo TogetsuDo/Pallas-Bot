@@ -91,6 +91,10 @@ async def handle_memory_save(arguments: dict[str, Any], context: ToolInvokeConte
     bot_id = int(getattr(context, "bot_id", 0) or 0) if context is not None else 0
     group_id = getattr(context, "group_id", None) if context is not None else None
     if bot_id <= 0 or group_id is None:
-        return {"ok": False, "error": "group_context_required"}
+        return {
+            "ok": False,
+            "error": "group_context_required",
+            "message": "memory.save 仅在群聊上下文可用，私聊请勿调用",
+        }
     ok = await save_memory_entry(bot_id, int(group_id), content, source="teach", cfg=cfg)
     return {"ok": bool(ok)}

@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from nonebot import logger
 from sqlalchemy import delete, func, select
 
 from pallas.core.foundation.db.repository_pg import LlmMemoryEntryRow, get_session, is_pg_initialized
@@ -286,8 +287,8 @@ async def retrieve_memory_hits(
                     row.embedding_json = dump_embedding_json(list(item["embedding"]))
                     row.embedding_model = str(item.get("embedding_model") or embedding_model_name(c))
                 await session.commit()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("memory embedding cache persist failed err={}", exc)
     seen: set[str] = set()
     out: list[dict[str, Any]] = []
     for item in scored:

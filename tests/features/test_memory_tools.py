@@ -47,3 +47,5 @@ async def test_memory_save_requires_group(monkeypatch: pytest.MonkeyPatch) -> No
     ctx = ToolInvokeContext(bot_id=1, group_id=None, user_id=3)
     out = await handle_memory_save({"content": "本群周五开黑"}, context=ctx)
     assert out["ok"] is False
+    assert out["error"] == "group_context_required"
+    assert "群聊" in str(out.get("message") or "")

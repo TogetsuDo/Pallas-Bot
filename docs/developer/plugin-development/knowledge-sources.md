@@ -42,9 +42,13 @@ extra={
 | 开关 | `LLM_KNOWLEDGE_FILE_INGEST_ENABLED`（默认开） |
 | source_id | `pallas.file_ingest` |
 | Markdown | 按 `#` 标题切块 |
-| JSONL | 每行 `{"title","content","keywords"}` |
+| JSONL | 每行一条 JSON 对象，字段包括 `title`、`content`、`keywords` |
 
-示例见仓库内 `data/pallas_knowledge/example.md`。
+示例见仓库内 `data/pallas_knowledge/example.md`，例如：
+
+```jsonl
+{"title": "示例标题", "content": "这是内容示例。", "keywords": "关键字1,关键字2"}
+```
 
 ## 知识源 vs LLM Tool
 

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from pallas.product.llm.config import LlmConfig
 from pallas.product.llm.knowledge.file_ingest import (
+    ensure_file_knowledge_registered,
     load_file_knowledge_decl,
     reset_file_knowledge_registration_for_tests,
 )
@@ -81,3 +84,60 @@ def test_file_ingest_loads_markdown(tmp_path) -> None:
     assert decl.chunks
     titles = {c.title for c in decl.chunks}
     assert "什么是 Pallas" in titles
+
+
+def test_file_ingest_loads_jsonl_valid_records_only(tmp_path) -> None:
+    reset_file_knowledge_registration_for_tests()
+    jsonl_path = tmp_path / "sample.jsonl"
+    valid_record = {
+        "title": "有效 JSONL 记录",
+        "content": "这是一段足够长的内容，用于测试 JSONL 文件导入行为。",
+        "keywords": "jsonl,ingest",
+    }
+    too_short_record = {
+        "title": "内容太短的记录",
+        "content": "短",
+        "keywords": "short",
+    }
+    jsonl_lines = [
+        json.dumps(valid_record, ensure_ascii=False),
+        json.dumps(too_short_record, ensure_ascii=False),
+        json.dumps("not a dict", ensure_ascii=False),
+        '{"title": "invalid json"',
+    ]
+    jsonl_path.write_text("\n".join(jsonl_lines), encoding="utf-8")
+
+    decl = load_file_knowledge_decl(root=tmp_path)
+    assert decl is not None
+    assert decl.source_id == "pallas.file_ingest"
+    titles = {c.title for c in decl.chunks}
+    assert titles == {"有效 JSONL 记录"}
+
+
+def test_file_ingest_ignores_readme_and_dotfiles(tmp_path) -> None:
+    reset_file_knowledge_registration_for_tests()
+    (tmp_path / "README.md").write_text(
+        "# README\n\n## README 标题\n\n这是一段 README 内容。\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".hidden.md").write_text(
+        "# Hidden\n\n## 隐藏标题\n\n这是一段隐藏文件内容。\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "sample.md").write_text(
+        "# Demo\n\n## 可见标题\n\n这是一段正常的内容。\n",
+        encoding="utf-8",
+    )
+
+    decl = load_file_knowledge_decl(root=tmp_path)
+    assert decl is not None
+    titles = {c.title for c in decl.chunks}
+    assert "可见标题" in titles
+    assert "README 标题" not in titles
+    assert "隐藏标题" not in titles
+
+
+def test_file_ingest_disabled_via_flag() -> None:
+    reset_file_knowledge_registration_for_tests()
+    cfg = LlmConfig(llm_knowledge_file_ingest_enabled=False)
+    assert ensure_file_knowledge_registered(cfg=cfg) is False

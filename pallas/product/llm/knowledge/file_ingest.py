@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 _KNOWLEDGE_DIR = PROJECT_ROOT / "data" / "pallas_knowledge"
 _FILE_SOURCE_ID = "pallas.file_ingest"
+MAX_FILE_KNOWLEDGE_CHUNKS = 200
 _registered = False
 
 
@@ -92,6 +93,8 @@ def load_file_knowledge_decl(*, root: Path | None = None) -> KnowledgeSourceDecl
         if path.name.startswith(".") or path.name.upper() == "README.MD":
             continue
         suffix = path.suffix.lower()
+        if suffix not in {".md", ".jsonl"}:
+            continue
         try:
             text = path.read_text(encoding="utf-8")
         except OSError as exc:
@@ -102,13 +105,15 @@ def load_file_knowledge_decl(*, root: Path | None = None) -> KnowledgeSourceDecl
             chunks.extend(_chunk_markdown(text, source_name=stem))
         elif suffix == ".jsonl":
             chunks.extend(_chunk_jsonl(text))
+        if len(chunks) >= MAX_FILE_KNOWLEDGE_CHUNKS:
+            break
     if not chunks:
         return None
     return KnowledgeSourceDecl(
         source_id=_FILE_SOURCE_ID,
         title="本地知识目录",
         description=f"来自 {base.relative_to(PROJECT_ROOT) if base.is_relative_to(PROJECT_ROOT) else base}",
-        chunks=chunks[:200],
+        chunks=chunks[:MAX_FILE_KNOWLEDGE_CHUNKS],
     )
 
 
@@ -119,12 +124,16 @@ def ensure_file_knowledge_registered(*, cfg: LlmConfig | None = None, force: boo
     c = cfg or get_llm_config()
     if not c.llm_knowledge_file_ingest_enabled:
         return False
-    decl = load_file_knowledge_decl()
-    if decl is None:
-        return False
-    from pallas.product.llm.knowledge.registry import register_builtin_knowledge_source
+    try:
+        decl = load_file_knowledge_decl()
+        if decl is None:
+            return False
+        from pallas.product.llm.knowledge.registry import register_builtin_knowledge_source
 
-    register_builtin_knowledge_source(source_id=decl.source_id, decl=decl)
+        register_builtin_knowledge_source(source_id=decl.source_id, decl=decl)
+    except Exception as exc:
+        logger.warning("knowledge file ingest register failed err={}", exc)
+        return False
     _registered = True
     return True
 

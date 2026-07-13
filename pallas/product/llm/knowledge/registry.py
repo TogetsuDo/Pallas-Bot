@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from nonebot import logger
+
 from pallas.product.llm.config import LlmConfig, get_llm_config
 from pallas.product.llm.kernel.memory_governance import can_read_generic_knowledge, resolve_memory_read_policy
 from pallas.product.llm.knowledge.metadata import iter_loaded_plugin_knowledge_sources
@@ -58,8 +60,8 @@ def list_active_knowledge_sources(*, cfg: LlmConfig | None = None) -> list[Regis
         from pallas.product.llm.knowledge.file_ingest import ensure_file_knowledge_registered
 
         ensure_file_knowledge_registered(cfg=c)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("knowledge file ingest ensure failed err={}", exc)
     seen = {row.source_id for row in _BUILTIN_SOURCES}
     rows: list[RegisteredKnowledgeSource] = list(_BUILTIN_SOURCES)
     for plugin_name, plugin_title, decl in iter_loaded_plugin_knowledge_sources():
