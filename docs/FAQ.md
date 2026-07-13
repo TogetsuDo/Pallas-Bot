@@ -234,7 +234,7 @@ A: **不能沿用旧路径。** 4.0 已移除 `src/` 目录；内置玩法迁至
 
 ### Q: 社区作者如何只依赖内核、不克隆整仓？
 
-A: 使用 PyPI 包 **`pallas-core`**（GA 前可本地构建 wheel：`./scripts/build_core.sh`），在扩展 `pyproject.toml` 声明 `pallas-core>=4.0.0,<5.0.0`，业务代码只 `import pallas.api.*`。示例见 [pallas.api Cookbook](developer/plugin-development/pallas-api-cookbook.md) 与 `templates/pallas-plugin-extension/`。
+A: 使用 PyPI 包 **`pallas-core`**（也可本地构建 wheel：`./scripts/build_core.sh`），在扩展 `pyproject.toml` 声明 `pallas-core>=4.0.0,<5.0.0`，业务代码只 `import pallas.api.*`。示例见 [pallas.api Cookbook](developer/plugin-development/pallas-api-cookbook.md) 与 `templates/pallas-plugin-extension/`。
 
 ### Q: WebUI 首次登录为什么要走 Setup Wizard？
 

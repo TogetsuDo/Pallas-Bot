@@ -425,7 +425,7 @@ if __name__ == "__main__":
 | [AGENTS.md](../../../AGENTS.md) | 主代码目录 `pallas/` + `packages/` | ✅ 已更新 |
 | 扩展模板 `templates/pallas-plugin-extension/` | 依赖 `pallas-core` + 示例 import | ✅ 已声明 `pallas-core>=4.0.0` |
 | [pallas-api-cookbook.md](../../developer/plugin-development/pallas-api-cookbook.md) | 扩展作者 api 入口 | ✅ 已建立 |
-| [4.0-migration.md](../../guide/4.0-migration.md) | 站点迁移 + dev→main | ✅ 已建立 |
+| [4.0-migration.md](../../guide/4.0-migration.md) | 站点从 3.x 升级 | ✅ 已建立 |
 
 ---
 

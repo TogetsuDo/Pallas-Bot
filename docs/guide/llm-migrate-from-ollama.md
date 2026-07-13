@@ -32,7 +32,7 @@ WebUI：**通用配置 → 智能对话与 AI 服务**；群风格开关在 **Bo
 
 ## AI 仓路径（兼容旧客户端）
 
-Pallas-Bot-AI **4.0** 仍代理 deprecated 的 `/api/ollama/*`，方便旧客户端过渡；**新功能不要再加** ollama 专用路径。
+Pallas-Bot-AI 仍代理 deprecated 的 `/api/ollama/*`，方便旧客户端过渡；**新功能不要再加** ollama 专用路径。
 
 主仓默认请求：
 
@@ -45,7 +45,7 @@ Pallas-Bot-AI **4.0** 仍代理 deprecated 的 `/api/ollama/*`，方便旧客户
 
 1. 备份 `config/pallas.toml`、`data/pallas_config/webui.json`、`.env`。
 2. 升级主仓，`uv sync`（按需 `--extra` 装玩法扩展）。
-3. 部署 [Pallas-Bot-AI](https://github.com/PallasBot/Pallas-Bot-AI) **4.0** 分支，配置 `LLM_BACKEND_URL` / `LLM_MODEL`。
+3. 部署 [Pallas-Bot-AI](https://github.com/PallasBot/Pallas-Bot-AI)（与 Bot 匹配的版本），配置 `LLM_BACKEND_URL` / `LLM_MODEL`。
 4. 在 WebUI 打开 **`LLM_CHAT_ENABLED`**，填写 `AI_SERVER_HOST` / `AI_SERVER_PORT`。
 5. 删除或注释遗留 `CHAT_ENABLE`、`OLLAMA_*`；勿与 `LLM_*` 同名冲突。
 6. 验收：日志出现 `LLM：可达 … v=4.x`；群内 @ 与（可选）接话 polish/fallback 正常。
