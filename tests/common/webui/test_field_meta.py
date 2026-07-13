@@ -89,7 +89,7 @@ def test_field_meta_includes_choice_labels_for_registered_enum():
     )
     assert row["choice_labels"]["select"] == "命中语料时 AI 选句（推荐）"
     assert row["choice_labels"]["off"] == "关闭 AI 接话"
-    assert row["choice_labels"]["select_polish_lite"] == "选句为主，偶尔轻顺口气"
+    assert row["choice_labels"]["select_polish_lite"] == "选句为主，少数回复轻润色"
 
 
 def test_field_meta_includes_choice_labels_for_llm_vector_retrieve():

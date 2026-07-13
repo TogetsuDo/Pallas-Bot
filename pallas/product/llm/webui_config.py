@@ -10,7 +10,23 @@ from pallas.console.webui.field_help import field_help
 from pallas.product.llm.config import get_llm_config
 
 VectorRetrieveMode = Literal["keyword", "embedding", "hybrid", "vector"]
-RepeaterMode = Literal["off", "select", "select_polish_lite", "select_fallback", "fallback", "polish", "both"]
+RepeaterMode = Literal["off", "select", "select_polish_lite", "select_fallback", "fallback"]
+
+_LEGACY_REPEATER_MODE_TO_WEBUI: dict[str, RepeaterMode] = {
+    "polish": "select_polish_lite",
+    "both": "select_fallback",
+}
+
+
+def normalize_repeater_mode_for_webui(mode: str) -> RepeaterMode:
+    raw = str(mode or "").strip().lower()
+    if raw in _LEGACY_REPEATER_MODE_TO_WEBUI:
+        return _LEGACY_REPEATER_MODE_TO_WEBUI[raw]
+    if raw in ("off", "select", "select_polish_lite", "select_fallback", "fallback"):
+        return raw  # type: ignore[return-value]
+    return "select"
+
+
 ConversationFeatureLevel = Literal["", "legacy_repeater", "repeater_plus_decision", "full_conversation_kernel"]
 
 
@@ -62,11 +78,11 @@ class LlmWebuiConfig(BaseModel):
         default="select",
         description=field_help(
             "接话时如何使用智能对话",
-            "推荐「命中语料时 AI 选句」；需要时可开启语料缺失现编或偶尔轻顺口气",
+            "推荐「命中语料时 AI 选句」；需要时可开启语料缺失现编，或少数回复做轻润色",
             (
-                "遗留项「完整润色」易注入过多人设，日常接话不建议使用。"
-                "用户视角：off=只用语料；fallback=语料不够时 AI 补位；"
-                "polish=命中语料时 AI 轻顺口气；both=两者都开"
+                "off=只用语料；select=命中语料时 AI 选句；"
+                "select_polish_lite=以选句为主，约一成回复会轻润色口气；"
+                "select_fallback=选句且语料缺失时现编；fallback=仅语料缺失时现编"
             ),
         ),
     )
@@ -75,8 +91,8 @@ class LlmWebuiConfig(BaseModel):
         ge=0.0,
         le=1.0,
         description=field_help(
-            "「选句为主，偶尔轻顺口气」模式下走轻润色的比例",
-            "0.12 表示约 12% 命中语料会轻顺口气，其余仍走选句",
+            "「选句为主，少数回复轻润色」模式下走轻润色的比例",
+            "0.12 表示约 12% 命中语料会轻润色口气，其余仍走选句",
         ),
     )
     llm_governance_enabled: bool = Field(
@@ -245,9 +261,7 @@ class LlmWebuiConfig(BaseModel):
 
 def get_llm_webui_config() -> LlmWebuiConfig:
     cfg = get_llm_config()
-    mode = cfg.llm_repeater_mode
-    if mode not in ("off", "select", "select_polish_lite", "select_fallback", "fallback", "polish", "both"):
-        mode = "select"
+    mode = normalize_repeater_mode_for_webui(cfg.llm_repeater_mode)
     return LlmWebuiConfig(
         ai_server_host=cfg.ai_server_host,
         ai_server_port=cfg.ai_server_port,
