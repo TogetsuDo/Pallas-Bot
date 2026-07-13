@@ -2,10 +2,10 @@
 
 装之前先分清三类东西：
 
-| 类型 | 举例 | 要不要装 |
+| 类型 | 举例 | 你要不要动手 |
 | --- | --- | --- |
-| **本体 core** | 复读、帮助、控制台 | 自带，不用装 |
-| **官方扩展** | 决斗、MAA、谁是卧底 | 默认没有，要单独装 |
+| **本体 core** | 复读、帮助、控制台 | 不用装，自带 |
+| **官方扩展** | 决斗、MAA、谁是卧底 | 要单独装 |
 | **站点 / 社区** | 自己写的、第三方 | 商店 git 装，或放 `local/plugins/` |
 
 装完群里发 **牛牛帮助**，新功能应出现在帮助图里。
@@ -18,9 +18,9 @@
 
 条件：目录有 `pyproject.toml`，系统能跑 `uv`。
 
-1. 登录 `http://<主机>:8088/pallas/`  
-2. 侧栏 **插件商店**  
-3. **一键安装** → **安装并重启**（或装完手动重启）  
+1. 登录 `http://<主机>:8088/pallas/`
+2. 侧栏 **插件商店**
+3. **一键安装** → **安装并重启**（或装完手动重启）
 
 商店显示「已加载」、帮助图出现新口令 = 成功。
 
@@ -37,9 +37,7 @@
 uv run pallas ext install pallas-plugin-duel
 ```
 
-装完 **必须重启**（`uv run nb run` 或项目重启脚本）。
-
-包对照：[安装官方扩展](install-extensions.md#扩展包对照表)。
+装完 **必须重启**。包对照：[安装官方扩展](install-extensions.md#扩展包对照表)。
 
 ## 二、站点自有插件（local）
 
@@ -68,12 +66,12 @@ load_bundled_extra_plugins = "auto"
 
 索引默认来自 [community-plugin-index](https://github.com/PallasBot/community-plugin-index)。
 
-1. `/pallas/` → **插件商店** → **社区插件**  
-2. **安装** → clone 到 `local/plugins/<ID>/`  
-3. 未收录：用 **从 Git 安装**  
-4. 重启 Bot  
+1. `/pallas/` → **插件商店** → **社区插件**
+2. **安装** → clone 到 `local/plugins/<ID>/`
+3. 未收录：用 **从 Git 安装**
+4. 重启 Bot
 
-完整说明：[社区插件商店](community-plugin-store.md)。作者：[社区插件开发者指南](community-plugin-author.md)。
+完整说明：[社区插件商店](community-plugin-store.md)。作者：[写社区插件并上架](community-plugin-author.md)。
 
 ## 列表在哪看
 

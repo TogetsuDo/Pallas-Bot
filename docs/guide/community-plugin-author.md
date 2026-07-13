@@ -1,8 +1,8 @@
 # 写社区插件并上架
 
-给 **第三方 NoneBot 插件**作者：让站点管理员能发现、安装你的插件，以及怎么自检、提交索引。
+这页给 **第三方 NoneBot 插件**作者：让站点能发现、安装你的插件，以及怎么自检、提交索引。
 
-管理员安装说明：[社区插件商店](community-plugin-store.md)。插件结构：[Golden Plugin](../developer/plugin-development/golden-plugin.md)。
+管理员怎么装：[社区插件商店](community-plugin-store.md)。插件结构：[Golden Plugin](../developer/plugin-development/golden-plugin.md)。
 
 ---
 

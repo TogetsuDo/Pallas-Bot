@@ -18,7 +18,10 @@
 | [标准部署](../Deployment.md) | systemd、备份 |
 | [Docker](../DockerDeployment.md) | Compose、卷、镜像带哪些扩展 |
 
-数据库用 **PostgreSQL**（现行默认）。表结构首次启动自动建；先准备好空库。3.x 升级站可继续用 MongoDB。
+::: tip 数据库
+默认用 **PostgreSQL**。表结构首次启动自动建；先准备好空库。  
+从 3.x 升级的站可继续用 MongoDB。
+:::
 
 ## 连 QQ、装插件、改配置
 

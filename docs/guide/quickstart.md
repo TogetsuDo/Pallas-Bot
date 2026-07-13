@@ -1,37 +1,40 @@
 # 五分钟跑起来
 
-把 **Pallas-Bot** 在本机跑通：能开控制台 → 能连 QQ → 群里 **牛牛帮助** 有回复。  
-先别开分片，也先别装一堆扩展。
+这页带你把 **Pallas-Bot** 在本机跑通：能开控制台 → 能连 QQ → 群里 **牛牛帮助** 有回复。
 
-## 准备
+::: tip 第一次就这样
+先别开分片，也先别装一堆扩展。通一句再说。
+:::
 
-| 项 | 要求 |
-| --- | --- |
-| Python | **3.12+**（推荐 [uv](https://docs.astral.sh/uv/)） |
-| 数据库 | **PostgreSQL**（现行默认）；本机或 Docker 起一个空库即可 |
-| QQ | 建议小号；协议端可以等 Bot 起来再配 |
+## 你只需要这三样
 
-从 3.x 升级的站点若仍用 MongoDB，可暂时保留，新站请用 PostgreSQL。
+1. **Python 3.12+**（推荐用 [uv](https://docs.astral.sh/uv/)）
+2. **一个空的 PostgreSQL 库**（本机或 Docker 都行）
+3. **一个 QQ 小号**（协议端可以等 Bot 起来再扫）
 
-## 1. 克隆
+::: tip 从 3.x 升级？
+还在用 MongoDB 的可以暂时保留。**新站请用 PostgreSQL。**
+:::
+
+## 第 1 步：下载
 
 ```bash
 git clone https://github.com/PallasBot/Pallas-Bot.git
 cd Pallas-Bot
 ```
 
-目录里应有 `pyproject.toml`、`config/pallas.example.toml`。
+看到 `pyproject.toml`、`config/pallas.example.toml` 就对了。
 
-## 2. 装依赖
+## 第 2 步：装依赖
 
 ```bash
 uv sync --extra pg
 uv run python -c "import nonebot"
 ```
 
-无报错即可。
+终端没报错 = 依赖 OK。
 
-## 3. 写配置
+## 第 3 步：写配置
 
 ```bash
 cp config/pallas.example.toml config/pallas.toml
@@ -58,43 +61,47 @@ db = "PallasBot"
 `pallas.toml` 已在 `.gitignore`，不要推进公开仓库。
 :::
 
-## 4. 启动
+## 第 4 步：启动
 
 ```bash
 uv run nb run
 ```
 
-日志里应能看到：
+日志里你该看到：
 
-1. 没有数据库 `connection refused`  
-2. **Web 控制台初始口令**（也可在 `data/pallas_console/` 找回）  
-3. 浏览器打开 `http://127.0.0.1:8088/pallas/` 出现登录页  
+1. 没有数据库 `connection refused`
+2. 一行 **Web 控制台初始口令**（也可在 `data/pallas_console/` 找回）
+3. 浏览器打开 `http://127.0.0.1:8088/pallas/` —— **出现登录页就对了**
 
-::: tip 地址
-本机用 `127.0.0.1`；远程把主机换成服务器 IP，并放行 **8088**。
+::: tip 地址怎么填
+本机用 `127.0.0.1`。远程把主机换成服务器 IP，并放行 **8088**。
 :::
 
-## 5. 连 QQ
+## 第 5 步：连 QQ
 
 Pallas-Bot **不会自己登录 QQ**，要靠 NapCat 等协议端。
 
-1. 打开 `http://<主机>:8088/protocol/console/`  
-2. 用与控制台相同口令登录  
-3. **新建实例** → NapCat → 手机扫码  
-4. 实例状态为 **在线**
+1. 打开 `http://<主机>:8088/protocol/console/`
+2. 用和控制台**同一口令**登录
+3. **新建实例** → NapCat → 手机扫码
+4. 实例变成 **在线**
 
-群里发：
+把牛拉进群，发：
 
 ```text
 牛牛帮助
 ```
 
-有帮助图就通了。细节见 [连接 QQ](connect-qq.md)。
+**有帮助图 = 通了。** 细节见 [连接 QQ](connect-qq.md)。
 
 ## 通了之后
 
-▶ [安装官方扩展](install-extensions.md) · [网页控制台](web-console.md) · [运维入口](../maintainer/quickstart.md)  
-▶ 卡住了：[排障](../maintainer/operate/troubleshooting.md) · [FAQ](../FAQ.md)
+| 你想… | 打开 |
+| --- | --- |
+| 装决斗 / MAA | [安装官方扩展](install-extensions.md) |
+| 改配置、看日志 | [网页控制台](web-console.md) |
+| Docker / 分片 / 升级 | [运维入口](../maintainer/quickstart.md) |
+| 卡住了 | [排障](../maintainer/operate/troubleshooting.md) · [FAQ](../FAQ.md) |
 
 ## 排障速查
 
@@ -102,4 +109,4 @@ Pallas-Bot **不会自己登录 QQ**，要靠 NapCat 等协议端。
 | --- | --- |
 | 数据库连不上 | PostgreSQL 是否启动；`pallas.toml` 的 host/port/库名 |
 | 忘记控制台口令 | [FAQ](../FAQ.md) |
-| 协议端在线但群没反应 | 牛是否在群；**运行日志**是否收到消息 |
+| 协议端在线但群没反应 | 牛是否在群；**运行日志**有没有收到消息 |

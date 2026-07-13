@@ -1,7 +1,11 @@
 # 理解 Pallas-Bot 怎么拼起来
 
 只想先跑起来？直接看 [五分钟跑起来](quickstart.md)。  
-本节方便排错时知道该查哪一块。
+这页方便排错时知道该查哪一块。
+
+::: tip 可跳过
+已经跑通、只想装扩展？可以先不看，用到再回来。
+:::
 
 ## 一条消息怎么走
 
@@ -10,7 +14,7 @@ QQ 用户
   → NapCat 等协议端（OneBot v11）
   → WebSocket
   → Pallas-Bot（插件）
-  → PostgreSQL（现行默认）
+  → PostgreSQL（默认）
 ```
 
 浏览器里的 **Web 控制台**、**协议端管理页**，和上面是**同一个 Bot 进程**提供的。
@@ -44,7 +48,7 @@ QQ 用户
 站点 local             → local/plugins/<名>/
 ```
 
-- 装官方扩展：[安装插件](install-plugins.md)  
+- 装官方扩展：[安装插件](install-plugins.md)
 - AI 另仓：[AI 扩展](ai.md)
 
 ## 和 AI 的关系

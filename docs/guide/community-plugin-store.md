@@ -1,7 +1,8 @@
 # 社区插件商店
 
-控制台 **插件商店 → 社区插件**：从策展索引浏览第三方插件，用 git 装到 `local/plugins/<id>/`。
+这页帮你从策展索引浏览第三方插件，用 git 装到 `local/plugins/<id>/`。
 
+路径：控制台 **插件商店 → 社区插件**。  
 与 **官方扩展**（pip）并存；**同名时 `local/plugins` 优先**。
 
 ---
@@ -26,8 +27,6 @@
 
 ### 私有索引
 
-自建索引时，在 `config/pallas.toml` 的 `[env]` 写 raw JSON 地址：
-
 ```toml
 [env]
 COMMUNITY_PLUGIN_INDEX_URL = "https://example.com/my-index.json"
@@ -37,7 +36,7 @@ COMMUNITY_PLUGIN_INDEX_URL = "https://example.com/my-index.json"
 
 ## WebUI 安装（推荐）
 
-**条件**：运行环境能跑 `git`（WebUI 会 `git clone`）。
+**条件**：运行环境能跑 `git`。
 
 1. 打开 `/pallas/` → **插件商店** → **社区插件**
 2. 选条目 → **安装**（或 **安装并重启**）
@@ -49,14 +48,14 @@ COMMUNITY_PLUGIN_INDEX_URL = "https://example.com/my-index.json"
 
 ### `extra_plugin_dirs`
 
-建议在 `config/pallas.toml` 写明：
+建议写明：
 
 ```toml
 [bootstrap]
 extra_plugin_dirs = ["local/plugins"]
 ```
 
-若 **未配置** 但 `local/plugins/` 下已有有效插件包（含 `__init__.py`），启动时也会 **自动纳入**；仍建议写上，方便排障。
+未配置但目录下已有有效插件包时，启动也会自动纳入；仍建议写上，方便排障。
 
 Docker 挂载见 [站点定制 · Docker](../architecture/site-customization-and-updates.md#docker--外挂插件卷)。
 
@@ -64,18 +63,18 @@ Docker 挂载见 [站点定制 · Docker](../architecture/site-customization-and
 
 ## 详情：README 与更新日志
 
-点商店卡片打开详情，可在 **README** / **更新日志** 间切换：
+点商店卡片打开详情：
 
 - **README**：仓库根目录 `README.md`
-- **更新日志**：优先 `CHANGELOG.md`；没有则对已装到 `local/plugins/<id>/` 的副本按 git 提交标题**兜底生成**
+- **更新日志**：优先 `CHANGELOG.md`；没有则对已装副本按 git 提交标题兜底生成
 
-官方扩展与社区插件都适用。作者约定见 [社区插件开发者指南 · 版本与更新日志](community-plugin-author.md#版本与更新日志)。
+作者约定见 [写社区插件并上架 · 版本与更新日志](community-plugin-author.md#版本与更新日志)。
 
 ---
 
 ## 手动投放
 
-把 NoneBot 插件目录放到 `local/plugins/<名>/`，配好 `extra_plugin_dirs`（或靠自动检测），重启 Bot。结果与商店安装相同。
+把插件目录放到 `local/plugins/<名>/`，配好 `extra_plugin_dirs`（或靠自动检测），重启 Bot。结果与商店安装相同。
 
 适合：不能访问 git，或不在公共索引里。
 
@@ -83,11 +82,12 @@ Docker 挂载见 [站点定制 · Docker](../architecture/site-customization-and
 
 ## 收录第三方插件
 
-向 [**community-plugin-index**](https://github.com/PallasBot/community-plugin-index) 提 PR，在 `index.json` 追加条目。要求见该仓 README。**README 插件列表由 CI 根据 JSON 自动更新**，不用手改表格。
+向 [**community-plugin-index**](https://github.com/PallasBot/community-plugin-index) 提 PR，在 `index.json` 追加条目。  
+**README 插件列表由 CI 根据 JSON 自动更新**，不用手改表格。
 
-作者自检、生成索引 JSON、图标约定：[社区插件开发者指南](community-plugin-author.md)。
+作者自检：[写社区插件并上架](community-plugin-author.md)。
 
-索引 **只存元数据**，不托管源码。未收录的插件仍可用 **从 Git 安装** 或手工 `local/plugins/`。
+索引 **只存元数据**，不托管源码。未收录仍可用 **从 Git 安装** 或手工 `local/plugins/`。
 
 ---
 
@@ -99,9 +99,7 @@ Docker 挂载见 [站点定制 · Docker](../architecture/site-customization-and
 | 官方 pip 扩展 | `uv sync --extra` / 商店一键装 | 中 |
 | 仓库内 `src/plugins/` 副本 | 默认 **`load_bundled_extra_plugins = "auto"`**：pip 未装时用副本 | 低 |
 
-Docker 等不好 pip 的环境：镜像若带 `src/plugins/` 官方副本，`auto` 会在无 pip 包时自动加载；社区插件仍推荐 `local/plugins/`。
-
-详见 [安装插件 · 官方扩展](install-plugins.md#一安装官方扩展最常见) 与 [安装官方扩展](install-extensions.md)。
+详见 [安装插件](install-plugins.md) 与 [安装官方扩展](install-extensions.md)。
 
 ---
 

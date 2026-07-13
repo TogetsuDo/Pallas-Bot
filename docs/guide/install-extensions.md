@@ -1,26 +1,27 @@
 # 安装官方扩展
 
-只讲 **官方扩展 pip 包**（决斗、MAA 等）。  
-自己写的插件见 [安装插件 · local](install-plugins.md#二安装站点自有插件local)。
+这页只讲 **官方扩展 pip 包**（决斗、MAA 等）。  
+自己写的、第三方的见 [安装插件](install-plugins.md)。
 
-::: tip 和 core 的区别
-- **core**：复读、帮助、控制台……`uv run nb run` 就有  
-- **官方扩展**：商店或 `uv run pallas ext install …` 安装，**装完要重启**  
-拿不准先看 [把玩法 / AI 也装上 · 一分钟对照](4.0-start.md#一分钟对照)。
+::: tip 先分清两样东西
+- **core**（复读、帮助、控制台…）：`uv run nb run` 就有，不用装
+- **官方扩展**（决斗、MAA…）：商店或命令行装，**装完要重启**
+
+拿不准装什么？看 [把玩法 / AI 也装上 · 一分钟对照](4.0-start.md#一分钟对照)。
 :::
 
-::: tip 从 3.x 升级
-已有 `local/plugins/`（或旧副本）的站点**不必立刻 pip**——加载链仍以 local 优先。  
-默认 `load_bundled_extra_plugins = "auto"`：pip 有则用 pip，没有则用镜像内副本。  
-要统一走 PyPI 时，用商店一键装或 CLI（wheel **4.0.1+**）。
+::: tip 从 3.x 升级、本地已有插件？
+`local/plugins/` 里已有的**不必立刻 pip**——同名时 local 优先。  
+默认 `load_bundled_extra_plugins = "auto"`：有 pip 用 pip，没有就用镜像内副本。  
+想统一走 PyPI：用商店一键装或 CLI（wheel **4.0.1+**）。
 :::
 
-## WebUI 安装（推荐）
+## 第 1 步：网页一键装（推荐）
 
-1. 打开 `http://<主机>:8088/pallas/` 并登录  
-2. 侧栏 **插件商店**  
-3. 找到卡片 → **一键安装**  
-4. 有 **安装并重启** 就点；否则装完自己重启  
+1. 打开 `http://<主机>:8088/pallas/` 并登录
+2. 侧栏 **插件商店**
+3. 找到卡片 → **一键安装**
+4. 有 **安装并重启** 就点；否则装完自己重启
 
 | 商店显示 | 含义 |
 | --- | --- |
@@ -29,10 +30,12 @@
 | 已加载 | 当前进程里已在跑 |
 
 ::: tip 一条糙规则
-装、卸、升级扩展之后，都重启一次。比纠结能不能热载省心。
+装、卸、升级之后，都重启一次。比纠结能不能热载省心。
 :::
 
-## 命令行
+**验收**：商店显示「已加载」，群里 **牛牛帮助** 出现新口令。
+
+## 第 2 步（可选）：命令行
 
 在 **Pallas-Bot 仓库根**：
 
@@ -42,7 +45,7 @@ uv run pallas ext install pallas-plugin-maa
 uv run pallas ext install pallas-plugin-who-is-spy
 ```
 
-可抽查导入是否成功：
+抽查导入：
 
 ```bash
 uv run python -c "import pallas_plugin_duel"
@@ -71,9 +74,9 @@ uv run python -c "import pallas_plugin_duel"
 
 官方镜像往往是 **精简 core**，容器里不一定有 `uv` 现场装包。常见做法：
 
-1. 构建时带上 extras（如 `PALLAS_UV_EXTRAS=perf,pg`，见 [Docker](../DockerDeployment.md)）  
-2. 挂载 `local/plugins/`  
-3. 在有源码的机器上装好扩展再整目录部署  
+1. 构建时带上 extras（如 `PALLAS_UV_EXTRAS=perf,pg`，见 [Docker](../DockerDeployment.md)）
+2. 挂载 `local/plugins/`
+3. 在有源码的机器上装好扩展再整目录部署
 
 ## 卸载
 
