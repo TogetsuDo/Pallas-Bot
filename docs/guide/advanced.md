@@ -13,7 +13,7 @@
 | --- | --- |
 | [理解架构](concepts.md) | 协议端、本体、库、控制台怎么串起来 |
 | [配置存储](../architecture/settings-storage.md) | `pallas.toml` 和 `webui.json` 谁覆盖谁 |
-| [Maintainer](../maintainer/index.md) / [Developer](../developer/index.md) | 当前正式文档主线入口 |
+| [Maintainer](../maintainer/quickstart.md) / [Developer](../developer/index.md) | 当前正式文档主线入口 |
 
 ---
 
@@ -62,4 +62,4 @@
 
 ## 我要写代码
 
-请看 [Maintainer](../maintainer/index.md)、[Developer](../developer/index.md) 和 [插件开发入门](../developer/plugin-development/getting-started.md)，不在本节展开。
+请看 [Maintainer](../maintainer/quickstart.md)、[Developer](../developer/index.md) 和 [插件开发入门](../developer/plugin-development/getting-started.md)，不在本节展开。

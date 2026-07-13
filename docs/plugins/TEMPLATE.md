@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="../assets/brand-avatar.png" width="220" height="220" alt="{展示名}">
+  <img src="/assets/logo.png" width="220" height="220" alt="{展示名}">
 </p>
 
 <h1 align="center">{展示名} {包名}</h1>

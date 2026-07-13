@@ -45,6 +45,7 @@ from pallas.product.llm.memory import (
     save_memory_entry,
     save_relationship_note,
 )
+from pallas.product.llm.memory.auto_episode import maybe_auto_save_episode
 from pallas.product.llm.message_guard import normalize_llm_chat_user_text
 from pallas.product.llm.persona_context import build_persona_llm_context
 from pallas.product.llm.polish_lite import maybe_submit_repeater_corpus_llm
@@ -564,6 +565,17 @@ async def handle_llm_chat(bot: Bot, event: Event):
 
     await refresh_llm_chat_cooldown(event, default_cd_sec=llm_cfg.llm_chat_cooldown_sec)
     record_bot_llm_task(LLM_CHAT_TASK_TYPE, "submit_ok")
+
+    if group_id is not None:
+        try:
+            await maybe_auto_save_episode(
+                bot_id=int(bot.self_id),
+                group_id=int(group_id),
+                user_text=plain or msg,
+                cfg=llm_cfg,
+            )
+        except Exception as exc:
+            logger.debug("llm chat auto_episode skipped: {}", exc)
 
     if not result.task_id:
         await TaskManager.remove_task(request_id)

@@ -234,6 +234,8 @@ def _llm_section() -> WebuiEnvSection:
             "llm_memory_rag_enabled": "LLM_MEMORY_RAG_ENABLED",
             "llm_vector_retrieve": "LLM_VECTOR_RETRIEVE",
             "llm_embedding_model": "LLM_EMBEDDING_MODEL",
+            "llm_memory_auto_episode_enabled": "LLM_MEMORY_AUTO_EPISODE_ENABLED",
+            "llm_knowledge_file_ingest_enabled": "LLM_KNOWLEDGE_FILE_INGEST_ENABLED",
             "llm_relationship_notes_enabled": "LLM_RELATIONSHIP_NOTES_ENABLED",
         },
         skip_fields=frozenset(),

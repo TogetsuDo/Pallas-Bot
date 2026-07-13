@@ -105,14 +105,29 @@ async def save_memory_entry(
     c = cfg or get_llm_config()
     safe_content = sanitize_prompt_block(content, max_len=c.llm_memory_content_max_len)
     normalized_source = (source or "").strip()
-    if (source or "").strip() == "teach":
-        normalized_source = classify_memory_candidate(safe_content) or "teach"
+    if normalized_source in ("teach", "auto_episode", ""):
+        kind = classify_memory_candidate(safe_content)
+        if normalized_source in ("teach", ""):
+            normalized_source = kind or "teach"
         safe_content = normalize_episode_note(safe_content, max_len=c.llm_memory_content_max_len)
+        if normalized_source == "auto_episode" and not kind:
+            return False
     if not safe_content:
         return False
     scope_gid = normalize_group_scope(group_id)
     now = int(time.time())
     keywords = derive_memory_keywords(safe_content)
+    embedding_json: str | None = None
+    embedding_model: str | None = None
+    if c.llm_vector_retrieve != "keyword":
+        from pallas.product.llm.knowledge.embedding_client import embedding_model_name, fetch_embeddings_sync
+        from pallas.product.llm.memory.retrieve import dump_embedding_json, memory_embedding_text
+
+        text = memory_embedding_text(keywords=keywords, content=safe_content)
+        vectors = fetch_embeddings_sync([text]) if text.strip() else None
+        if vectors and len(vectors) == 1:
+            embedding_json = dump_embedding_json(vectors[0])
+            embedding_model = embedding_model_name(c)
     async with get_session() as session:
         safe_source = sanitize_prompt_literal(normalized_source, max_len=16) or "teach"
         existing = await find_reusable_memory_entry(
@@ -127,6 +142,9 @@ async def save_memory_entry(
             existing.content = safe_content
             existing.source = safe_source
             existing.updated_at = now
+            if embedding_json is not None:
+                existing.embedding_json = embedding_json
+                existing.embedding_model = embedding_model
         else:
             session.add(
                 LlmMemoryEntryRow(
@@ -135,6 +153,8 @@ async def save_memory_entry(
                     keywords=keywords,
                     content=safe_content,
                     source=safe_source,
+                    embedding_json=embedding_json,
+                    embedding_model=embedding_model,
                     created_at=now,
                     updated_at=now,
                 )
@@ -235,18 +255,39 @@ async def retrieve_memory_hits(
             .scalars()
             .all()
         )
-    from pallas.product.llm.memory.retrieve import rank_memory_candidates
+    from pallas.product.llm.knowledge.embedding_client import embedding_model_name
+    from pallas.product.llm.memory.retrieve import dump_embedding_json, rank_memory_candidates
 
     candidates = [
         {
+            "id": int(row.id),
             "content": str(row.content or "").strip(),
             "keywords": str(row.keywords or "").strip(),
             "source": str(row.source or "").strip() or "memory",
             "group_id": int(row.group_id or 0),
+            "embedding_json": getattr(row, "embedding_json", None),
+            "embedding_model": getattr(row, "embedding_model", None),
         }
         for row in rows
     ]
-    scored = rank_memory_candidates(query_text, candidates)
+    scored = rank_memory_candidates(
+        query_text,
+        candidates,
+        embedding_model=embedding_model_name(c),
+    )
+    dirty = [item for item in scored if item.get("embedding_dirty") and item.get("id") and item.get("embedding")]
+    if dirty:
+        try:
+            async with get_session() as session:
+                for item in dirty:
+                    row = await session.get(LlmMemoryEntryRow, int(item["id"]))
+                    if row is None:
+                        continue
+                    row.embedding_json = dump_embedding_json(list(item["embedding"]))
+                    row.embedding_model = str(item.get("embedding_model") or embedding_model_name(c))
+                await session.commit()
+        except Exception:
+            pass
     seen: set[str] = set()
     out: list[dict[str, Any]] = []
     for item in scored:

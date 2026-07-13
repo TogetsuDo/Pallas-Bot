@@ -54,6 +54,12 @@ def list_active_knowledge_sources(*, cfg: LlmConfig | None = None) -> list[Regis
     c = cfg or get_llm_config()
     if not can_read_generic_knowledge(c):
         return []
+    try:
+        from pallas.product.llm.knowledge.file_ingest import ensure_file_knowledge_registered
+
+        ensure_file_knowledge_registered(cfg=c)
+    except Exception:
+        pass
     seen = {row.source_id for row in _BUILTIN_SOURCES}
     rows: list[RegisteredKnowledgeSource] = list(_BUILTIN_SOURCES)
     for plugin_name, plugin_title, decl in iter_loaded_plugin_knowledge_sources():

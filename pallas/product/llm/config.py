@@ -171,10 +171,12 @@ VectorRetrieveMode = Literal["keyword", "embedding", "hybrid", "vector"]
 
 
 def resolve_llm_vector_retrieve() -> VectorRetrieveMode:
-    mode = _env_str("LLM_VECTOR_RETRIEVE", "keyword").strip().lower()
+    mode = _env_str("LLM_VECTOR_RETRIEVE", "hybrid").strip().lower()
     if mode in ("embedding", "hybrid", "vector"):
         return mode  # type: ignore[return-value]
-    return "keyword"
+    if mode == "keyword":
+        return "keyword"
+    return "hybrid"
 
 
 def resolve_llm_embedding_model() -> str:
@@ -251,12 +253,15 @@ class LlmConfig(BaseModel):
     llm_tools_blacklist: list[str] = Field(default_factory=list)
     llm_tools_desc_max_len: int = Field(default=120, ge=32, le=512)
     llm_memory_rag_enabled: bool = Field(default=True)
-    llm_vector_retrieve: VectorRetrieveMode = Field(default="keyword")
+    llm_vector_retrieve: VectorRetrieveMode = Field(default="hybrid")
     llm_embedding_model: str = Field(default="stub")
     llm_memory_rag_top_k: int = Field(default=3, ge=1, le=8)
     llm_memory_max_per_group: int = Field(default=200, ge=1, le=2000)
     llm_memory_content_max_len: int = Field(default=500, ge=64, le=4000)
+    llm_memory_auto_episode_enabled: bool = Field(default=True)
+    llm_memory_auto_episode_cooldown_sec: int = Field(default=120, ge=0, le=3600)
     llm_knowledge_sources_enabled: bool = Field(default=True)
+    llm_knowledge_file_ingest_enabled: bool = Field(default=True)
     llm_knowledge_top_k: int = Field(default=3, ge=1, le=8)
     llm_knowledge_content_max_len: int = Field(default=400, ge=64, le=2000)
     llm_relationship_notes_enabled: bool = Field(default=True)
@@ -408,7 +413,10 @@ def get_llm_config() -> LlmConfig:
             llm_memory_rag_top_k=_env_int("LLM_MEMORY_RAG_TOP_K", 3),
             llm_memory_max_per_group=_env_int("LLM_MEMORY_MAX_PER_GROUP", 200),
             llm_memory_content_max_len=_env_int("LLM_MEMORY_CONTENT_MAX_LEN", 500),
+            llm_memory_auto_episode_enabled=_env_bool("LLM_MEMORY_AUTO_EPISODE_ENABLED", True),
+            llm_memory_auto_episode_cooldown_sec=_env_int("LLM_MEMORY_AUTO_EPISODE_COOLDOWN_SEC", 120),
             llm_knowledge_sources_enabled=_env_bool("LLM_KNOWLEDGE_SOURCES_ENABLED", True),
+            llm_knowledge_file_ingest_enabled=_env_bool("LLM_KNOWLEDGE_FILE_INGEST_ENABLED", True),
             llm_knowledge_top_k=_env_int("LLM_KNOWLEDGE_TOP_K", 3),
             llm_knowledge_content_max_len=_env_int("LLM_KNOWLEDGE_CONTENT_MAX_LEN", 400),
             llm_relationship_notes_enabled=_env_bool("LLM_RELATIONSHIP_NOTES_ENABLED", True),

@@ -299,6 +299,8 @@ class LlmMemoryEntryRow(Base):
     keywords: Mapped[str] = mapped_column(Text, nullable=False, default="")
     content: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[str] = mapped_column(Text, nullable=False, default="teach")
+    embedding_json: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    embedding_model: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     created_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
     updated_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
 

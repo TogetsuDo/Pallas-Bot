@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="../assets/brand-avatar.png" width="220" height="220" alt="自动夺舍">
+  <img src="/assets/logo.png" width="220" height="220" alt="自动夺舍">
 </p>
 
 <h1 align="center">自动夺舍 take_name</h1>
