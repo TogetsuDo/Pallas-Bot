@@ -21,6 +21,15 @@ from typing import Any, NamedTuple
 
 ACL_ROLES = frozenset({"用户", "群", "管理员", "所有"})
 
+# target 约定：写规则与 evaluate 必须一致。
+ACL_TARGET_ANY = "*"
+ACL_TARGET_GROUP_BAN = "group"  # 群自身封禁（role=群）
+# 群内黑名单用户：f"group:{gid}"（role=用户）
+
+
+def group_block_target(group_id: int) -> str:
+    return f"group:{int(group_id)}"
+
 
 class AclSubject(NamedTuple):
     """观察期主体三元组；任意字段 None 表示该维度不约束。"""

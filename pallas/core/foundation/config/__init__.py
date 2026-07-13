@@ -278,16 +278,15 @@ async def user_is_bot_admin(bot_id: int, user_id: int) -> bool:
 
 async def user_is_admin_of_any_bot(user_id: int) -> bool:
     """
-    判断 user_id 是否在 admin_members（scope=all 或任一 scope=bot）之中。
+    判断 user_id 是否在 admin_members（任一 scope）之中。
     """
     try:
         from pallas.core.foundation.db import make_admin_repository
 
-        members = await make_admin_repository().list_members()
+        if await make_admin_repository().has_user(int(user_id)):
+            return True
     except Exception:
-        members = []
-    if any(int(m.user_id) == int(user_id) for m in members):
-        return True
+        pass
     # bootstrap 回退到现有的跨 bot 缓存（BotConfig.admins）
     from .bot_admins_cache import any_bot_admin_user_ids_cached
 

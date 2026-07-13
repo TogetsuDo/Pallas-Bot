@@ -241,6 +241,10 @@ class AdminRepository(Protocol):
         """按 scope/bot_id 过滤列出成员。"""
         ...
 
+    async def has_user(self, user_id: int) -> bool:
+        """任一 scope 下是否存在该 user_id 的 AdminMember 行。"""
+        ...
+
     async def list_admin_user_ids(self, *, bot_id: int | None) -> list[int]:
         """只查 (bot_id 或 scope=all) 的 user_id 列表，给 acl_admin_bypass 做库侧过滤用。"""
         ...
@@ -261,8 +265,7 @@ class AclRepository(Protocol):
         """按可选过滤列出规则。"""
         ...
 
-    async def list_all(self) -> list[PallasACL]:
-        ...
+    async def list_all(self) -> list[PallasACL]: ...
 
     async def list_matching_rules(
         self,

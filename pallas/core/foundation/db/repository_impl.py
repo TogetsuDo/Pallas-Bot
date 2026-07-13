@@ -314,9 +314,7 @@ class MongoAdminRepository:
 
     async def is_admin(self, user_id: int, *, bot_id: int | None = None) -> bool:
         if bot_id is not None:
-            hit = await AdminMember.find_one(
-                {"scope": "bot", "bot_id": int(bot_id), "user_id": int(user_id)}
-            )
+            hit = await AdminMember.find_one({"scope": "bot", "bot_id": int(bot_id), "user_id": int(user_id)})
             if hit is not None:
                 return True
         # scope=all 全平台
@@ -362,24 +360,21 @@ class MongoAdminRepository:
     ) -> int:
         scope_norm = "bot" if scope not in ("bot", "all") else scope
         bot_id_norm = int(bot_id) if scope_norm == "bot" and bot_id is not None else None
-        result = await AdminMember.find(
-            {"scope": scope_norm, "bot_id": bot_id_norm, "user_id": int(user_id)}
-        ).delete()
+        result = await AdminMember.find({"scope": scope_norm, "bot_id": bot_id_norm, "user_id": int(user_id)}).delete()
         return int(getattr(result, "deleted_count", 0) or 0)
 
     async def delete_member(self, member_id: Any) -> int:
-        # Mongo 端：主键是 str(ObjectId)；PG 端：Alembic-equivalent 是 int。
-        # 直接把成员 id 当 PydanticObjectId 解析后按 _id 删除，避免先 list 再 by-sig 删除的竞态。
         from beanie import PydanticObjectId
-        from bson import ObjectId
 
-        oid: Any
         try:
-            oid = ObjectId(str(member_id))
+            oid = PydanticObjectId(str(member_id))
         except Exception:
             return 0
-        result = await AdminMember.find(PydanticObjectId == oid).delete()
-        return int(getattr(result, "deleted_count", 0) or 0)
+        doc = await AdminMember.get(oid)
+        if doc is None:
+            return 0
+        await doc.delete()
+        return 1
 
     async def list_members(
         self,
@@ -394,11 +389,21 @@ class MongoAdminRepository:
             query["bot_id"] = int(bot_id)
         return await AdminMember.find(query).to_list()
 
+    async def has_user(self, user_id: int) -> bool:
+        hit = await AdminMember.find_one({"user_id": int(user_id)})
+        return hit is not None
+
     async def list_admin_user_ids(self, *, bot_id: int | None) -> list[int]:
-        # Mongo 端：$or(scope=='all', scope=='bot' AND bot_id==bot_id)；只返回 user_id
-        query: dict[str, Any] = {
-            "$or": [{"scope": "all"}, {"scope": "bot", "bot_id": int(bot_id) if bot_id is not None else None}],
-        }
+        # scope=all 或 (scope=bot 且 bot_id 匹配)；bot_id 为 None 时仅 scope=all
+        if bot_id is None:
+            query: dict[str, Any] = {"scope": "all"}
+        else:
+            query = {
+                "$or": [
+                    {"scope": "all"},
+                    {"scope": "bot", "bot_id": int(bot_id)},
+                ],
+            }
         coll = AdminMember.get_pymongo_collection()
         cursor = coll.find(query, projection={"user_id": 1, "_id": 0})
         out: list[int] = []
@@ -497,27 +502,26 @@ class MongoAclRepository:
             )
             await doc.insert()
             return doc
-        await doc.set(
-            {
-                "effect": effect,
-                "priority": int(priority),
-                "source": source,
-                "updated_at": now,
-            }
-        )
+        await doc.set({
+            "effect": effect,
+            "priority": int(priority),
+            "source": source,
+            "updated_at": now,
+        })
         return doc
 
     async def delete_rule(self, rule_id: Any) -> int:
-        # PallasACL._id 在 Mongo 是 ObjectId。直接用 bson 解析。
         from beanie import PydanticObjectId
-        from bson import ObjectId
 
         try:
-            oid = ObjectId(str(rule_id))
+            oid = PydanticObjectId(str(rule_id))
         except Exception:
             return 0
-        result = await PallasACL.find(PydanticObjectId == oid).delete()
-        return int(getattr(result, "deleted_count", 0) or 0)
+        doc = await PallasACL.get(oid)
+        if doc is None:
+            return 0
+        await doc.delete()
+        return 1
 
     async def delete_by_signature(
         self,
@@ -528,15 +532,13 @@ class MongoAclRepository:
         target_scope: str,
         target: str,
     ) -> int:
-        result = await PallasACL.find(
-            {
-                "role": role,
-                "subject": subject,
-                "action": action,
-                "target_scope": target_scope,
-                "target": target,
-            }
-        ).delete()
+        result = await PallasACL.find({
+            "role": role,
+            "subject": subject,
+            "action": action,
+            "target_scope": target_scope,
+            "target": target,
+        }).delete()
         return int(getattr(result, "deleted_count", 0) or 0)
 
     async def list_group_block_targets(self) -> set[str]:

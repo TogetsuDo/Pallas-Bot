@@ -23,6 +23,7 @@ from sqlalchemy import (
     LargeBinary,
     Text,
     UniqueConstraint,
+    and_,
     delete,
     func,
     insert,
@@ -1655,8 +1656,12 @@ class PgAdminRepository:
             return int(result.rowcount or 0)
 
     async def delete_member(self, member_id: Any) -> int:
+        try:
+            rid = int(member_id)
+        except (TypeError, ValueError):
+            return 0
         async with get_session() as session:
-            result = await session.execute(delete(AdminMemberRow).where(AdminMemberRow.id == int(member_id)))
+            result = await session.execute(delete(AdminMemberRow).where(AdminMemberRow.id == rid))
             await session.commit()
             return int(result.rowcount or 0)
 
@@ -1674,6 +1679,29 @@ class PgAdminRepository:
                 stmt = stmt.where(AdminMemberRow.bot_id == int(bot_id))
             rows = (await session.execute(stmt)).scalars().all()
             return [row_to_admin_member(r) for r in rows]
+
+    async def has_user(self, user_id: int) -> bool:
+        async with get_session(read_only=True) as session:
+            stmt = select(AdminMemberRow.id).where(AdminMemberRow.user_id == int(user_id)).limit(1)
+            row = (await session.execute(stmt)).scalar_one_or_none()
+            return row is not None
+
+    async def list_admin_user_ids(self, *, bot_id: int | None) -> list[int]:
+        async with get_session(read_only=True) as session:
+            if bot_id is None:
+                stmt = select(AdminMemberRow.user_id).where(AdminMemberRow.scope == "all")
+            else:
+                stmt = select(AdminMemberRow.user_id).where(
+                    or_(
+                        AdminMemberRow.scope == "all",
+                        and_(
+                            AdminMemberRow.scope == "bot",
+                            AdminMemberRow.bot_id == int(bot_id),
+                        ),
+                    )
+                )
+            rows = (await session.execute(stmt)).scalars().all()
+            return [int(r) for r in rows if r is not None]
 
 
 class PgAclRepository:
@@ -1774,9 +1802,7 @@ class PgAclRepository:
         except (TypeError, ValueError):
             return 0
         async with get_session() as session:
-            result = await session.execute(
-                delete(PallasACLRow).where(PallasACLRow.id == rid)
-            )
+            result = await session.execute(delete(PallasACLRow).where(PallasACLRow.id == rid))
             await session.commit()
             return int(result.rowcount or 0)
 
@@ -1804,18 +1830,14 @@ class PgAclRepository:
 
     async def list_group_block_targets(self) -> set[str]:
         async with get_session(read_only=True) as session:
-            stmt = select(PallasACLRow.target).where(
-                PallasACLRow.target.like("group:%")
-            )
+            stmt = select(PallasACLRow.target).where(PallasACLRow.target.like("group:%"))
             rows = (await session.execute(stmt)).scalars().all()
             return {row for row in rows if row}
 
     async def has_run_step(self, step: str) -> bool:
         async with get_session(read_only=True) as session:
             row = (
-                await session.execute(
-                    select(SchemaMigrationRow.id).where(SchemaMigrationRow.step == step).limit(1)
-                )
+                await session.execute(select(SchemaMigrationRow.id).where(SchemaMigrationRow.step == step).limit(1))
             ).scalar_one_or_none()
             return row is not None
 
@@ -1993,24 +2015,6 @@ class PgConfigRepository:
 
     async def invalidate_cache(self) -> None:
         await self._cache.clear()
-
-    async def list_admin_user_ids(self, *, bot_id: int | None) -> list[int]:
-        async with get_session(read_only=True) as session:
-            stmt = select(AdminMemberRow.user_id).where(
-                or_(
-                    AdminMemberRow.scope == "all",
-                    AdminMemberRow.scope == "bot",
-                )
-            )
-            if bot_id is not None:
-                stmt = stmt.where(
-                    or_(
-                        AdminMemberRow.scope == "all",
-                        AdminMemberRow.bot_id == int(bot_id),
-                    )
-                )
-            rows = (await session.execute(stmt)).scalars().all()
-            return [int(r) for r in rows if r is not None]  # type: ignore[union-attr]  # noqa: E501
 
 
 class PgImageCacheRepository:

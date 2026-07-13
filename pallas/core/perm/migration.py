@@ -12,6 +12,7 @@ from pallas.core.foundation.db import (
     make_admin_repository,
     make_bot_config_repository,
 )
+from pallas.core.perm.acl import ACL_TARGET_GROUP_BAN, group_block_target
 
 # run-once step names
 _MIGRATE_ADMINS_STEP = "acl.migrate_bot_admins_to_admin_members"
@@ -102,7 +103,7 @@ async def derive_acl_from_legacy() -> dict[str, int]:
                 subject=f"g:{gid}",
                 action="event.receive",
                 target_scope="全局",
-                target="*",
+                target=ACL_TARGET_GROUP_BAN,
                 effect="deny",
                 priority=2000,
                 source="system",
@@ -129,7 +130,7 @@ async def derive_acl_from_legacy() -> dict[str, int]:
                     subject=f"u:{u}",
                     action="event.receive",
                     target_scope="全局",
-                    target=f"group:{gid}",
+                    target=group_block_target(gid),
                     effect="deny",
                     priority=1000,
                     source="system",

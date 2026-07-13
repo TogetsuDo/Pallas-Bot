@@ -1,6 +1,15 @@
 """插件命令可配置权限。"""
 
-from .acl import AclDecision, AclSubject, acl_admin_bypass, clear_acl_cache, evaluate_acl
+from .acl import (
+    ACL_TARGET_ANY,
+    ACL_TARGET_GROUP_BAN,
+    AclDecision,
+    AclSubject,
+    acl_admin_bypass,
+    clear_acl_cache,
+    evaluate_acl,
+    group_block_target,
+)
 from .check import (
     group_message_permission_for_command,
     group_or_private_message_permission_for_command,
@@ -32,6 +41,8 @@ from .registry import DEFAULT_COMMAND_PERMISSIONS, VALID_LEVELS, normalize_level
 from .runtime_meta import get_command_permission_meta
 
 __all__ = [
+    "ACL_TARGET_ANY",
+    "ACL_TARGET_GROUP_BAN",
     "AclDecision",
     "AclSubject",
     "acl_admin_bypass",
@@ -46,6 +57,7 @@ __all__ = [
     "evaluate_acl",
     "get_cmd_perm_config",
     "get_command_permission_meta",
+    "group_block_target",
     "group_message_permission_for_command",
     "group_or_private_message_permission_for_command",
     "migrate_bot_admins_to_admin_members_once",
