@@ -69,6 +69,6 @@ flowchart LR
 
 深度材料：
 
-- [Pallas 核心契约](../../architecture/internal/pallas-core-contract.md)
-- [内核插件统一化](../../architecture/internal/core-plugin-unification-design.md)
-- [包布局与公开 API](../../architecture/internal/pallas-package-layout.md)
+- [Pallas 核心契约](/architecture/internal/pallas-core-contract)
+- [内核插件统一化](/architecture/internal/core-plugin-unification-design)
+- [包布局与公开 API](/architecture/internal/pallas-package-layout)

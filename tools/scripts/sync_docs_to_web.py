@@ -49,6 +49,9 @@ FILE_MAP: dict[str, str] = {
     "developer/plugin-development/getting-started.md": (
         "developer/plugin-development/getting-started.md"
     ),
+    "developer/plugin-development/first-plugin.md": (
+        "developer/plugin-development/first-plugin.md"
+    ),
     "developer/plugin-development/golden-plugin.md": (
         "developer/plugin-development/golden-plugin.md"
     ),
@@ -92,8 +95,22 @@ FILE_MAP: dict[str, str] = {
     "common/community_stats.md": "common/community_stats.md",
     "common/corpus/README.md": "common/corpus.md",
     "common/cmd_perm/README.md": "common/cmd_perm.md",
+    "common/command_limits/README.md": "common/command_limits.md",
     "common/webui/README.md": "common/webui.md",
     "common/message_scrub/README.md": "common/message_scrub.md",
+    # --- Architecture internal（开发者深度材料，须上站避免 404）---
+    "architecture/internal/pallas-core-contract.md": "architecture/internal/pallas-core-contract.md",
+    "architecture/internal/core-plugin-unification-design.md": (
+        "architecture/internal/core-plugin-unification-design.md"
+    ),
+    "architecture/internal/pallas-package-layout.md": "architecture/internal/pallas-package-layout.md",
+    "architecture/internal/central-ingress-dispatch.md": (
+        "architecture/internal/central-ingress-dispatch.md"
+    ),
+    "architecture/internal/pallas-final-ai-shape.md": "architecture/internal/pallas-final-ai-shape.md",
+    "architecture/internal/pallas-ai-implementation.md": (
+        "architecture/internal/pallas-ai-implementation.md"
+    ),
     "plugins/README.md": "plugins/index.md",
     "develop/README.md": "develop/index.md",
     "develop/environment.md": "develop/environment.md",
@@ -163,6 +180,52 @@ def transform_for_vitepress(text: str) -> str:
     text = text.replace("../assets/brand-avatar.png", "/assets/brand-avatar.png")
     text = text.replace("./assets/brand-avatar.png", "/assets/brand-avatar.png")
     text = re.sub(r"(?<![./])assets/brand-avatar\.png", "/assets/brand-avatar.png", text)
+    # 深度架构 / 技能 / 源码：站内或 GitHub，避免相对路径 404
+    text = re.sub(
+        r"\]\((?:\.\./)*(architecture/internal/[a-z0-9_-]+)\.md([^)]*)\)",
+        r"](/\1\2)",
+        text,
+    )
+    text = re.sub(
+        r"\]\((?:\.\./)*architecture/hot-reload-tiers\.md([^)]*)\)",
+        r"](/architecture/hot-reload-tiers\1)",
+        text,
+    )
+    text = re.sub(
+        r"\]\((?:\.\./)*architecture/settings-storage\.md([^)]*)\)",
+        r"](/architecture/settings-storage\1)",
+        text,
+    )
+    text = re.sub(
+        r"\]\((?:\.\./)*architecture/bot_process_sharding\.md([^)]*)\)",
+        r"](/architecture/bot-process-sharding\1)",
+        text,
+    )
+    text = re.sub(
+        r"\]\((?:\.\./)*common/command_limits/README\.md([^)]*)\)",
+        r"](/common/command_limits\1)",
+        text,
+    )
+    text = re.sub(
+        r"\]\((?:\.\./)*skills/([^)#]+)\)",
+        r"](https://github.com/PallasBot/Pallas-Bot/blob/main/docs/skills/\1)",
+        text,
+    )
+    text = re.sub(
+        r"\]\((?:\.\./)*packages/([^)#]+)\)",
+        r"](https://github.com/PallasBot/Pallas-Bot/tree/main/packages/\1)",
+        text,
+    )
+    text = re.sub(
+        r"\]\(\.\./CHANGELOG\.md([^)]*)\)",
+        r"](https://github.com/PallasBot/Pallas-Bot/blob/main/CHANGELOG.md\1)",
+        text,
+    )
+    text = re.sub(
+        r"\]\(\.\./\.\./architecture/\)",
+        r"](/developer/architecture/overview)",
+        text,
+    )
     text = re.sub(
         r"\]\(\.\./\.\./\.\./(?:src|pallas)/([^)#]+)\)",
         rf"]({GITHUB_SRC}\1)",

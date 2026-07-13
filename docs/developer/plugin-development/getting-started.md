@@ -1,49 +1,45 @@
 # 插件开发入门
 
-最小闭环：可加载插件 → 元数据 / 权限 / 帮助对齐 → 配置热载（如需）→ 测试 + README。
+先跑通再读契约。推荐顺序对齐 NoneBot「创建插件 → 元数据 → 发布」路径。
+
+## 路径
+
+| 步骤 | 文档 |
+| --- | --- |
+| 1. 跟做最小插件 | **[写第一个插件](first-plugin.md)** |
+| 2. 定骨架 | [Golden Plugin](golden-plugin.md) |
+| 3. 公开 API | [pallas.api Cookbook](pallas-api-cookbook.md) |
+| 4. 配置 / 权限 / 元数据 | [配置与 WebUI](config-and-webui.md) · [cmd_perm](/common/cmd_perm) · [元数据](metadata.md) |
+| 5. 测试与发布 | [测试](testing.md) · [发布](publishing.md) |
 
 ## 放置位置
 
-| 类型 | 路径 | 用途 |
-| --- | --- | --- |
-| 站点私有 | `local/plugins/` | 试验、未上游化 |
-| 内置 core | `packages/` | 随主仓发布 |
-| 官方 / 社区扩展 | 独立仓库 | 独立版本与安装 |
+| 类型 | 路径 |
+| --- | --- |
+| 站点私有 / 试验 | `local/plugins/`（首插件从这里开始） |
+| 内置 core | `packages/` |
+| 官方 / 社区扩展 | 独立仓库 |
 
-验证优先从 `local/plugins/` 开始。
-
-## 完成定义（DoD）
+## 完成定义
 
 | 项 | 要求 |
 | --- | --- |
-| 入口 | Golden 目录；`__init__.py` 只做声明与注册 |
 | API | 社区扩展只 import `pallas.api.*` |
-| 权限 | `extra["command_permissions"]`；`usage` / `trigger_condition` 不写死角色 |
-| 帮助 | `usage` + `menu_data`；命令 ID 一致 |
-| 配置 | 有插件页则 `install_hot_reload_config` + `get_config()` |
-| 测试 | `tests/plugins/<name>/` 至少覆盖 metadata |
-| 文档 | `docs/plugins/<name>/README.md`（扩展仓则自有 README） |
-
-## 实施顺序
-
-1. [Golden Plugin](golden-plugin.md) 定目录与 `__init__.py`
-2. `config.py` 接热载（有配置页时）
-3. `handlers.py` 写口令逻辑；`bind_alias_handlers` / `group_command`
-4. 补 metadata 测试与 README
-5. 需要发版时走 [发布](publishing.md)
+| 入口 | `__init__.py` 薄；逻辑在 `handlers.py` |
+| 权限 / 帮助 | `command_permissions` + `menu_data`；文案不写死角色 |
+| 配置 | 有插件页则 `install_hot_reload_config` |
+| 测试 / README | 最小 metadata 测试 + README |
 
 ## 硬约束
 
 | MUST | MUST NOT |
 | --- | --- |
-| 使用 `pallas.api.*` | 依赖旧 `src.*` 或 `pallas.core.*`（社区扩展） |
-| `__init__.py` 保持薄入口 | 把业务 / 持久化 / 长启动逻辑堆在入口 |
-| 权限走 `command_permissions` | 在帮助文案写死「仅群管」等角色 |
-| 配置走统一热载入口 | 自造并行配置文件或长期缓存 `get_config()` 快照 |
+| `pallas.api.*` | `pallas.core.*` / 旧 `src.*`（社区） |
+| 命令 ID 全链路一致 | 帮助文案写死「仅群管」等 |
+| 配置走统一热载 | 模块级长期缓存 `get_config()` |
 
 ## 相关
 
+- [写第一个插件](first-plugin.md)
 - [Golden Plugin](golden-plugin.md)
-- [配置与 WebUI](config-and-webui.md)
-- [pallas.api Cookbook](pallas-api-cookbook.md)
-- [测试](testing.md)
+- [Developer 入口](../index.md)

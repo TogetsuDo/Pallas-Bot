@@ -47,7 +47,7 @@ __plugin_meta__ = PluginMetadata(
             {"id": "example.main", "label": "示例命令", "default": "everyone"},
         ],
         "command_limits": [
-            {"id": "example.main", "seconds": 5},
+            {"id": "example.main", "cd_sec": 5},
         ],
         "menu_data": [
             {

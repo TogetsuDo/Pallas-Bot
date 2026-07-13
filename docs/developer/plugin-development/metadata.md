@@ -36,7 +36,7 @@ MUST NOT：在 `usage` 或 `trigger_condition` 写死权限角色。细则：[cm
 
 ```python
 "command_limits": [
-    {"id": "my_plugin.demo", "seconds": 10},
+    {"id": "my_plugin.demo", "cd_sec": 10},
 ]
 ```
 
@@ -78,7 +78,7 @@ extra={
         {"id": "my_plugin.demo", "label": "牛牛示例", "default": "everyone"},
     ],
     "command_limits": [
-        {"id": "my_plugin.demo", "seconds": 10},
+        {"id": "my_plugin.demo", "cd_sec": 10},
     ],
     "reload_policy": "metadata",
     "activation_policy": "hot-reloadable",
