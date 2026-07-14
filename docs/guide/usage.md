@@ -47,7 +47,7 @@
 | 目的 | 去哪 |
 | --- | --- |
 | 改配置 | `http://<主机>:8088/pallas/` |
-| 扫码上 QQ | `/protocol/console/` |
+| 扫码上 QQ | `/pallas/protocol` |
 | 关插件 | 控制台 **插件** |
 
 详见 [网页控制台](web-console.md)。

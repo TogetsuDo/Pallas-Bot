@@ -165,7 +165,7 @@ uv run nb run
 
 **方式 A：协议端管理（推荐）**
 
-1. 打开 `http://<主机IP>:8088/protocol/console/`
+1. 打开 `http://<主机IP>:8088/pallas/protocol`
 2. 创建 NapCat 实例、扫码登录
 3. 确认 WebSocket 指向 `ws://<Bot主机>:8088/onebot/v11/ws`
 
@@ -245,7 +245,7 @@ WantedBy=multi-user.target
 | 服务 | 默认地址 |
 | --- | --- |
 | Web 控制台 | `http://<主机>:8088/pallas/` |
-| 协议端管理 | `http://<主机>:8088/protocol/console/` |
+| 协议端管理 | `http://<主机>:8088/pallas/protocol` |
 
 修改了 `host`/`port` 或自定义路径时，以 `pallas.toml` 与插件配置为准。
 

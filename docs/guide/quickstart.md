@@ -81,7 +81,7 @@ uv run nb run
 
 Pallas-Bot **不会自己登录 QQ**，要靠 NapCat 等协议端。
 
-1. 打开 `http://<主机>:8088/protocol/console/`
+1. 打开 `http://<主机>:8088/pallas/protocol`
 2. 用和控制台**同一口令**登录
 3. **新建实例** → NapCat → 手机扫码
 4. 实例变成 **在线**

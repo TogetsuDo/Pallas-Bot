@@ -121,7 +121,7 @@ curl -s http://127.0.0.1:8088/pallas/api/health
 
 详见 [连接 QQ / 协议端](guide/connect-qq.md)。Docker 下打开：
 
-`http://<宿主机IP>:8088/protocol/console/`
+`http://<宿主机IP>:8088/pallas/protocol`
 
 ::: details NapCat 与 Docker 模式
 Linux 下管理页使用 **Docker 模式** 拉起 NapCat 时，需在 `pallasbot` 服务挂载 **`/var/run/docker.sock`**（compose 内已注释说明，注意安全）。
@@ -138,7 +138,7 @@ Linux 下管理页使用 **Docker 模式** 拉起 NapCat 时，需在 `pallasbot
 | 服务 | 地址 |
 | --- | --- |
 | Web 控制台 | `http://<宿主机>:8088/pallas/` |
-| 协议端管理 | `http://<宿主机>:8088/protocol/console/` |
+| 协议端管理 | `http://<宿主机>:8088/pallas/protocol` |
 
 使用启动日志中的口令登录；生产环境勿开 `pallas_webui_dev_mode`。
 

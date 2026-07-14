@@ -14,7 +14,7 @@ QQ  ←→  NapCat（协议端）  ←→  Pallas-Bot  ←→  数据库
 
 | 页面 | 地址 |
 | --- | --- |
-| 协议端管理 | `http://<主机>:8088/protocol/console/` |
+| 协议端管理 | `http://<主机>:8088/pallas/protocol` |
 | Web 控制台 | `http://<主机>:8088/pallas/` |
 | OneBot WebSocket | `ws://<主机>:8088/onebot/v11/ws` |
 

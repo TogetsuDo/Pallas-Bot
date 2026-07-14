@@ -169,7 +169,7 @@ A: **`docker`**：请用镜像更新；**`release_tag`** / **`release_tag_dirty`
 
 ### Q: 启动后不回复，应该先查什么？
 
-A: 先检查数据库连通性、`OneBot WebSocket` 是否已连上（Docker 默认 Compose 无独立 NapCat，需在 **`/protocol/console/`** 协议端管理里创建实例并配置 WS）、`config/pallas.toml` 与 `data/pallas_config/webui.json` 是否生效，再看控制台是否有持续报错。
+A: 先检查数据库连通性、`OneBot WebSocket` 是否已连上（Docker 默认 Compose 无独立 NapCat，需在 **`/pallas/protocol`** 协议端管理里创建实例并配置 WS）、`config/pallas.toml` 与 `data/pallas_config/webui.json` 是否生效，再看控制台是否有持续报错。
 
 ### Q: 控制台 / 协议端管理页的口令在哪里配？
 
