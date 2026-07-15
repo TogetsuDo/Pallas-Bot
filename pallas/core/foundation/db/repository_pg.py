@@ -434,6 +434,18 @@ def _ensure_pg_bot_config_plugin_storage(connection) -> None:
     connection.execute(text("ALTER TABLE bot_config ADD COLUMN plugin_storage JSONB NOT NULL DEFAULT '{}'::jsonb"))
 
 
+def _ensure_pg_llm_memory_embedding_columns(connection) -> None:
+    """旧库 llm_memory_entry 缺 embedding 缓存列时补齐。"""
+    insp = inspect(connection)
+    if not insp.has_table("llm_memory_entry"):
+        return
+    names = {c["name"] for c in insp.get_columns("llm_memory_entry")}
+    if "embedding_json" not in names:
+        connection.execute(text("ALTER TABLE llm_memory_entry ADD COLUMN embedding_json TEXT"))
+    if "embedding_model" not in names:
+        connection.execute(text("ALTER TABLE llm_memory_entry ADD COLUMN embedding_model TEXT"))
+
+
 def _ensure_pg_message_group_time_index(connection) -> None:
     """message 表补 group_id+time 索引。"""
     insp = inspect(connection)
@@ -573,6 +585,7 @@ async def init_pg(engine: AsyncEngine) -> None:
         await conn.run_sync(_ensure_pg_bot_config_persona)
         await conn.run_sync(_ensure_pg_bot_config_plugin_storage)
         await conn.run_sync(_ensure_pg_user_config_maa_devices)
+        await conn.run_sync(_ensure_pg_llm_memory_embedding_columns)
         await conn.run_sync(_ensure_pg_message_group_time_index)
         await conn.run_sync(_ensure_pg_message_group_user_time_index)
         await conn.run_sync(_ensure_pg_context_answer_reply_index)

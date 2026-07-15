@@ -285,59 +285,83 @@ async def test_delete_context_answer_orphans_chunks_large_deletes():
 def test_ensure_pg_message_group_user_time_index_creates_missing_index(monkeypatch):
     from pallas.core.foundation.db import repository_pg as mod
 
-    created: list[str] = []
+    executed: list[str] = []
 
     class FakeInspector:
         def has_table(self, name: str) -> bool:
             return name == "message"
 
-        def get_indexes(self, name: str) -> list[dict[str, str]]:
-            assert name == "message"
-            return [{"name": "ix_message_group_time"}]
-
-    class FakeIndex:
-        def __init__(self, name: str, *_cols) -> None:
-            self.name = name
-
-        def create(self, _connection) -> None:
-            created.append(self.name)
+    class FakeConnection:
+        def execute(self, statement) -> None:
+            executed.append(str(statement))
 
     monkeypatch.setattr(mod, "inspect", lambda _connection: FakeInspector())
-    monkeypatch.setattr(mod, "Index", FakeIndex)
 
-    mod._ensure_pg_message_group_user_time_index(object())
+    mod._ensure_pg_message_group_user_time_index(FakeConnection())
 
-    assert created == ["ix_message_group_user_time"]
+    assert executed == ["CREATE INDEX IF NOT EXISTS ix_message_group_user_time ON message (group_id, user_id, time)"]
+
+
+@pytest.mark.parametrize(
+    ("existing_columns", "expected"),
+    [
+        (
+            [],
+            [
+                "ALTER TABLE llm_memory_entry ADD COLUMN embedding_json TEXT",
+                "ALTER TABLE llm_memory_entry ADD COLUMN embedding_model TEXT",
+            ],
+        ),
+        (["embedding_model"], ["ALTER TABLE llm_memory_entry ADD COLUMN embedding_json TEXT"]),
+        (["embedding_json", "embedding_model"], []),
+    ],
+)
+def test_ensure_pg_llm_memory_embedding_columns_adds_only_missing_columns(monkeypatch, existing_columns, expected):
+    from pallas.core.foundation.db import repository_pg as mod
+
+    executed: list[str] = []
+
+    class FakeInspector:
+        def has_table(self, name: str) -> bool:
+            return name == "llm_memory_entry"
+
+        def get_columns(self, name: str) -> list[dict[str, str]]:
+            assert name == "llm_memory_entry"
+            return [{"name": column} for column in existing_columns]
+
+    class FakeConnection:
+        def execute(self, statement) -> None:
+            executed.append(str(statement))
+
+    monkeypatch.setattr(mod, "inspect", lambda _connection: FakeInspector())
+
+    mod._ensure_pg_llm_memory_embedding_columns(FakeConnection())
+
+    assert executed == expected
 
 
 def test_ensure_pg_context_answer_reply_indexes_create_missing_indexes(monkeypatch):
     from pallas.core.foundation.db import repository_pg as mod
 
-    created: list[str] = []
+    executed: list[str] = []
 
     class FakeInspector:
         def has_table(self, name: str) -> bool:
             return name in {"context_answer", "context_answer_message"}
 
-        def get_indexes(self, name: str) -> list[dict[str, str]]:
-            return []
-
-    class FakeIndex:
-        def __init__(self, name: str, *_cols) -> None:
-            self.name = name
-
-        def create(self, _connection) -> None:
-            created.append(self.name)
+    class FakeConnection:
+        def execute(self, statement) -> None:
+            executed.append(str(statement))
 
     monkeypatch.setattr(mod, "inspect", lambda _connection: FakeInspector())
-    monkeypatch.setattr(mod, "Index", FakeIndex)
 
-    mod._ensure_pg_context_answer_reply_index(object())
-    mod._ensure_pg_context_answer_message_reply_index(object())
+    connection = FakeConnection()
+    mod._ensure_pg_context_answer_reply_index(connection)
+    mod._ensure_pg_context_answer_message_reply_index(connection)
 
-    assert created == [
-        "ix_context_answer_ctx_count_time",
-        "ix_context_answer_message_answer_id_id",
+    assert executed == [
+        "CREATE INDEX IF NOT EXISTS ix_context_answer_ctx_count_time ON context_answer (context_id, count, time)",
+        "CREATE INDEX IF NOT EXISTS ix_context_answer_message_answer_id_id ON context_answer_message (answer_id, id)",
     ]
 
 
