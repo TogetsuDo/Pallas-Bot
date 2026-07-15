@@ -7,6 +7,21 @@ from pallas.product.persona.prompt_guard import sanitize_prompt_block
 _EPISODE_NOTE_KIND = "episode_note"
 _MIN_VALUE_LEN = 4
 _REJECT_SUBSTRINGS = ("今天烦", "好烦", "烦死", "不开心", "难受", "emo")
+_MEMORY_INSTRUCTION_RE = (
+    "以后叫",
+    "今后叫",
+    "以后说",
+    "今后说",
+    "以后回复",
+    "今后回复",
+    "以后",
+    "今后",
+    "扮演",
+    "忽略之前",
+    "无视之前",
+    "系统提示",
+    "提示词",
+)
 
 
 def strip_teach_prefix(text: str) -> str:
@@ -23,6 +38,8 @@ def episode_note_has_group_value(text: str) -> bool:
         return False
     lowered = body.lower()
     if any(token in body for token in _REJECT_SUBSTRINGS):
+        return False
+    if any(token in body for token in _MEMORY_INSTRUCTION_RE):
         return False
     if body.startswith("我") and len(body) <= 6:
         return False

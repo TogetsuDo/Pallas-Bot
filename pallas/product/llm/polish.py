@@ -78,7 +78,9 @@ async def maybe_submit_repeater_llm_polish(
         return False
 
     candidate = (candidate_text or "").strip()
-    if not candidate or "[CQ:" in candidate:
+    from pallas.product.llm.corpus_contamination import is_llm_learning_safe
+
+    if not candidate or not is_llm_learning_safe(candidate):
         return False
 
     group_id = int(event.group_id)

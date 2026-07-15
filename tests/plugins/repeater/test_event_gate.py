@@ -248,3 +248,25 @@ async def test_build_repeater_event_context_keeps_sharded_single_char_plaintext(
     result = await event_gate.build_repeater_event_context(100, event)
 
     assert result == SimpleNamespace(plain_body="草", norm_raw="草", sharding_active=True)
+
+
+@pytest.mark.asyncio
+async def test_build_repeater_event_context_discards_self_sent_before_tracking(monkeypatch):
+    from packages.repeater import event_gate
+
+    event = _FakeEvent(user_id=100)
+    tracked = False
+    recorded: list[str] = []
+
+    async def fake_remember(*_args, **_kwargs) -> bool:
+        nonlocal tracked
+        tracked = True
+        return True
+
+    monkeypatch.setattr(event_gate, "remember_group_message_id", fake_remember)
+    monkeypatch.setattr(event_gate, "record_repeater_ingress_event", lambda: recorded.append("event"))
+    monkeypatch.setattr(event_gate, "record_repeater_ingress_early_discard", lambda reason: recorded.append(reason))
+
+    assert await event_gate.build_repeater_event_context(100, event) is None
+    assert tracked is False
+    assert recorded == ["event", "self_sent"]

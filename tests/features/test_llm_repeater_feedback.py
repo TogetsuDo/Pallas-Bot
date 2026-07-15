@@ -399,3 +399,14 @@ def test_group_feedback_bias_snapshot_matched_replies_for_trigger(tmp_path, monk
     snap = group_feedback_bias_snapshot(group_id=123, limit=50, user_text="真棒啊")
 
     assert snap["matched_replies"] == ["还行吧"]
+
+
+def test_should_collect_llm_repeater_feedback_rejects_attack_or_plugin_reply() -> None:
+    for reply in ("我操你妈。", "匹配失败，积分不足18点", "[CQ:image,file=x]"):
+        assert not should_collect_llm_repeater_feedback(
+            task_type="llm_chat",
+            group_id=123,
+            user_text="测试",
+            reply_text=reply,
+            source_tags=[],
+        )

@@ -104,6 +104,11 @@ async def ingress_group_message_gate(bot, event) -> None:
     try:
         plain = (event.get_plaintext() or "").strip()
         body = plain or event.raw_message
+        if user_id == self_id:
+            outcome = "self_sent_discard"
+            if metrics:
+                record_ingress_early_discard("self_sent")
+            raise IgnoredException("self-sent bot message")
         sender_is_fleet_bot = known_bot_sender(user_id=user_id, self_id=self_id)
         pallas_ats = pallas_at_targets(event)
         fanout_bypass = ingress_fanout_bypasses_claim(plain)

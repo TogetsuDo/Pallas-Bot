@@ -70,6 +70,11 @@ def match_output_filter(text: str, profile: OutputFilterProfile) -> OutputFilter
     plain = str(text or "").strip()
     if not plain:
         return None
+    from pallas.product.llm.corpus_contamination import match_unsafe_learn_text
+
+    unsafe_hit = match_unsafe_learn_text(plain)
+    if unsafe_hit:
+        return OutputFilterHit(tier="hard_block", phrase=unsafe_hit, profile=profile)
     for phrase in phrases_for_profile(profile, "hard_block"):
         if phrase in plain:
             return OutputFilterHit(tier="hard_block", phrase=phrase, profile=profile)

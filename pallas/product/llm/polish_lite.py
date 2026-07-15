@@ -79,7 +79,9 @@ async def maybe_submit_repeater_llm_polish_lite(
 
     candidate = str(candidate_text or "").strip()
     plain = str(user_text or "").strip()
-    if not candidate or not plain or "[CQ:" in candidate or "[CQ:" in plain:
+    from pallas.product.llm.corpus_contamination import is_llm_learning_safe
+
+    if not candidate or not plain or not is_llm_learning_safe(candidate) or "[CQ:" in plain:
         return False
 
     group_id = int(event.group_id)
@@ -172,8 +174,12 @@ async def maybe_submit_repeater_corpus_llm(
 ) -> bool:
     """语料 hit：select 主路径；select_polish_lite 模式下按采样偶尔走 polish_lite。"""
     cfg = get_llm_config()
-    pool = [str(item).strip() for item in candidates if str(item).strip() and "[CQ:" not in str(item)]
+    from pallas.product.llm.corpus_contamination import is_llm_learning_safe
+
+    pool = [str(item).strip() for item in candidates if str(item).strip() and is_llm_learning_safe(str(item))]
     candidate = str(candidate_text or "").strip()
+    if not is_llm_learning_safe(candidate):
+        candidate = ""
 
     if cfg.llm_polish_lite_enabled and candidate and pool:
         if should_polish_lite_sample(

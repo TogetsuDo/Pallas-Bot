@@ -93,3 +93,9 @@ def test_match_output_filter_uses_configured_phrases(monkeypatch) -> None:
 
 def test_chat_hard_block_phrases_non_empty() -> None:
     assert "博士" in CHAT_HARD_BLOCK_PHRASES
+
+
+def test_resolve_output_filtered_reply_blocks_attack_or_plugin_reply() -> None:
+    task = {"task_type": LLM_CHAT_TASK_TYPE}
+    assert resolve_output_filtered_reply(task, "我操你妈。群里最近有啥新鲜事儿吗？") == ""
+    assert resolve_output_filtered_reply(task, "匹配失败，积分不足18点") == ""

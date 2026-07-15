@@ -30,3 +30,16 @@ def test_resolve_select_callback_text_fallback() -> None:
     assert resolve_select_callback_text("0", pool, "第一句") == "第一句"
     assert resolve_select_callback_text("乱码", pool, "第一句") == "第一句"
     assert resolve_select_callback_text("2", pool, "第一句") == "第二句"
+
+
+def test_resolve_select_callback_text_drops_unsafe_fallback() -> None:
+    pool = ["摸摸", "没事"]
+    assert resolve_select_callback_text("0", pool, "匹配失败，积分不足18点") == ""
+
+
+def test_filter_select_candidate_pool_rejects_attack_and_plugin_status() -> None:
+    from pallas.product.llm.select import filter_select_candidate_pool
+
+    safe, diag = filter_select_candidate_pool(["摸摸", "我操你妈", "匹配失败，积分不足18点"])
+    assert safe == ["摸摸"]
+    assert diag["safe_count"] == 1

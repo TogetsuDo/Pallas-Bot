@@ -33,7 +33,7 @@ def load_select_system_prompt() -> str:
 
 
 def filter_select_candidate_pool(candidates: list[str]) -> tuple[list[str], dict[str, int]]:
-    from pallas.product.llm.corpus_contamination import is_corpus_learn_safe
+    from pallas.product.llm.corpus_contamination import is_corpus_learn_safe, is_llm_learning_safe
 
     raw_count = len(candidates)
     skipped_contamination = 0
@@ -42,7 +42,7 @@ def filter_select_candidate_pool(candidates: list[str]) -> tuple[list[str], dict
         sample = str(text or "").strip()
         if not sample or "[CQ:" in sample:
             continue
-        if not is_corpus_learn_safe(sample):
+        if not is_llm_learning_safe(sample) or not is_corpus_learn_safe(sample):
             skipped_contamination += 1
             continue
         safe.append(sample)
@@ -185,7 +185,9 @@ def resolve_select_callback_text(raw: str, candidates: list[str], fallback_text:
     if selected:
         return selected
     fallback = str(fallback_text or "").strip()
-    return fallback
+    from pallas.product.llm.corpus_contamination import is_llm_learning_safe
+
+    return fallback if is_llm_learning_safe(fallback) else ""
 
 
 async def maybe_submit_repeater_llm_select(
@@ -269,7 +271,11 @@ async def maybe_submit_repeater_llm_select(
         )
         return False
 
-    fallback = str(fallback_text or "").strip() or ranked[0]
+    fallback = str(fallback_text or "").strip()
+    from pallas.product.llm.corpus_contamination import is_llm_learning_safe
+
+    if not is_llm_learning_safe(fallback):
+        fallback = ranked[0]
     hints = await build_select_context_hints(bot_id, group_id, plain)
     prompt_user = build_select_user_text(plain, ranked, context_hints=hints)
     if not prompt_user:

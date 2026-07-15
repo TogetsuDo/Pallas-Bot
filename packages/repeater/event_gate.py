@@ -47,6 +47,9 @@ async def remember_group_message_id(group_id: int, message_id: int) -> bool:
 
 async def build_repeater_event_context(bot_id: int, event: GroupMessageEvent):
     record_repeater_ingress_event()
+    if int(event.user_id) == int(bot_id):
+        record_repeater_ingress_early_discard("self_sent")
+        return None
     if not repeater_worker_handles_message(bot_id):
         record_repeater_ingress_early_discard("worker_gate")
         return None

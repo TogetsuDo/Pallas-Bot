@@ -94,9 +94,12 @@ def _aggregate_trigger_reply_support(
         reply_text = effective_feedback_reply_text(item)
         if not reply_text:
             continue
-        from pallas.product.llm.corpus_contamination import is_corpus_learn_safe
+        from pallas.product.llm.corpus_contamination import is_llm_learning_safe
 
-        if not is_corpus_learn_safe(reply_text):
+        if not is_llm_learning_safe(str(item.user_text or "")) or not is_reply_safe_for_auto_promote(
+            reply_text,
+            trigger_text=str(item.user_text or ""),
+        ):
             continue
         trigger_kw = _chat_keywords(str(item.user_text or "").strip(), group_id=int(item.group_id))
         if not trigger_kw:

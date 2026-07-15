@@ -39,6 +39,26 @@ CORPUS_LEARN_BLOCK_PHRASES: tuple[str, ...] = (
 
 CORPUS_LEARN_EXCLUDE_SUBSTR: tuple[str, ...] = ("流媒体解析bot",)
 
+_UNSAFE_LEARN_TEXT_RE = re.compile(
+    r"\[CQ:|(?:匹配|任务|请求).{0,12}(?:失败|异常)|积分不足|(?:我|你|他)操你妈|操你妈",
+    re.IGNORECASE,
+)
+
+
+def match_unsafe_learn_text(text: str) -> str | None:
+    """协议片段、插件回包与攻击性话术不得进入候选或学习链路。"""
+    plain = str(text or "").strip()
+    if not plain:
+        return "empty"
+    match = _UNSAFE_LEARN_TEXT_RE.search(plain)
+    return match.group(0) if match else None
+
+
+def is_llm_learning_safe(text: str) -> bool:
+    """不受可配置语料清理开关影响的基础安全准入。"""
+    return match_unsafe_learn_text(text) is None
+
+
 FEEDBACK_META_BLOCK_PHRASES: tuple[str, ...] = (
     "因为",
     "通常",
@@ -131,6 +151,8 @@ def match_feedback_meta_block(text: str) -> CorpusContaminationHit | None:
 
 
 def is_corpus_learn_safe(text: str) -> bool:
+    if not is_llm_learning_safe(text):
+        return False
     if not corpus_learn_guard_enabled():
         return True
     return match_corpus_learn_block(text) is None
@@ -169,7 +191,7 @@ def is_profiler_answer_safe(answer: object) -> bool:
 
 def is_feedback_reply_collectable(text: str) -> bool:
     plain = str(text or "").strip()
-    if not plain:
+    if not is_llm_learning_safe(plain):
         return False
     if match_feedback_meta_block(plain) is not None:
         return False
