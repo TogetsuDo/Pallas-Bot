@@ -8,6 +8,7 @@ from pallas.console.cli.extension_ops import (
     ExtensionInstallError,
     install_official_extension_with_options,
     uninstall_official_extension_with_options,
+    update_official_extension_with_options,
 )
 from pallas.console.webui.extension_install import pip_package_installed, webui_extension_install_enabled
 from pallas.core.platform.bot_runtime.plugin_matrix import (
@@ -26,6 +27,11 @@ def register(sub: argparse._SubParsersAction) -> None:
 
     install_parser = ext_sub.add_parser("install", help="安装官方扩展")
     install_parser.add_argument("package", help="pip 包名，如 pallas-plugin-duel")
+    install_parser.add_argument(
+        "--upgrade",
+        action="store_true",
+        help="兼容 pip/uv 用法；安装命令始终升级到可用最新版本",
+    )
     install_parser.add_argument("--restart", action="store_true", help="完成后重启 Bot")
     install_parser.set_defaults(handler=run_install)
 
@@ -56,16 +62,23 @@ def run_list(_args: argparse.Namespace) -> int:
 
 
 def run_install(args: argparse.Namespace) -> int:
-    return asyncio.run(run_install_async(args.package, restart=bool(args.restart)))
+    return asyncio.run(
+        run_install_async(
+            args.package,
+            restart=bool(args.restart),
+            upgrade=bool(args.upgrade),
+        )
+    )
 
 
 def run_uninstall(args: argparse.Namespace) -> int:
     return asyncio.run(run_uninstall_async(args.package, restart=bool(args.restart)))
 
 
-async def run_install_async(package: str, *, restart: bool) -> int:
+async def run_install_async(package: str, *, restart: bool, upgrade: bool = False) -> int:
     try:
-        result = await install_official_extension_with_options(package, restart=restart)
+        operation = update_official_extension_with_options if upgrade else install_official_extension_with_options
+        result = await operation(package, restart=restart)
     except ExtensionInstallError as e:
         print(e.detail, file=sys.stderr)
         return 1

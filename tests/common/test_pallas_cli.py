@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -32,6 +33,23 @@ def test_main_doctor():
 def test_main_ext_list():
     code = main(["ext", "list"])
     assert code in (0, 1)
+
+
+def test_parse_ext_install_upgrade_compatibility_flag():
+    parser = build_parser()
+    args = parser.parse_args(["ext", "install", "pallas-plugin-protocol", "--upgrade"])
+    assert args.upgrade is True
+
+
+@pytest.mark.asyncio
+async def test_run_install_async_upgrade_uses_update_operation(monkeypatch):
+    from pallas.console.cli.commands import ext_cmd
+
+    update = AsyncMock(return_value={"message": "更新完成。"})
+    monkeypatch.setattr(ext_cmd, "update_official_extension_with_options", update)
+
+    assert await ext_cmd.run_install_async("pallas-plugin-protocol", restart=False, upgrade=True) == 0
+    update.assert_awaited_once_with("pallas-plugin-protocol", restart=False)
 
 
 def test_module_invocation_ext_list_does_not_require_nonebot_init():
