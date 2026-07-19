@@ -8,81 +8,97 @@ from nonebot.rule import Rule
 from nonebot.typing import T_State
 from ulid import ULID
 
-from src.common.config import GroupConfig, TaskManager
-from src.common.db import SingProgress
-from src.common.utils import HTTPXClient
+from src.features.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.features.cmd_perm.metadata_text import SCENE_GROUP, SCENE_PRIVATE, join_usage, usage_line
+from src.foundation.config import GroupConfig, TaskManager
+from src.foundation.db import SingProgress
+from src.shared.utils import HTTPXClient
 
 from .config import get_sing_config, sing_server_url
 from .ncm_login import get_song_id, get_song_title
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛唱歌",
-    description="基于AI的唱歌功能，可以演唱网易云音乐歌曲",
-    usage="""
-这个插件可以让牛牛演唱歌曲：
-1. 唱歌：
-    - 发送"[角色名]唱歌 [歌曲名]"让牛牛唱歌，例如"牛牛唱歌 富士山下"、"兔兔唱歌 虚拟"等
-    - 可以指定音调："牛牛唱歌 富士山下 key=2" 或 "牛牛唱歌 富士山下 key=-2"
-    - 可以指定乐曲：在网易云歌曲链接中，有一个song_id，发送"牛牛唱歌 [song_id]"让牛牛演唱,例如"牛牛唱歌 3371305930"
-2. 继续唱：
-    - 发送"[角色名]继续唱"或"[角色名]接着唱"可以继续上次未完成的歌曲
-3. 点歌：
-    - 发送"牛牛点歌 [歌曲名]"，例如"牛牛点歌 富士山下"可以让牛牛播放原曲
-4. 查询歌曲：
-    - 发送"[角色名]什么歌"、"[角色名]哪首歌"或"[角色名]啥歌"可以查询当前播放的歌曲名
-5. 播放：
-    - 发送"[角色名]唱歌"可以播放唱过的歌
-6. 目前支持的角色：
-    - 牛牛
-    """.strip(),
+    description="群内 AI 翻唱、点歌与续唱。",
+    usage=join_usage(
+        usage_line("牛牛唱歌 〈歌曲名〉 [key=±N]", "AI 翻唱，可调音调"),
+        usage_line("牛牛继续唱 / 牛牛接着唱", "续唱上一首"),
+        usage_line("牛牛点歌 〈歌曲名〉", "播放网易云原曲"),
+        usage_line("牛牛什么歌 / 牛牛哪首歌 / 牛牛啥歌", "查询当前曲目"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
+        "ingress_route": {"lane": "remote"},
+        "command_prefixes": [
+            "牛牛唱歌",
+            "牛牛继续唱",
+            "牛牛接着唱",
+            "牛牛点歌",
+            "牛牛什么歌",
+            "牛牛哪首歌",
+            "牛牛啥歌",
+        ],
         "command_permissions": [
             {"id": "sing.ncm_login", "label": "网易云登录", "default": "superuser"},
             {"id": "sing.ncm_logout", "label": "网易云登出", "default": "superuser"},
+        ],
+        "command_limits": [
+            {"id": "sing.sing", "cd_sec": 8},
+            {"id": "sing.play", "cd_sec": 3},
+            {"id": "sing.request_song", "cd_sec": 5},
+            {"id": "sing.song_title", "cd_sec": 2},
         ],
         "menu_data": [
             {
                 "func": "牛牛唱歌",
                 "trigger_method": "on_message",
-                "trigger_condition": "[角色名]唱歌 [歌曲名]",
-                "brief_des": "演唱指定歌曲",
-                "detail_des": "通过网易云音乐搜索并演唱指定歌曲，支持调节音调（key参数），每个片段大约120秒。",
+                "trigger_scene": SCENE_GROUP,
+                "trigger_condition": "牛牛唱歌 歌曲名 [key=±N]",
+                "brief_des": "AI 翻唱指定歌曲",
+                "detail_des": "按歌名搜索并翻唱，可用 key=±N 调音；每段约 120 秒。",
             },
             {
                 "func": "继续唱",
                 "trigger_method": "on_message",
-                "trigger_condition": "[角色名]继续唱/接着唱",
+                "trigger_scene": SCENE_GROUP,
+                "trigger_condition": "牛牛继续唱 / 牛牛接着唱",
                 "brief_des": "继续上次未完成的歌曲",
                 "detail_des": "继续播放上次未完成的歌曲的下一个片段。",
             },
             {
                 "func": "点歌",
                 "trigger_method": "on_message",
-                "trigger_condition": "牛牛点歌",
+                "trigger_scene": SCENE_GROUP,
+                "trigger_condition": "牛牛点歌 歌曲名",
                 "brief_des": "播放网易云原曲",
                 "detail_des": "在vip有效的情况下优先播放vip歌曲",
             },
             {
                 "func": "牛牛什么歌",
                 "trigger_method": "on_message",
-                "trigger_condition": "[角色名]什么歌/哪首歌/啥歌",
+                "trigger_scene": SCENE_GROUP,
+                "trigger_condition": "牛牛什么歌 / 牛牛哪首歌 / 牛牛啥歌",
                 "brief_des": "查询当前播放的歌曲名",
                 "detail_des": "查询牛牛当前正在演唱的歌曲名称。",
             },
             {
-                "func": "网易云登录/登出",
-                "trigger_method": "命令",
-                "trigger_condition": "网易云登录 / 网易云登出（私聊）",
+                "func": "网易云登录",
+                "trigger_method": "on_cmd",
+                "trigger_scene": SCENE_PRIVATE,
+                "trigger_condition": "网易云登录 / 网易云登出",
                 "command_permissions": ["sing.ncm_login", "sing.ncm_logout"],
-                "brief_des": "绑定或解绑网易云账号",
-                "detail_des": "私聊向 AI 服务发起登录流程；需 AI 侧接口可用。",
+                "brief_des": "绑定或解绑网易云",
+                "detail_des": "私聊按提示完成登录或登出，用于点歌 VIP 等能力。",
             },
         ],
-        "menu_template": "default",
     },
 )
 
@@ -94,6 +110,13 @@ SING_COOLDOWN_KEY = "sing"
 PLAY_COOLDOWN_KEY = "play"
 REQUEST_SONG_COOLDOWN_KEY = "request_song"
 WHAT_SONG_COOLDOWN_KEY = "song_title"
+
+
+async def finish_on_cooldown(matcher, config: GroupConfig, cooldown_key: str) -> bool:
+    if await config.is_cooldown(cooldown_key):
+        return True
+    await matcher.finish("牛牛还在回味上一首，稍等再点歌吧。")
+    return False
 
 
 async def is_to_sing(event: GroupMessageEvent, state: T_State) -> bool:
@@ -175,7 +198,7 @@ sing_msg = on_message(
 async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
     plugin_config = get_sing_config()
     config = GroupConfig(event.group_id, cooldown=10)
-    if not await config.is_cooldown(SING_COOLDOWN_KEY):
+    if not await finish_on_cooldown(sing_msg, config, SING_COOLDOWN_KEY):
         return
     await config.refresh_cooldown(SING_COOLDOWN_KEY)
     speaker = state["speaker"]
@@ -214,12 +237,14 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
         await TaskManager.remove_task(request_id)
         await sing_msg.finish("我习惯了站着不动思考。有时候啊，也会被大家突然戳一戳，看看睡着了没有。")
 
-    sing_progress = SingProgress(
-        song_id=str(song_id),
-        chunk_index=chunk_index,
-        key=key,
-    )
-    await config.update_sing_progress(sing_progress)
+    if chunk_index == 0:
+        await config.update_sing_progress(
+            SingProgress(
+                song_id=str(song_id),
+                chunk_index=chunk_index,
+                key=key,
+            )
+        )
     await sing_msg.finish("欢呼吧！")
 
 
@@ -250,7 +275,7 @@ play_cmd = on_message(
 async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
     plugin_config = get_sing_config()
     config = GroupConfig(event.group_id, cooldown=10)
-    if not await config.is_cooldown(PLAY_COOLDOWN_KEY):
+    if not await finish_on_cooldown(play_cmd, config, PLAY_COOLDOWN_KEY):
         return
     await config.refresh_cooldown(PLAY_COOLDOWN_KEY)
 
@@ -321,7 +346,7 @@ request_song_msg = on_message(
 async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
     plugin_config = get_sing_config()
     config = GroupConfig(event.group_id, cooldown=10)
-    if not await config.is_cooldown(REQUEST_SONG_COOLDOWN_KEY):
+    if not await finish_on_cooldown(request_song_msg, config, REQUEST_SONG_COOLDOWN_KEY):
         return
     await config.refresh_cooldown(REQUEST_SONG_COOLDOWN_KEY)
 

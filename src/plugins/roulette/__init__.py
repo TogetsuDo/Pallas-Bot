@@ -16,39 +16,55 @@ from nonebot.adapters.onebot.v11 import (
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from src.common.cmd_perm import group_message_permission_for_command
-from src.common.config import BotConfig, GroupConfig
+from src.features.cmd_perm import group_message_permission_for_command
+from src.features.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.features.cmd_perm.metadata_text import SCENE_GROUP, join_usage, usage_line
+from src.foundation.config import BotConfig, GroupConfig
+from src.platform.multi_bot.dedup import try_claim_group_message_once
 
 from .config import JUDGMENT_CFG, RESCUE_CFG, SHOT_CFG
 from .player import PlayerList
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛轮盘",
-    description="危险的轮盘游戏，参与者可能被踢出群聊或禁言，有概率炸膛哦",
-    usage="""
-管理员可以更改游戏模式：
-1. 启动游戏：
-    - 要求牛牛是管理员
-    - 发送"牛牛轮盘"启动默认模式（禁言模式）
-    - 发送"牛牛轮盘踢人"启动踢人模式
-    - 发送"牛牛轮盘禁言"启动禁言模式
-2. 参与游戏：
-    - 发送"牛牛开枪"进行轮盘游戏
-    - 牛牛喝酒会乱开枪哦
-3. 救援功能：
-    - 发送"牛牛救一下"可以解禁所有被牛牛禁言的玩家
-    - 发送"牛牛救一下@用户"可以解除任意用户的禁言
-    - 牛牛救一下有概率炸膛，喝酒后会引发特别的效果...
-4. 补枪功能：
-    - 发送"牛牛补一枪"可以让所有被牛牛禁言的玩家追加禁言
-    - 发送"牛牛补一枪@用户"可以延长指定用户的禁言
-    - 牛牛补一枪也有概率炸膛，喝酒后会引发特别的效果...
-    """.strip(),
+    description="群内踢人/禁言轮盘，含救援与补枪（须牛牛为群管）。",
+    usage=join_usage(
+        usage_line("牛牛轮盘 / 牛牛轮盘踢人 / 牛牛轮盘禁言", "启动轮盘（默认禁言模式）"),
+        usage_line("牛牛开枪", "参与当前局"),
+        usage_line("牛牛救一下 [@用户]", "解除禁言，有概率炸膛"),
+        usage_line("牛牛补一枪 [@用户]", "追加禁言，有概率炸膛"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
+        "exact_plaintexts": [
+            "牛牛轮盘",
+            "牛牛轮盘踢人",
+            "牛牛轮盘禁言",
+            "牛牛踢人轮盘",
+            "牛牛禁言轮盘",
+            "牛牛开枪",
+        ],
+        "command_prefixes": ["牛牛救一下", "牛牛补一枪"],
+        "ingress_fanout": {
+            "scope": "always",
+            "plaintexts": [
+                "牛牛轮盘",
+                "牛牛轮盘踢人",
+                "牛牛轮盘禁言",
+                "牛牛踢人轮盘",
+                "牛牛禁言轮盘",
+                "牛牛开枪",
+            ],
+            "prefixes": ["牛牛救一下", "牛牛补一枪"],
+        },
         "command_permissions": [
             {"id": "roulette.mode_switch", "label": "牛牛轮盘切换模式", "default": "staff"},
         ],
@@ -56,40 +72,36 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "牛牛轮盘",
                 "trigger_method": "on_message",
-                "trigger_condition": "牛牛轮盘（开局）；牛牛轮盘踢人/禁言等切换模式",
+                "trigger_scene": SCENE_GROUP,
+                "trigger_condition": "牛牛轮盘 / 牛牛轮盘踢人 / 牛牛轮盘禁言",
                 "brief_des": "启动轮盘",
-                "detail_des": "管理员可选择踢人模式或禁言模式，任何人都可以发送牛牛轮盘开启游戏。游戏开始后，六个弹槽中只有一颗子弹，触发者可能会被踢出群聊或禁言。",  # noqa: E501
+                "detail_des": "须牛牛为群管；可选踢人或禁言模式。六槽一枪，中弹者按模式被踢或禁言。",
             },
             {
                 "func": "参与轮盘",
                 "trigger_method": "on_message",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛开枪",
                 "brief_des": "参与轮盘",
-                "detail_des": "在游戏进行中，参与者发送'牛牛开枪'来触发轮盘。如果命中子弹，根据游戏模式，触发者可能会被踢出群聊或禁言。",  # noqa: E501
-            },
-            {
-                "func": "牛牛喝酒",
-                "trigger_method": "on_message",
-                "trigger_condition": "牛牛喝酒/牛牛干杯/牛牛继续喝",
-                "brief_des": "在轮盘游戏中通过喝酒参与",
-                "detail_des": "在轮盘游戏进行中，发送'牛牛喝酒'、'牛牛干杯'或'牛牛继续喝'被视为加入轮盘，成为牛牛喝酒后乱开枪的对象。牛牛喝酒后所有参与轮盘的玩家均有概率中弹",  # noqa: E501
+                "detail_des": "局进行中发送「牛牛开枪」；中弹者按当前模式被踢或禁言。",
             },
             {
                 "func": "牛牛救一下",
                 "trigger_method": "on_message",
-                "trigger_condition": "牛牛救一下",
+                "trigger_scene": SCENE_GROUP,
+                "trigger_condition": "牛牛救一下 [@用户]",
                 "brief_des": "解除被禁言的用户",
-                "detail_des": "解除被禁言的用户。发送'牛牛救一下'解除所有禁言，发送'牛牛救一下@用户'解除指定用户的禁言。在牛牛喝酒以后，牛牛救一下有概率把请求的人处决了()",  # noqa: E501
+                "detail_des": "「牛牛救一下」解禁全员；@ 用户则只解该人。有概率炸膛，醉酒时更易触发。",
             },
             {
                 "func": "牛牛补一枪",
                 "trigger_method": "on_message",
-                "trigger_condition": "牛牛补一枪",
+                "trigger_scene": SCENE_GROUP,
+                "trigger_condition": "牛牛补一枪 [@用户]",
                 "brief_des": "对已禁言玩家追加惩罚",
-                "detail_des": "对当前局中被禁言的玩家追加禁言时长。发送'牛牛补一枪'处理所有被禁言玩家，发送'牛牛补一枪@用户'处理指定玩家。有概率炸膛，喝酒后概率提升。",  # noqa: E501
+                "detail_des": "对已被禁言者追加时长；可 @ 指定用户。有概率炸膛，醉酒时更高。",
             },
         ],
-        "menu_template": "default",
     },
 )
 
@@ -101,6 +113,37 @@ timeout = 300
 role_cache = defaultdict(lambda: defaultdict(str))
 
 shot_lock = asyncio.Lock()
+_roulette_start_plugin = "roulette_start"
+_ROULETTE_START_EXPLICIT_MODES = {
+    "牛牛轮盘踢人": 0,
+    "牛牛踢人轮盘": 0,
+    "牛牛轮盘禁言": 1,
+    "牛牛禁言轮盘": 1,
+}
+
+
+async def bot_group_role(bot: Bot, event: GroupMessageEvent) -> str:
+    role = role_cache[event.self_id][event.group_id]
+    if not role:
+        role = await sync_role_cache(bot, event)
+    return role
+
+
+async def bot_is_group_admin(bot: Bot, event: GroupMessageEvent, *, fresh: bool = False) -> bool:
+    try:
+        if fresh:
+            role = await sync_role_cache(bot, event)
+        else:
+            role = await bot_group_role(bot, event)
+        return role in {"admin", "owner"}
+    except Exception as e:
+        logger.debug(
+            "roulette: group role check failed bot={} group={}: {}",
+            event.self_id,
+            event.group_id,
+            e,
+        )
+        return False
 
 
 roulette_player = PlayerList()
@@ -148,37 +191,65 @@ def can_roulette_start(group_id: int) -> bool:
 
 
 async def participate_in_roulette(event: GroupMessageEvent) -> bool:
+    return await participate_in_roulette_mode(event, await GroupConfig(event.group_id).roulette_mode())
+
+
+async def participate_in_roulette_mode(event: GroupMessageEvent, mode: int) -> bool:
     """
     牛牛自己是否参与轮盘
     """
     if await BotConfig(event.self_id, event.group_id).drunkenness() <= 0:
         return False
 
-    if await GroupConfig(event.group_id).roulette_mode() == 1:
+    if mode == 1:
         # 没法禁言自己
         return False
 
-    # 群主退不了群（除非解散），所以群主牛牛不参与游戏
+    # 群主退不了群，所以群主牛牛不参与游戏
     if role_cache[event.self_id][event.group_id] == "owner":
         return False
 
     return random.random() < 0.1667
 
 
-async def roulette(messagae_handle, event: GroupMessageEvent):
+def parse_roulette_start_command(plain_text: str) -> tuple[bool, int | None]:
+    text = (plain_text or "").strip()
+    if text == "牛牛轮盘":
+        return True, None
+    if text in _ROULETTE_START_EXPLICIT_MODES:
+        return True, _ROULETTE_START_EXPLICIT_MODES[text]
+    return False, None
+
+
+async def roulette(messagae_handle, event: GroupMessageEvent, *, mode_override: int | None = None):
+    if not await try_claim_group_message_once(
+        _roulette_start_plugin,
+        event.group_id,
+        event.user_id,
+        event.get_plaintext(),
+        event.time,
+        include_message_time=True,
+    ):
+        logger.debug(
+            "roulette: start once-claim lost bot={} group={} user={}",
+            event.self_id,
+            event.group_id,
+            event.user_id,
+        )
+        return
     rand = random.randint(1, 6)
     logger.info(f"bot [{event.self_id}] roulette started roll={rand} in group [{event.group_id}]")
     roulette_status[event.group_id] = rand
     roulette_count[event.group_id] = 0
     roulette_time[event.group_id] = int(time.time())
     ban_players.clear(event.group_id)
-    partin = await participate_in_roulette(event)
+    mode = mode_override if mode_override is not None else await GroupConfig(event.group_id).roulette_mode()
+    partin = await participate_in_roulette_mode(event, mode)
     if partin:
         roulette_player.append(event.self_id, event.group_id)
         roulette_player.append(event.user_id, event.group_id)
     else:
         roulette_player.append(event.user_id, event.group_id)
-    mode = await GroupConfig(event.group_id).roulette_mode()
     if mode == 0:
         type_msg = "踢出群聊"
     else:
@@ -189,11 +260,10 @@ async def roulette(messagae_handle, event: GroupMessageEvent):
 
 
 async def is_roulette_type_msg(bot: Bot, event: GroupMessageEvent) -> bool:
-    if event.get_plaintext().strip() in {"牛牛轮盘踢人", "牛牛轮盘禁言", "牛牛踢人轮盘", "牛牛禁言轮盘"}:
+    matched, mode = parse_roulette_start_command(event.get_plaintext())
+    if matched and mode is not None:
         if can_roulette_start(event.group_id):
-            if not role_cache[event.self_id][event.group_id]:
-                await sync_role_cache(bot, event)
-            return role_cache[event.self_id][event.group_id] in {"admin", "owner"}
+            return await bot_is_group_admin(bot, event, fresh=True)
     return False
 
 
@@ -207,24 +277,18 @@ roulette_type_msg = on_message(
 
 @roulette_type_msg.handle()
 async def _(event: GroupMessageEvent):
-    plaintext = event.get_plaintext().strip()
-    mode = None
-    if "踢人" in plaintext:
-        mode = 0
-    elif "禁言" in plaintext:
-        mode = 1
+    _, mode = parse_roulette_start_command(event.get_plaintext())
     if mode is not None:
         await GroupConfig(event.group_id).set_roulette_mode(mode)
 
-    await roulette(roulette_type_msg, event)
+    await roulette(roulette_type_msg, event, mode_override=mode)
 
 
 async def is_roulette_msg(bot: Bot, event: GroupMessageEvent) -> bool:
-    if event.get_plaintext().strip() == "牛牛轮盘":
+    matched, mode = parse_roulette_start_command(event.get_plaintext())
+    if matched and mode is None:
         if can_roulette_start(event.group_id):
-            if not role_cache[event.self_id][event.group_id]:
-                await sync_role_cache(bot, event)
-            return role_cache[event.self_id][event.group_id] in {"admin", "owner"}
+            return await bot_is_group_admin(bot, event, fresh=True)
 
     return False
 
@@ -242,9 +306,9 @@ async def _(event: GroupMessageEvent):
     await roulette(roulette_msg, event)
 
 
-async def is_shot_msg(event: GroupMessageEvent) -> bool:
+async def is_shot_msg(bot: Bot, event: GroupMessageEvent) -> bool:
     if roulette_status[event.group_id] != 0 and event.get_plaintext().strip() == "牛牛开枪":
-        return role_cache[event.self_id][event.group_id] in {"admin", "owner"}
+        return await bot_is_group_admin(bot, event)
 
     return False
 
@@ -408,9 +472,9 @@ async def _(bot: Bot, event: GroupRequestEvent):
         await event.approve(bot)
 
 
-async def is_drink_msg(event: GroupMessageEvent) -> bool:
+async def is_drink_msg(bot: Bot, event: GroupMessageEvent) -> bool:
     if roulette_status[event.group_id] != 0 and event.get_plaintext().strip() in {"牛牛喝酒", "牛牛干杯", "牛牛继续喝"}:
-        return role_cache[event.self_id][event.group_id] in {"admin", "owner"}
+        return await bot_is_group_admin(bot, event)
     return False
 
 
@@ -427,10 +491,10 @@ async def _(event: GroupMessageEvent):
     roulette_player.append(event.user_id, event.group_id)
 
 
-async def is_rescue_or_judgment(event: GroupMessageEvent) -> bool:
+async def is_rescue_or_judgment(bot: Bot, event: GroupMessageEvent) -> bool:
     """检测是否为救一下或补一枪的消息"""
     plaintext = event.get_plaintext().strip()
-    if role_cache[event.self_id][event.group_id] not in {"admin", "owner"}:
+    if not await bot_is_group_admin(bot, event):
         return False
     if plaintext.startswith("牛牛补一枪"):
         return len(ban_players.get_user_ids(event.group_id)) > 0
@@ -536,7 +600,7 @@ async def rescue_or_judgment_handler(bot: Bot, event: GroupMessageEvent):
             await bot.send(event, MessageSegment.text("").join(reply_segments))
         return
 
-    # 无@目标：对所有 ban_players 统一处理（duration=0 解禁，否则追加禁言）
+    # 无@目标：对所有 ban_players 统一处理
     affected_users = []
     for user_id in ban_players.get_user_ids(current_group_id):
         try:

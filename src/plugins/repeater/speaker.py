@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING
 
 from nonebot.adapters.onebot.v11 import Message
 
-from src.common.config import BotConfig
+from src.foundation.config import BotConfig
+from src.platform.shard import context as shard_ctx
 
 from .ban_manager import BanManager
 from .message_store import MessageStore
@@ -18,7 +19,7 @@ from .responder import Responder
 if TYPE_CHECKING:
     import asyncio
 
-    from src.common.db import Message as MessageModel
+    from src.foundation.db import Message as MessageModel
 
 
 class Speaker:
@@ -99,7 +100,18 @@ class Speaker:
                     "reply_keywords": Speaker.SPEAK_FLAG,
                 })
 
-            bot_id = random.choice([bid for bid in group_replies.keys() if bid])
+            from .shard_opt import local_connected_bot_ids
+
+            bot_ids = [bid for bid in group_replies.keys() if bid]
+            if shard_ctx.sharding_active():
+                local_bots = local_connected_bot_ids()
+                bot_ids = [bid for bid in bot_ids if bid in local_bots]
+            if not bot_ids:
+                continue
+            from src.platform.multi_bot.platform_utils import pick_connected_bot_id
+
+            picked = pick_connected_bot_id(bot_ids, log_tag="repeater.speak")
+            bot_id = picked if picked is not None else random.choice(bot_ids)
 
             ban_keywords = await BanManager.find_ban_keywords(context=None, group_id=group_id)
 
@@ -141,6 +153,9 @@ class Speaker:
                     "reply": speak,
                     "reply_keywords": Speaker.SPEAK_FLAG,
                 })
+                from .reply_record_sync import publish_reply_record
+
+                publish_reply_record(group_id, bot_id, group_replies[bot_id][-1])
 
             speak_list = [
                 Message(speak),

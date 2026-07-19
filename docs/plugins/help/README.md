@@ -1,29 +1,36 @@
-# help
+# help（牛牛帮助）
 
-**帮助系统**：生成各插件功能菜单图片（Markdown 渲染），支持按插件/功能查看详情；**群/私聊** 下按权限 **启用或禁用** 各插件（写入群或 Bot 维度配置）。
+三级帮助图（Markdown 渲染）；群管/超管可开关本群插件。
 
-## 命令摘要
+## 用户命令
 
-- `牛牛帮助` — 全部插件概览与开关状态
-- `牛牛帮助 <插件名或序号>` — 指定插件说明与功能列表
-- `牛牛帮助 <插件名> <功能序号或名称>` — 指定功能详情
-- `牛牛开启 <插件名或序号>` / `牛牛关闭 <插件名或序号>` — 群管理员或超级用户
-- `牛牛开启全部功能` / `牛牛关闭全部功能` — 同上，批量切换（部分内置插件在忽略列表中不会参与）
+| 口令 | 场景 | 说明 |
+| --- | --- | --- |
+| 牛牛帮助 | 群内或私聊 | 插件总览与开关 |
+| 牛牛帮助 \<插件\> | 群内或私聊 | 插件功能表 |
+| 牛牛帮助 \<插件\> \<功能\> | 群内或私聊 | 单条功能详情 |
+| 牛牛开启 / 牛牛关闭 + 插件名 | 群内 | 开关单插件 |
+| 牛牛开启全部功能 / 牛牛关闭全部功能 | 群内 | 批量开关 |
 
-插件名可用 **中文展示名**、**菜单序号** 或与包名一致的 **英文标识**。
+## 命令权限
+
+| 命令 ID | 默认等级 |
+| --- | --- |
+| `help.help` | everyone |
+| `help.plugin_enable` / `help.plugin_disable` | staff |
+| `help.plugin_enable_all` / `help.plugin_disable_all` | staff |
 
 ## 配置
 
-见 [`src/plugins/help/config.py`](../../../src/plugins/help/config.py)。
-
-- `default_style`、`custom_styles`、`enable_custom_style_loading`：帮助图样式与自定义样式目录（需含 `elements` / `setting` 等约定文件）。
-- `ignored_plugins`：不出现在帮助列表、也不参与「全部开启/关闭」的插件名（小写），默认含 `callback`、`block`、`greeting` 等。
+[`config.py`](../../../src/plugins/help/config.py)：`default_style`、`custom_styles`、`ignored_plugins` 等。视觉令牌见 [VISUAL.md](./VISUAL.md)。
 
 ## 排障
 
-| 现象 | 说明 |
-|------|------|
-| 帮助图生成失败 | 检查样式路径、依赖服务是否可访问；查看 Bot 日志。 |
-| 某插件开关不生效 | 确认插件名拼写；部分插件另有群内冷却或独立开关。 |
+| 现象 | 处理 |
+| --- | --- |
+| 成图失败 | 查样式路径与日志 |
+| 开关无效 | 确认插件名；部分插件另有独立开关 |
 
-实现见 [`src/plugins/help/`](../../../src/plugins/help/)。
+## 实现
+
+[`src/plugins/help/`](../../../src/plugins/help/)

@@ -517,6 +517,8 @@
       "pallas_prelude": "<O>（<P>）落在场心，冷冷看着你们。",
       "pallas_after_success": "<O> 似乎颇为得意，对 <B> 释放「<SK>」：\n<SKD>\n随即离开。",
       "pallas_after_fail": "<O> 似乎极为不满，对 <A> 释放「<SK>」：\n<SKD>\n冷冷离去。",
+      "pallas_after_fail_race": "<O> 冷眼扫过——<A>与<B> 竟无人认得她，对二人释出「<SK>」：\n<SKD>\n冷冷离去。",
+      "pallas_after_fail_heal_race": "<O> 久候无人咏名，漠然落下「<SK>」：\n<SKD>\n<A>与<B> 都没认对她，她已冷冷离去。",
       "on_success_effects_heal": [
         {
           "type": "heal_hp",
@@ -582,6 +584,8 @@
       "after_success_describe": "<O> 似乎松了口气，对 <B> 释放「<SK>」：\n<SKD>\n转身离去。",
       "after_fail_describe": "<O> 似乎极为恼火，对 <A> 释放「<SK>」：\n<SKD>\n头也不回地走了。",
       "after_fail_describe_heal": "<O> 似乎极为恼火——本想拿认错的人出气，却把「<SK>」施在了 <B> 身上：\n<SKD>\n甩袖离去。",
+      "after_fail_describe_race": "<O> 似乎极为恼火——<A>与<B> 都没认出她是谁，当场对二人释放「<SK>」：\n<SKD>\n头也不回地走了。",
+      "after_fail_describe_heal_race": "<O> 等了片刻仍无人认得——索性施放「<SK>」：\n<SKD>\n<A>与<B> 面面相觑，她转身走了。",
       "on_success_effects_heal": [
         {
           "type": "add_field",

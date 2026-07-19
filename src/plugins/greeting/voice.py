@@ -1,7 +1,7 @@
 import random
 from pathlib import Path
 
-from src.common.paths import resource_dir
+from src.foundation.paths import resource_dir
 
 voice_set = {
     "任命助理",
@@ -47,7 +47,7 @@ def _load_extra_voices() -> set[str]:
 
 
 def _is_voice_available(voice_name: str) -> bool:
-    """检查语音是否可用（内置或侧载）。"""
+    """检查语音是否可用。"""
     if voice_name in voice_set:
         return True
     return voice_name in _load_extra_voices()

@@ -12,11 +12,84 @@ import pytest
 
 
 @pytest.mark.asyncio
+async def test_learn_db_fallback_when_memory_empty(beanie_fixture):
+    """内存无近期链时不再回退 DB 群上下文，只保留 message_insert 主流程。"""
+    from src.foundation.db import Message as MessageModel
+    from src.plugins.repeater.learner import Learner
+    from src.plugins.repeater.message_store import MessageStore
+    from src.plugins.repeater.model import ChatData
+
+    MessageStore._message_lock = asyncio.Lock()
+    MessageStore._message_dict = defaultdict(list)
+    MessageStore._late_save_time = 0
+
+    topics_lock = asyncio.Lock()
+    recent_topics = defaultdict(lambda: deque(maxlen=10))
+
+    try:
+        group_id = 77701
+        user_id = 67890
+        bot_id = 11111
+        prev_msg = MessageModel(
+            group_id=group_id,
+            user_id=99999,
+            bot_id=bot_id,
+            raw_message="db previous",
+            is_plain_text=True,
+            plain_text="db previous",
+            keywords="db previous",
+            time=1000,
+        )
+        chat_data = ChatData(
+            group_id=group_id,
+            user_id=user_id,
+            raw_message="new from db path",
+            plain_text="new from db path",
+            time=2000,
+            bot_id=bot_id,
+        )
+
+        async def fake_recent(gid: int, *, before_time=None, user_id=None, limit=8):
+            if user_id is not None:
+                return []
+            assert gid == group_id
+            assert before_time == 2000
+            return [prev_msg]
+
+        with (
+            patch(
+                "src.plugins.repeater.message_store.message_repo.find_recent_in_group",
+                new_callable=AsyncMock,
+                side_effect=fake_recent,
+            ),
+            patch("src.plugins.repeater.learner.context_repo.learn_answer", None, create=True),
+            patch(
+                "src.plugins.repeater.learner.context_exists_for_learn",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch(
+                "src.plugins.repeater.learner.context_repo.context_exists_by_keywords",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+            patch("src.plugins.repeater.learner.context_repo.insert", new_callable=AsyncMock) as mock_insert,
+        ):
+            result = await Learner.learn(chat_data, topics_lock, recent_topics)
+
+            assert result is True
+            assert mock_insert.call_count == 0
+    finally:
+        MessageStore._message_dict.clear()
+        MessageStore._late_save_time = 0
+
+
+@pytest.mark.asyncio
 async def test_learn_basic_flow(beanie_fixture):
     """
     Test that learn() inserts message and calls context_insert for previous message.
     """
-    from src.common.db import Message as MessageModel
+    from src.foundation.db import Message as MessageModel
     from src.plugins.repeater.learner import Learner
     from src.plugins.repeater.message_store import MessageStore
     from src.plugins.repeater.model import ChatData
@@ -58,6 +131,12 @@ async def test_learn_basic_flow(beanie_fixture):
         )
 
         with (
+            patch("src.plugins.repeater.learner.context_repo.learn_answer", None, create=True),
+            patch(
+                "src.plugins.repeater.learner.context_exists_for_learn",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
             patch(
                 "src.plugins.repeater.learner.context_repo.context_exists_by_keywords",
                 new_callable=AsyncMock,
@@ -79,7 +158,7 @@ async def test_learn_basic_flow(beanie_fixture):
 @pytest.mark.asyncio
 async def test_learn_skips_repeat_ignore_user_ids(beanie_fixture):
     """repeat_ignore / 本进程 Bot QQ 不参与学习：不插库、不写上下文。"""
-    from src.common.db import Message as MessageModel
+    from src.foundation.db import Message as MessageModel
     from src.plugins.repeater.learner import Learner
     from src.plugins.repeater.message_store import MessageStore
     from src.plugins.repeater.model import ChatData
@@ -241,7 +320,7 @@ async def test_context_insert_skip_repeat(beanie_fixture):
     """
     Test that _context_insert skips when message is a repeat.
     """
-    from src.common.db import Message as MessageModel
+    from src.foundation.db import Message as MessageModel
     from src.plugins.repeater.learner import Learner
     from src.plugins.repeater.model import ChatData
 
@@ -278,7 +357,7 @@ async def test_context_insert_skip_reply(beanie_fixture):
     """
     Test that _context_insert skips when message is a reply.
     """
-    from src.common.db import Message as MessageModel
+    from src.foundation.db import Message as MessageModel
     from src.plugins.repeater.learner import Learner
     from src.plugins.repeater.model import ChatData
 
@@ -337,10 +416,66 @@ async def test_context_insert_skip_none(beanie_fixture):
 @pytest.mark.asyncio
 async def test_context_insert_calls_upsert_answer_when_context_exists(beanie_fixture):
     """
-    Context 已存在时，_context_insert 应委托 upsert_answer（而非读-改-写 save），
+    Context 已存在时，_context_insert 应委托 upsert_answer，
     以便在拆表后具备原子 inc count 的能力。
     """
-    from src.common.db import Message as MessageModel
+    from src.foundation.db import Message as MessageModel
+    from src.plugins.repeater.learner import Learner
+    from src.plugins.repeater.model import ChatData
+
+    chat_data = ChatData(
+        group_id=12345,
+        user_id=67890,
+        raw_message="Response message",
+        plain_text="Response message",
+        time=2000,
+        bot_id=11111,
+    )
+
+    pre_msg = MessageModel(
+        group_id=12345,
+        user_id=99999,
+        bot_id=11111,
+        raw_message="Trigger message",
+        is_plain_text=True,
+        plain_text="Trigger message",
+        keywords="Trigger message",
+        time=1000,
+    )
+
+    with (
+        patch("src.plugins.repeater.learner.context_repo.learn_answer", None, create=True),
+        patch(
+            "src.plugins.repeater.learner.context_exists_for_learn",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+        patch("src.plugins.repeater.learner.context_repo.upsert_answer", new_callable=AsyncMock) as mock_upsert,
+        patch("src.plugins.repeater.learner.context_repo.insert", new_callable=AsyncMock) as mock_insert,
+        patch("src.plugins.repeater.learner.context_repo.save", new_callable=AsyncMock) as mock_save,
+    ):
+        await Learner._context_insert(chat_data, pre_msg)
+
+        assert mock_upsert.call_count == 1
+        call_kwargs = mock_upsert.call_args.kwargs
+        assert call_kwargs["keywords"] == pre_msg.keywords
+        assert call_kwargs["group_id"] == chat_data.group_id
+        assert call_kwargs["answer_keywords"] == chat_data.keywords
+        assert call_kwargs["answer_time"] == chat_data.time
+        assert call_kwargs["message"] == chat_data.raw_message
+        assert call_kwargs["append_on_existing"] is True  # plain text
+
+        assert mock_insert.call_count == 0
+        assert mock_save.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_context_insert_prefers_repo_learn_answer_fast_path(beanie_fixture):
+    """
+    若仓储提供 learn_answer 快路径，_context_insert 应直接走单次写入，
+    不再先做 context_exists_for_learn 的额外查库。
+    """
+    from src.foundation.db import Message as MessageModel
     from src.plugins.repeater.learner import Learner
     from src.plugins.repeater.model import ChatData
 
@@ -366,36 +501,33 @@ async def test_context_insert_calls_upsert_answer_when_context_exists(beanie_fix
 
     with (
         patch(
-            "src.plugins.repeater.learner.context_repo.context_exists_by_keywords",
+            "src.plugins.repeater.learner.context_repo.learn_answer",
             new_callable=AsyncMock,
             return_value=True,
-        ),
-        patch("src.plugins.repeater.learner.context_repo.upsert_answer", new_callable=AsyncMock) as mock_upsert,
+            create=True,
+        ) as mock_learn_answer,
+        patch(
+            "src.plugins.repeater.learner.context_exists_for_learn",
+            new_callable=AsyncMock,
+        ) as mock_exists,
         patch("src.plugins.repeater.learner.context_repo.insert", new_callable=AsyncMock) as mock_insert,
-        patch("src.plugins.repeater.learner.context_repo.save", new_callable=AsyncMock) as mock_save,
+        patch("src.plugins.repeater.learner.context_repo.upsert_answer", new_callable=AsyncMock) as mock_upsert,
     ):
         await Learner._context_insert(chat_data, pre_msg)
 
-        assert mock_upsert.call_count == 1
-        call_kwargs = mock_upsert.call_args.kwargs
-        assert call_kwargs["keywords"] == pre_msg.keywords
-        assert call_kwargs["group_id"] == chat_data.group_id
-        assert call_kwargs["answer_keywords"] == chat_data.keywords
-        assert call_kwargs["answer_time"] == chat_data.time
-        assert call_kwargs["message"] == chat_data.raw_message
-        assert call_kwargs["append_on_existing"] is True  # plain text
-
-        assert mock_insert.call_count == 0
-        assert mock_save.call_count == 0
+        mock_learn_answer.assert_awaited_once()
+        mock_exists.assert_not_called()
+        mock_insert.assert_not_called()
+        mock_upsert.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_context_insert_no_append_when_non_plain_text(beanie_fixture):
     """
-    非纯文本（含 CQ 码的）消息对已有 answer 不应 push message，
+    非纯文本消息对已有 answer 不应 push message，
     通过 upsert_answer 的 append_on_existing=False 表达。
     """
-    from src.common.db import Message as MessageModel
+    from src.foundation.db import Message as MessageModel
     from src.plugins.repeater.learner import Learner
     from src.plugins.repeater.model import ChatData
 
@@ -422,8 +554,9 @@ async def test_context_insert_no_append_when_non_plain_text(beanie_fixture):
     )
 
     with (
+        patch("src.plugins.repeater.learner.context_repo.learn_answer", None, create=True),
         patch(
-            "src.plugins.repeater.learner.context_repo.context_exists_by_keywords",
+            "src.plugins.repeater.learner.context_exists_for_learn",
             new_callable=AsyncMock,
             return_value=True,
         ),
@@ -439,7 +572,7 @@ async def test_context_insert_creates_new_context_when_missing(beanie_fixture):
     """
     Context 不存在时应走 insert(Context(...)) 路径，不调用 upsert_answer。
     """
-    from src.common.db import Message as MessageModel
+    from src.foundation.db import Message as MessageModel
     from src.plugins.repeater.learner import Learner
     from src.plugins.repeater.model import ChatData
 
@@ -463,8 +596,9 @@ async def test_context_insert_creates_new_context_when_missing(beanie_fixture):
     )
 
     with (
+        patch("src.plugins.repeater.learner.context_repo.learn_answer", None, create=True),
         patch(
-            "src.plugins.repeater.learner.context_repo.context_exists_by_keywords",
+            "src.plugins.repeater.learner.context_exists_for_learn",
             new_callable=AsyncMock,
             return_value=False,
         ),
@@ -475,7 +609,6 @@ async def test_context_insert_creates_new_context_when_missing(beanie_fixture):
 
         assert mock_insert.call_count == 1
         assert mock_upsert.call_count == 0
-        # 新 context 的 answers 第一条应是当前消息
         inserted_ctx = mock_insert.call_args.args[0]
         assert inserted_ctx.keywords == pre_msg.keywords
         assert len(inserted_ctx.answers) == 1
@@ -487,7 +620,7 @@ async def test_learn_user_backtracking(beanie_fixture):
     """
     Test that learn() finds user's previous message within last 3 messages.
     """
-    from src.common.db import Message as MessageModel
+    from src.foundation.db import Message as MessageModel
     from src.plugins.repeater.learner import Learner
     from src.plugins.repeater.message_store import MessageStore
     from src.plugins.repeater.model import ChatData
@@ -565,6 +698,12 @@ async def test_learn_user_backtracking(beanie_fixture):
         )
 
         with (
+            patch("src.plugins.repeater.learner.context_repo.learn_answer", None, create=True),
+            patch(
+                "src.plugins.repeater.learner.context_exists_for_learn",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
             patch(
                 "src.plugins.repeater.learner.context_repo.context_exists_by_keywords",
                 new_callable=AsyncMock,
@@ -575,7 +714,7 @@ async def test_learn_user_backtracking(beanie_fixture):
             result = await Learner.learn(chat_data, topics_lock, recent_topics)
 
             assert result is True
-            assert mock_insert.call_count == 2, "Should create context for both group prev and user prev"
+            assert mock_insert.call_count == 1, "Should only learn from the immediately previous group message"
 
     finally:
         MessageStore._message_dict.clear()

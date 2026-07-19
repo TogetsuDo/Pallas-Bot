@@ -2,17 +2,17 @@ import asyncio
 from collections import deque
 from typing import TYPE_CHECKING
 
-from src.common.db import Answer, Context, make_context_repository
-from src.common.db import Message as MessageModel
+from src.foundation.db import Answer, Context
+from src.foundation.db import Message as MessageModel
+from src.foundation.db.context_repo_access import context_repo
 
 from .context_exists_cache import context_exists_for_learn, note_context_exists
+from .learner_context import group_messages_before
 from .message_store import MessageStore
+from .topic_utils import filtered_recent_topics
 
 if TYPE_CHECKING:
     from .model import ChatData
-
-
-context_repo = make_context_repository()
 
 
 class Learner:
@@ -43,28 +43,14 @@ class Learner:
         if await should_skip_repeater_learn(chat_data.group_id, chat_data.user_id, chat_data.raw_message):
             return False
 
-        group_id = chat_data.group_id
-        if group_id in MessageStore._message_dict:
-            group_msgs = MessageStore._message_dict[group_id]
-            if group_msgs:
-                group_pre_msg = group_msgs[-1]
-            else:
-                group_pre_msg = None
-
-            # 群里的上一条发言
+        group_msgs = await group_messages_before(chat_data)
+        if group_msgs:
+            group_pre_msg = group_msgs[-1]
             await Learner._context_insert(chat_data, group_pre_msg)
-
-            user_id = chat_data.user_id
-            if group_pre_msg and group_pre_msg.user_id != user_id:
-                # 该用户在群里的上一条发言（倒序三句之内）
-                for msg in group_msgs[:-3:-1]:
-                    if msg.user_id == user_id:
-                        await Learner._context_insert(chat_data, msg)
-                        break
 
         async def _topics_callback(group_id: int, keywords_list: list[str]):
             async with topics_lock:
-                recent_topics[group_id] += [k for k in keywords_list if not k.startswith("牛牛")]
+                recent_topics[group_id] += filtered_recent_topics(keywords_list)
 
         await MessageStore.message_insert(chat_data, topics_callback=_topics_callback)
         return True
@@ -91,6 +77,19 @@ class Learner:
         group_id = chat_data.group_id
         pre_keywords = pre_msg.keywords
         cur_time = chat_data.time
+
+        learn_answer = getattr(context_repo, "learn_answer", None)
+        if callable(learn_answer):
+            await learn_answer(
+                keywords=pre_keywords,
+                group_id=group_id,
+                answer_keywords=keywords,
+                answer_time=cur_time,
+                message=raw_message,
+                append_on_existing=chat_data.is_plain_text,
+            )
+            await note_context_exists(pre_keywords)
+            return
 
         if await context_exists_for_learn(pre_keywords):
             # 使用细粒度 upsert_answer：原子地 inc count / set time / 可选 push message

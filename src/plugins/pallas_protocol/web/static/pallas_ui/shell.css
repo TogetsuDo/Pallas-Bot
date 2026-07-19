@@ -449,6 +449,39 @@ table.acc-table .tag {
   gap: 12px;
   flex-wrap: nowrap;
 }
+.inst-fav-star {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 6px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  box-shadow: none;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.38;
+  transition: opacity 0.12s ease, color 0.12s ease;
+}
+.inst-fav-star:hover,
+.inst-fav-star:focus-visible {
+  opacity: 0.65;
+  background: color-mix(in srgb, var(--txt) 6%, transparent);
+  outline: none;
+}
+.inst-fav-star[aria-pressed="true"] {
+  opacity: 1;
+  color: #fbbf24;
+}
+.inst-fav-star:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  outline-offset: 1px;
+}
 .acc-card-avatar {
   flex-shrink: 0;
   width: 48px;
@@ -896,6 +929,32 @@ pre.logs {
 pre.logs.logs-protocol {
   color: #f1f5f9;
 }
+.acc-qr-card {
+  padding: 14px 16px;
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+}
+.acc-qr-card__body {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 4px;
+}
+.acc-qr-card__img {
+  display: block;
+  width: min(100%, 320px);
+  height: auto;
+  background: #fff;
+  border-radius: 12px;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+@media (max-width: 560px) {
+  .acc-qr-card__img {
+    width: min(100%, 280px);
+    padding: 12px;
+  }
+}
 pre.mono {
   user-select: text;
   -webkit-user-select: text;
@@ -941,6 +1000,7 @@ pre.mono {
 .layout-acc .panel.active { display: block; width: 100%; }
 .layout-acc .panel > .card {
   width: 100%;
+  min-width: 0;
 }
 .field label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
 .field { margin-bottom: 14px; }
@@ -1168,6 +1228,116 @@ textarea.cfg { min-height: 220px; }
   min-height: 160px;
   color: var(--muted);
   font-size: 0.85rem;
+}
+/* 账号页 NoneBot 日志：flex 列 + 明确高度，保证 viewport 吃掉剩余空间 */
+#accNbLogSection {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
+  margin-top: 12px;
+}
+#accNbLogSection[hidden] {
+  display: none !important;
+}
+.sl-runlog.sl-runlog--account,
+#accNbLogCard.sl-runlog {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: clamp(260px, 52vh, calc(100vh - 11rem));
+  height: clamp(260px, 52vh, calc(100vh - 11rem));
+  max-height: min(calc(100vh - 8rem), 720px);
+  margin-top: 0;
+  overflow: hidden;
+  gap: 10px;
+  padding: 14px 16px;
+}
+#accNbLogCard .sl-runlog-hd,
+#accNbLogCard .sl-runlog-levels {
+  flex: 0 0 auto;
+}
+#accNbLogCard .sl-runlog-viewport {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  overflow: auto;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--bd);
+  background: color-mix(in srgb, var(--bg1) 94%, transparent);
+}
+#accNbLogCard .sl-runlog-inner {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  color: var(--txt);
+}
+#accNbLogCard .sl-runlog-row {
+  color: var(--txt);
+}
+#accNbLogCard .sl-runlog-msg {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+@media (max-width: 720px) {
+  .sl-runlog.sl-runlog--account,
+  #accNbLogCard.sl-runlog {
+    min-height: clamp(220px, 58vh, calc(100vh - 9rem));
+    height: clamp(220px, 58vh, calc(100vh - 9rem));
+    max-height: min(calc(100vh - 6rem), 640px);
+    padding: 12px;
+    gap: 8px;
+  }
+  #accNbLogCard .sl-runlog-hd {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  #accNbLogCard .sl-runlog-tools {
+    width: 100%;
+  }
+  #accNbLogCard .sl-runlog-tools input[type="search"] {
+    min-width: 0;
+    max-width: none;
+    flex: 1 1 100%;
+  }
+  #accNbLogCard .sl-runlog-row {
+    display: grid;
+    grid-template-columns: auto auto;
+    grid-template-areas:
+      "time level"
+      "scope scope"
+      "msg msg";
+    gap: 2px 8px;
+    padding: 6px 8px;
+    white-space: normal;
+  }
+  #accNbLogCard .sl-runlog-t {
+    grid-area: time;
+  }
+  #accNbLogCard .sl-runlog-lv {
+    grid-area: level;
+    width: auto;
+    justify-self: end;
+  }
+  #accNbLogCard .sl-runlog-sc {
+    grid-area: scope;
+    width: auto;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #accNbLogCard .sl-runlog-msg {
+    grid-area: msg;
+    min-width: 0;
+  }
+  pre.logs.logs-protocol#accLogs {
+    max-height: min(42vh, 280px);
+  }
 }
 /* 协议端壳层：与 WebUI AppShell 同构（侧栏 + 顶栏 + 主区） */
 html,

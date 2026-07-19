@@ -20,6 +20,7 @@ downloads/
 eggs/
 .eggs/
 lib/
+!scripts/lib/
 lib64/
 parts/
 sdist/
@@ -134,8 +135,11 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-# .env
+.env
 .envrc
+config/pallas.toml
+config/compose.env
+config/pallas.webui.export.toml
 .venv
 env/
 venv/
@@ -211,14 +215,29 @@ __marimo__/
 resource/*
 !resource/arknights/
 !resource/arknights/**
+!resource/who_is_spy/
+!resource/who_is_spy/**
+!resource/styles/
+!resource/styles/**
+resource/styles/**/__pycache__/
 accounts
 mixed_data
 backups
 log
 data
+# 压测本地参数（含口令/token）；仅提交 local.properties.example
+tools/jmeter/local.properties
+.shard_test_state/
+data.pre_shard_test.*
 
 test.py
 .env.dev
 
 # AI orchestration internal data
 .sisyphus/
+
+# 站点自有插件（保留目录骨架；见 local/README.md）
+local/plugins/*
+!local/plugins/.gitkeep
+local/patches/*
+!local/patches/README.md

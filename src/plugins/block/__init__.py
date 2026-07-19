@@ -1,30 +1,48 @@
-from nonebot import get_driver, get_plugin_config, logger, on_message, on_notice
+import asyncio
+
+from nonebot import get_driver, logger, on_message, on_notice
 from nonebot.adapters import Bot
 from nonebot.adapters.onebot.v11 import GroupIncreaseNoticeEvent, GroupMessageEvent, PokeNotifyEvent, permission
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from src.common.config import BotConfig
+from src.features.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.features.cmd_perm.metadata_text import join_usage, usage_line
+from src.foundation.config import BotConfig
+from src.foundation.db import ensure_bot_config_row, ensure_runtime_storage_ready
+from src.platform.multi_bot.fleet import fleet_bot_ids_contains
+from src.platform.multi_bot.session_seen import note_bot_session_seen
+from src.platform.shard import context as shard_ctx
+from src.platform.shard.presence import (
+    clear_protocol_bot_offline,
+    note_worker_bot_connected,
+    note_worker_bot_disconnected,
+)
 
-from .config import Config
+from .config import Config, plugin_config
 
 __plugin_meta__ = PluginMetadata(
-    name="其他牛牛消息拦截",
-    description="拦截其他牛牛的消息与通知。",
-    usage="""
-功能说明：
-将拦截其他牛牛的群消息与群通知事件。
-""".strip(),
+    name="其他牛牛拦截",
+    description="拦截其它牛牛账号在本群的群消息与通知。",
+    usage=join_usage(
+        usage_line("（内部）", "多 Bot 同群时避免互相触发"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot/Pallas-Bot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "menu_data": [
             {
                 "func": "消息拦截",
                 "trigger_method": "on_message/on_notice",
-                "trigger_condition": "",
+                "help_audience": "maintainer",
+                "trigger_condition": "内部拦截",
                 "brief_des": "拦截群事件",
                 "detail_des": "阻断群消息与通知，避免触发后续插件逻辑。",
             },
@@ -32,30 +50,76 @@ __plugin_meta__ = PluginMetadata(
     },
 )
 
-plugin_config = get_plugin_config(Config)
 driver = get_driver()
+
+
+async def ensure_bot_runtime_storage(qq: int) -> None:
+    _ = qq
+    await ensure_runtime_storage_ready()
 
 
 @driver.on_bot_connect
 async def bot_connect(bot: Bot) -> None:
     if bot.self_id.isnumeric() and bot.type == "OneBot V11":
         logger.info(f"Bot {bot.self_id} connected.")
-        plugin_config.bots.add(int(bot.self_id))
+        qq = int(bot.self_id)
+        plugin_config.bots.add(qq)
+        note_bot_session_seen(qq)
+        await clear_protocol_bot_offline(qq)
+        try:
+            await ensure_bot_runtime_storage(qq)
+        except Exception as err:
+            logger.warning("Bot {} runtime storage ensure failed: {}", bot.self_id, err)
+        try:
+            created = await ensure_bot_config_row(qq)
+            if created:
+                logger.info("bot_config ensured for Bot {}", bot.self_id)
+            else:
+                logger.debug("bot_config already exists for Bot {}", bot.self_id)
+        except Exception as err:
+            logger.warning("Bot {} bot_config ensure failed: {}", bot.self_id, err)
+        if shard_ctx.sharding_active():
+            await note_worker_bot_connected(bot)
+        try:
+            from src.platform.federate.peer_bots import sync_federate_peer_bot_roster
+
+            asyncio.create_task(sync_federate_peer_bot_roster(), name=f"federate_peer_sync_connect:{qq}")
+        except Exception:
+            pass
 
 
 @driver.on_bot_disconnect
 async def bot_disconnect(bot: Bot) -> None:
     if bot.self_id.isnumeric() and bot.type == "OneBot V11":
-        try:
-            plugin_config.bots.remove(int(bot.self_id))
-        except ValueError:
-            pass
-        else:
+        qq = int(bot.self_id)
+        was_present = qq in plugin_config.bots
+        plugin_config.bots.discard(qq)
+        if was_present:
             logger.info(f"Bot {bot.self_id} disconnected.")
+        await clear_protocol_bot_offline(qq)
+        if shard_ctx.sharding_active():
+            await note_worker_bot_disconnected(qq)
+        try:
+            from src.platform.federate.peer_bots import sync_federate_peer_bot_roster
+
+            asyncio.create_task(
+                sync_federate_peer_bot_roster(),
+                name=f"federate_peer_sync_disconnect:{int(bot.self_id)}",
+            )
+        except Exception:
+            pass
+
+
+def is_fleet_bot_qq(qq: int) -> bool:
+    from src.platform.federate.peer_bots import federate_peer_bot_ids_contains
+
+    if shard_ctx.sharding_active():
+        return fleet_bot_ids_contains(qq) or federate_peer_bot_ids_contains(qq)
+    return qq in plugin_config.bots or federate_peer_bot_ids_contains(qq)
 
 
 async def is_other_bot(event: GroupMessageEvent) -> bool:
-    if event.user_id not in plugin_config.bots:
+    if not is_fleet_bot_qq(int(event.user_id)):
         return False
     if await BotConfig(event.self_id, event.group_id).is_dreaming():
         return False

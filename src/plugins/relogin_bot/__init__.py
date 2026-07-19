@@ -9,25 +9,41 @@ from nonebot.permission import SUPERUSER
 from nonebot.plugin import PluginMetadata
 from nonebot.typing import T_State
 
-from src.common.cmd_perm import private_message_permission_for_command
-from src.common.config import BotConfig, user_is_bot_admin
-from src.common.db import make_bot_config_repository
+from src.features.cmd_perm import private_message_permission_for_command
+from src.features.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.features.cmd_perm.metadata_text import SCENE_PRIVATE, join_usage, usage_line
+from src.foundation.config import BotConfig, user_is_bot_admin
+from src.foundation.db import make_bot_config_repository
+from src.platform.bot_runtime.roles import is_hub_role
+
+if is_hub_role():
+    from nonebot import get_app
+
+    from src.platform.shard.coord.relogin_hub_routes import mount_relogin_hub_routes
+
+    mount_relogin_hub_routes(get_app())
+
 from src.plugins.pallas_protocol import manager as protocol_manager
 
 __all__ = ["relogin_cmd", "create_cmd"]
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛重新上号",
-    description="为指定 QQ 账号重启协议端并推送登录二维码，号主可用；超管可创建新牛牛账号。",
-    usage="""
-牛牛重新上号
-创建牛牛
-""".strip(),
+    description="号主重启协议端收二维码；超管可创建新牛牛。",
+    usage=join_usage(
+        usage_line("牛牛重新上号 [QQ]", "重启并私聊推送登录二维码"),
+        usage_line("创建牛牛 …", "超管新建实例"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot/Pallas-Bot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "command_permissions": [
             {"id": "relogin.relogin", "label": "牛牛重新上号", "default": "bot_moderator"},
             {"id": "relogin.create", "label": "创建牛牛", "default": "superuser"},
@@ -36,7 +52,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "重新上号",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "牛牛重新上号 [QQ号]（私聊）",
+                "trigger_scene": SCENE_PRIVATE,
+                "trigger_condition": "牛牛重新上号 [QQ号]",
                 "command_permission": "relogin.relogin",
                 "brief_des": "重启账号并回传二维码（号主可用）",
                 "detail_des": "自动重启协议端账号，等待二维码文件生成并在私聊推送。",
@@ -44,7 +61,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "创建牛牛",
                 "trigger_method": "on_cmd",
-                "trigger_condition": "创建牛牛 …（私聊）",
+                "trigger_scene": SCENE_PRIVATE,
+                "trigger_condition": "创建牛牛 …",
                 "command_permission": "relogin.create",
                 "brief_des": "创建并启动新牛牛账号（仅超管）",
                 "detail_des": "在协议端创建账号并启动，私聊回传登录二维码",
@@ -115,7 +133,7 @@ async def _relogin_got_qq(bot: Bot, event: MessageEvent, state: T_State, qq_inpu
     if not qq:
         await relogin_cmd.reject("QQ号格式不正确，请重新输入：")
 
-    # 检查用户是否是目标 bot 的管理员（或超管）
+    # 检查用户是否是目标 bot 的管理员
     is_target_admin = await user_is_bot_admin(int(qq), int(event.get_user_id()))
     if not (is_target_admin or await SUPERUSER(bot, event)):
         await relogin_cmd.finish(f"你不是 {qq} 的管理员，无法执行重新上号。")
@@ -268,7 +286,7 @@ async def _create_got_owners(
     try:
         repo = make_bot_config_repository()
         await repo.upsert_field(int(qq), "admins", owner_ids)
-        from src.common.config.bot_admins_cache import invalidate_bot_admins_cache
+        from src.foundation.config.bot_admins_cache import invalidate_bot_admins_cache
 
         await invalidate_bot_admins_cache(int(qq))
     except Exception as e:

@@ -6,7 +6,7 @@ import asyncio
 import time
 from typing import TYPE_CHECKING
 
-from src.common.db import make_context_repository
+from src.foundation.db.context_repo_access import context_repo
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -18,8 +18,6 @@ _exists_lock = asyncio.Lock()
 _exists_generation: dict[str, int] = {}
 _fetch_tasks: dict[str, asyncio.Task[bool]] = {}
 _fetch_tasks_lock = asyncio.Lock()
-
-_repo = make_context_repository()
 
 
 async def invalidate_context_exists_cache(keywords: str | Iterable[str] | None = None) -> None:
@@ -59,7 +57,11 @@ async def note_context_exists(keywords: str) -> None:
 
 
 async def _fetch_exists_db(keywords: str) -> bool:
-    return await _repo.context_exists_by_keywords(keywords)
+    repo = context_repo
+    local_exists = getattr(repo, "local_context_exists_by_keywords", None)
+    if callable(local_exists):
+        return await local_exists(keywords)
+    return await repo.context_exists_by_keywords(keywords)
 
 
 async def _await_exists_deduped(keywords: str) -> bool:
@@ -84,7 +86,7 @@ async def _await_exists_deduped(keywords: str) -> bool:
 
 
 async def context_exists_for_learn(keywords: str) -> bool:
-    """带 TTL 与并发去重的 context 存在性查询（学习路径专用）。"""
+    """带 TTL 与并发去重的 context 存在性查询。"""
     if not keywords:
         return False
 

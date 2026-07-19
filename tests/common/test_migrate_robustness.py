@@ -1,7 +1,7 @@
 """
 Mongo → PG 迁移脚本健壮性测试。
 
-fixture（``pg_env`` / 迁移模块加载）来自 ``tests/common/conftest.py``；未设置
+fixture来自 ``tests/common/conftest.py``；未设置
 ``PG_TEST_DSN`` 时依赖 pg_env 的用例自动 skip，纯函数用例（defensive helpers、
 去重聚合）无 DB 依赖、始终会跑。Mongo 侧以下方 ``_FakeDb`` 代替真实实例。
 """
@@ -73,7 +73,7 @@ class _FakeDb:
 
 
 # ---------------------------------------------------------------------------
-# Defensive helpers（纯函数测试，无需 DB）
+# Defensive helpers
 # ---------------------------------------------------------------------------
 
 
@@ -145,7 +145,7 @@ async def test_migrate_context_merges_duplicate_keywords(pg_env):
     """同 keywords_hash 的多条 Mongo 文档在单批内合并成 1 个 Context，answers/bans 正确聚合。"""
     from bson import ObjectId
 
-    from src.common.db.repository_pg import ContextAnswerMessageRow, ContextAnswerRow, ContextBanRow, ContextRow
+    from src.foundation.db.repository_pg import ContextAnswerMessageRow, ContextAnswerRow, ContextBanRow, ContextRow
 
     migrate = pg_env["migrate"]
     docs = [
@@ -241,7 +241,7 @@ async def test_migrate_message_resumable(pg_env):
     from sqlalchemy import func, select
     from sqlalchemy import insert as sa_insert
 
-    from src.common.db.repository_pg import MessageRow
+    from src.foundation.db.repository_pg import MessageRow
 
     migrate = pg_env["migrate"]
 
@@ -294,7 +294,7 @@ async def test_migrate_message_dirty_rows_counted(pg_env):
     from bson import ObjectId
     from sqlalchemy import func, select
 
-    from src.common.db.repository_pg import MessageRow
+    from src.foundation.db.repository_pg import MessageRow
 
     migrate = pg_env["migrate"]
 
@@ -342,7 +342,7 @@ async def test_migrate_blacklist_rerun_idempotent(pg_env):
     from bson import ObjectId
     from sqlalchemy import select
 
-    from src.common.db.repository_pg import BlackListRow
+    from src.foundation.db.repository_pg import BlackListRow
 
     migrate = pg_env["migrate"]
     docs = [
@@ -362,11 +362,11 @@ async def test_migrate_blacklist_rerun_idempotent(pg_env):
 
 
 async def test_migrate_bot_config_handles_auto_accept_legacy(pg_env):
-    """旧 schema 只有 auto_accept（仅对 group 生效），迁移要能 fallback；admins 里非法项直接跳过。"""
+    """旧 schema 只有 auto_accept，迁移要能 fallback；admins 里非法项直接跳过。"""
     from bson import ObjectId
     from sqlalchemy import select
 
-    from src.common.db.repository_pg import BotConfigRow
+    from src.foundation.db.repository_pg import BotConfigRow
 
     migrate = pg_env["migrate"]
     docs = [
@@ -401,7 +401,7 @@ async def test_migrate_image_cache_upsert(pg_env):
     from bson import ObjectId
     from sqlalchemy import select
 
-    from src.common.db.repository_pg import ImageCacheRow
+    from src.foundation.db.repository_pg import ImageCacheRow
 
     migrate = pg_env["migrate"]
     docs = [

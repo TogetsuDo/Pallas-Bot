@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 from nonebot import get_driver, logger
 from nonebot.adapters import Bot
 from nonebot.adapters.onebot.v11 import GroupMessageEvent
@@ -5,45 +7,76 @@ from nonebot.exception import IgnoredException
 from nonebot.internal.matcher import Matcher
 from nonebot.message import event_preprocessor, run_preprocessor
 
-from .plugin_manager import collect_disabled_plugin_names
+from src.platform.ingress.plugin_command_plaintext import is_plugin_command_plaintext
+from src.platform.ingress.policy_registry import text_matches_plugin_fanout
+from src.platform.multi_bot.dedup import try_claim_cross_bot_message_memory
+from src.platform.shard import context as shard_ctx
+
+from .plugin_manager import collect_disabled_plugin_names, superuser_bypasses_plugin_disable
 
 _blocked_events: dict[str, frozenset[str]] = {}
+_COMMAND_INGRESS_PLUGIN = "command_ingress"
 
 
 IGNORED_PLUGINS = ["help"]
 
 
+@lru_cache(maxsize=512)
+def _plugin_name_from_module_name(module_name: str | None) -> str:
+    if not module_name:
+        return "unknown"
+    parts = module_name.split(".")
+    for part in reversed(parts):
+        if part != "__init__":
+            return part
+    return module_name or "unknown"
+
+
 def get_plugin_name_from_matcher(matcher: Matcher) -> str:
     """从Matcher对象获取插件名称"""
+    return _plugin_name_from_module_name(matcher.plugin_name)
 
-    module_name = matcher.plugin_name
-    if module_name:
-        parts = module_name.split(".")
-        for part in reversed(parts):
-            if part != "__init__":
-                return part
 
-    return module_name or "unknown"
+async def command_cross_bot_claim_won(
+    *,
+    bot_id: int,
+    group_id: int,
+    user_id: int,
+    plain_text: str,
+    message_time: int,
+) -> bool:
+    text = (plain_text or "").strip()
+    if not text or not (is_plugin_command_plaintext(text) or text_matches_plugin_fanout(text, "help")):
+        return True
+    from src.platform.ingress.fanout_bypass import ingress_fanout_bypasses_claim
+
+    if ingress_fanout_bypasses_claim(text):
+        return True
+    if not shard_ctx.sharding_active():
+        from src.platform.ingress.unified_pass import unified_ingress_once_won_for_text
+
+        if unified_ingress_once_won_for_text(group_id, user_id, text, message_time):
+            return True
+    if shard_ctx.sharding_active():
+        return True
+    return await try_claim_cross_bot_message_memory(
+        _COMMAND_INGRESS_PLUGIN,
+        group_id,
+        user_id,
+        text,
+        message_time,
+        bot_id,
+        use_plaintext=True,
+        include_message_time=True,
+    )
 
 
 @event_preprocessor
 async def block_disabled_plugins(bot: Bot, event: GroupMessageEvent):
-    """
-    在事件预处理阶段检查插件是否被禁用
-    """
+    """仅维护 event_id 缓存表；禁用列表在 run_preprocessor 首次命中时加载。"""
 
     if not isinstance(event, GroupMessageEvent):
         return
-
-    event_id = f"{bot.self_id}_{event.message_id}_{event.group_id}"
-
-    bot_id = int(bot.self_id)
-    group_id = event.group_id
-
-    disabled_names = await collect_disabled_plugin_names(bot_id, group_id)
-    _blocked_events[event_id] = disabled_names
-    if disabled_names:
-        logger.debug(f"bot [{bot_id}] help disabled plugins in group [{group_id}]: {', '.join(sorted(disabled_names))}")
 
     if len(_blocked_events) > 10000:
         keys = list(_blocked_events.keys())
@@ -61,12 +94,21 @@ async def check_plugin_enabled(matcher: Matcher, bot: Bot, event: GroupMessageEv
     plugin_name = get_plugin_name_from_matcher(matcher)
     if not plugin_name:
         return
-
     if plugin_name.lower() in IGNORED_PLUGINS:
         return
 
-    event_id = f"{bot.self_id}_{event.message_id}_{event.group_id}"
     bot_id = int(bot.self_id)
+    if not await command_cross_bot_claim_won(
+        bot_id=bot_id,
+        group_id=event.group_id,
+        user_id=event.user_id,
+        plain_text=event.get_plaintext(),
+        message_time=event.time,
+    ):
+        logger.debug("bot [{}] command matcher [{}] skipped by cross-bot claim", bot_id, plugin_name)
+        raise IgnoredException(f"Command matcher skipped for bot {bot_id}")
+
+    event_id = f"{bot.self_id}_{event.message_id}_{event.group_id}"
     group_id = event.group_id
 
     disabled_names = _blocked_events.get(event_id)
@@ -75,6 +117,8 @@ async def check_plugin_enabled(matcher: Matcher, bot: Bot, event: GroupMessageEv
         _blocked_events[event_id] = disabled_names
 
     if plugin_name in disabled_names:
+        if await superuser_bypasses_plugin_disable(bot, event):
+            return
         logger.debug(f"bot [{bot_id}] help plugin [{plugin_name}] blocked at matcher")
         raise IgnoredException(f"Plugin {plugin_name} is disabled")
 

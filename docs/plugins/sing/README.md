@@ -1,31 +1,35 @@
 # sing（牛牛唱歌）
 
-群内通过 **角色名前缀 + 唱歌/点歌/继续唱** 等触发，请求本机 **AI 唱歌服务**（HTTP），由异步任务 + [`callback`](../callback/README.md) 回传语音或文本结果；歌曲检索与进度依赖 **网易云** 相关逻辑。
+AI 翻唱、续唱、点歌与查歌名；依赖 [Pallas-Bot-AI](https://github.com/PallasBot/Pallas-Bot-AI) 与 `callback` 回传音频。
 
-## 前置条件
+## 用户命令
 
-1. 部署与 Bot 配置一致的 **AI 服务**（默认 `127.0.0.1:9099`），且服务能访问 **回调地址** `POST /callback/{task_id}`（由 `callback` 插件注册）。
-2. 在配置中开启 `sing_enable`（默认关闭）。
+| 口令 | 场景 | 说明 |
+| --- | --- | --- |
+| 牛牛唱歌 歌曲名 [key=±N] | 群内 | AI 翻唱 |
+| 牛牛继续唱 / 牛牛接着唱 | 群内 | 续唱上一首 |
+| 牛牛点歌 歌曲名 | 群内 | 网易云原曲 |
+| 牛牛什么歌 / 牛牛哪首歌 | 群内 | 查询当前曲目 |
+| 网易云登录 / 网易云登出 | 私聊 | 超管维护 Cookie |
+
+## 命令权限
+
+| 命令 ID | 默认等级 |
+| --- | --- |
+| `sing.ncm_login` | superuser |
+| `sing.ncm_logout` | superuser |
 
 ## 配置
 
-见 [`src/plugins/sing/config.py`](../../../src/plugins/sing/config.py)：`ai_server_host`、`ai_server_port`、`sing_endpoint`、`play_endpoint`、`request_endpoint`、`sing_length`、`sing_speakers`（角色名到 speaker id 映射）。控制台修改后通过 [`webui` 热重载](../../common/webui/README.md) 立即生效，无需重启 Bot。
-
-## 用法摘要
-
-- `[角色名]唱歌 [歌名]`，可选 `key=` 变调
-- `[角色名]继续唱` / `接着唱`
-- `牛牛点歌 [歌名]`（原曲，受 VIP 等逻辑影响）
-- `[角色名]什么歌` / `哪首歌` / `啥歌`
-- 仅 `[角色名]唱歌`：随机播放曾唱过的片段
-
-具体以插件内规则与 `__plugin_meta__` 为准。
+[`config.py`](../../../src/plugins/sing/config.py)：`sing_enable`、AI 地址、`request_endpoint` 等。推荐在 WebUI **插件 → sing** 或 **通用配置 → 服务网关** 修改（落盘 `data/pallas_config/webui.json`，保存后热重载）。
 
 ## 排障
 
-| 现象 | 说明 |
-|------|------|
-| 无反应 | 确认 `sing_enable=true`、AI 服务可达、群冷却未挡住。 |
-| 一直失败 | 看 AI 服务日志与 Bot 日志；确认 `/callback/{task_id}` 对 AI 服务网络可达。 |
+| 现象 | 处理 |
+| --- | --- |
+| 无语音 | 查 AI 服务、`/callback` 可达性；群内发 **牛牛连通** 测唱歌网关 |
+| 点歌失败 | 确认网易云登录状态 |
 
-实现见 [`src/plugins/sing/__init__.py`](../../../src/plugins/sing/__init__.py)。
+## 实现
+
+[`src/plugins/sing/`](../../../src/plugins/sing/)

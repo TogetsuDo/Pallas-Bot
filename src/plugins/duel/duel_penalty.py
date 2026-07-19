@@ -12,10 +12,11 @@ from nonebot.adapters.onebot.v11 import GroupMessageEvent, permission
 from nonebot.exception import ActionFailed
 from nonebot.rule import Rule
 
-from src.common.config import BotConfig, GroupConfig
-from src.common.utils import is_bot_admin
+from src.foundation.config import BotConfig, GroupConfig
 from src.plugins.duel.config import plugin_config
 from src.plugins.duel.duel_bots import is_bot_qq
+from src.plugins.duel.duel_message import append_duel_message, duel_at, duel_text
+from src.shared.utils import is_bot_admin
 
 if TYPE_CHECKING:
     from src.plugins.duel.duel_round_engine import DuelStacks
@@ -137,36 +138,61 @@ async def get_active_penalty_async(group_id: int, user_id: int) -> ActivePenalty
 
 
 async def fetch_member_card(bot_id: int, group_id: int, user_id: int) -> str:
-    bot = get_bots().get(str(bot_id))
-    if bot is None:
-        return ""
-    try:
-        info = await bot.call_api(
-            "get_group_member_info",
-            **{"group_id": group_id, "user_id": int(user_id), "no_cache": True},
-        )
-    except ActionFailed:
-        return ""
-    return str(info.get("card") or info.get("nickname") or "").strip()
+    from src.platform.shard.coord.bot_action import get_member_card_as_bot
+    from src.platform.shard.presence import bot_has_local_connection
+
+    if bot_has_local_connection(bot_id):
+        bot = get_bots().get(str(bot_id))
+        if bot is None:
+            return ""
+        try:
+            info = await bot.call_api(
+                "get_group_member_info",
+                **{"group_id": group_id, "user_id": int(user_id), "no_cache": True},
+            )
+        except ActionFailed:
+            return ""
+        return str(info.get("card") or info.get("nickname") or "").strip()
+    return await get_member_card_as_bot(bot_id, group_id, int(user_id))
 
 
 async def set_member_card(bot_id: int, group_id: int, user_id: int, card: str) -> bool:
-    bot = get_bots().get(str(bot_id))
-    if bot is None:
-        return False
-    try:
-        await bot.call_api(
-            "set_group_card",
-            **{"group_id": group_id, "user_id": int(user_id), "card": card[:60]},
-        )
-        return True
-    except ActionFailed as err:
-        logger.debug(f"duel penalty set_group_card failed gid={group_id} uid={user_id}: {err}")
-        return False
+    from src.platform.shard.coord.bot_action import set_group_card_as_bot
+    from src.platform.shard.presence import bot_has_local_connection
+
+    if bot_has_local_connection(bot_id):
+        bot = get_bots().get(str(bot_id))
+        if bot is None:
+            return False
+        try:
+            await bot.call_api(
+                "set_group_card",
+                **{"group_id": group_id, "user_id": int(user_id), "card": card[:60]},
+            )
+            return True
+        except ActionFailed as err:
+            logger.debug(f"duel penalty set_group_card failed gid={group_id} uid={user_id}: {err}")
+            return False
+    return await set_group_card_as_bot(bot_id, group_id, int(user_id), card)
 
 
 def _penalty_duration_sec() -> float:
     return float(plugin_config.duel_penalty_minutes * 60)
+
+
+async def send_human_penalty_notice(group_id: int, handler_bot_id: int, user_id: int) -> None:
+    """败者惩罚文案仅发一次。"""
+    bot = get_bots().get(str(handler_bot_id))
+    if bot is None:
+        return
+    body = append_duel_message(
+        duel_at(user_id),
+        duel_text(plugin_config.duel_penalty_human_noise_msg),
+    )
+    try:
+        await bot.send_group_msg(group_id=group_id, message=body)
+    except ActionFailed as err:
+        logger.debug(f"duel penalty human notice failed gid={group_id} uid={user_id}: {err}")
 
 
 async def _restore_one(group_id: int, user_id: int) -> None:
@@ -220,6 +246,8 @@ async def register_penalty(
     )
     await _save_penalty(pen)
     _schedule_restore(group_id, uid, duration)
+    if kind == PenaltyKind.HUMAN_NOISE:
+        await send_human_penalty_notice(group_id, handler_bot_id, uid)
     logger.info(
         f"duel penalty start gid={group_id} uid={uid} kind={kind} "
         f"handler={handler_bot_id} min={plugin_config.duel_penalty_minutes}"
@@ -298,7 +326,9 @@ async def is_duel_penalty_message(bot: Bot, event: GroupMessageEvent) -> bool:
     pen = await get_active_penalty_async(event.group_id, int(event.user_id))
     if pen is None:
         return False
-    if pen.kind not in (PenaltyKind.BOT_FAKE, PenaltyKind.BOT_SAD, PenaltyKind.HUMAN_NOISE):
+    if pen.kind == PenaltyKind.HUMAN_NOISE:
+        return False
+    if pen.kind not in (PenaltyKind.BOT_FAKE, PenaltyKind.BOT_SAD):
         return False
     return int(event.self_id) == pen.handler_bot_id
 
@@ -316,20 +346,11 @@ async def _(bot: Bot, event: GroupMessageEvent) -> None:
     pen = await get_active_penalty_async(event.group_id, int(event.user_id))
     if pen is None:
         return
-    try:
-        await bot.delete_msg(message_id=event.message_id)
-    except ActionFailed as err:
-        logger.debug(f"duel penalty delete_msg failed gid={event.group_id}: {err}")
-
-    if pen.kind == PenaltyKind.HUMAN_NOISE:
+    if pen.kind in (PenaltyKind.BOT_FAKE, PenaltyKind.BOT_SAD):
         try:
-            await bot.send_group_msg(
-                group_id=event.group_id,
-                message=plugin_config.duel_penalty_human_noise_msg,
-            )
+            await bot.delete_msg(message_id=event.message_id)
         except ActionFailed as err:
-            logger.debug(f"duel penalty noise send failed gid={event.group_id}: {err}")
-        return
+            logger.debug(f"duel penalty delete_msg failed gid={event.group_id}: {err}")
 
     reply = (
         plugin_config.duel_penalty_bot_fake_msg

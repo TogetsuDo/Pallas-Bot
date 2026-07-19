@@ -4,13 +4,13 @@ import time
 
 import pytest
 
-from src.common.db.modules import Answer, Ban, Context, Message
-from src.common.db.repository import (
+from src.foundation.db.modules import Answer, Ban, Context, Message
+from src.foundation.db.repository import (
     BlackListRepository,
     ContextRepository,
     MessageRepository,
 )
-from src.common.db.repository_impl import (
+from src.foundation.db.repository_impl import (
     MongoBlackListRepository,
     MongoContextRepository,
     MongoMessageRepository,
@@ -238,7 +238,7 @@ async def test_upsert_answer_differentiates_by_group(beanie_fixture):
 
 @pytest.mark.asyncio
 async def test_upsert_answer_sequential_count_accuracy(beanie_fixture):
-    """多次顺序 upsert_answer 应精确累加 count（验证 $inc 语义，避免读-改-写丢更新）。"""
+    """多次顺序 upsert_answer 应精确累加 count。"""
     repo = MongoContextRepository()
     cur = int(time.time())
     await repo.insert(Context(keywords="kw", time=cur, trigger_count=1, answers=[]))  # type: ignore
@@ -326,6 +326,33 @@ async def test_append_ban(beanie_fixture):
     assert found.ban[0].keywords == "bad"
     assert found.ban[0].group_id == 1
     assert found.ban[0].reason == "test"
+
+
+@pytest.mark.asyncio
+async def test_find_ban_reply_target(beanie_fixture):
+    """find_ban_reply_target 应按 group_id + reply 原文精确反查 keywords。"""
+    repo = MongoContextRepository()
+    cur = int(time.time())
+    await repo.insert(
+        Context(
+            keywords="pre-kw",
+            time=cur,
+            trigger_count=1,  # type: ignore
+            answers=[
+                Answer(
+                    keywords="reply-kw",
+                    group_id=733291779,
+                    count=1,
+                    time=cur,
+                    messages=["群友耀.原星(1101088091)退群了!"],
+                )
+            ],
+        )
+    )
+
+    found = await repo.find_ban_reply_target(733291779, "群友耀.原星(1101088091)退群了!")
+
+    assert found == ("pre-kw", "reply-kw")
 
 
 @pytest.mark.asyncio

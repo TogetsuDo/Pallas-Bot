@@ -1,38 +1,73 @@
-from nonebot import get_plugin_config, on_command
+from nonebot import on_message
+from nonebot.adapters import Event
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, PrivateMessageEvent
 from nonebot.plugin import PluginMetadata
+from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from src.common.cmd_perm import permission_for_command
-from src.common.config import BotConfig, GroupConfig
+from src.features.cmd_perm import permission_for_command
+from src.features.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.features.cmd_perm.metadata_text import SCENE_BOTH, SCENE_GROUP, join_usage, usage_line
+from src.features.command_limits import is_command_cooldown_ready, refresh_command_cooldown
+from src.foundation.command_prefix import matches_command_prefix
+from src.foundation.config import BotConfig, GroupConfig
 
-from .config import Config
-from .event_preprocessor import IGNORED_PLUGINS
+from .config import Config, get_help_config, plugin_config
+from .event_preprocessor import IGNORED_PLUGINS  # noqa: F401
 
 # 导入处理函数
 from .handlers import (
     handle_help_command,
     handle_plugin_operation,
 )
+from .help_args import (
+    HELP_COMMAND,
+    PLUGIN_DISABLE_ALL_COMMAND,
+    PLUGIN_DISABLE_COMMAND,
+    PLUGIN_ENABLE_ALL_COMMAND,
+    PLUGIN_ENABLE_COMMAND,
+    parse_plugin_toggle_args,
+)
+from .plugin_manager import get_help_menu_plugins
 from .styles import get_default_style, load_config, load_custom_styles
 
 __plugin_meta__ = PluginMetadata(
-    name="帮助系统",
-    description="显示所有功能的帮助信息，管理功能启用/禁用",
-    usage="""
-牛牛帮助 — 总列表：全部插件、启用状态与简介
-牛牛帮助 〈插件名或序号〉 — 某一插件：说明、用法与功能列表
-牛牛帮助 〈插件名或序号〉 〈功能序号或名称〉 — 某条功能：触发方式与详细说明
-
-插件开关（名称可用中文展示名、包名或总列表里的序号）：
-牛牛开启 〈插件名或序号〉 / 牛牛关闭 〈插件名或序号〉
-牛牛开启全部功能 / 牛牛关闭全部功能（具体权限以「牛牛帮助」内说明为准）
-    """.strip(),
+    name="牛牛帮助",
+    description="三级帮助图与群内插件开关。",
+    usage=join_usage(
+        usage_line("牛牛帮助", "插件总览与开关状态"),
+        usage_line("牛牛帮助 〈插件名或序号〉", "单插件功能表"),
+        usage_line("牛牛帮助 〈插件〉 〈功能序号或名称〉", "单条功能详情"),
+        usage_line("牛牛开启 / 牛牛关闭 〈插件名或序号〉", "本群开关某插件"),
+        usage_line("牛牛开启全部功能 / 牛牛关闭全部功能", "本群批量开关"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot/Pallas-Bot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
+        "command_prefixes": [
+            "牛牛帮助",
+            "牛牛开启",
+            "牛牛关闭",
+            "牛牛开启全部功能",
+            "牛牛关闭全部功能",
+        ],
+        "ingress_fanout": {
+            "scope": "unified_only",
+            "prefixes": [
+                "牛牛帮助",
+                "牛牛开启",
+                "牛牛关闭",
+                "牛牛开启全部功能",
+                "牛牛关闭全部功能",
+            ],
+        },
         "command_permissions": [
             {"id": "help.help", "label": "牛牛帮助", "default": "everyone"},
             {"id": "help.plugin_enable", "label": "牛牛开启（单插件）", "default": "staff"},
@@ -40,133 +75,195 @@ __plugin_meta__ = PluginMetadata(
             {"id": "help.plugin_enable_all", "label": "牛牛开启全部功能", "default": "staff"},
             {"id": "help.plugin_disable_all", "label": "牛牛关闭全部功能", "default": "staff"},
         ],
+        "command_limits": [
+            {"id": "help.help", "cd_sec": 3},
+        ],
         "menu_data": [
             {
                 "func": "总列表",
-                "trigger_method": "命令",
+                "trigger_method": "on_cmd",
+                "trigger_scene": SCENE_BOTH,
                 "trigger_condition": "牛牛帮助",
                 "command_permission": "help.help",
                 "brief_des": "全部插件、状态与简介",
-                "detail_des": "一张图里看完当前加载了哪些插件、在本群是否启用；并说明如何用序号或名称打开下级菜单",
+                "detail_des": "看图可知本群各插件是否启用；用序号或中文名继续打开下级。",
             },
             {
                 "func": "插件详情",
-                "trigger_method": "命令",
+                "trigger_method": "on_cmd",
+                "trigger_scene": SCENE_BOTH,
                 "trigger_condition": "牛牛帮助 〈插件名或序号〉",
                 "command_permission": "help.help",
-                "brief_des": "单个插件的说明与功能表",
-                "detail_des": "含插件描述、用法原文、功能列表；插件名可用总列表序号、中文名或与包名一致的英文名",
+                "brief_des": "单插件说明与功能表",
+                "detail_des": "含用法与「怎么说 / 场景 / 何人可用」；可再跟功能序号或名称看详情。",
+            },
+            {
+                "func": "功能详情",
+                "trigger_method": "on_cmd",
+                "trigger_scene": SCENE_BOTH,
+                "trigger_condition": "牛牛帮助 〈插件〉 〈功能序号或名称〉",
+                "command_permission": "help.help",
+                "brief_des": "单条功能的口令与说明",
+                "detail_des": "展示完整口令、场景与「何人可用」。",
             },
             {
                 "func": "插件开关",
-                "trigger_method": "命令",
-                "trigger_condition": "牛牛开启/关闭 〈插件名或序号〉",
+                "trigger_method": "on_cmd",
+                "trigger_scene": SCENE_GROUP,
+                "trigger_condition": "牛牛开启 / 牛牛关闭 〈插件名或序号〉",
                 "command_permissions": ["help.plugin_enable", "help.plugin_disable"],
-                "brief_des": "启用或停用某个插件",
-                "detail_des": "例：牛牛开启 牛牛复读、牛牛关闭 1；名称规则与打开详情时相同。",
+                "brief_des": "本群启用或停用某插件",
+                "detail_des": "例：牛牛开启 牛牛复读、牛牛关闭 1；命名规则同打开插件详情。",
             },
             {
-                "func": "批量开关插件",
-                "trigger_method": "命令",
+                "func": "批量开关",
+                "trigger_method": "on_cmd",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛开启全部功能 / 牛牛关闭全部功能",
                 "command_permissions": ["help.plugin_enable_all", "help.plugin_disable_all"],
-                "brief_des": "一键启用或停用全部插件",
-                "detail_des": "遍历已加载插件并切换开关；仍受单群/单 Bot 作用域影响。",
+                "brief_des": "本群一键全开或全关",
+                "detail_des": "仅切换帮助总览中列出的插件，与总览数量一致。",
             },
         ],
-        "menu_template": "default",
     },
 )
 
-plugin_config = get_plugin_config(Config)
 
-# 初始化配置和样式
-AVAILABLE_STYLES = load_custom_styles(plugin_config)
-DEFAULT_STYLE_NAME = get_default_style(plugin_config)
+def refresh_style_cache(cfg: Config | None = None) -> None:
+    global AVAILABLE_STYLES, DEFAULT_STYLE_NAME
+    c = cfg or get_help_config()
+    AVAILABLE_STYLES = load_custom_styles(c)
+    DEFAULT_STYLE_NAME = get_default_style(c)
 
 
-help_cmd = on_command("牛牛帮助", priority=5, block=True, permission=permission_for_command("help.help"))
+refresh_style_cache()
+
+
+def prefix_command_rule(command: str, *, exclude_prefixes: tuple[str, ...] = ()) -> Rule:
+    async def match_prefix_command(event: Event, state: T_State) -> bool:
+        del state
+        try:
+            plain = event.get_plaintext()
+        except Exception:
+            return False
+        text = plain or ""
+        for excluded in exclude_prefixes:
+            if matches_command_prefix(text, excluded):
+                return False
+        return matches_command_prefix(text, command)
+
+    return Rule(match_prefix_command)
+
+
+help_cmd = on_message(
+    prefix_command_rule(HELP_COMMAND),
+    priority=5,
+    block=True,
+    permission=permission_for_command("help.help"),
+)
 
 HELP_COOLDOWN_KEY = "help"
 
-plugin_enable_cmd = on_command(
-    "牛牛开启", priority=5, block=True, permission=permission_for_command("help.plugin_enable")
+plugin_enable_all_cmd = on_message(
+    prefix_command_rule(PLUGIN_ENABLE_ALL_COMMAND),
+    priority=4,
+    block=True,
+    permission=permission_for_command("help.plugin_enable_all"),
 )
 
-plugin_disable_cmd = on_command(
-    "牛牛关闭", priority=5, block=True, permission=permission_for_command("help.plugin_disable")
+plugin_disable_all_cmd = on_message(
+    prefix_command_rule(PLUGIN_DISABLE_ALL_COMMAND),
+    priority=4,
+    block=True,
+    permission=permission_for_command("help.plugin_disable_all"),
 )
 
-plugin_enable_all_cmd = on_command(
-    "牛牛开启全部功能", priority=5, block=True, permission=permission_for_command("help.plugin_enable_all")
+plugin_enable_cmd = on_message(
+    prefix_command_rule(PLUGIN_ENABLE_COMMAND, exclude_prefixes=(PLUGIN_ENABLE_ALL_COMMAND,)),
+    priority=5,
+    block=True,
+    permission=permission_for_command("help.plugin_enable"),
 )
 
-plugin_disable_all_cmd = on_command(
-    "牛牛关闭全部功能", priority=5, block=True, permission=permission_for_command("help.plugin_disable_all")
+plugin_disable_cmd = on_message(
+    prefix_command_rule(PLUGIN_DISABLE_COMMAND, exclude_prefixes=(PLUGIN_DISABLE_ALL_COMMAND,)),
+    priority=5,
+    block=True,
+    permission=permission_for_command("help.plugin_disable"),
 )
 
 
 @help_cmd.handle()
 async def handle_help_cmd(bot: Bot, event: GroupMessageEvent | PrivateMessageEvent, state: T_State):
-    """处理帮助命令（群聊和私聊）"""
+    """处理帮助命令"""
     if isinstance(event, GroupMessageEvent):
-        config = GroupConfig(event.group_id, cooldown=3)
-        if not await config.is_cooldown(HELP_COOLDOWN_KEY):
+        if not await is_command_cooldown_ready(event, "help.help"):
             await help_cmd.finish()
             return
-        await config.refresh_cooldown(HELP_COOLDOWN_KEY)
+        await refresh_command_cooldown(event, "help.help")
 
     await handle_help_command(bot, event, state, plugin_config, AVAILABLE_STYLES, DEFAULT_STYLE_NAME, help_cmd)
 
 
-def extract_plugin_name_from_command(event: GroupMessageEvent | PrivateMessageEvent, prefix: str) -> str:
-    """从命令文本中提取插件名称"""
-    message_text = event.get_plaintext().strip()
-    if message_text.startswith(prefix):
-        args = message_text[len(prefix) :].strip().split()
-        return args[0] if args else ""
-    return ""
+def _toggle_command_plugin_count() -> int:
+    return len(
+        get_help_menu_plugins(
+            show_ignored=False,
+            ignored_plugins=plugin_config.ignored_plugins if plugin_config else [],
+        )
+    )
 
 
 @plugin_enable_cmd.handle()
 async def handle_enable_command(bot: Bot, event: GroupMessageEvent | PrivateMessageEvent, state: T_State):
     """处理功能启用命令"""
-    plugin_name = extract_plugin_name_from_command(event, "牛牛开启")
-    if not plugin_name:
+    args = parse_plugin_toggle_args(
+        event.get_plaintext() or "",
+        PLUGIN_ENABLE_COMMAND,
+        plugin_count=_toggle_command_plugin_count(),
+    )
+    if not args:
         await plugin_enable_cmd.finish("博士，即使身为大祭司，你不说想要开启什么，我也帮不了你呀")
         return
 
-    state["plugin_name"] = plugin_name
+    state["toggle_args"] = args
     await handle_plugin_operation(bot, event, state, "enable", plugin_enable_cmd)
 
 
 @plugin_disable_cmd.handle()
 async def handle_disable_command(bot: Bot, event: GroupMessageEvent | PrivateMessageEvent, state: T_State):
     """处理功能禁用命令"""
-    plugin_name = extract_plugin_name_from_command(event, "牛牛关闭")
-    if not plugin_name:
+    args = parse_plugin_toggle_args(
+        event.get_plaintext() or "",
+        PLUGIN_DISABLE_COMMAND,
+        plugin_count=_toggle_command_plugin_count(),
+    )
+    if not args:
         await plugin_disable_cmd.finish("博士，即使身为大祭司，你不说想要关闭什么，我也帮不了你呀")
         return
 
-    state["plugin_name"] = plugin_name
+    state["toggle_args"] = args
     await handle_plugin_operation(bot, event, state, "disable", plugin_disable_cmd)
 
 
 async def toggle_all_plugins(bot: Bot, event: GroupMessageEvent | PrivateMessageEvent, action: str, matcher):
     """处理启用/禁用所有功能的命令"""
-    from nonebot import get_loaded_plugins
+    from nonebot.permission import SUPERUSER
 
     from .handlers import get_context_info
-    from .plugin_manager import toggle_plugin
+    from .plugin_manager import get_help_menu_plugins, toggle_plugin
 
     bot_id, group_id = get_context_info(bot, event)
-
-    # 获取所有已加载的功能并过滤
-    plugins = [p for p in get_loaded_plugins() if p.name and p.name.lower() not in IGNORED_PLUGINS]
+    is_superuser = await SUPERUSER(bot, event)
+    plugin_config = load_config()
+    plugins = get_help_menu_plugins(
+        show_ignored=False,
+        ignored_plugins=plugin_config.ignored_plugins if plugin_config else [],
+    )
 
     count = 0
     for plugin in plugins:
-        success, _ = await toggle_plugin(plugin.name, group_id, bot_id, action=action)
+        success, _ = await toggle_plugin(plugin.name or "", group_id, bot_id, action=action, is_superuser=is_superuser)
         if success:
             count += 1
 

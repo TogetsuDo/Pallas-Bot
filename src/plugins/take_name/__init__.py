@@ -1,6 +1,6 @@
 import random
 
-from nonebot import get_bot, logger, on_notice
+from nonebot import get_bots, logger, on_notice
 from nonebot.adapters import Bot
 from nonebot.adapters.onebot.v11 import NoticeEvent, permission
 from nonebot.exception import ActionFailed
@@ -8,54 +8,67 @@ from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot_plugin_apscheduler import scheduler
 
-from src.common.config import BotConfig
-from src.common.utils import is_bot_admin
+from src.features.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.features.cmd_perm.metadata_text import SCENE_AUTO, join_usage, usage_line
+from src.foundation.config import BotConfig
 from src.plugins.repeater.message_store import MessageStore
+from src.shared.utils import is_bot_admin
 
 __plugin_meta__ = PluginMetadata(
     name="自动夺舍",
-    description="牛牛自动取名和同步群名片的功能",
-    usage="""
-这个插件会让牛牛自动更换群名片，这是一项被动技能：
-1. 牛牛会定期自动更换自己的群名片为群内随机用户的名片
-2. 当牛牛醉酒时，有一定概率会"夺舍"其他群友的名片
-3. 当被取名的用户修改自己的群名片时，牛牛会同步修改自己的群名片为该用户的新名片
-    """.strip(),
+    description="定时模仿群友名片，醉酒时可能改群友名片。",
+    usage=join_usage(
+        usage_line("（自动）", "随机改牛牛名片；醉酒时可能夺舍群友"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "menu_data": [
             {
                 "func": "牛牛夺舍",
                 "trigger_method": "scheduler",
-                "trigger_condition": "定时任务",
+                "trigger_scene": SCENE_AUTO,
+                "trigger_condition": "随机模仿群友名片",
                 "brief_des": "牛牛自动更换群名片",
                 "detail_des": "牛牛每分钟有约0.2%的概率自动更换自己的群名片为群内随机用户的名片，并戳一戳该用户。",
             },
             {
                 "func": "醉酒夺舍",
                 "trigger_method": "scheduler",
-                "trigger_condition": "醉酒状态",
+                "trigger_scene": SCENE_AUTO,
+                "trigger_condition": "牛牛醉酒时",
                 "brief_des": "醉酒时随机更换群友名片",
                 "detail_des": "当牛牛处于醉酒状态且为群管理员时，更换自己名片的同时有概率将被取名用户的名字改为固定名称（帕拉斯、牛牛等）。",  # noqa: E501
             },
             {
                 "func": "名片同步",
                 "trigger_method": "on_notice",
-                "trigger_condition": "群名片变更",
+                "trigger_scene": SCENE_AUTO,
+                "trigger_condition": "被模仿者改名",
                 "brief_des": "同步被取名用户的群名片",
                 "detail_des": "当被牛牛取名的用户修改自己的群名片时，牛牛会自动同步修改自己的群名片为该用户的新名片。",
             },
         ],
-        "menu_template": "default",
     },
 )
 
 
 @scheduler.scheduled_job("cron", minute="*/1")
 async def change_name():
+    try:
+        await run_change_name()
+    except Exception:
+        logger.exception("take_name: change_name 定时任务失败")
+
+
+async def run_change_name():
     rand_messages = await MessageStore.get_random_message_from_each_group()
     if not rand_messages:
         return
@@ -72,10 +85,11 @@ async def change_name():
         target_user_id = target_msg.user_id
         logger.info(f"bot [{bot_id}] ready to change name by using [{target_user_id}] in group [{group_id}]")
 
-        bot = get_bot(str(bot_id))
-        if not bot:
-            logger.error(f"bot [{bot_id}] take_name get_bot returned None")
+        bot_key = str(bot_id)
+        local_bots = get_bots()
+        if bot_key not in local_bots:
             continue
+        bot = local_bots[bot_key]
 
         try:
             # 获取群友昵称

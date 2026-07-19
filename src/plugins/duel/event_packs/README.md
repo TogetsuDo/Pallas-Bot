@@ -113,12 +113,34 @@
 
 | 字段 | 说明 |
 |------|------|
-| `target` | 谁来答：`actor` / `challenger` / `defender` |
+| `mode` | 可选：`race` 强制双方抢答；`single` 强制单方应答。省略时由成功效果是否打对手自动判定。 |
+| `target` | 单方应答时谁来答：`actor` / `challenger` / `defender` |
 | `keys` | 合法答案列表；应答须**整句完全一致**（纯文本，无 CQ 码） |
 | `window_sec` | 倒计时秒数 |
 | `on_success_effects` / `on_fail_effects` | QTE 成功/失败后额外结算的效果数组 |
 
-兵刃池 `exchange.json` 中也可无 `qte`：本段若有人扣 HP，则按 `duel_exchange_qte_chance` 让**本段损创更多的一方**拆招（挑战者/守方均可）；事件内已写 `qte` 时按 JSON 的 `target` 为准。
+### 抢攻（双方抢答）
+
+当 `mode` 为 `race`，或 `on_success_effects` 含对对手的 `deal_damage`（`target` 为 `other` 或对方角色）时：
+
+- 提示 **@双方**，先发送指定关键词者以**胜者**身份结算 `on_success_effects`（`other` 指向对手）。
+- 超时且未写 `on_fail_effects` 时一般不追加伤害，仅播报「二人皆迟」类文案。
+- 防守向 QTE（成功加盾/战意、失败自伤等）仍走单方 `target`，不受抢攻影响。
+
+示例：
+
+```json
+"qte": {
+  "mode": "race",
+  "keys": ["突刺", "斩落", "贯通"],
+  "window_sec": 8,
+  "prompt": "破绽已现！",
+  "on_success_effects": [{ "type": "deal_damage", "target": "other", "value": 2 }],
+  "on_fail_effects": []
+}
+```
+
+兵刃池 `exchange.json` 中也可无 `qte`：本段若有人扣 HP，则按 `duel_exchange_qte_chance` 额外触发 QTE；其中 `duel_exchange_qte_race_chance` 决定本次为**双方抢攻**还是**损创更多一方拆招**。事件内已写 `qte` 时以 JSON 为准（含显式 `mode`）。
 
 ## 干员乱入 QTE（`operator_intrusion`）
 
@@ -141,9 +163,11 @@
 ```
 
 - 系统从 `resource/arknights/operators_6star.json` 随机干员（帕拉斯专属事件可写死 `public_pallas_intrusion`）。
-- 应答方须在窗口内发送**闯入者游戏内干员名**（与名册一致）。
-- **辨认成功**：按技能种类选用 `on_success_effects_*`，效果多指向对手。
-- **辨认失败**：仍落下本幕技能；攻击类打应答方（`<A>`/`<B>` 随本幕 `actor`）；治疗类 `heal_hp`/`add_dp` 改落在**另一方**（如 A 认错却治疗 B）；另结算 `on_fail_effects`。治疗文案用 `after_fail_describe_heal`。
+- 默认按 `duel_intrusion_race_chance` 掷为 **抢认**（@双方抢先咏名）或 **单方咏名**（`target` 指定 QQ）；`mode: "race"` / `"single"` 可强制其一。
+- 应答须发送**闯入者游戏内干员名**（与名册一致，整句完全一致）。
+- **辨认成功**（单方或抢认胜者）：按技能种类选用 `on_success_effects_*`，以胜者/应答方为 `actor` 结算；效果多指向对手。
+- **辨认失败**（单方咏名）：仍落下本幕技能；攻击类打应答方（`<A>`/`<B>` 随本幕 `actor`）；治疗类 `heal_hp`/`add_dp` 改落在**另一方**（如 A 认错却治疗 B）；另结算 `on_fail_effects`。治疗文案用 `after_fail_describe_heal`。
+- **抢认失败**（双方皆未咏名）：用 `after_fail_describe_race` / `after_fail_describe_heal_race`（帕拉斯：`pallas_after_fail_race` / `pallas_after_fail_heal_race`）；缺省由引擎生成「<A>与<B>」双败文案；攻击类损创对**双方**各结算一次。
 - `pallas_prelude` / `pallas_after_success` / `pallas_after_fail` 仅帕拉斯乱入事件使用，语义同 `intrusion_prelude` 等。
 - 可选 `profession_bonus` / `sub_profession_bonus`：按职阶/子职阶 ID 追加成功效果（群内不展示子职阶名，见 `public.json` 示例）。
 
@@ -157,7 +181,15 @@
 
 ## 相关配置（WebUI · 牛牛决斗）
 
-惩罚时长、幕间停顿、公共幕概率、QTE 权重、牛自动咏名成功率等见插件 `config.py` / 控制台插件配置页，**不写在 JSON 里**。
+惩罚时长、幕间停顿、公共幕概率、QTE 权重、兵刃随机抢攻/乱入抢认概率、牛自动咏名成功率等见插件 `config.py` / 控制台插件配置页，**不写在 JSON 里**。
+
+与抢答相关的配置键（默认值见 `config.py`）：
+
+| 配置键 | 作用 |
+|--------|------|
+| `duel_exchange_qte_chance` | 兵刃幕无内置 QTE 时，额外触发关键词 QTE 的概率 |
+| `duel_exchange_qte_race_chance` | 上述随机 QTE 中为双方抢攻（对对手伤害）而非受创方拆招的概率 |
+| `duel_intrusion_race_chance` | 干员乱入为双方抢认而非仅 `target` 单方咏名的概率 |
 
 - **插件配置热重载**：WebUI 保存「牛牛决斗」插件配置后会写入 `.env` 并调用 `reload_duel_plugin_config()`，**无需重启 Bot** 即可生效。
 - **剧目 JSON 热重载**：修改 `default/*.json` 后由群管/群主在群内发送 **`决斗事件重载`**，或重启 Bot。

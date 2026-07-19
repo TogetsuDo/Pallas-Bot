@@ -1,22 +1,27 @@
 import re
 
-from nonebot import get_driver, on_message
+from nonebot import get_driver, logger, on_message
 from nonebot.adapters import Bot
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message, MessageSegment, permission
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 from nonebot.typing import T_State
 
-from src.common.cmd_perm import group_message_permission_for_command
+from src.features.cmd_perm import group_message_permission_for_command
+from src.features.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.features.cmd_perm.metadata_text import SCENE_GROUP, join_usage, usage_line
+from src.platform.ingress.policy_registry import text_matches_plugin_fanout
 from src.plugins.duel import duel_penalty  # noqa: F401 — 注册惩罚消息 matcher
 from src.plugins.duel.config import plugin_config
 from src.plugins.duel.duel_bots import (
     duel_narrator_bot_id,
     infer_duel_defender_when_at_self_hidden,
     is_bot_qq,
-    is_cage_plaintext,
     parse_duel_at_qqs,
-    pick_cage_duel_bot_pair,
     raw_message_has_at,
     resolve_duel_round_count,
 )
@@ -35,7 +40,7 @@ from src.plugins.duel.duel_session import clear_duel_pair, start_duel_pair
 
 @get_driver().on_startup
 async def _ensure_duel_arknights_resources() -> None:
-    from src.common.utils.arknights_duel_resource import schedule_arknights_duel_resource_sync
+    from src.shared.utils.arknights_duel_resource import schedule_arknights_duel_resource_sync
 
     schedule_arknights_duel_resource_sync(
         sync_json=plugin_config.duel_auto_sync_operators,
@@ -45,28 +50,19 @@ async def _ensure_duel_arknights_resources() -> None:
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛决斗",
-    description=("泰拉风味多幕擂台，与群友或牛牛对决"),
-    usage="""
-1. 发起对决
-    · 发送「牛牛决斗」并 @ 一名群友或牛牛；可选在末尾写「N幕」或「N回合」指定本局幕数（不写则用默认）
-    · 双牛：「牛牛决斗」@ 两只牛牛，同样可加幕数；或发送「八角笼牛」随机抽两只在线牛牛（可加 N幕/N回合）
-2. 对战过程
-    · 双方各有生机（HP）与护幕（DP），战意/蚀势层影响交锋
-    · 部分幕面限时抢答：按提示发送干员全名或关键词；答对、答错、超时或乱入认错都会改血
-    · 干员乱入时需辨认并喊出名字；认对可助战，认错会挨对方技能
-    · 同一群同时只能进行一场决斗
-3. 胜负
-    · 全部幕数演完或一方血量归零即分胜负；
-4. 维护
-    · 「决斗事件重载」热更新剧情包与干员表
-。
-    """.strip(),
+    description="泰拉风味多幕决斗，支持群友、双牛与八角笼。",
+    usage=join_usage(
+        usage_line("牛牛决斗 @对手 [N幕|N回合]", "与一名对手对决"),
+        usage_line("牛牛决斗 @牛A @牛B", "指定两只牛牛对决"),
+        usage_line("八角笼牛 [N幕|N回合]", "随机两只在线牛牛"),
+        usage_line("决斗事件重载", "热更新剧情包与干员表"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot/Pallas-Bot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
-        "menu_template": "default",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "command_permissions": [
             {"id": "duel.duel", "label": "牛牛决斗", "default": "everyone"},
             {"id": "duel.cage", "label": "八角笼牛", "default": "everyone"},
@@ -76,13 +72,22 @@ __plugin_meta__ = PluginMetadata(
                 "default": "group_moderator",
             },
         ],
+        "command_limits": [
+            {"id": "duel.duel", "cd_sec": 5},
+            {"id": "duel.cage", "cd_sec": 5},
+        ],
+        "ingress_fanout": {
+            "scope": "always",
+            "regexes": [r"^八角笼(?:牛|斗)(?:\s*\d{1,2}\s*(?:幕|回合))?\s*$"],
+        },
         "menu_data": [
             {
                 "func": "牛牛决斗",
                 "trigger_method": "on_message",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛决斗 @一名对手 [N幕|N回合]",
                 "command_permission": "duel.duel",
-                "brief_des": "泰拉风味多幕擂台，与群友或牛牛对决",
+                "brief_des": "发起多幕决斗",
                 "detail_des": (
                     "挑战者 @ 一名决斗者即可开战；可在指令中带「N幕」或「N回合」（如 牛牛决斗 @对手 7幕），"
                     "不写幕数则使用插件默认场数；按终局血量判胜负，一方可先被 KO。"
@@ -91,6 +96,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "双牛决斗",
                 "trigger_method": "on_message",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛决斗 @牛A @牛B [N幕|N回合]",
                 "command_permission": "duel.duel",
                 "brief_des": "指定两只牛牛同台对决",
@@ -101,6 +107,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "八角笼牛",
                 "trigger_method": "on_message",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "八角笼牛 [N幕|N回合]",
                 "command_permission": "duel.cage",
                 "brief_des": "随机抽两只在线牛牛对决",
@@ -112,7 +119,8 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "决斗抢答",
                 "trigger_method": "on_message",
-                "trigger_condition": "决斗进行中，按幕面提示发送干员名或关键词",
+                "trigger_scene": SCENE_GROUP,
+                "trigger_condition": "按幕面提示发干员名或关键词",
                 "brief_des": "限时抢答影响血量",
                 "detail_des": (
                     "幕面出现抢答时，在时限内发送正确干员全名或关键词可占优；"
@@ -123,6 +131,7 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "决斗事件重载",
                 "trigger_method": "on_message",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "决斗事件重载",
                 "command_permission": "duel.reload_events",
                 "brief_des": "热更新泰拉剧情包与干员名单",
@@ -150,7 +159,7 @@ async def is_duel_msg(bot: Bot, event: GroupMessageEvent, state: T_State) -> boo
 async def is_cage_msg(bot: Bot, event: GroupMessageEvent, state: T_State) -> bool:
     if event.group_id in BLOCK_LIST:
         return False
-    return is_cage_plaintext(event.get_plaintext())
+    return text_matches_plugin_fanout(event.get_plaintext(), "duel")
 
 
 duel_msg = on_message(
@@ -180,9 +189,23 @@ reload_duel_events_msg = on_message(
 
 
 async def send_duel_user_reply(matcher, group_id: int, message: str | Message) -> None:
-    if not try_claim_duel_user_reply(group_id):
+    if not await try_claim_duel_user_reply(group_id):
         return
     await matcher.send(message)
+
+
+async def send_duel_user_reply_owned(
+    matcher,
+    group_id: int,
+    message: str | Message,
+    *,
+    message_claimed: bool,
+) -> bool:
+    """已抢占同条群消息时直接发送，避免广播占位被协调耗时耗尽。"""
+    if message_claimed or await try_claim_duel_user_reply(group_id):
+        await matcher.send(message)
+        return True
+    return False
 
 
 def duel_fight_start_message(a: str, b: str) -> Message:
@@ -218,8 +241,10 @@ async def run_duel_match(
     command_gate: str | None = None,  # "ok"：入口已 begin_duel_command
     total_rounds: int | None = None,
 ) -> None:
-    """开团：群级占用与指令 CD（多 Bot 共用）；command_gate=ok 表示入口已抢占。"""
+    """开团：群级占用与指令 CD；command_gate=ok 表示入口已抢占。"""
     if not duel_handler_is_narrator(event, challenger_id, defender_id, dual_bot=dual_bot):
+        if command_gate == "ok":
+            end_duel_group(event.group_id)
         return
     if duel_narrator_bot_id(challenger_id, defender_id, dual_bot=dual_bot) is None:
         if not await try_claim_duel_message(event):
@@ -230,7 +255,7 @@ async def run_duel_match(
     bot_mode = dual_bot or (challenger_is_bot and defender_is_bot)
 
     if command_gate is None:
-        gate = await begin_duel_command(event.group_id)
+        gate = await begin_duel_command(event.group_id, command_id="duel.duel")
     else:
         gate = command_gate
     if gate == "busy":
@@ -291,23 +316,26 @@ async def duel_bot_pair(
         return
     if not duel_handler_is_narrator(event, a, b, dual_bot=True):
         return
-    gate = await begin_duel_command(event.group_id)
+    gate = await begin_duel_command(event.group_id, command_id="duel.duel")
     if gate == "busy":
         await send_duel_user_reply(matcher, event.group_id, "此群台上正有决斗未散，且待战歌落幕。")
         return
     if gate == "cooldown":
         return
-    await matcher.send(duel_fight_start_message(a, b))
-    await run_duel_match(
-        matcher,
-        bot,
-        event,
-        a,
-        b,
-        dual_bot=True,
-        command_gate="ok",
-        total_rounds=total_rounds,
-    )
+    try:
+        await matcher.send(duel_fight_start_message(a, b))
+        await run_duel_match(
+            matcher,
+            bot,
+            event,
+            a,
+            b,
+            dual_bot=True,
+            command_gate="ok",
+            total_rounds=total_rounds,
+        )
+    finally:
+        end_duel_group(event.group_id)
 
 
 async def duel(matcher, bot: Bot, event: GroupMessageEvent, state: T_State) -> None:
@@ -372,11 +400,10 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State) -> None:
         await send_duel_user_reply(cage_msg, event.group_id, round_err)
         return
 
-    pair = await pick_cage_duel_bot_pair(
-        event.group_id,
-        int(event.user_id),
-        int(event.time),
-    )
+    plain = (event.get_plaintext() or "").strip() or "八角笼牛"
+    from src.plugins.duel.shard_cage import cage_narrator_offline_for_reply, resolve_cage_duel_pair
+
+    pair = await resolve_cage_duel_pair(bot, event, plain=plain)
     if not pair:
         if not await try_claim_duel_message(event):
             return
@@ -387,32 +414,70 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State) -> None:
         )
         return
     a, b = str(pair[0]), str(pair[1])
-    if int(event.self_id) != min(int(a), int(b)):
-        return
-    if not await try_claim_duel_message(event):
-        return
-    gate = await begin_duel_command(event.group_id)
-    if gate == "busy":
-        await send_duel_user_reply(cage_msg, event.group_id, "此群台上正有决斗未散，且待战歌落幕。")
-        return
-    if gate == "cooldown":
+    narrator = min(int(a), int(b))
+    if cage_narrator_offline_for_reply(narrator):
+        if not await try_claim_duel_message(event):
+            return
         await send_duel_user_reply(
             cage_msg,
             event.group_id,
-            "博士，战鼓刚歇，稍待片刻再开八角笼。",
+            "主持牛暂未连线，八角笼改日再战。",
         )
         return
-    await cage_msg.send(duel_fight_start_message(a, b))
-    await run_duel_match(
-        cage_msg,
-        bot,
-        event,
-        a,
-        b,
-        dual_bot=True,
-        command_gate="ok",
-        total_rounds=total_rounds,
-    )
+    if int(event.self_id) != narrator:
+        return
+    if not await try_claim_duel_message(event):
+        logger.warning(
+            "duel.cage: message claim lost group={} narrator={} pair={}",
+            event.group_id,
+            narrator,
+            pair,
+        )
+        return
+    from src.platform.shard.coord.duel_group import try_reclaim_orphan_duel_group
+
+    await try_reclaim_orphan_duel_group(event.group_id)
+    gate = await begin_duel_command(event.group_id, command_id="duel.cage")
+    if gate == "busy":
+        if not await send_duel_user_reply_owned(
+            cage_msg,
+            event.group_id,
+            "此群台上正有决斗未散，且待战歌落幕。",
+            message_claimed=True,
+        ):
+            logger.warning(
+                "duel.cage: busy but user reply slot lost group={} narrator={}",
+                event.group_id,
+                narrator,
+            )
+        return
+    if gate == "cooldown":
+        if not await send_duel_user_reply_owned(
+            cage_msg,
+            event.group_id,
+            "博士，战鼓刚歇，稍待片刻再开八角笼。",
+            message_claimed=True,
+        ):
+            logger.warning(
+                "duel.cage: cooldown but user reply slot lost group={} narrator={}",
+                event.group_id,
+                narrator,
+            )
+        return
+    try:
+        await cage_msg.send(duel_fight_start_message(a, b))
+        await run_duel_match(
+            cage_msg,
+            bot,
+            event,
+            a,
+            b,
+            dual_bot=True,
+            command_gate="ok",
+            total_rounds=total_rounds,
+        )
+    finally:
+        end_duel_group(event.group_id)
 
 
 @duel_qte_msg.handle()

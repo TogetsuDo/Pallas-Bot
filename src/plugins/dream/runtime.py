@@ -9,10 +9,9 @@ from nonebot import get_bot, logger
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message, MessageSegment
 from nonebot.exception import ActionFailed
 
-from src.common.config import BotConfig
-from src.common.db import Message as MessageModel
-from src.common.db import make_message_repository
-from src.plugins.pallas_image.draw_archive import random_archived_png_bytes
+from src.foundation.config import BotConfig
+from src.foundation.db import Message as MessageModel
+from src.foundation.db import make_message_repository
 
 from .config import plugin_config as dream_plugin_config
 from .dedupe_keys import dream_image_dedupe_key, dream_text_dedupe_key
@@ -47,6 +46,28 @@ def get_drift_queue(key: tuple[int, int]) -> asyncio.Queue[DriftPayload]:
     return _drift_queues[key]
 
 
+def enqueue_drift_payload(key: tuple[int, int], payload: DriftPayload) -> None:
+    q = get_drift_queue(key)
+    if q.full():
+        try:
+            q.get_nowait()
+        except asyncio.QueueEmpty:
+            pass
+    try:
+        q.put_nowait(payload)
+    except asyncio.QueueFull:
+        pass
+
+
+async def deliver_drift_payload(bot_id: int, group_id: int, payload: DriftPayload) -> bool:
+    key = (bot_id, group_id)
+    async with _dream_lock:
+        if key not in _dream_active:
+            return False
+    enqueue_drift_payload(key, payload)
+    return True
+
+
 async def stop_dream_worker(bot_id: int, group_id: int) -> None:
     key = (bot_id, group_id)
     t = _dream_tasks.pop(key, None)
@@ -58,6 +79,13 @@ async def stop_dream_worker(bot_id: int, group_id: int) -> None:
             pass
     async with _dream_lock:
         _dream_active.discard(key)
+    from src.platform.ingress.dream_host_gate import DREAM_HOST_GATE_PLUGIN
+    from src.platform.multi_bot.dedup import needs_group_host_bot_gate, release_group_owned_gate_sync
+    from src.platform.shard.coord.dream_drift import schedule_unregister_dream_active
+
+    schedule_unregister_dream_active(bot_id, group_id)
+    if needs_group_host_bot_gate():
+        release_group_owned_gate_sync(DREAM_HOST_GATE_PLUGIN, group_id)
     q = _drift_queues.pop(key, None)
     if q is not None:
         while not q.empty():
@@ -68,23 +96,23 @@ async def stop_dream_worker(bot_id: int, group_id: int) -> None:
 
 
 async def broadcast_drift(bot_id: int, source_group_id: int, payload: DriftPayload) -> None:
-    """联机梦：仅向「当前也在做梦的其它群」投递；多群时每条随机抽一个接收群（两群时自然一对一互传）。"""
+    """联机梦：仅向「当前也在做梦的其它群」投递；多群时每条随机抽一个接收群。"""
+    from src.platform.shard.coord.dream_drift import schedule_publish_dream_drift
+    from src.plugins.dream.shard_fleet import collect_drift_peer_group_ids
+
     async with _dream_lock:
-        targets = [gid for bid, gid in _dream_active if bid == bot_id and gid != source_group_id]
+        local_targets = [gid for bid, gid in _dream_active if bid == bot_id and gid != source_group_id]
+    targets = await collect_drift_peer_group_ids(bot_id, source_group_id, local_targets)
     if not targets:
         return
-    gid = random.choice(targets)
+    gid = random.choice(sorted(targets))
     key = (bot_id, gid)
-    q = get_drift_queue(key)
-    if q.full():
-        try:
-            q.get_nowait()
-        except asyncio.QueueEmpty:
-            pass
-    try:
-        q.put_nowait(payload)
-    except asyncio.QueueFull:
-        pass
+    async with _dream_lock:
+        local_hit = key in _dream_active
+    if local_hit:
+        enqueue_drift_payload(key, payload)
+        return
+    schedule_publish_dream_drift(bot_id, source_group_id, gid, payload)
 
 
 async def send_dream_wake_text(bot_id: int, group_id: int) -> None:
@@ -107,6 +135,14 @@ async def launch_dream_worker(bot_id: int, group_id: int, duration_sec: int) -> 
     await stop_dream_worker(bot_id, group_id)
     cfg = BotConfig(bot_id, group_id)
     await cfg.start_dream(duration_sec)
+    until_ts = time.time() + max(1, int(duration_sec))
+    from src.platform.ingress.dream_host_gate import DREAM_HOST_GATE_PLUGIN
+    from src.platform.multi_bot.dedup import bind_group_owned_gate_sync, needs_group_host_bot_gate
+    from src.platform.shard.coord.dream_drift import schedule_register_dream_active
+
+    schedule_register_dream_active(bot_id, group_id, until_ts)
+    if needs_group_host_bot_gate():
+        bind_group_owned_gate_sync(DREAM_HOST_GATE_PLUGIN, group_id, bot_id, gate_sec=float(duration_sec))
     async with _dream_lock:
         _dream_active.add(key)
     q = get_drift_queue(key)
@@ -153,7 +189,7 @@ async def _dream_worker_content_tick_once(
     sent_images: int,
     image_cap: int,
 ) -> int:
-    """发一轮梦话（队列漂流 / 已学句 / 历史梦 / 归档图），与循环体内逻辑一致。返回更新后的 sent_images。"""
+    """发一轮梦话，与循环体内逻辑一致。返回更新后的 sent_images。"""
     item: DriftPayload | None = None
     if random.random() < dream_plugin_config.dream_drift_queue_tick_probability:
         try:
@@ -212,6 +248,8 @@ async def _dream_worker_content_tick_once(
             return sent_images
 
     if sent_images < image_cap and random.random() < dream_plugin_config.dream_archive_image_probability:
+        from src.plugins.draw.draw_archive import random_archived_png_bytes
+
         for _ in range(_ARCHIVE_RESAMPLE_ATTEMPTS):
             data = await random_archived_png_bytes()
             if not data:
@@ -297,6 +335,13 @@ async def _dream_worker_loop(
     finally:
         async with _dream_lock:
             _dream_active.discard(key)
+        from src.platform.ingress.dream_host_gate import DREAM_HOST_GATE_PLUGIN
+        from src.platform.multi_bot.dedup import needs_group_host_bot_gate, release_group_owned_gate_sync
+        from src.platform.shard.coord.dream_drift import schedule_unregister_dream_active
+
+        schedule_unregister_dream_active(bot_id, group_id)
+        if needs_group_host_bot_gate():
+            release_group_owned_gate_sync(DREAM_HOST_GATE_PLUGIN, group_id)
         _dream_tasks.pop(key, None)
 
 
@@ -381,12 +426,18 @@ async def _dream_tick_try_learned_echo(
     return False
 
 
-async def log_dream_chat_to_db(event: GroupMessageEvent) -> None:
-    plain = event.get_plaintext().strip()
+async def log_dream_chat_to_db(
+    event: GroupMessageEvent,
+    *,
+    plain: str | None = None,
+    nick: str | None = None,
+) -> None:
+    plain = (plain if plain is not None else event.get_plaintext()).strip()
     if not plain:
         plain = " "
     is_plain = "[CQ:" not in event.raw_message
-    nick = (event.sender.card or event.sender.nickname or str(event.user_id)).strip() or str(event.user_id)
+    nick_source = nick if nick is not None else event.sender.card or event.sender.nickname or str(event.user_id)
+    nick = nick_source.strip() or str(event.user_id)
     m = MessageModel.model_construct(
         group_id=event.group_id,
         user_id=event.user_id,

@@ -201,6 +201,4 @@ def test_snowluma_allocate_auto_host_ports_avoids_other_accounts(
         6100,
         6105,
     }
-    assert taken.isdisjoint(
-        {p2["onebot_http"], p2["onebot_ws"], p2["host_novnc"], p2["host_vnc"]}
-    )
+    assert taken.isdisjoint({p2["onebot_http"], p2["onebot_ws"], p2["host_novnc"], p2["host_vnc"]})

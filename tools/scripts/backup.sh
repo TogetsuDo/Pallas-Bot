@@ -10,6 +10,7 @@ usage() {
     echo "  -a           Backup full data"
     echo "  -i           Backup important data in mongodb"
     echo "  -s           Backup session.token and device.json"
+    echo "  -p           Backup PostgreSQL (pg_dump, see tools/scripts/backup_pg.py)"
     exit 1
 }
 
@@ -34,7 +35,7 @@ backup_important_data_in_mongodb() {
     mongodump -d PallasBot -c group_config -o $output/mongodb
     mongodump -d PallasBot -c user_config -o $output/mongodb
     mongodump -d PallasBot -c context -o $output/mongodb
-    # mongodump -d PallasBot -c image_cache -o $output/mongodb
+# mongodump -d PallasBot -c image_cache -o $output/mongodb
 
     rm $output_latest/important_data_in_mongodb
     ln -s $output/mongodb $output_latest/important_data_in_mongodb
@@ -63,7 +64,15 @@ backup_session() {
     echo "Backup session.token and device.json to $output/accounts"
 }
 
-while getopts "ahis" arg; do
+backup_postgresql() {
+    if command -v uv >/dev/null 2>&1; then
+        uv run python tools/scripts/backup_pg.py -o "$output"
+    else
+        python tools/scripts/backup_pg.py -o "$output"
+    fi
+}
+
+while getopts "ahisp" arg; do
     case $arg in
         a)
             backup_full_mongodb
@@ -74,6 +83,9 @@ while getopts "ahis" arg; do
             ;;
         s)
             backup_session
+            ;;
+        p)
+            backup_postgresql
             ;;
         h)
             usage
