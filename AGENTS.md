@@ -149,3 +149,30 @@ packages/<name>/
 2. 确保仓库根目录包含：
    - `.pre-commit-config.yaml`
    - `.pre-commit-ci.yaml`
+
+## Cursor Cloud specific instructions
+
+面向后续 Cloud Agent（依赖已由 update script 装好）的启动/运行要点。常规命令见上文与 `docs/develop/`，此处只记非显然项。
+
+### 前置服务（dev-v2 默认 PostgreSQL）
+
+- 新装默认后端为 **PostgreSQL**（见 `config/pallas.example.toml`）；`bot.py` → `boot()` 启动即连库并跑迁移（自动建 `llm_memory_entry`、`schema_migrations` 等表），连不上会启动失败。本环境用 apt 装的 PG16（非 Docker、非 systemd，需自行拉起，进程不随会话持久）：
+  - 启动：`sudo pg_ctlcluster 16 main start`。
+  - 角色/库：`pallas`/`pallas`（含 CREATEDB），库 `PallasBot`；`[bootstrap.postgres].auto_create_db=true` 时库不存在会自动建。
+- 也可用 MongoDB：`db_backend="mongodb"` + `[bootstrap.mongo]`，并 `sudo mongod --dbpath /var/lib/mongodb --bind_ip 127.0.0.1 --port 27017`。
+- 首次运行需 `config/pallas.toml`（已 gitignore）；从示例复制，最小填 `[bootstrap]`（`superusers`、`db_backend`）+ 对应 `[bootstrap.<backend>]`。
+
+### 运行应用
+
+- 启动：`uv run nb run`；就绪后控制台在 `http://127.0.0.1:8088/pallas/`。
+- 控制台**纯口令登录**：默认口令见启动日志 `默认口令: ...`，也落盘于 `data/pallas_console/`（`auth_state.json` / `default_login_password.txt`）。
+- 首次启动联网下载 WebUI dist 到 `data/pb_webui/public` 与语音资源；无网络时仅前端页面缺失，控制台 API 仍在。
+- Pallas-Bot-AI（LLM）、OneBot/NapCat 协议端、Redis 均**可选**；不连仅日志出现 `启动降级：llm=unreachable`，不影响启动与登录。
+- `nonebot-plugin-htmlrender` 引入了 playwright，但当前代码未实际调用；如需图片渲染再 `uv run playwright install chromium`（浏览器二进制未随环境安装）。
+
+### 检查与测试（对齐 CI）
+
+- Lint：`uv run ruff check pallas/ packages/` + `uv run ruff format --check pallas/ packages/`；插件 import：`uv run python tools/check_plugin_imports.py --scope packages`。
+- 核心插件矩阵用例分进程跑（同进程二次 load 易触发插件槽冲突），命令见 `.github/workflows/ci.yml` 的 `Run core plugin matrix tests` 步骤。
+- `tools/check_console_openapi_drift.py` 在当前 dev-v2 HEAD 报 drift（历史遗留，非环境所致）；涉及控制台 API 变更时需 `uv run python tools/export_pb_webui_openapi.py` 重生成。
+- 全量 `uv run pytest` 会在分片注册用例卡死：`pallas/core/platform/shard/registry/store.py` 的 `get_shard_registry()` 持 `_lock` 后又调 `save_shard_registry()` 重复获取非重入 `threading.Lock`（registry.json 不存在且缓存为空时死锁，历史遗留）。跑分片相关用例前需留意。
