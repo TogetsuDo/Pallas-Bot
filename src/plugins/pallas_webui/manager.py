@@ -13,9 +13,13 @@ from pathlib import Path
 import httpx
 from nonebot import logger
 
-from src.common.paths import plugin_data_dir
-from src.common.utils.format_exception import format_exception_for_log
-from src.common.utils.github_release import (
+from src.foundation.bot_version import (
+    get_bot_current_version,
+    pallas_bot_repo_root,
+)
+from src.foundation.paths import plugin_data_dir
+from src.shared.utils.format_exception import format_exception_for_log
+from src.shared.utils.github_release import (
     fetch_latest_release,
     fetch_latest_release_tag_via_github_web,
     github_auth_headers,
@@ -24,7 +28,7 @@ from src.common.utils.github_release import (
     github_release_asset_url_candidates,
     github_request_ssl_env,
 )
-from src.common.utils.stream_download import (
+from src.shared.utils.stream_download import (
     StreamDownloadProgress,
     format_download_byte_size,
     sync_stream_download_to_file,
@@ -285,70 +289,165 @@ def save_installed_webui_version(tag: str, asset_url: str = "") -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-_BOT_ROOT = Path(__file__).resolve().parents[3]
+_BOT_ROOT = pallas_bot_repo_root()
 
 
-def get_bot_current_version() -> dict:
+def inspect_bot_deployment() -> dict[str, str | bool | int]:
+    """控制台 Bot 更新页：识别 git 工作副本 / 发布 tag / 开发克隆 / 镜像部署。"""
     import subprocess
 
     root = _BOT_ROOT
-    tag = ""
-    commit = ""
+    info: dict[str, str | bool | int] = {
+        "git_available": False,
+        "dirty": False,
+        "dirty_file_count": 0,
+        "current_branch": "",
+        "deployment_mode": "docker",
+    }
     try:
-        tag = subprocess.check_output(
-            ["git", "describe", "--tags", "--exact-match"],
+        inside = (
+            subprocess.check_output(
+                ["git", "rev-parse", "--is-inside-work-tree"],
+                cwd=root,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            ).strip()
+            == "true"
+        )
+    except Exception:  # noqa: BLE001
+        inside = False
+    if not inside:
+        return info
+
+    info["git_available"] = True
+    try:
+        branch = subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             cwd=root,
             stderr=subprocess.DEVNULL,
             text=True,
         ).strip()
+        info["current_branch"] = branch
     except Exception:  # noqa: BLE001
         pass
+
     try:
-        commit = subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
+        porcelain = subprocess.check_output(
+            ["git", "status", "--porcelain"],
             cwd=root,
             stderr=subprocess.DEVNULL,
             text=True,
-        ).strip()
+        )
+        lines = [ln for ln in porcelain.splitlines() if ln.strip()]
+        info["dirty_file_count"] = len(lines)
+        info["dirty"] = bool(lines)
     except Exception:  # noqa: BLE001
         pass
-    return {"tag": tag, "commit": commit}
+
+    current_tag = str(get_bot_current_version().get("tag", "") or "").strip()
+    if current_tag:
+        info["deployment_mode"] = "release_tag_dirty" if info["dirty"] else "release_tag"
+    else:
+        info["deployment_mode"] = "dev_clone"
+    return info
 
 
-def get_pallas_bot_version_for_health() -> str:
-    """供 ``/health`` 的 ``pallas_bot``：优先环境变量（镜像注入）、git describe，其次已安装发行版号，最后 pyproject。"""
-    import importlib.metadata
+def bot_git_head_and_release_shas(latest_tag: str) -> tuple[str, str] | None:
+    """解析 HEAD 与 latest_tag 对应 commit；无 git 或解析失败返回 None。"""
+    tag = (latest_tag or "").strip()
+    if not tag:
+        return None
+    root = _BOT_ROOT
+    if not (root / ".git").exists():
+        return None
+
+    def _git_rev_parse(ref: str) -> str:
+        import subprocess
+
+        return subprocess.check_output(
+            ["git", "rev-parse", ref],
+            cwd=root,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=8.0,
+        ).strip()
+
+    try:
+        latest_sha = _git_rev_parse(f"{tag}^{{commit}}")
+        head_sha = _git_rev_parse("HEAD")
+    except Exception:  # noqa: BLE001
+        return None
+    return head_sha, latest_sha
+
+
+def bot_git_rev_list_count(revision_range: str) -> int:
     import subprocess
-    import tomllib
 
-    env = (os.environ.get("PALLAS_BOT_VERSION") or os.environ.get("PALLAS_VERSION") or "").strip()
-    if env:
-        return env
     root = _BOT_ROOT
     try:
-        desc = subprocess.check_output(
-            ["git", "describe", "--tags", "--always", "--dirty"],
+        out = subprocess.check_output(
+            ["git", "rev-list", "--count", revision_range],
             cwd=root,
             stderr=subprocess.DEVNULL,
             text=True,
-            timeout=3.0,
+            timeout=8.0,
         ).strip()
-        if desc:
-            return desc
     except Exception:  # noqa: BLE001
-        pass
-    try:
-        v = importlib.metadata.version("pallas-bot")
-        if v.strip():
-            return v.strip()
-    except importlib.metadata.PackageNotFoundError:
-        pass
-    try:
-        pyproject = root / "pyproject.toml"
-        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-        return str(data.get("project", {}).get("version", "")).strip() or "unknown"
-    except Exception:  # noqa: BLE001
-        return "unknown"
+        return 0
+    return int(out) if out.isdigit() else 0
+
+
+def bot_has_release_update(
+    *,
+    latest_tag: str,
+    current_tag: str = "",
+    current_commit: str = "",
+) -> bool:
+    """是否落后于 GitHub 最新 release。"""
+    from src.shared.utils.github_release import release_tags_equivalent
+
+    tag = (latest_tag or "").strip()
+    if not tag:
+        return False
+    if release_tags_equivalent(current_tag, tag):
+        return False
+    shas = bot_git_head_and_release_shas(tag)
+    if shas is None:
+        cur = (current_tag or "").strip()
+        return bool(cur) and not release_tags_equivalent(cur, tag)
+    head_sha, latest_sha = shas
+    if head_sha == latest_sha:
+        return False
+    return bot_git_rev_list_count(f"{head_sha}..{latest_sha}") > 0
+
+
+def bot_is_development_build(
+    *,
+    latest_tag: str,
+    current_tag: str = "",
+    current_commit: str = "",
+) -> bool:
+    """是否相对最新 release 为开发构建。"""
+    from src.shared.utils.github_release import release_tags_equivalent
+
+    tag = (latest_tag or "").strip()
+    if not tag:
+        return False
+    if bot_has_release_update(
+        latest_tag=tag,
+        current_tag=current_tag,
+        current_commit=current_commit,
+    ):
+        return False
+    if release_tags_equivalent(current_tag, tag):
+        return False
+    shas = bot_git_head_and_release_shas(tag)
+    if shas is None:
+        return not (current_tag or "").strip()
+    head_sha, latest_sha = shas
+    if head_sha == latest_sha:
+        return False
+    return bot_git_rev_list_count(f"{latest_sha}..{head_sha}") > 0
 
 
 class BotGitUpdateError(Exception):
@@ -367,7 +466,7 @@ async def apply_bot_repository_update(
 ) -> dict[str, str]:
     """在仓库根目录执行 git 更新：发布标签部署切到新 tag；开发克隆走 ff-only pull。
 
-    不在此函数内重启进程。标签切换要求工作区干净；分支拉取使用 --autostash。
+    不在此函数内重启进程。标签切换前自动 stash 本地改动并在切换后尝试恢复；分支拉取使用 --autostash。
     """
     root = _BOT_ROOT
     env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
@@ -445,21 +544,46 @@ async def apply_bot_repository_update(
 
     rc, porcelain, _ = await git("status", "--porcelain")
     dirty = bool(porcelain.strip())
+    stashed = False
+    stash_restore_note = ""
 
     if current_tag:
         if dirty:
-            raise BotGitUpdateError(
-                "工作区不干净（存在未提交修改或未跟踪冲突风险）。切换到新发布标签前请先处理本地改动，"
-                "或改用命令行按文档执行 git pull / stash。",
-                status_code=409,
+            rc_st, _, err_st = await git(
+                "stash",
+                "push",
+                "-u",
+                "-m",
+                f"pallas-webui: auto stash before bot update to {latest_tag}",
             )
+            if rc_st != 0:
+                raise BotGitUpdateError(
+                    f"自动暂存本地改动失败：{err_st or '(无 stderr)'}",
+                    status_code=409,
+                )
+            stashed = True
+            logger.info("Pallas-Bot 控制台: Bot 更新前已自动 stash 本地改动")
         rc_co, _, err_co = await git("checkout", "--detach", detach_ref)
         if rc_co != 0:
+            if stashed:
+                rc_sp, _, _ = await git("stash", "pop")
+                if rc_sp != 0:
+                    logger.warning("Pallas-Bot 控制台: checkout 失败后 stash pop 未成功，请手动 git stash pop")
             raise BotGitUpdateError(
                 f"切换到标签 {latest_tag} 失败：{err_co or '(无 stderr)'}",
                 status_code=400,
             )
         logger.info("Pallas-Bot 控制台: Bot 已 checkout 至标签 {}", latest_tag)
+        if stashed:
+            rc_sp, _, err_sp = await git("stash", "pop")
+            if rc_sp != 0:
+                stash_restore_note = (
+                    " 本地改动已暂存但未自动恢复（可能与新版本冲突），请稍后在仓库根目录执行 git stash pop 手动恢复。"
+                )
+                logger.warning("Pallas-Bot 控制台: Bot 更新后 stash pop 失败 err={}", err_sp)
+            else:
+                stash_restore_note = " 已自动恢复先前暂存的本地改动。"
+                logger.info("Pallas-Bot 控制台: Bot 更新后已恢复 stash 的本地改动")
     else:
         rc_u, upstream_out, _ = await git("rev-parse", "--abbrev-ref", "@{u}")
         if rc_u == 0 and upstream_out:
@@ -498,7 +622,7 @@ async def apply_bot_repository_update(
     display = new_tag or new_commit or latest_tag
     return {
         "tag": display,
-        "message": f"仓库已更新（{display}）。请重启 Bot 进程后加载新代码。",
+        "message": f"仓库已更新（{display}）。请重启 Bot 进程后加载新代码。{stash_restore_note}",
     }
 
 

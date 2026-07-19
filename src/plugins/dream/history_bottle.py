@@ -9,16 +9,17 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Literal
 
-from nonebot import get_bots, logger
+from nonebot import logger
 
-from src.common.db import get_db_backend
+from src.foundation.db import get_db_backend
+from src.plugins.dream.shard_fleet import dream_history_bot_ids
 
 from .config import plugin_config
 from .dedupe_keys import dream_image_dedupe_key, dream_text_dedupe_key
 from .http_utils import download_image_url
 from .payload import DriftPayload
 
-# 写入 message.keywords 的前缀（与复读侧 keywords 区分）
+# 写入 message.keywords 的前缀
 DREAM_KEY_PREFIX = "is_dream"
 DREAM_RECORD_SEP = "\x1e"
 
@@ -181,18 +182,6 @@ def first_http_image_url_from_cq_raw(raw: str) -> str | None:
     return None
 
 
-def dream_history_bot_ids(process_fallback_self_id: int) -> list[int]:
-    """同一进程内已连接账号的 self_id，用于共享历史梦库；无在线实例时退化为单号。"""
-    try:
-        ids = {int(b.self_id) for b in get_bots().values()}
-    except Exception:
-        ids = set()
-    if not ids:
-        return [process_fallback_self_id]
-    ids.add(process_fallback_self_id)
-    return sorted(ids)
-
-
 async def sample_historical_drift(
     *, bot_id: int, consumer_group_id: int, exclude_group_id: int | None = None
 ) -> DriftPayload | None:
@@ -207,7 +196,7 @@ async def sample_historical_drift(
 
 
 async def _mongo_pick(bot_ids: list[int], exclude_gid: int | None, exclude_send: set[str]) -> DriftPayload | None:
-    from src.common.db.modules import Message
+    from src.foundation.db.modules import Message
 
     coll = Message.get_pymongo_collection()
     now = int(time.time())
@@ -254,7 +243,7 @@ async def _mongo_pick(bot_ids: list[int], exclude_gid: int | None, exclude_send:
 async def _pg_pick(bot_ids: list[int], exclude_gid: int | None, exclude_send: set[str]) -> DriftPayload | None:
     from sqlalchemy import func, select
 
-    from src.common.db.repository_pg import MessageRow, get_session
+    from src.foundation.db.repository_pg import MessageRow, get_session
 
     now = int(time.time())
     cutoff = _history_cutoff_ts(now)

@@ -8,8 +8,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-from src.common.utils import stream_download
-from src.common.utils.stream_download import format_download_byte_size, sync_stream_download_to_file
+from src.shared.utils import stream_download
+from src.shared.utils.stream_download import format_download_byte_size, sync_stream_download_to_file
 
 
 class _FakeStreamCtx:

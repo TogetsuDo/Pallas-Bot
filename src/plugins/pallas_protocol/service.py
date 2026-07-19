@@ -14,7 +14,7 @@ from urllib.parse import quote
 
 import httpx
 
-from src.common.paths import resource_dir
+from src.foundation.paths import resource_dir
 
 from .backends import ProtocolRuntimeBackend, make_protocol_runtime_backend
 from .config import (
@@ -662,7 +662,8 @@ class PallasProtocolService:
                     return True
         if not force and str(account.get("ws_url", "")).strip():
             return False
-        base_url, name, tok = resolve_onebot_ws_settings(self._config)
+        qq = str(account.get("qq", "") or account.get("id", "")).strip()
+        base_url, name, tok = resolve_onebot_ws_settings(self._config, bot_id=qq)
         if not base_url:
             return False
         if docker_linux:
@@ -958,6 +959,12 @@ class PallasProtocolService:
 
     def _save_accounts(self) -> None:
         self._accounts_file.write_text(json.dumps(self._accounts, ensure_ascii=False, indent=2), encoding="utf-8")
+        try:
+            from src.platform.multi_bot.fleet import invalidate_fleet_bot_cache
+
+            invalidate_fleet_bot_cache()
+        except Exception:
+            pass
 
     def _docker_logs_follow_tail(self) -> str:
         n = int(getattr(self._config, "pallas_protocol_max_log_lines", 500) or 500)
@@ -1062,17 +1069,17 @@ class PallasProtocolService:
     def list_accounts(self) -> list[dict]:
         out: list[dict] = []
         for account_id, account in self._accounts.items():
-            out.append(self._compose_account_state(account_id, account))
+            out.append(self._compose_account_state(account_id, account, brief=True))
         return out
 
     def has_account(self, account_id: str) -> bool:
         return account_id in self._accounts
 
-    def get_account(self, account_id: str) -> dict | None:
+    def get_account(self, account_id: str, *, brief: bool = False) -> dict | None:
         account = self._accounts.get(account_id)
         if not account:
             return None
-        return self._compose_account_state(account_id, account)
+        return self._compose_account_state(account_id, account, brief=brief)
 
     def snowluma_webui_http_base(self, account: dict) -> str:
         h = str(getattr(self._config, "pallas_protocol_bind_host", "127.0.0.1") or "127.0.0.1").strip()
@@ -1157,11 +1164,16 @@ class PallasProtocolService:
         if account_id in self._accounts:
             raise ValueError("该 QQ 对应账号已存在")
 
-        url, name, tok = resolve_onebot_ws_settings(self._config)
+        from src.platform.shard import context as shard_ctx
+        from src.platform.shard.registry.store import assign_bot_to_shard
+
+        if shard_ctx.sharding_active():
+            assign_bot_to_shard(qq)
+        url, name, tok = resolve_onebot_ws_settings(self._config, bot_id=qq)
         if not url:
             raise ValueError(
                 "未配置 OneBot：请在 .env 设置 PALLAS_PROTOCOL_ONEBOT_HOST/PORT 与 PALLAS_PROTOCOL_ACCESS_TOKEN，"
-                "或与 NoneBot 共用的 HOST、PORT、ACCESS_TOKEN。"
+                "或开启分片后配置 PALLAS_SHARD_WORKER_BASE_PORT / PALLAS_SHARD_WS_HOST。"
             )
         disp = str(payload.get("display_name", "")).strip()
         proto_backend = str(payload.get(ACCOUNT_PROTOCOL_BACKEND_KEY, "") or "").strip() or DEFAULT_PROTOCOL_BACKEND
@@ -1210,7 +1222,7 @@ class PallasProtocolService:
         _bk = str(account.get(ACCOUNT_PROTOCOL_BACKEND_KEY) or "").strip().lower() or DEFAULT_PROTOCOL_BACKEND
         if "webui_token" not in account and _bk != SNOWLUMA_PROTOCOL_BACKEND:
             account["webui_token"] = secrets.token_hex(6)
-        # 与 update_account 一致：合并 env / Docker 主机重写（payload 可省略或显式留空 ws_url）
+        # 与 update_account 一致：合并 env / Docker 主机重写
         self._merge_onebot_ws_from_env(account)
         be.prepare_dirs(account)
         be.sync_all_configs(account, self._resolve_qq)
@@ -1319,7 +1331,7 @@ class PallasProtocolService:
             account[vk] = pv
         be = self._protocol_runtime_backend(account)
         be.apply_defaults(account, self._resolve_qq)
-        # 前端会始终带上 ws_url（可为空）；仍需合并：Docker 下重写主机、留空时用 env 补全。
+        # 前端会始终带上 ws_url；仍需合并：Docker 下重写主机、留空时用 env 补全。
         self._merge_onebot_ws_from_env(account)
         be.prepare_dirs(account)
         be.sync_all_configs(account, self._resolve_qq)
@@ -1416,7 +1428,7 @@ class PallasProtocolService:
                 raw_pb = account.get(ACCOUNT_PROTOCOL_BACKEND_KEY, "") or ""
                 bk = str(raw_pb).strip().lower() or DEFAULT_PROTOCOL_BACKEND
                 if bk != SNOWLUMA_PROTOCOL_BACKEND:
-                    # 设置 NapCat 工作目录（SnowLuma 使用 cwd，不依赖 NAPCAT_WORKDIR）
+                    # 设置 NapCat 工作目录
                     env_map["NAPCAT_WORKDIR"] = ad_abs
                     if self._launch.should_set_home_to_workdir():
                         env_map["HOME"] = ad_abs
@@ -1747,7 +1759,6 @@ class PallasProtocolService:
                     proc.kill()
                     await proc.wait()
             # 无论 proc 是否存在，都尝试杀掉 BootMain 脱离后追踪到的子进程
-            # （Windows BootMain 场景：launcher 已退出但 QQ/NapCat 子进程仍在运行）
             if runtime.tracked_child_root_pid:
                 await asyncio.to_thread(
                     self._launch.kill_process_tree,
@@ -1768,6 +1779,27 @@ class PallasProtocolService:
             return []
         runtime = self._runtime(account_id)
         return list(runtime.logs)[-lines:]
+
+    def account_qrcode_path(self, account_id: str) -> Path | None:
+        account = self._accounts.get(account_id)
+        if not account:
+            return None
+        cache_qr = Path(str(account.get("account_data_dir", "")).strip()) / "cache" / "qrcode.png"
+        return cache_qr if cache_qr.is_file() else None
+
+    def account_qrcode_meta(self, account_id: str) -> dict:
+        path = self.account_qrcode_path(account_id)
+        if path is None:
+            return {"exists": False}
+        try:
+            st = path.stat()
+        except OSError:
+            return {"exists": False}
+        return {
+            "exists": True,
+            "updated_at": int(st.st_mtime),
+            "size": int(st.st_size),
+        }
 
     def get_account_configs(self, account_id: str) -> dict:
         account = self._accounts.get(account_id)
@@ -1822,8 +1854,17 @@ class PallasProtocolService:
 
     def _is_bot_connected(self, account: dict) -> bool:
         qq = self._resolve_qq(account)
-        if not qq:
+        if not qq or not qq.isdigit():
             return False
+        try:
+            from src.platform.shard import context as shard_ctx
+
+            if shard_ctx.sharding_active() and shard_ctx.is_hub():
+                from src.platform.shard.presence import get_cluster_online_bot_ids
+
+                return int(qq) in get_cluster_online_bot_ids()
+        except Exception:
+            pass
         try:
             from nonebot import get_bots
 
@@ -1887,7 +1928,7 @@ class PallasProtocolService:
             else:
                 runtime.process = None
 
-    def _compose_account_state(self, account_id: str, account: dict) -> dict:
+    def _compose_account_state(self, account_id: str, account: dict, *, brief: bool = False) -> dict:
         be = self._protocol_runtime_backend(account)
         be.apply_defaults(account, self._resolve_qq)
         runtime = self._runtimes.get(account_id)
@@ -1916,17 +1957,21 @@ class PallasProtocolService:
             if str(wport).strip():
                 p = int(wport)
                 if bk == SNOWLUMA_PROTOCOL_BACKEND:
-                    # SnowLuma 仅使用根地址（无 /webui/、无 ?token=）；初始口令见日志或预置 webui.json
+                    # SnowLuma 仅使用根地址；初始口令见日志或预置 webui.json
                     native_webui = f"http://{bind}:{p}/"
                     snowluma_webui_default_user = "admin"
-                    tail_logs = self.tail_logs(account_id, 900)
-                    snowluma_runtime_webui_password = resolve_snowluma_webui_temp_password(account, tail_logs)
-                    native_webui_auth_note = ""
-                    if not snowluma_runtime_webui_password:
-                        native_webui_auth_note = (
-                            "未从日志解析到初始口令：请查看进程日志中的 "
-                            "「initial credentials: user=admin password=…」（旧版为「临时密码」）。"
-                        )
+                    if brief:
+                        snowluma_runtime_webui_password = None
+                        native_webui_auth_note = "列表页不解析日志口令；进入账号控制台查看。"
+                    else:
+                        tail_logs = self.tail_logs(account_id, 900)
+                        snowluma_runtime_webui_password = resolve_snowluma_webui_temp_password(account, tail_logs)
+                        native_webui_auth_note = ""
+                        if not snowluma_runtime_webui_password:
+                            native_webui_auth_note = (
+                                "未从日志解析到初始口令：请查看进程日志中的 "
+                                "「initial credentials: user=admin password=…」（旧版为「临时密码」）。"
+                            )
                 else:
                     base = f"http://{bind}:{p}/webui/"
                     native_webui = f"{base}?token={quote(wtok, safe='')}" if wtok else base

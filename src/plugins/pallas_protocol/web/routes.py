@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote, urlparse, urlunparse
 
 import httpx
 from fastapi import FastAPI, Form, Header, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -39,11 +40,9 @@ def register_pallas_protocol_routes(
 
     def _pallas_console_http_base() -> str:
         try:
-            from nonebot import get_plugin_config
+            from src.plugins.pallas_webui.config import get_pallas_webui_config
 
-            from src.plugins.pallas_webui.config import Config as PallasWebuiConfig
-
-            raw = (get_plugin_config(PallasWebuiConfig).pallas_webui_http_base or "").strip()
+            raw = (get_pallas_webui_config().pallas_webui_http_base or "").strip()
         except Exception:
             raw = ""
         if not raw:
@@ -52,7 +51,7 @@ def register_pallas_protocol_routes(
             raw = "/" + raw
         return raw.rstrip("/") or "/pallas"
 
-    from src.common.pallas_console_login import install_pallas_http_request_context_middleware
+    from src.console.webui.console_login import install_pallas_http_request_context_middleware
 
     install_pallas_http_request_context_middleware(app)
 
@@ -82,7 +81,7 @@ def register_pallas_protocol_routes(
         *,
         request: Request | None = None,
     ) -> None:
-        from src.common.pallas_console_login import (
+        from src.console.webui.console_login import (
             current_http_request,
             extract_session_from_request,
             is_console_auth_configured,
@@ -134,12 +133,12 @@ def register_pallas_protocol_routes(
         return target
 
     def _render_login_page(*, target: str, err: str, detail: str) -> HTMLResponse:
-        from src.common.pallas_login_page import render_pallas_login_page_html
+        from src.console.webui.login_page import render_pallas_login_page_html
 
         head = shell_font_stylesheet_link(base)
         footer_note = (detail or "").strip()
         html = render_pallas_login_page_html(
-            document_title="协议端登录 · Pallas-Bot",
+            document_title="登录 · 协议端",
             surface_label="协议端",
             tagline="与 Web 控制台（/pallas）共用登录口令。",
             form_action=f"{base}/login",
@@ -173,7 +172,7 @@ def register_pallas_protocol_routes(
     ) -> RedirectResponse | HTMLResponse:
         target = _resolve_login_target(next_path)
         detail = ""
-        from src.common.pallas_console_login import (
+        from src.console.webui.console_login import (
             SESSION_COOKIE_NAME,
             SESSION_TTL_SEC,
             mint_session_token,
@@ -202,7 +201,7 @@ def register_pallas_protocol_routes(
 
     @app.post(f"{base}/logout", response_model=None)
     async def napcat_logout(request: Request) -> RedirectResponse:  # noqa: ARG001
-        from src.common.pallas_console_login import SESSION_COOKIE_NAME
+        from src.console.webui.console_login import SESSION_COOKIE_NAME
 
         response = RedirectResponse(url=f"{base}/login", status_code=303)
         response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
@@ -223,7 +222,7 @@ def register_pallas_protocol_routes(
     ) -> JSONResponse:
         cookie_token = request.cookies.get(page_cookie_name)
         _auth(x_pallas_protocol_token, token, cookie_token, request=request)
-        from src.common.pallas_console_login import set_shared_console_login_token
+        from src.console.webui.console_login import set_shared_console_login_token
 
         try:
             set_shared_console_login_token(body.new_password)
@@ -430,11 +429,22 @@ def register_pallas_protocol_routes(
             return redirect
         if not manager.has_account(account_id):
             raise HTTPException(status_code=404, detail="账号不存在")
+        from src.console.webui.console_login import extract_session_from_request
+
+        page_session = (
+            extract_session_from_request(
+                cookies=dict(request.cookies),
+                header_token=x_pallas_protocol_token,
+                query_token=token,
+            )
+            or ""
+        )
         return HTMLResponse(
             render_account_workspace(
                 resolve_protocol_webui_base_path(plugin_config),
                 account_id,
                 _pallas_console_http_base(),
+                page_session=page_session,
             ),
         )
 
@@ -464,20 +474,27 @@ def register_pallas_protocol_routes(
     ):
         cookie_token = request.cookies.get(page_cookie_name)
         _auth(x_pallas_protocol_token, token, cookie_token, request=request)
-        from src.common.web import (
-            install_nonebot_log_sink,
-            tail_nonebot_log_entries_scoped,
-            tail_nonebot_log_lines_scoped,
-        )
+        from src.console.web import install_nonebot_log_sink
 
         install_nonebot_log_sink()
 
         sc = scope if scope in ("all", "webui", "protocol") else "all"
-        return {
-            "logs": tail_nonebot_log_lines_scoped(lines, sc),
-            "entries": tail_nonebot_log_entries_scoped(lines, sc),
-            "scope": sc,
-        }
+
+        def _load() -> dict[str, object]:
+            from src.console.web import (
+                tail_nonebot_log_entries_scoped,
+                tail_nonebot_log_lines_scoped,
+            )
+            from src.platform.bot_runtime.roles import is_sharded_hub
+
+            cap = min(lines, 220) if is_sharded_hub() else lines
+            return {
+                "logs": tail_nonebot_log_lines_scoped(cap, sc),
+                "entries": tail_nonebot_log_entries_scoped(cap, sc),
+                "scope": sc,
+            }
+
+        return await asyncio.to_thread(_load)
 
     @app.get(f"{base}/api/nonebot-logs/stream")
     async def nonebot_logs_stream(
@@ -488,7 +505,7 @@ def register_pallas_protocol_routes(
     ):
         cookie_token = request.cookies.get(page_cookie_name)
         _auth(x_pallas_protocol_token, token, cookie_token, request=request)
-        from src.common.web import install_nonebot_log_sink, iter_nonebot_log_sse
+        from src.console.web import install_nonebot_log_sink, iter_nonebot_log_sse
 
         install_nonebot_log_sink()
         sc = scope if scope in ("all", "webui", "protocol") else "all"
@@ -728,16 +745,18 @@ def register_pallas_protocol_routes(
         x_pallas_protocol_token: str | None = Header(default=None, alias="X-Pallas-Protocol-Token"),
     ):
         _auth(x_pallas_protocol_token, token)
-        return {"accounts": manager.list_accounts()}
+        accounts = await asyncio.to_thread(manager.list_accounts)
+        return {"accounts": accounts}
 
     @app.get(f"{base}/api/accounts/{{account_id}}")
     async def get_one_account(
         account_id: str,
+        brief: bool = Query(default=False, description="列表/轮询用：跳过 SnowLuma 日志口令解析等重操作"),
         token: str | None = Query(default=None),
         x_pallas_protocol_token: str | None = Header(default=None, alias="X-Pallas-Protocol-Token"),
     ):
         _auth(x_pallas_protocol_token, token)
-        acc = manager.get_account(account_id)
+        acc = await asyncio.to_thread(manager.get_account, account_id, brief=brief)
         if acc is None:
             raise HTTPException(status_code=404, detail="账号不存在")
         return {"account": acc}
@@ -853,8 +872,37 @@ def register_pallas_protocol_routes(
         _auth(x_pallas_protocol_token, token)
         if not manager.has_account(account_id):
             raise HTTPException(status_code=404, detail="账号不存在")
-        await manager.ensure_docker_logs_if_needed(account_id)
-        return {"logs": manager.tail_logs(account_id, lines=lines)}
+        try:
+            await asyncio.wait_for(manager.ensure_docker_logs_if_needed(account_id), timeout=2.5)
+        except TimeoutError:
+            pass
+        logs = await asyncio.to_thread(manager.tail_logs, account_id, lines)
+        return {"logs": logs}
+
+    @app.get(f"{base}/api/accounts/{{account_id}}/qrcode/meta")
+    async def account_qrcode_meta(
+        account_id: str,
+        token: str | None = Query(default=None),
+        x_pallas_protocol_token: str | None = Header(default=None, alias="X-Pallas-Protocol-Token"),
+    ):
+        _auth(x_pallas_protocol_token, token)
+        if not manager.has_account(account_id):
+            raise HTTPException(status_code=404, detail="账号不存在")
+        return await asyncio.to_thread(manager.account_qrcode_meta, account_id)
+
+    @app.get(f"{base}/api/accounts/{{account_id}}/qrcode")
+    async def account_qrcode_image(
+        account_id: str,
+        token: str | None = Query(default=None),
+        x_pallas_protocol_token: str | None = Header(default=None, alias="X-Pallas-Protocol-Token"),
+    ):
+        _auth(x_pallas_protocol_token, token)
+        if not manager.has_account(account_id):
+            raise HTTPException(status_code=404, detail="账号不存在")
+        path = await asyncio.to_thread(manager.account_qrcode_path, account_id)
+        if path is None:
+            raise HTTPException(status_code=404, detail="暂无二维码文件")
+        return FileResponse(path, media_type="image/png", filename=f"{account_id}-qrcode.png")
 
     @app.get(f"{base}/api/accounts/{{account_id}}/configs")
     async def get_account_configs(

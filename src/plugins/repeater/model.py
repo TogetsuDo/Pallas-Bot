@@ -8,18 +8,18 @@ from functools import cached_property
 from typing import cast
 
 import pypinyin
-from nonebot import get_plugin_config
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, Message
 
-from src.common.config import BotConfig
-from src.common.db import Message as MessageModel
-from src.common.db import make_context_repository
+from src.foundation.config import BotConfig
+from src.foundation.db import Message as MessageModel
+from src.foundation.db.context_repo_access import context_repo
 
 from .ban_manager import BanManager
-from .config import Config
+from .config import get_repeater_config
 from .learner import Learner
 from .message_store import MessageStore
 from .responder import Responder
+from .topic_utils import filtered_recent_topics
 
 try:
     import jieba_next.analyse as jieba_analyse
@@ -33,10 +33,7 @@ except ImportError:
     print("Using jieba for repeater")
 
 
-plugin_config = get_plugin_config(Config)
-
-
-context_repo = make_context_repository()
+plugin_config = get_repeater_config()
 
 
 @dataclass
@@ -78,7 +75,6 @@ class ChatData:
         if self.keywords_len == 0:
             return self.plain_text
         else:
-            # keywords_list.sort()
             return " ".join(self._keywords_list)  # type: ignore
 
     @cached_property
@@ -132,7 +128,7 @@ class Chat:
 
     _recent_topics = defaultdict(lambda: deque(maxlen=Chat.TOPICS_SIZE))
 
-    ###
+    # ##
 
     def __init__(self, data: ChatData | GroupMessageEvent):
         if isinstance(data, ChatData):
@@ -164,6 +160,32 @@ class Chat:
             Chat._reply_lock,
             Chat._recent_topics,
             Chat._topics_lock,
+        )
+
+    async def find_reply_bundle(self):
+        from .message_store import MessageStore
+        from .responder import Responder
+
+        return await Responder.find_reply_bundle(
+            self.chat_data,
+            self.config,
+            Chat._reply_dict,
+            MessageStore._message_dict,
+            Chat._recent_topics,
+        )
+
+    async def answer_from_bundle(self, bundle, *, plan: tuple[list[str], str] | None = None):
+        from .responder import Responder
+
+        return await Responder.answer_from_bundle(
+            bundle,
+            self.chat_data,
+            self.config,
+            Chat._reply_dict,
+            Chat._reply_lock,
+            Chat._recent_topics,
+            Chat._topics_lock,
+            plan=plan,
         )
 
     @staticmethod
@@ -226,3 +248,11 @@ class Chat:
     async def sync():
         await MessageStore._sync()
         await BanManager._sync_blacklist()
+
+    @staticmethod
+    async def merge_recent_topics(group_id: int, topics: list[str]) -> None:
+        filtered = filtered_recent_topics(topics)
+        if not filtered:
+            return
+        async with Chat._topics_lock:
+            Chat._recent_topics[group_id] += filtered

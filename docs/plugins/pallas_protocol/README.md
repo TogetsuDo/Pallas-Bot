@@ -1,51 +1,52 @@
-# pallas_protocol
+# pallas_protocol（协议端管理）
 
-在 Bot 内管理 NapCat / SnowLuma：账号、启动方式、WebUI、OneBot 配置与 Linux Docker。
+多账号 **NapCat / SnowLuma** 协议端：创建牛牛、启停实例、日志与 OneBot 反向 WebSocket 配置同步。与 Web 控制台共用浏览器登录（口令在 `data/pallas_console/`）。
 
-## 架构（代码）
+## 入口
 
-| 模块 | 职责 |
-|------|------|
-| `service.py` | 账号 CRUD、进程/Docker 启停、runtime profile、API 用例 |
-| `launch_manager.py` | 按平台与 runtime 填充 `command`/`args`/`program_dir` |
-| `linux_docker.py` / `snowluma_docker.py` | 各协议 `docker run` 参数；共用 `docker_cli.py`（inspect/rm/stop、镜像仓库解析） |
-| `docker_onebot_host.py` | 容器访问宿主机 Bot 时，反向 WebSocket 应写的主机名（`host.docker.internal` / `127.0.0.1` 等） |
-| `backends/` | 协议后端抽象（NapCat / SnowLuma） |
-| `config.py` | 环境变量与默认值（Pydantic） |
-| `web/` | 管理页与路由 |
+| 路径 | 说明 |
+| --- | --- |
+| `/protocol/console/` | 协议端管理页（维护者向，`help_audience: maintainer`） |
+| Web 控制台 | 侧边栏可跳转协议端；分片部署时协议端由 **hub** 托管 |
 
-全局 Docker/AppImage 偏好写入 `data/pallas_protocol/runtime_profile.json`；多数项可在管理页「协议资产」保存，不必改 `.env`。
+无群内用户口令。
 
-## `.env` 常用项
+## 典型流程
 
-| 变量 | 说明 |
-|------|------|
-| `PALLAS_PROTOCOL_ENABLED` | 是否加载插件 |
-| `PALLAS_PROTOCOL_WEBUI_ENABLED` | 是否挂载管理页 |
-| `PALLAS_PROTOCOL_GITHUB_TOKEN` | 拉 Release 时限额（可选） |
-| `PALLAS_PROTOCOL_ONEBOT_WS_URL` | 完整反向 WebSocket 地址（最高优先级；常见为明文 `ws`，见下节） |
-| `PALLAS_PROTOCOL_ONEBOT_WS_HOST` / `_PORT` / `_PATH` | 未设 URL 时按主机、端口、路径拼接反向 WebSocket 地址 |
-| `PALLAS_PROTOCOL_DOCKER_ONEBOT_HOST` | NapCat/SnowLuma 容器访问宿主机 Bot；**留空或 `auto`**：`bridge` 在 **Linux** 下为 `docker0` 网卡 IPv4（ioctl）或回退 `172.17.0.1`（不用系统默认路由网关，避免写成局域网路由器）；**非 Linux** 常为 `host.docker.internal`；`host` 网络为 `127.0.0.1`；仍会在 `docker run` 加 `host.docker.internal:host-gateway`（Docker 20.10+）作辅助解析 |
-| `PALLAS_PROTOCOL_AUTO_DOWNLOAD_RUNTIME` | 无本地运行时是否后台下载 |
-| `PALLAS_PROTOCOL_PROGRAM_DIR` | 手动指定 NapCat 发行根 |
-| `PALLAS_PROTOCOL_DOCKER_IMAGE` | NapCat 镜像（可被 profile 覆盖） |
-| `PALLAS_PROTOCOL_SNOWLUMA_DOCKER_IMAGE` | SnowLuma 镜像（可被 profile 覆盖） |
+1. 浏览器登录控制台或协议端页（首次启动口令见 Bot 日志）。
+2. **创建实例**：选择 NapCat 或 SnowLuma，填写 QQ 与反向 WS 地址（指向 Bot 的 `PORT` 或分片 **worker** 端口）。
+3. **启动 / 停止**：在实例列表操作；日志可在页内查看。
+4. **分片**：各牛牛账号的 `ws_url` 应指向所属 worker；`run_sharded_bot.sh start` 会同步注册表与协议端配置。
 
-鉴权与 Pallas-Bot 控制台共用会话（`data/pallas_console/auth_state.json`），不再从 `.env` 读控制台口令。
+Docker 下 NapCat 默认不在 Compose 网络内，反向 WS 主机勿盲目填 `pallasbot` 服务名；插件会按 `PALLAS_PROTOCOL_DOCKER_ONEBOT_HOST` 解析。详见 [Docker 部署](../DockerDeployment.md) 与 [FAQ](../FAQ.md#部署排障)。
 
-## Docker 与反向 WebSocket（OneBot）
+## 命令权限
 
-OneBot v11 **反向 WebSocket** 在本项目文档与默认占位里多为 **明文 `ws` 方案**（与常见 NoneBot / NapCat 教程一致）；若你已在 Bot 与客户端两侧启用 TLS，再改用 **`wss://`** 并自行保证证书与端口。
+无。
 
-Linux 上 NapCat 以 **bridge** 跑容器时，容器内往往解析不到 Compose 里的自定义主机名；写入 **`onebot*.json`** 时会把 **主机** 调整为解析后的 **`PALLAS_PROTOCOL_DOCKER_ONEBOT_HOST`**（默认可留空，Linux 一般为**宿主机网关 IP**），也可在 `.env` 里直接写完整 **`PALLAS_PROTOCOL_ONEBOT_WS_URL`** 覆盖。
+## 配置
 
-## 数据路径
+常用项（完整见 [`config.py`](../../../src/plugins/pallas_protocol/config.py)，WebUI **插件 → pallas_protocol** 或 `data/pallas_config/webui.json`）：
 
-- 实例：`data/pallas_protocol/instances/<id>/`
-- 全局 profile：`data/pallas_protocol/runtime_profile.json`
-- NapCat 托管解压：`data/pallas_protocol/runtime_extract/napcat/`
-- SnowLuma 托管解压：`data/pallas_protocol/runtime_extract/snowluma/`
+| 键 | 说明 |
+| --- | --- |
+| `pallas_protocol_enabled` | 是否加载协议端插件 |
+| `pallas_protocol_webui_enabled` | 是否挂载协议端 Web |
+| `pallas_protocol_instances_root` | 实例根目录，默认 `data/pallas_protocol/instances/` |
+| `pallas_protocol_program_dir` | NapCat 程序根目录（可配合自动下载） |
+| `pallas_protocol_docker_onebot_host` | Docker 下写入 OneBot 客户端的主机名/IP |
 
-完整字段见 [`src/plugins/pallas_protocol/config.py`](../../../src/plugins/pallas_protocol/config.py)。
+API 鉴权：`X-Pallas-Protocol-Token` 或 `?token=`（与控制台会话体系配合）。
 
-实现见 [`src/plugins/pallas_protocol/`](../../../src/plugins/pallas_protocol/)（上表所列模块均在目录内）。
+## 排障
+
+| 现象 | 处理 |
+| --- | --- |
+| 账号无法启动 | 查实例日志、NapCat/SnowLuma 版本与 `program_dir` |
+| Bot 不回复 | 确认反向 WS 已连上对应 hub/worker 端口 |
+| 与控制台登不上 | 共用 `data/pallas_console/` 口令；遗忘见 [FAQ · 部署排障](../FAQ.md#部署排障) |
+| Docker WS 连不上 | 见 [FAQ · 协议端反向 WebSocket](../FAQ.md#q-协议端管理里反向-websocket-要不要写成主机为-pallasbot与-compose-的-pallasbot-是什么关系) |
+
+## 实现
+
+[`src/plugins/pallas_protocol/`](../../../src/plugins/pallas_protocol/)

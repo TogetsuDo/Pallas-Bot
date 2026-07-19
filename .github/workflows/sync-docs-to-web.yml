@@ -1,0 +1,107 @@
+name: Sync docs to Pallas-Bot-Docs
+
+on:
+  push:
+    branches: [main, docs]
+    paths:
+      - "docs/**"
+      - "tools/scripts/sync_docs_to_web.py"
+  pull_request:
+    branches: [main, docs]
+    paths:
+      - "docs/**"
+      - "tools/scripts/sync_docs_to_web.py"
+  workflow_dispatch:
+
+concurrency:
+  group: sync-docs-to-web
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify-sync-script:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Run sync script (dry dest)
+        run: |
+          mkdir -p /tmp/pallas-bot-docs
+          python3 tools/scripts/sync_docs_to_web.py --dest /tmp/pallas-bot-docs
+
+  sync-to-docs-repo:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require DOCS_SYNC_TOKEN
+        run: |
+          if [ -z "${{ secrets.DOCS_SYNC_TOKEN }}" ]; then
+            echo "::error::未配置 DOCS_SYNC_TOKEN：请在 Pallas-Bot 仓库 Settings → Secrets → Actions 添加。"
+            exit 1
+          fi
+
+      - name: Checkout Pallas-Bot
+        uses: actions/checkout@v6
+
+      - name: Checkout Pallas-Bot-Docs
+        uses: actions/checkout@v6
+        with:
+          repository: PallasBot/Pallas-Bot-Docs
+          path: pallas-bot-docs
+          token: ${{ secrets.DOCS_SYNC_TOKEN }}
+
+      - name: Sync markdown
+        run: python3 tools/scripts/sync_docs_to_web.py --dest pallas-bot-docs
+
+      - name: Commit and push
+        working-directory: pallas-bot-docs
+        env:
+          DOCS_SYNC_TOKEN: ${{ secrets.DOCS_SYNC_TOKEN }}
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_REF: ${{ github.ref_name }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "No changes to push"
+            exit 0
+          fi
+          git add -A
+          git commit -m "docs: 同步主仓 Pallas-Bot@${SOURCE_SHA:0:7} (${SOURCE_REF})"
+          git remote set-url origin "https://x-access-token:${DOCS_SYNC_TOKEN}@github.com/PallasBot/Pallas-Bot-Docs.git"
+          git push origin HEAD:main
+
+  update-docs-branch:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Sync docs branch from main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main docs
+          git switch -C docs origin/docs
+          if git merge origin/main -X theirs -m "chore(docs): 同步 main 文档变更 (${GITHUB_SHA:0:7})"; then
+            echo "merged main into docs (-X theirs)"
+          else
+            echo "merge conflict; fallback to checkout docs paths from main"
+            git merge --abort
+            git checkout origin/main -- docs/ tools/scripts/sync_docs_to_web.py .github/workflows/sync-docs-to-web.yml
+            if git diff --quiet && git diff --cached --quiet; then
+              echo "docs branch already up to date"
+              exit 0
+            fi
+            git commit -m "chore(docs): 同步 main 文档变更 (${GITHUB_SHA:0:7})"
+          fi
+          git push origin HEAD:refs/heads/docs

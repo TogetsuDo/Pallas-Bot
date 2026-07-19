@@ -1,8 +1,9 @@
+import asyncio
 import operator
 import random
 import time
 
-from nonebot import get_plugin_config, logger, on_message, on_notice
+from nonebot import logger, on_message, on_notice
 from nonebot.adapters import Bot, Event
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, NoticeEvent
 from nonebot.exception import ActionFailed
@@ -11,7 +12,7 @@ from nonebot.typing import T_State
 from nonebot_plugin_alconna import message_reaction
 from nonebot_plugin_apscheduler import scheduler
 
-from .config import Config
+from .config import get_repeater_config
 
 EMOJI_IDS = (
     4,
@@ -188,8 +189,11 @@ def get_random_emoji() -> str:
 
 
 sent_reactions: dict[str, dict[int, float]] = {}
+_auto_reaction_tasks: set[asyncio.Task[None]] = set()
 last_cleanup_time = 0
-plugin_config = get_plugin_config(Config)
+plugin_config = get_repeater_config()
+AUTO_REACTION_TIMEOUT_S = 3.0
+AUTO_REACTION_MAX_PENDING = 64
 
 
 def should_trigger_reaction() -> bool:
@@ -238,6 +242,62 @@ async def send_reaction(bot: Bot, event: Event, emoji_code: str) -> None:
             exc_info=True,
         )
         raise
+
+
+async def run_auto_reaction_send(
+    bot: Bot,
+    event: Event,
+    emoji_code: str,
+    *,
+    timeout_s: float = AUTO_REACTION_TIMEOUT_S,
+) -> None:
+    bot_id = str(bot.self_id)
+    message_id = event.message_id  # type: ignore[attr-defined]
+    try:
+        await asyncio.wait_for(send_reaction(bot, event, emoji_code), timeout=timeout_s)
+    except TimeoutError:
+        logger.debug(
+            "[Reaction] Bot {} auto reaction timed out for message {} in group {}",
+            bot_id,
+            message_id,
+            getattr(event, "group_id", "unknown"),
+        )
+    except ActionFailed as e:
+        logger.debug(
+            "[Reaction] Bot {} failed to send emoji {} in group {}: {}",
+            bot_id,
+            emoji_code,
+            getattr(event, "group_id", "unknown"),
+            e,
+            exc_info=True,
+        )
+    except Exception as e:
+        logger.debug(
+            "[Reaction] Bot {} auto reaction failed for message {}: {}",
+            bot_id,
+            message_id,
+            e,
+            exc_info=True,
+        )
+
+
+def dispatch_auto_reaction_send(bot: Bot, event: Event, emoji_code: str) -> bool:
+    if len(_auto_reaction_tasks) >= AUTO_REACTION_MAX_PENDING:
+        logger.debug(
+            "[Reaction] Auto reaction skipped due to pending backlog bot={} pending={} limit={}",
+            bot.self_id,
+            len(_auto_reaction_tasks),
+            AUTO_REACTION_MAX_PENDING,
+        )
+        return False
+
+    task = asyncio.create_task(
+        run_auto_reaction_send(bot, event, emoji_code),
+        name=f"repeater_auto_reaction_{bot.self_id}_{event.message_id}",  # type: ignore[attr-defined]
+    )
+    _auto_reaction_tasks.add(task)
+    task.add_done_callback(_auto_reaction_tasks.discard)
+    return True
 
 
 async def reaction_enabled(bot: Bot, event: Event, state: T_State) -> bool:
@@ -349,16 +409,11 @@ async def handle_auto_reaction(bot: Bot, event: NoticeEvent, state: T_State):
         logger.debug(f"[Reaction] Bot {bot_id} already reacted to message {message_id} in group {event.group_id}")  # type: ignore[attr-defined]
         return
 
-    try:
-        logger.debug(
-            f"[Reaction] Bot {bot_id} sending auto reply emoji {reply_emoji} "
-            f"for message {message_id} in group {event.group_id}"  # type: ignore[attr-defined]
-        )
-
-        await send_reaction(bot, event, reply_emoji)
-        mark_reaction_sent(bot_id, message_id)
-    except ActionFailed as e:
-        logger.debug(f"[Reaction] Bot {bot_id} failed to send emoji {reply_emoji} in group {event.group_id}: {str(e)}")  # type: ignore[attr-defined]
+    logger.debug(
+        f"[Reaction] Bot {bot_id} dispatching auto reply emoji {reply_emoji} "
+        f"for message {message_id} in group {event.group_id}"  # type: ignore[attr-defined]
+    )
+    dispatch_auto_reaction_send(bot, event, reply_emoji)
 
 
 @scheduler.scheduled_job("cron", hour=1)

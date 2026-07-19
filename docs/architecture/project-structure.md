@@ -6,24 +6,25 @@
 
 - `src/`: 业务源码
 - `tests/`: 单元测试与集成测试
-- `docs/`: 面向开发与部署的文档
+- `docs/`: 面向开发与部署的文档（索引见 [docs/README.md](../README.md)）
+- `config/`: 主配置示例与 Compose 插值（`pallas.example.toml`、`compose.env.example`）
+- `scripts/`: 运维脚本（索引见 [scripts/README.md](../scripts/README.md)）
+- `local/plugins/`: 站点自有插件（`extra_plugin_dirs`，见 [站点定制](site-customization-and-updates.md)）
 - `tools/`: 维护脚本与辅助配置
 - `.github/workflows/`: CI/CD 流水线
-- `data/`: 运行期持久化数据（按插件分目录，如 `data/help/`）
+- `data/`: 运行期持久化数据（`pallas_config/webui.json`、各插件子目录等）
 - `resource/`: 项目静态资源（如语音、样式）
 
 ## 源码分层约定
 
-- `src/common/`: 跨插件复用能力（如配置、数据库、工具函数）
-- `src/common/logging/`: 与 NoneBot / loguru 衔接的日志集成（如 stdlib 转发通道标签）
-- `src/common/web/`: HTTP 控制台相关的公共能力（如日志环、本机基址）
 - `src/plugins/`: 业务插件，按功能域拆分
+- `src/foundation/`、`src/platform/`、`src/features/`、`src/console/`、`src/domain/`、`src/shared/`: 跨插件复用内核（见 [common-layers.md](common-layers.md)）
 
 约定原则：
 
 1. 插件业务代码优先放在 `src/plugins/<plugin_name>/`
-2. 可复用能力优先沉淀到 `src/common/`，避免在插件间复制
-3. 新增目录时优先保持语义单一，避免“脚本+配置+文档”混放
+2. 可复用能力优先沉淀到 `src/` 各内核层，避免在插件间复制
+3. 新增目录时优先保持语义单一，避免「脚本+配置+文档」混放
 
 补充说明：
 
@@ -42,8 +43,8 @@
 
 - 测试目录尽量镜像源码目录，例如：
   - `src/plugins/repeater/...` -> `tests/plugins/repeater/...`
-  - `src/common/db/...` -> `tests/common/...`
-  - `src/common/web/...` -> `tests/common/web/...`
+  - `src/foundation/db/...` -> `tests/common/...`
+  - `src/console/web/...` -> `tests/common/web/...`
 
 这样可以降低定位测试与补测成本。
 
@@ -59,9 +60,7 @@
 - 每个插件使用独立目录：`docs/plugins/<plugin_name>/README.md`
 - 插件文档总索引：`docs/plugins/README.md`
 
-当前已迁移示例：
-
-- `bot_status` 插件文档：`docs/plugins/bot_status/README.md`
+当前已迁移的插件文档见 [plugins/README.md](../plugins/README.md)（21 个用户向插件 + 通用能力文档）。
 
 ## tools 目录约定
 

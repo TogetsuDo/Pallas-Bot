@@ -1,4 +1,4 @@
-"""将构建产物（如 Vite dist）挂到 data/pallas_webui/public；子路径为文件时直出，否则回退 SPA。"""
+"""将构建产物挂到 data/pallas_webui/public；子路径为文件时直出，否则回退 SPA。"""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from nonebot import logger
 from starlette import status
 
-from src.common.pallas_console_login import (
+from src.console.webui.console_login import (
     SESSION_COOKIE_NAME,
     SESSION_TTL_SEC,
     install_pallas_http_request_context_middleware,
@@ -59,7 +59,9 @@ def register_routes(
     if not base.startswith("/"):
         base = "/" + base
     base = base.rstrip("/")
-    dev_mode = bool(getattr(plugin_config, "pallas_webui_dev_mode", False))
+
+    def dev_mode_active() -> bool:
+        return bool(getattr(plugin_config, "pallas_webui_dev_mode", False))
 
     root_resolved = public_dir.resolve()
     legacy_page_cookie = "pallas_webui_page_token"
@@ -128,7 +130,7 @@ def register_routes(
     use_priest_avatar = shared_pallas_ui_dir.is_dir()
 
     def _render_login_page(*, target: str, reason: str | None, token_submitted: bool) -> HTMLResponse:
-        from src.common.pallas_login_page import render_pallas_login_page_html
+        from src.console.webui.login_page import render_pallas_login_page_html
 
         err = (reason or "").strip()
         if not token_submitted:
@@ -136,7 +138,7 @@ def register_routes(
         if token_submitted:
             err = "口令无效，请重试。"
         html = render_pallas_login_page_html(
-            document_title="控制台登录 · Pallas-Bot",
+            document_title="登录 · 控制台",
             surface_label="控制台",
             tagline="与协议端管理共用口令。",
             form_action=f"{base}/login",
@@ -198,7 +200,7 @@ def register_routes(
     @router.get(f"{base}/", include_in_schema=False, response_model=None)
     async def _index(request: Request, token: str | None = Query(default=None)) -> FileResponse | HTMLResponse:
         got = ""
-        if not dev_mode:
+        if not dev_mode_active():
             got = _request_token(request, token)
             if not got:
                 return _login_redirect(str(request.url.path))
@@ -247,7 +249,7 @@ def register_routes(
         target = _pick_static_target(path)
         if target is not None:
             if target.suffix.lower() == ".html":
-                if dev_mode:
+                if dev_mode_active():
                     return FileResponse(target)
                 got = _request_token(request, token)
                 if _is_token_valid(got):
@@ -258,7 +260,7 @@ def register_routes(
             return FileResponse(target)
         fallback = _pick_index_fallback()
         if fallback is not None:
-            if dev_mode:
+            if dev_mode_active():
                 return FileResponse(fallback)
             got = _request_token(request, token)
             if _is_token_valid(got):

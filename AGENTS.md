@@ -10,86 +10,45 @@
 - **主要代码目录**：`src/`
 - **质量门禁（CI）**：Ruff lint/format + 依赖漏洞扫描 + Docker 构建校验（见 `.github/workflows/ci.yml`）
 
-## 本地开发快速开始
+## 本地开发与质量门禁
 
-安装依赖（含开发依赖）：
+人类贡献者的完整步骤见 [docs/develop/environment.md](docs/develop/environment.md) 与 [docs/develop/workflow.md](docs/develop/workflow.md)。
 
-```bash
-uv sync --dev
-```
-
-运行 Ruff（与 CI 保持一致）：
+Agent 提交前至少执行：
 
 ```bash
 uv run ruff check src/
 uv run ruff format --check src/
 ```
 
-可选执行与 CI 对齐的补充检查：
-
-```bash
-uv run pip-audit
-docker build -t test-build .
-```
-
-> 说明：`pip-audit` 在 CI 中采用“尽量报告不阻断”的策略（`|| true`），用于优先暴露风险而不是拦截合并；本地可先查看结果再决定修复节奏。
-
-如果需要自动修复与格式化：
-
-```bash
-uv run ruff check --fix src/
-uv run ruff format src/
-```
-
-运行测试（如仓库包含 `tests/`）：
-
-```bash
-uv run pytest
-```
-
-## pre-commit（提交前检查）
-
-本仓库提供 pre-commit hooks（见 `.pre-commit-config.yaml`），用于在提交前自动执行基础检查与 Ruff。
-
-当前策略采用**细颗粒度分层**：
-
-- **基础仓库检查覆盖全仓**：例如 YAML/TOML 语法、尾随空格、混合换行、文件结尾换行等。
-- **Ruff 仅检查 `src/`**：避免对文档、脚本、编辑器配置等非主代码目录施加 Python lint/format。
-- **`.env` 被全局排除**：避免本地敏感配置被 hooks 读取或改写。
-
-首次安装 hooks：
-
-```bash
-uv run pre-commit install
-```
-
-手动对全仓运行：
-
-```bash
-uv run pre-commit run -a
-```
-
-仅运行 `src/` 代码检查时，可直接执行：
-
-```bash
-uv run ruff check src/
-uv run ruff format --check src/
-```
-
-> 说明：如果你没有安装 `pre-commit`，可用 `uv add --dev pre-commit` 添加到开发依赖组后再运行。
+pre-commit 策略：**全仓**基础文件卫生检查；**Ruff 仅 `src/`**；`.env` 全局排除。详见 [workflow.md](docs/develop/workflow.md)。
 
 ## 文档与排障入口
 
+- **开发指南**：[docs/develop/README.md](docs/develop/README.md)（环境、流程、插件与 WebUI）。
 - **插件专项说明**：[docs/plugins/README.md](docs/plugins/README.md)（各子目录 `README.md` 与 `src/plugins/<name>/` 对应）。
 - **命令权限（cmd_perm）**：[docs/common/cmd_perm/README.md](docs/common/cmd_perm/README.md)（可配置等级、WebUI 覆盖、帮助菜单「何人可用」）。
+- **运行配置存储**：[docs/architecture/settings-storage.md](docs/architecture/settings-storage.md)（`pallas.toml` + `webui.json`，勿再向根目录 `.env` 写入新项）。
+- **`src/` 内核分层**：[docs/architecture/common-layers.md](docs/architecture/common-layers.md)（`foundation` / `platform` / `features` / `console` / `domain` / `shared`）。
 - **常见问题与部署排障**：[docs/FAQ.md](docs/FAQ.md)。
+
+## 运行配置（Agent 必读）
+
+- **主配置**：复制 [`config/pallas.example.toml`](config/pallas.example.toml) 为 **`config/pallas.toml`**（已 gitignore），填写 `[bootstrap]`（监听、数据库等）。
+- **WebUI 落盘**：插件与通用项写入 **`data/pallas_config/webui.json`**；只读快照 **`config/pallas.webui.export.toml`** 由保存自动生成。
+- **合并顺序**：`pallas.toml` → 遗留 `.env` / `.env.{ENVIRONMENT}` → `webui.json`（后者覆盖前者；**WebUI 落盘最高**）。
+- **读取 API**：`src/foundation/config/repo_settings.py` 的 `repo_env_raw_value()` / `merged_repo_settings_upper()`；启动前 `apply_repo_settings_to_environ()`。
+- **从旧 `.env` 迁移**：`uv run python tools/migrate_env_to_pallas.py`（一次性）；**`.env` 仍可保留**专放 nb/pip 插件项（见 `.env.example`），与 `webui.json` 避免同名键重复。
+- **分片可选 Redis**：在 `pallas.toml` 的 `[env]` 配置 `REDIS_URL`；`run_sharded_bot.sh` 自动探测。依赖：`uv sync --extra coord-redis` 或 `uv sync --extra deploy-shard`。
+- **可选部署模板**：`deploy/` 目录 + `uv sync --extra deploy-shard|message-scrub`；应用 `uv run python tools/apply_deploy_profile.py <profile>`。
+- **Docker Compose 数据库**：仍可用 [`config/compose.env.example`](config/compose.env.example)（仅编排插值，非 Bot 主配置）。
 
 ## Agent 工作约定
 
 ### 修改范围
 
 - **优先修改 `src/` 与 `tests/`**，避免无意义的重排/大范围格式变化。
-- **不提交密钥与私密配置**：例如 `.env`、token、私钥、访问凭据等。
+- **不提交密钥与私密配置**：例如 `config/pallas.toml`、`data/`、`webui.json`、token、私钥、访问凭据等。
 - **依赖变更需谨慎**：新增依赖优先走 `pyproject.toml`（`uv` 工作流），并确保 CI 仍能通过。
 - **最小必要改动**：只改完成任务所需的代码与文件；避免「顺手」重构无关模块、扩大 diff。
 - **全仓格式化/尾随空格/无关换行**：非任务所需不要做；若某次检查或格式化会**波及大量历史文件**，先向维护者说明影响范围再执行。
@@ -116,15 +75,22 @@ uv run ruff format --check src/
 - 与维护者/PR 描述可用 **中文**；**代码标识符、配置键名、路径、命令** 保持仓库既有习惯（多为英文键名，勿强行翻译）。
 - 修改 **配置、文档、CI/自动化** 时，可补充**简短注释**说明用途即可，不必在注释里长篇解释动机（动机放在 PR/对话里）。
 
+### WebUI 与控制台页面（窄屏）
+
+改动 **Pallas-Bot-WebUI** 或主仓内嵌控制台 HTML/CSS（如 `src/plugins/pallas_protocol/web/static/`）时：
+
+- **必须考虑窄屏（≤560px）**：面板标题栏、「添加到侧栏」、表格与批量操作在窄屏下仍须可用、布局不杂乱。
+- WebUI 约定见 **Pallas-Bot-WebUI** 仓库根目录 `AGENTS.md`（窄屏自检清单与参考页面）；全局断点与 override 在 WebUI `src/styles/app.css` 的 `@media (max-width: 560px)`。
+- 勿只验证桌面宽屏即认为 UI 已完成。
+
 ### 插件命令权限与帮助文案（cmd_perm）
 
 接入可配置命令权限的插件时：
 
 - **默认等级**写在 `extra["command_permissions"]` 与/或 `registry.DEFAULT_COMMAND_PERMISSIONS`；运行中可由 WebUI「命令权限」或环境变量覆盖。
-- **不要在面向用户的文案里写死权限角色**：`PluginMetadata.usage`、`menu_data.trigger_condition` 中避免「仅群管」「默认群主」「群管理员可…」等静态描述；实际「何人可用」由帮助图根据 `command_permission(s)` 与覆盖配置**动态生成**。
-- **`usage` 末行**（有独立命令权限时推荐，参考 `greeting` / `duel`）：
-  `所需权限以「牛牛帮助」本插件功能详情为准（可由 WebUI「命令权限」覆盖）。`
+- **不要在面向用户的文案里写死权限角色**：`PluginMetadata.usage`、`menu_data.trigger_condition` 中避免「仅群管」「默认群主」「群管理员可…」等静态描述；**勿在 `usage` 末尾重复写权限说明**——帮助图会根据 `command_permission(s)` 与 WebUI 覆盖**自动展示**「何人可用」。
 - **`menu_data`**：`trigger_condition` 只写触发方式；权限绑定 `command_permission` / `command_permissions`。
+- **文案格式**：`usage` 用 `usage_line` + `join_usage`（≥2 条自动编号）；`description` 一句句号结尾；`brief_des` / `detail_des` 与 `trigger_scene` 见 [cmd_perm · 写法约定](docs/common/cmd_perm/README.md)。
 - **与 cmd_perm 无关的额外条件**（例如须**处理消息的牛牛账号**为 QQ 群管）：写在 `detail_des` 或 `docs/plugins/<name>/README.md`，不要塞进 `usage` / `trigger_condition`。
 - 开发者向 `docs/plugins/*/README.md` 可用表格列出**代码默认等级**（如「群管/群主」），并注明以 WebUI / cmd_perm 为准。
 

@@ -2,146 +2,102 @@ import asyncio
 import random
 import re
 import time
-from collections import defaultdict, deque
 
 from nonebot import get_bot, get_driver, logger, on_message, on_notice
 from nonebot.adapters import Bot
 from nonebot.adapters.onebot.v11 import GroupMessageEvent, GroupRecallNoticeEvent, Message, MessageSegment, permission
 from nonebot.exception import ActionFailed
 from nonebot.plugin import PluginMetadata
-from nonebot.rule import Rule, keyword, to_me
+from nonebot.rule import Rule
 from nonebot.typing import T_State
 from nonebot_plugin_apscheduler import scheduler
 
-from src.common.cmd_perm import group_message_permission_for_command
-from src.common.config import BotConfig
-from src.common.message_scrub import is_message_scrub_blocked_async
-from src.common.message_scrub.log_preview import scrub_intercept_log_preview
-from src.common.utils.array2cqcode import try_convert_to_cqcode
-from src.common.utils.media_cache import get_image, insert_image
+from src.features.cmd_perm import group_message_permission_for_command
+from src.features.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.features.cmd_perm.metadata_text import SCENE_AUTO, SCENE_GROUP, join_usage, usage_line
+from src.features.corpus.backfill_scheduler import bind_corpus_backfill_lifecycle
+from src.features.corpus.prefetch import bind_corpus_prefetch_lifecycle
+from src.features.message_scrub import is_message_scrub_blocked_async
+from src.features.message_scrub.log_preview import scrub_intercept_log_preview
+from src.foundation.config import BotConfig
+from src.platform.observability import SlowPathTimer, slow_path_threshold_ms
 from src.plugins.dream.ban_ack_state import DREAM_BAN_ACK_SENT_STATE_KEY
+from src.shared.reply_command_rule import event_has_reply_target, event_targets_self, extract_reply_id_from_raw_message
+from src.shared.utils.array2cqcode import try_convert_to_cqcode
+from src.shared.utils.media_cache import get_image, insert_image
 
 from .ban_state import REPEATER_BAN_ACK_SENT_STATE_KEY
 from .emoji_reaction import reaction_msg
+from .event_gate import build_repeater_event_context, message_id_dict, message_id_lock
+from .learn_queue import bind_repeater_learn_lifecycle, enqueue_repeater_learn
 from .model import Chat
+from .reply_gate import should_prepare_repeater_reply
+
+bind_repeater_learn_lifecycle()
+bind_corpus_prefetch_lifecycle()
+bind_corpus_backfill_lifecycle()
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛复读",
-    description="具备智能学习和复读功能的聊天插件，可以学习群内对话并进行智能回复",
-    usage="""
-这个插件会自动学习群内对话并在适当时候进行回复，这是一项被动技能：
-1. 牛牛会自动学习群内对话内容
-2. 当群内出现相似话题时，牛牛会自动回复相关内容
-3. 当群内有消息被重复发送多次时，牛牛会复读该消息
-4. 牛牛会主动参与群聊，根据上下文发表相关言论
-5. 管理员功能：
-    - 回复某条消息并发送"不可以"可以禁止牛牛回复该内容
-    - 发送"不可以发这个"可以禁止牛牛回复你最新回复的消息
-    - 管理员撤回牛牛的消息时，会自动将该消息加入禁用列表
-6. 表情回应功能：
-    - 智能表情回应群消息
-    - 回应包含表情的消息
-    - 跟随其他用户的表情回应
-    """.strip(),
+    description="学习群聊并智能回复、跟复读与表情回应。",
+    usage=join_usage(
+        usage_line("群内聊天", "被动学习后回复、跟复读、定时发言"),
+        usage_line("@牛牛 回复「不可以」 / 不可以发这个", "禁用指定内容"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
+        "ingress_route": {"lane": "storage", "passive": True},
         "command_permissions": [
             {"id": "repeater.ban", "label": "复读「不可以」", "default": "staff"},
             {"id": "repeater.ban_latest", "label": "复读「不可以发这个」", "default": "staff"},
         ],
         "menu_data": [
             {
-                "func": "牛牛复读",
+                "func": "智能回复",
                 "trigger_method": "on_message",
-                "trigger_condition": "群内对话",
-                "brief_des": "自动学习并回复相关内容",
-                "detail_des": "牛牛会自动学习群内对话，根据话题相似度、消息重复度等条件智能回复。牛牛会根据上下文理解话题，并在适当时候参与讨论。",  # noqa: E501
-            },
-            {
-                "func": "复读",
-                "trigger_method": "on_message",
-                "trigger_condition": "相同消息重复出现",
-                "brief_des": "当相同消息重复出现时自动复读",
-                "detail_des": "当群内相同消息重复出现达到3次时，牛牛会自动复读该消息。",
+                "trigger_scene": SCENE_AUTO,
+                "trigger_condition": "群内正常聊天",
+                "brief_des": "学习话题后参与讨论",
+                "detail_des": "根据相似度与上下文自动回复；相同句连发多次时会跟复读。",
             },
             {
                 "func": "主动发言",
                 "trigger_method": "scheduler",
-                "trigger_condition": "定时任务",
-                "brief_des": "牛牛会主动参与群聊发言",
-                "detail_des": "牛牛会根据学习到的内容，按一定概率主动在群内发言，参与群聊讨论。",
+                "trigger_scene": SCENE_AUTO,
+                "trigger_condition": "定时触发",
+                "brief_des": "偶尔主动插话",
+                "detail_des": "按概率用学到的话在群内发言。",
+            },
+            {
+                "func": "表情回应",
+                "trigger_method": "on_message",
+                "trigger_scene": SCENE_AUTO,
+                "trigger_condition": "群内消息或他人贴表情",
+                "brief_des": "随机或跟随贴表情",
+                "detail_des": "可对消息概率回应、对含表情消息回应，或跟随他人已贴的表情。",
             },
             {
                 "func": "不可以",
                 "trigger_method": "on_message",
-                "trigger_condition": ("@牛牛 回复并说「不可以」或说「不可以发这个」"),
+                "trigger_scene": SCENE_GROUP,
+                "trigger_condition": "@牛牛 回复「不可以」/ 不可以发这个",
                 "command_permissions": ["repeater.ban", "repeater.ban_latest"],
-                "brief_des": "管理员可以管理牛牛的回复内容",
-                "detail_des": "管理员可以通过回复并发送'不可以'、'不可以发这个'或撤回牛牛的消息来禁止牛牛回复某些内容。",  # noqa: E501
-            },
-            {
-                "func": "表情回应",
-                "trigger_method": "on_message/on_notice",
-                "trigger_condition": "消息/表情回应事件",
-                "brief_des": "智能表情回应功能",
-                "detail_des": "根据配置规则对消息进行表情回应，包括随机回应、表情消息回应和跟随回应等。",
-            },
-            {
-                "func": "随机表情回应",
-                "trigger_method": "on_message",
-                "trigger_condition": "群内消息",
-                "brief_des": "按概率自动回应消息",
-                "detail_des": "根据配置的概率值，自动对群内消息添加表情回应。默认概率为0.02%。",
-            },
-            {
-                "func": "表情消息回应",
-                "trigger_method": "on_message",
-                "trigger_condition": "包含表情的消息",
-                "brief_des": "对包含表情的消息进行回应",
-                "detail_des": "当检测到消息中包含表情时，自动添加表情回应。此功能默认关闭。",
-            },
-            {
-                "func": "跟随表情回应",
-                "trigger_method": "on_notice",
-                "trigger_condition": "他人添加表情",
-                "brief_des": "跟随其他人的表情回应",
-                "detail_des": "当检测到其他用户对消息添加表情时，牛牛也会自动添加表情回应。",
+                "brief_des": "禁止牛牛再学/再说某内容",
+                "detail_des": (
+                    "回复目标消息说「不可以」；或「不可以发这个」针对你上一条回复。撤回牛牛消息也会禁用该条。"
+                ),
             },
         ],
-        "menu_template": "default",
     },
 )
-message_id_lock = asyncio.Lock()
-message_id_dict = defaultdict(lambda: deque(maxlen=100))
-
-# 多 Bot 同群时，协议可能对同一条群消息向每个连接各上报一次
-# 不合并会在 MessageStore 里堆出多条「连续相同句」，误触复读。
-_GROUP_EVENT_DEDUP_MAX = 4000
-_group_event_dedup_lock = asyncio.Lock()
-_group_event_sigs: deque[tuple[int, int, str, int]] = deque()
-_group_event_sig_set: set[tuple[int, int, str, int]] = set()
-
-
-def _normalize_group_raw_message(raw_message: str) -> str:
-    # 与 ChatData / learn 侧一致，避免图片子类型差异导致去重失败
-    return re.sub(r"\.image,.+?\]", ".image]", raw_message)
-
-
-async def _should_skip_duplicate_group_event(group_id: int, user_id: int, norm_raw: str, time: int) -> bool:
-    sig = (group_id, user_id, norm_raw, time)
-    async with _group_event_dedup_lock:
-        if sig in _group_event_sig_set:
-            return True
-        while len(_group_event_sigs) >= _GROUP_EVENT_DEDUP_MAX:
-            old = _group_event_sigs.popleft()
-            _group_event_sig_set.discard(old)
-        _group_event_sigs.append(sig)
-        _group_event_sig_set.add(sig)
-        return False
-
 
 driver = get_driver()
 
@@ -217,73 +173,136 @@ any_msg = on_message(
 
 @any_msg.handle()
 async def _(bot: Bot, event: GroupMessageEvent):
-    # 多账号登陆，且在同一群中时；避免一条消息被处理多次
-    async with message_id_lock:
-        message_id = event.message_id
-        group_id = event.group_id
-        if group_id not in message_id_dict:
-            message_id_dict[group_id] = deque(maxlen=100)
-        if message_id in message_id_dict[group_id]:
-            return
-        message_id_dict[group_id].append(message_id)
-
-    norm_raw = _normalize_group_raw_message(event.raw_message)
-    if await _should_skip_duplicate_group_event(event.group_id, event.user_id, norm_raw, event.time):
+    ctx = await build_repeater_event_context(int(bot.self_id), event)
+    if ctx is None:
         return
 
-    if await is_message_scrub_blocked_async(plain_text=event.get_plaintext(), raw_message=norm_raw):
-        pv = scrub_intercept_log_preview(event.get_plaintext(), norm_raw)
+    if await is_message_scrub_blocked_async(plain_text=ctx.plain_body, raw_message=ctx.norm_raw):
+        pv = scrub_intercept_log_preview(ctx.plain_body, ctx.norm_raw)
         logger.info(
             f"bot [{event.self_id}] repeater capture skipped (message_scrub) in group [{event.group_id}] "
             f"user [{event.user_id}] msg_id [{event.message_id}] preview [{pv}]"
         )
         return
 
-    chat: Chat = Chat(event)
-
-    answers = None
     config = BotConfig(event.self_id, event.group_id)
-    if await config.is_cooldown("repeat"):
-        answers = await chat.answer()
+    from .fanout_reply import repeater_can_attempt_reply
+
+    chat = Chat(event)
+    can_reply = await repeater_can_attempt_reply(int(event.self_id), int(event.group_id))
+
+    bundle = None
+    fanout_gate = None
+    if can_reply and should_prepare_repeater_reply(ctx.plain_body, sharding_active=ctx.sharding_active):
+        from .fanout_reply import resolve_fanout_gate
+
+        fanout_gate = await resolve_fanout_gate(event)
+        if fanout_gate.lost:
+            bundle = None
+        else:
+            reply_timer = SlowPathTimer(
+                "repeater.find_reply_bundle",
+                threshold_ms=slow_path_threshold_ms("PALLAS_SLOW_REPEATER_BUNDLE_MS", 120.0),
+            )
+            try:
+                bundle = await chat.find_reply_bundle()
+            except Exception as exc:
+                from src.foundation.db.pool_budget import is_pg_pool_timeout_error
+
+                if is_pg_pool_timeout_error(exc):
+                    logger.debug(
+                        "repeater.find_reply_bundle db_timeout bot={} group={}",
+                        event.self_id,
+                        event.group_id,
+                    )
+                else:
+                    logger.debug(
+                        "repeater.find_reply_bundle failed bot={} group={}: {}",
+                        event.self_id,
+                        event.group_id,
+                        exc,
+                    )
+                bundle = None
+            reply_timer.mark("find_reply_bundle")
+            reply_timer.finish(
+                bot_id=int(event.self_id),
+                group_id=int(event.group_id),
+                user_id=int(event.user_id),
+                can_reply=can_reply,
+                found=bundle is not None,
+                keywords_len=chat.chat_data.keywords_len,
+                plain_text=chat.chat_data.is_plain_text,
+            )
 
     for seg in event.message:
         if seg.type == "image":
             await insert_image(seg)
 
-    await chat.learn()
+    await enqueue_repeater_learn(chat, event)
 
-    if not answers:
+    if bundle is None:
+        return
+
+    if fanout_gate is not None and fanout_gate.won:
+        from .fanout_reply import dispatch_repeater_fanout
+
+        await dispatch_repeater_fanout(event, fanout_gate.bot_ids, bundle)
+        return
+
+    answers = await chat.answer_from_bundle(bundle)
+    if answers is None:
         return
 
     await config.refresh_cooldown("repeat")
-    delay = random.randint(2, 5)
-    async for item in answers:
-        msg = await post_proc(item, event.self_id, event.group_id)
-        logger.info(f"bot [{event.self_id}] ready to send [{str(msg)[:30]}] to group [{event.group_id}]")
+    from .fanout_reply import dispatch_repeater_reply
 
-        await asyncio.sleep(delay)
-        await config.refresh_cooldown("repeat")
-        try:
-            await any_msg.send(msg)
-        except ActionFailed:
-            if not await BotConfig(event.self_id).security():
-                continue
-
-            # 自动删除失效消息。若 bot 处于风控期，请勿开启该功能
-            shutup = await is_shutup(event.self_id, event.group_id)
-            if not shutup:  # 说明这条消息失效了
-                logger.info(f"bot [{event.self_id}] ready to ban [{str(item)}] in group [{event.group_id}]")
-                await Chat.ban(event.group_id, event.self_id, str(item), "ActionFailed")
-                break
-        delay = random.randint(1, 3)
+    dispatch_repeater_reply(int(event.self_id), int(event.group_id), answers)
 
 
 async def is_reply(event: GroupMessageEvent) -> bool:
-    return bool(event.reply)
+    return event_has_reply_target(event)
+
+
+async def is_ban_reply_trigger(event: GroupMessageEvent) -> bool:
+    if "不可以" not in event.get_plaintext():
+        return False
+    if not await is_reply(event):
+        return False
+    return event_targets_self(event)
+
+
+def extract_ban_reply_raw_from_message(message: Message | str) -> str:
+    if isinstance(message, str):
+        return message
+
+    raw_message = ""
+    for item in message:
+        raw_reply = str(item)
+        raw_message += re.sub(r"(\[CQ\:.+)(?:,url=*)(\])", r"\1\2", raw_reply)
+    if not raw_message.strip():
+        raw_message = message.extract_plain_text()
+    return raw_message
+
+
+async def resolve_ban_reply_raw(bot: Bot, event: GroupMessageEvent) -> str:
+    if event.reply and getattr(event.reply, "message", None):
+        return extract_ban_reply_raw_from_message(event.reply.message)
+
+    reply_id = extract_reply_id_from_raw_message(event.raw_message)
+    if reply_id is None:
+        return ""
+
+    try:
+        msg = await bot.get_msg(message_id=reply_id)
+    except ActionFailed:
+        logger.warning(f"bot [{event.self_id}] failed to get replied msg [{reply_id}] in group [{event.group_id}]")
+        return ""
+
+    return extract_ban_reply_raw_from_message(Message(msg["message"]))
 
 
 ban_msg = on_message(
-    rule=to_me() & keyword("不可以") & Rule(is_reply),
+    rule=Rule(is_ban_reply_trigger),
     priority=5,
     block=True,
     permission=group_message_permission_for_command("repeater.ban"),
@@ -292,35 +311,33 @@ ban_msg = on_message(
 
 @ban_msg.handle()
 async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
-    if "[CQ:reply," not in try_convert_to_cqcode(event.raw_message):
-        return False
-
-    raw_message = ""
-    for item in event.reply.message:  # type: ignore
-        raw_reply = str(item)
-        # 去掉图片消息中的 url, subType 等字段
-        raw_message += re.sub(r"(\[CQ\:.+)(?:,url=*)(\])", r"\1\2", raw_reply)
+    raw_message = await resolve_ban_reply_raw(bot, event)
+    if not raw_message.strip():
+        logger.info(f"bot [{event.self_id}] ban skipped (empty reply target) in group [{event.group_id}]")
+        return
 
     logger.info(f"bot [{event.self_id}] ready to ban [{raw_message}] in group [{event.group_id}]")
 
-    try:
-        await bot.delete_msg(message_id=event.reply.message_id)  # type: ignore
-    except ActionFailed:
-        logger.warning(f"bot [{event.self_id}] failed to delete [{raw_message}] in group [{event.group_id}]")
+    if event.reply:
+        try:
+            await bot.delete_msg(message_id=event.reply.message_id)  # type: ignore
+        except ActionFailed:
+            logger.warning(f"bot [{event.self_id}] failed to delete [{raw_message}] in group [{event.group_id}]")
 
     banned = await Chat.ban(event.group_id, event.self_id, raw_message, str(event.user_id))
     if banned:
         if not state.get(DREAM_BAN_ACK_SENT_STATE_KEY):
             state[REPEATER_BAN_ACK_SENT_STATE_KEY] = True
             await ban_msg.finish("这对角可能会不小心撞倒些家具，我会尽量小心。")
-    elif not state.get(DREAM_BAN_ACK_SENT_STATE_KEY):
-        pass
+    else:
+        logger.info(
+            f"bot [{event.self_id}] ban missed (no reply cache match) in group [{event.group_id}] "
+            f"user [{event.user_id}]"
+        )
 
 
 async def is_admin_recall_self_msg(bot: Bot, event: GroupRecallNoticeEvent):
     # 好像不需要这句
-    # if event.notice_type != "group_recall":
-    #     return False
     self_id = event.self_id
     user_id = event.user_id
     group_id = event.group_id
@@ -371,8 +388,14 @@ async def message_is_ban(bot: Bot, event: GroupMessageEvent, state: T_State) -> 
     return event.get_plaintext().strip() == "不可以发这个"
 
 
+async def is_ban_latest_trigger(bot: Bot, event: GroupMessageEvent, state: T_State) -> bool:
+    if not await message_is_ban(bot, event, state):
+        return False
+    return event_targets_self(event)
+
+
 ban_msg_latest = on_message(
-    rule=to_me() & Rule(message_is_ban),
+    rule=Rule(is_ban_latest_trigger),
     priority=5,
     block=True,
     permission=group_message_permission_for_command("repeater.ban_latest"),
@@ -396,33 +419,60 @@ async def _(bot: Bot, event: GroupMessageEvent, state: T_State):
 
 @scheduler.scheduled_job("interval", seconds=60)
 async def speak_up():
+    from src.platform.ingress.message_load import should_pause_tasks
+
+    from .shard_opt import repeater_scheduler_runs_on_worker
+
+    if should_pause_tasks():
+        return
+    if not repeater_scheduler_runs_on_worker():
+        return
     ret = await Chat.speak()
     if not ret:
         return
 
     bot_id, group_id, messages, target_id = ret
 
+    try:
+        bot = get_bot(str(bot_id))
+    except (KeyError, ValueError):
+        logger.debug("speak_up skip bot [{}] not connected on this worker", bot_id)
+        return
+
     for msg in messages:
         logger.info(f"bot [{bot_id}] ready to speak [{msg}] to group [{group_id}]")
-        await get_bot(str(bot_id)).call_api(
-            "send_group_msg",
-            **{
-                "message": msg,
-                "group_id": group_id,
-            },
-        )
-        if target_id:
-            await get_bot(str(bot_id)).call_api(
-                "group_poke",
+        try:
+            await bot.call_api(
+                "send_group_msg",
                 **{
-                    "user_id": target_id,
+                    "message": msg,
                     "group_id": group_id,
                 },
             )
+            if target_id:
+                await bot.call_api(
+                    "group_poke",
+                    **{
+                        "user_id": target_id,
+                        "group_id": group_id,
+                    },
+                )
+        except ActionFailed as e:
+            logger.warning(
+                "bot [{}] speak_up send failed group [{}]: {}",
+                bot_id,
+                group_id,
+                e,
+            )
+            return
         await asyncio.sleep(random.randint(2, 5))
 
 
 @scheduler.scheduled_job("cron", hour=4)
 async def update_data():
+    from .shard_opt import repeater_maintenance_runs_on_worker
+
+    if not repeater_maintenance_runs_on_worker():
+        return
     await Chat.sync()
     await Chat.clearup_context()

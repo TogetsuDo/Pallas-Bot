@@ -12,47 +12,77 @@ from nonebot import (
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, MessageEvent, NoticeEvent
 from nonebot.plugin import PluginMetadata
 
-from src.common.cmd_perm import permission_for_command
+from src.features.cmd_perm import permission_for_command
+from src.features.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.features.cmd_perm.metadata_text import (
+    SCENE_BOTH,
+    SCENE_GROUP,
+    SCENE_PRIVATE,
+    join_usage,
+    usage_line,
+)
+from src.features.command_limits import is_command_cooldown_ready, refresh_command_cooldown
+from src.platform.shard import context as shard_ctx
 
 from .bot_monitor import (
     get_bot_status_info,
     handle_bot_connect,
     handle_bot_disconnect,
+    list_connected_bots_in_group,
     offline_bots,
 )
-from .config import plugin_config
 from .mail_notifier import handle_test_mail_command, notify_bot_offline
 
 __plugin_meta__ = PluginMetadata(
-    name="牛牛状态查询",
-    description="查询当前连接的Bot状态，检测Bot离线并发送通知",
-    usage="""
-牛牛在吗 - 查询当前连接的Bot列表
-牛牛报数 - 让当前群内在线牛牛随机报数
-测试邮件 - 测试邮件发送功能
-""",
+    name="牛牛状态",
+    description="查询牛牛在线状态、群内报数与离线邮件通知。",
+    usage=join_usage(
+        usage_line("牛牛在吗", "号主查看在线/离线牛牛"),
+        usage_line("牛牛报数 / 牛牛出列", "群内在线牛牛依次报到"),
+        usage_line("测试邮件", "超管测试 SMTP"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
+        "exact_plaintexts": ["牛牛在吗", "测试邮件", "牛牛报数", "牛牛出列"],
         "command_permissions": [
             {"id": "bot_status.status", "label": "牛牛在吗", "default": "bot_moderator"},
             {"id": "bot_status.test_mail", "label": "测试邮件", "default": "superuser"},
             {"id": "bot_status.count", "label": "牛牛报数 / 牛牛出列", "default": "everyone"},
         ],
+        "command_limits": [
+            {"id": "bot_status.status", "cd_sec": 10},
+            {"id": "bot_status.count", "cd_sec": 10},
+        ],
+        "ingress_fanout": {
+            "scope": "shard_only",
+            "plaintexts": ["牛牛报数", "牛牛出列"],
+            "normalize_trailing_punct": True,
+        },
         "menu_data": [
             {
-                "func": "查看牛牛在线状况",
-                "trigger_method": "命令",
+                "func": "牛牛在吗",
+                "trigger_method": "on_cmd",
+                "trigger_scene": SCENE_BOTH,
                 "trigger_condition": "牛牛在吗",
                 "command_permission": "bot_status.status",
-                "brief_des": "总计牛牛在线情况",
-                "detail_des": "当牛牛离线时发送离线通知邮件给号主与Superuser",
+                "brief_des": "查看在线情况",
+                "detail_des": (
+                    "按 bot_status_list_mode 列出在线/离线（connected=全集群曾连 WS；"
+                    "fleet=协议名册；session=本 worker）；离线邮件另有宽限期。"
+                ),
             },
             {
                 "func": "发送测试邮件",
-                "trigger_method": "命令",
+                "trigger_method": "on_cmd",
+                "trigger_scene": SCENE_PRIVATE,
                 "trigger_condition": "测试邮件",
                 "command_permission": "bot_status.test_mail",
                 "brief_des": "发送测试邮件",
@@ -60,14 +90,14 @@ __plugin_meta__ = PluginMetadata(
             },
             {
                 "func": "牛牛依次报数",
-                "trigger_method": "命令",
+                "trigger_method": "on_cmd",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛报数 / 牛牛出列",
                 "command_permission": "bot_status.count",
                 "brief_des": "在线牛牛依次报数",
                 "detail_des": "仅当前群内在线 Bot 参与，随机顺序在群内轮流报数",
             },
         ],
-        "menu_template": "default",
     },
 )
 
@@ -104,6 +134,9 @@ async def _(bot: Bot) -> None:
 @offline_notice.handle()
 async def handle_bot_offline_events(event: NoticeEvent):
     """协议端离线事件"""
+    if event.notice_type == "group_msg_emoji_like":
+        return
+
     bot_id = 0
     offline_message = ""
     source = ""
@@ -140,6 +173,12 @@ async def handle_bot_offline_events(event: NoticeEvent):
             "source": source,
         }
 
+        qq = int(bot_id)
+        from src.platform.shard.presence import close_local_bot_connection, mark_protocol_bot_offline
+
+        await mark_protocol_bot_offline(qq)
+        asyncio.create_task(close_local_bot_connection(qq), name=f"protocol_offline_close_ws:{qq}")
+
         # 发送离线通知
         await notify_bot_offline(bot_id, nickname, offline_message)
 
@@ -153,13 +192,10 @@ async def _(bot: Bot, event: MessageEvent) -> None:
 @bot_status_cmd.handle()
 async def handle_bot_status(bot: Bot, event: MessageEvent) -> None:
     """处理状态查询命令"""
-    from src.common.config import GroupConfig
-
     if isinstance(event, GroupMessageEvent):
-        config = GroupConfig(group_id=event.group_id, cooldown=10)
-        if not await config.is_cooldown(STATUS_COOLDOWN_KEY):
+        if not await is_command_cooldown_ready(event, "bot_status.status"):
             return
-        await config.refresh_cooldown(STATUS_COOLDOWN_KEY)
+        await refresh_command_cooldown(event, "bot_status.status")
 
     # 获取牛牛状态信息
     online_bots, offline_bots_filtered = await get_bot_status_info()
@@ -191,41 +227,27 @@ async def handle_bot_status(bot: Bot, event: MessageEvent) -> None:
 @bot_count_cmd.handle()
 async def handle_bot_count(bot: Bot, event: MessageEvent) -> None:
     """处理牛牛报数命令"""
-    from src.common.config import GroupConfig
-
     if not isinstance(event, GroupMessageEvent):
         await bot_count_cmd.finish("牛牛报数仅支持群聊中使用")
 
-    config = GroupConfig(group_id=event.group_id, cooldown=10)
-    if not await config.is_cooldown(COUNT_COOLDOWN_KEY):
+    if shard_ctx.sharding_active():
+        from .shard_count import handle_shard_bot_count
+
+        await handle_shard_bot_count(bot, event, finish=bot_count_cmd.finish)
         return
-    await config.refresh_cooldown(COUNT_COOLDOWN_KEY)
 
-    online_bots, _ = await get_bot_status_info()
-
-    current_bots = get_bots()
-    group_bot_ids: list[int] = []
-    for bot_id in online_bots:
-        bot_key = str(bot_id)
-        if bot_key not in current_bots:
-            continue
-        bot_instance = current_bots[bot_key]
-        try:
-            await bot_instance.get_group_member_info(
-                group_id=event.group_id,
-                user_id=int(bot_id),
-                no_cache=True,
-            )
-            group_bot_ids.append(bot_id)
-        except Exception:
-            continue
-
+    group_bot_ids = await list_connected_bots_in_group(event.group_id)
     if not group_bot_ids:
         return
+
+    if not await is_command_cooldown_ready(event, "bot_status.count"):
+        return
+    await refresh_command_cooldown(event, "bot_status.count")
 
     seed_text = f"{datetime.now().strftime('%Y-%m-%d')}:{event.group_id}"
     random.Random(seed_text).shuffle(group_bot_ids)
     failed_bots: list[int] = []
+    current_bots = get_bots()
 
     for index, bot_id in enumerate(group_bot_ids, start=1):
         bot_instance = current_bots[str(bot_id)]
@@ -237,6 +259,7 @@ async def handle_bot_count(bot: Bot, event: MessageEvent) -> None:
             failed_bots.append(bot_id)
 
     if failed_bots:
+        online_bots, _ = await get_bot_status_info()
         failed_text = "、".join(online_bots.get(bot_id, str(bot_id)) for bot_id in failed_bots)
         await bot_count_cmd.finish(f"报数完成，以下牛牛没能报数：{failed_text}")
 

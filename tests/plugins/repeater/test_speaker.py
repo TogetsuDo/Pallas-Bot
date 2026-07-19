@@ -6,7 +6,7 @@ import pytest
 
 
 def _build_message(group_id: int, user_id: int, raw_message: str, keywords: str, time_value: int):
-    from src.common.db import Message as MessageModel
+    from src.foundation.db import Message as MessageModel
 
     return MessageModel(
         group_id=group_id,
@@ -91,6 +91,55 @@ async def test_speak_filters_banned_keywords(beanie_fixture):
             assert result is not None
             _, _, speak_list, _ = result
             assert str(speak_list[0]) == "allowed-content"
+    finally:
+        MessageStore._message_dict.clear()
+        Speaker._recent_speak.clear()
+        reply_dict.clear()
+
+
+@pytest.mark.asyncio
+async def test_speak_skips_remote_bot_when_sharded(beanie_fixture):
+    from src.plugins.repeater.message_store import MessageStore
+    from src.plugins.repeater.speaker import Speaker
+
+    MessageStore._message_dict = defaultdict(list)
+    Speaker._recent_speak = defaultdict(lambda: deque(maxlen=Speaker.DUPLICATE_REPLY))
+
+    reply_dict = defaultdict(lambda: defaultdict(list))
+    reply_lock = asyncio.Lock()
+    recent_topics = defaultdict(lambda: deque(maxlen=16))
+    topics_lock = asyncio.Lock()
+
+    group_id = 30004
+    local_bot_id = 10001
+    remote_bot_id = 10002
+    msg_list = [_build_message(group_id, 20001 + i, f"warmup-{i}", f"warmup-{i}", i + 1) for i in range(10)]
+    MessageStore._message_dict[group_id] = msg_list
+    reply_dict[group_id][remote_bot_id] = [{"time": 1, "reply": "x", "reply_keywords": "x"}]
+    reply_dict[group_id][local_bot_id] = [{"time": 1, "reply": "y", "reply_keywords": "y"}]
+
+    chosen_msg = msg_list[-1]
+    try:
+        with (
+            patch("src.platform.shard.registry.config.is_sharding_active", return_value=True),
+            patch("src.plugins.repeater.shard_opt.local_connected_bot_ids", return_value=frozenset({local_bot_id})),
+            patch("src.plugins.repeater.speaker.time.time", return_value=10000),
+            patch(
+                "src.plugins.repeater.speaker.random.choice",
+                side_effect=[local_bot_id, [chosen_msg], chosen_msg],
+            ),
+            patch("src.plugins.repeater.speaker.random.random", return_value=1.0),
+            patch(
+                "src.plugins.repeater.speaker.BanManager.find_ban_keywords",
+                new_callable=AsyncMock,
+                return_value=set(),
+            ),
+            patch("src.plugins.repeater.speaker.BotConfig.taken_name", new_callable=AsyncMock, return_value=-1),
+            patch("src.plugins.repeater.reply_record_sync.publish_reply_record"),
+        ):
+            result = await Speaker.speak(reply_dict, reply_lock, recent_topics, topics_lock)
+            assert result is not None
+            assert result[0] == local_bot_id
     finally:
         MessageStore._message_dict.clear()
         Speaker._recent_speak.clear()

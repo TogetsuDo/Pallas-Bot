@@ -2,13 +2,27 @@ from __future__ import annotations
 
 import json
 
-from nonebot import get_plugin_config
-
-from src.common.paths import plugin_data_dir
-
-from .config import Config
+from src.foundation.paths import plugin_data_dir
 
 _VISIBILITY_FILE = "help_visibility.json"
+
+# 始终不出现在普通帮助总览与「开启/关闭全部」范围内
+BUILTIN_HELP_HIDDEN_PLUGINS = frozenset({
+    "pallas_webui",
+    "pallas_protocol",
+    "ingress_gate",
+    "pallas_console_metrics",
+    "community_stats",
+    "relogin_forward",
+    "maa_hub",
+})
+
+
+def resolve_console_stats_excluded_plugin_names() -> frozenset[str]:
+    """控制台 Matcher 插件次数统计排除名单。"""
+    names = set(BUILTIN_HELP_HIDDEN_PLUGINS)
+    names.add("ingress_gate")
+    return frozenset(str(n).strip().lower() for n in names if str(n).strip())
 
 
 def _visibility_path():
@@ -17,7 +31,9 @@ def _visibility_path():
 
 def resolve_help_ignored_plugins() -> list[str]:
     try:
-        cfg = get_plugin_config(Config)
+        from .config import get_help_config
+
+        cfg = get_help_config()
         vals = list(getattr(cfg, "ignored_plugins", []) or [])
     except Exception:
         vals = []
@@ -25,6 +41,7 @@ def resolve_help_ignored_plugins() -> list[str]:
 
 
 def load_help_hidden_plugins() -> list[str]:
+    """从 data 读取的额外隐藏名单"""
     path = _visibility_path()
     if not path.exists():
         return []
@@ -39,6 +56,11 @@ def load_help_hidden_plugins() -> list[str]:
         return []
     out = [str(x).strip() for x in vals if str(x).strip()]
     return sorted(set(out))
+
+
+def resolve_help_hidden_plugins() -> list[str]:
+    """帮助总览与批量开关使用的完整隐藏名单。"""
+    return sorted(BUILTIN_HELP_HIDDEN_PLUGINS | set(load_help_hidden_plugins()))
 
 
 def save_help_hidden_plugins(hidden_plugins: list[str]) -> list[str]:

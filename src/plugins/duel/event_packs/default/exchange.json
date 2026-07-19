@@ -279,5 +279,59 @@
       { "type": "deal_damage", "target": "defender", "use_damage": true },
       { "type": "add_field", "value": 1 }
     ]
+  },
+  {
+    "id": "ex_race_finisher",
+    "weight": 6,
+    "damage": [2, 3],
+    "describe": "刃尖已抵咽喉，胜负一念！",
+    "effects": [
+      { "type": "deal_damage", "target": "defender", "use_damage": true }
+    ],
+    "qte": {
+      "mode": "race",
+      "keys": ["突刺", "斩落", "贯通"],
+      "window_sec": 8,
+      "prompt": "破绽已现！",
+      "on_success_effects": [{ "type": "deal_damage", "target": "other", "value": 2 }],
+      "on_fail_effects": []
+    }
+  },
+  {
+    "id": "ex_race_counter_window",
+    "weight": 5,
+    "damage": [1, 2],
+    "describe": "<B>旋身让开刀锋，反击的半拍已经敞开。",
+    "effects": [
+      { "type": "deal_damage", "target": "challenger", "use_damage": true }
+    ],
+    "qte": {
+      "mode": "race",
+      "keys": ["追击", "补刀", "贯索"],
+      "window_sec": 9,
+      "prompt": "半拍反击！",
+      "on_success_effects": [{ "type": "deal_damage", "target": "other", "value": 2 }],
+      "on_fail_effects": []
+    }
+  },
+  {
+    "id": "ex_race_break_guard",
+    "weight": 5,
+    "damage": [2, 4],
+    "describe": "<A>连斩三记，<B> 盾缘崩出一道裂纹。",
+    "effects": [
+      { "type": "deal_damage", "target": "defender", "use_damage": true }
+    ],
+    "qte": {
+      "mode": "race",
+      "keys": ["破盾", "贯甲", "碎阵"],
+      "window_sec": 8,
+      "prompt": "盾裂未补！",
+      "on_success_effects": [
+        { "type": "deal_damage", "target": "other", "value": 3 },
+        { "type": "add_self_buff", "target": "actor", "value": 1 }
+      ],
+      "on_fail_effects": []
+    }
   }
 ]

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from src.common.pallas_login_page import render_pallas_login_page_html
+from src.console.webui.login_page import render_pallas_login_page_html
 
 
 def test_render_pallas_login_page_contains_branding_and_form() -> None:
@@ -45,7 +45,7 @@ def test_login_page_protocol_favicon_differs_from_console() -> None:
         favicon_variant="protocol",
         shell_brand_icon_base="/protocol/slug",
     )
-    assert "/protocol/slug/_pallas_ui/pallas-priest.png" in protocol
+    assert "/protocol/slug/_pallas_ui/favicon.png" in protocol
     assert 'rel="icon" type="image/png"' in protocol
     assert "login-logo--img" in protocol
     assert "login-logo-img" in protocol

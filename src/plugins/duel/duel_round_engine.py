@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import random
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -13,7 +12,9 @@ from nonebot.adapters import Bot  # noqa: TC002
 from nonebot.adapters.onebot.v11 import Message
 from nonebot.matcher import Matcher  # noqa: TC002
 
-from src.common.config import GroupConfig
+from src.features.command_limits import get_command_cooldown_sec
+from src.foundation.config import GroupConfig
+from src.platform.multi_bot.group import claim_group_message_event, try_acquire_group_broadcast_slot
 from src.plugins.duel.config import plugin_config
 from src.plugins.duel.duel_labels import bind_duel_labels, duel_label_for, reset_duel_labels, resolve_duel_labels
 from src.plugins.duel.duel_message import (
@@ -31,7 +32,6 @@ from src.plugins.duel.duel_message import (
 from src.plugins.duel.duel_terms import (
     CLASH_SILENT_ATTACKER,
     CLASH_SILENT_DEFENDER,
-    EXCHANGE_QTE_DEFAULT_PROMPT,
     PUBLIC_ROUND_EMPTY,
     ROUND_KIND_CLASH,
     ROUND_KIND_PUBLIC,
@@ -126,59 +126,53 @@ class LoadedEvent:
     damage2_max: int = 0
 
 
-_duel_busy_groups: set[int] = set()
-_duel_user_reply_until: dict[int, float] = {}
-_duel_message_claim: dict[tuple[int, int], int] = {}
-_duel_claim_lock = asyncio.Lock()
-
 DUEL_GROUP_COOLDOWN_KEY = "duel"
 DUEL_USER_REPLY_TTL_SEC = 3.0
 DuelCommandGate = Literal["ok", "busy", "cooldown"]
 
 
 async def try_claim_duel_message(event: GroupMessageEvent) -> bool:
-    """同一条群消息仅一只牛走完整指令处理（人 vs 人等无固定主持牛时）。"""
-    key = (event.group_id, int(event.message_id))
-    bot_id = int(event.self_id)
-    async with _duel_claim_lock:
-        owner = _duel_message_claim.get(key)
-        if owner is None:
-            _duel_message_claim[key] = bot_id
-            if len(_duel_message_claim) > 400:
-                drop = list(_duel_message_claim.keys())[:200]
-                for k in drop:
-                    _duel_message_claim.pop(k, None)
-            return True
-        return owner == bot_id
+    """同一条群消息仅一只牛走完整指令处理；含 message_time 以免多场八角笼共用抢占。"""
+    return await claim_group_message_event(
+        "duel",
+        event,
+        int(event.self_id),
+        include_message_time=True,
+    )
 
 
-def try_claim_duel_user_reply(group_id: int, *, ttl_sec: float | None = None) -> bool:
+async def try_claim_duel_user_reply(group_id: int, *, ttl_sec: float | None = None) -> bool:
     """多 Bot 同群：短时内仅一只牛发决斗入口类提示，避免复读。"""
-    now = time.time()
-    if now < _duel_user_reply_until.get(group_id, 0):
-        return False
-    _duel_user_reply_until[group_id] = now + (ttl_sec if ttl_sec is not None else DUEL_USER_REPLY_TTL_SEC)
-    return True
+    sec = ttl_sec if ttl_sec is not None else DUEL_USER_REPLY_TTL_SEC
+    return await try_acquire_group_broadcast_slot("duel", group_id, ttl_sec=sec)
 
 
 def try_begin_duel_group(group_id: int) -> bool:
     """同群同时进行中的决斗至多一场。"""
-    if group_id in _duel_busy_groups:
-        return False
-    _duel_busy_groups.add(group_id)
-    return True
+    from src.platform.shard.coord.duel_group import try_begin_duel_group as acquire
+
+    return acquire(group_id)
 
 
 def end_duel_group(group_id: int) -> None:
     """释放群决斗占用。"""
-    _duel_busy_groups.discard(group_id)
+    from src.platform.shard.coord.duel_group import end_duel_group as release
+
+    release(group_id)
 
 
-async def begin_duel_command(group_id: int) -> DuelCommandGate:
-    """群级互斥 + 群级指令 CD（多 Bot 共用）。"""
-    if not try_begin_duel_group(group_id):
+async def begin_duel_command(group_id: int, *, command_id: str = "duel.duel") -> DuelCommandGate:
+    """群级互斥 + 群级指令 CD。"""
+    from src.platform.shard.coord.duel_group import _LOCK
+    from src.plugins.duel.duel_session import get_duel_pair
+
+    gate = await _LOCK.begin(group_id, local_alive=lambda: get_duel_pair(group_id))
+    if gate == "busy":
         return "busy"
-    group_cfg = GroupConfig(group_id, cooldown=plugin_config.duel_bot_cooldown_sec)
+    cooldown_sec = get_command_cooldown_sec(command_id, plugin_config.duel_bot_cooldown_sec) or 0
+    if cooldown_sec <= 0:
+        return "ok"
+    group_cfg = GroupConfig(group_id, cooldown=cooldown_sec)
     if not await group_cfg.is_cooldown(DUEL_GROUP_COOLDOWN_KEY):
         end_duel_group(group_id)
         return "cooldown"
@@ -359,7 +353,7 @@ def _read_event_pools_from_disk() -> dict[PoolName, list[LoadedEvent]]:
 
 
 def get_event_pools() -> dict[PoolName, list[LoadedEvent]]:
-    """返回缓存的事件池（未加载则读盘）。"""
+    """返回缓存的事件池。"""
     global _pools_cache
     if _pools_cache is None:
         _pools_cache = _read_event_pools_from_disk()
@@ -367,7 +361,7 @@ def get_event_pools() -> dict[PoolName, list[LoadedEvent]]:
 
 
 def load_event_pools() -> dict[PoolName, list[LoadedEvent]]:
-    """同 get_event_pools（兼容旧名）。"""
+    """同 get_event_pools。"""
     return get_event_pools()
 
 
@@ -542,7 +536,7 @@ def snapshot_combat(stacks: DuelStacks) -> CombatSnapshot:
 
 
 def hp_dp_changed(before: CombatSnapshot, stacks: DuelStacks) -> bool:
-    """本段是否改动了双方 HP 或 DP（用于兵刃后是否省略交锋台词）。"""
+    """本段是否改动了双方 HP 或 DP。"""
     return (
         stacks.challenger_hp != before.challenger_hp
         or stacks.defender_hp != before.defender_hp
@@ -552,7 +546,7 @@ def hp_dp_changed(before: CombatSnapshot, stacks: DuelStacks) -> bool:
 
 
 def primary_hp_loss_side(before: CombatSnapshot, stacks: DuelStacks) -> Actor | None:
-    """本段 HP 损失更多的一方（兵刃拆招的受击方）；双方无损创则 None。"""
+    """本段 HP 损失更多的一方；双方无损创则 None。"""
     ch_loss = before.challenger_hp - stacks.challenger_hp
     def_loss = before.defender_hp - stacks.defender_hp
     if ch_loss <= 0 and def_loss <= 0:
@@ -565,7 +559,7 @@ def primary_hp_loss_side(before: CombatSnapshot, stacks: DuelStacks) -> Actor | 
 
 
 def qte_actor_from_target(spec: dict[str, Any], actor: Actor) -> Actor:
-    """将 qte.target 映射为效果里的 actor（challenger/defender）。"""
+    """将 qte.target 映射为效果里的 actor。"""
     tgt = str(spec.get("target", "actor"))
     if tgt == "challenger":
         return "challenger"
@@ -610,7 +604,7 @@ def format_player_stat_lines(
 
 
 def side_stack_delta_line(qq: str, buff: int, buff0: int, debuff: int, debuff0: int) -> Message:
-    """单方本段战意/蚀势层变动（生机/护幕由 format_combat_delta_block 另算）。"""
+    """单方本段战意/蚀势层变动。"""
     tokens: list[str] = []
     for cur, prev, label in ((buff, buff0, STACK_BUFF), (debuff, debuff0, STACK_DEBUFF)):
         t = _delta_token(cur, prev, label)
@@ -640,7 +634,7 @@ def format_combat_delta_block(
     before: CombatSnapshot,
     stacks: DuelStacks,
 ) -> Message:
-    """本段数值变动：HP/DP（当前值+括号变动）、神恩/损创。"""
+    """本段数值变动：HP/DP、神恩/损创。"""
     parts: list[Message] = []
     ch_changed = player_stat_changed(
         stacks.challenger_hp,
@@ -714,7 +708,7 @@ def append_combat_delta(
     before: CombatSnapshot,
     stacks: DuelStacks,
 ) -> Message:
-    """在剧目文案后追加本段 HP/DP 变动（紧凑幕由幕末统一展示）。"""
+    """在剧目文案后追加本段 HP/DP 变动。"""
     base = coerce_duel_message(narrative)
     if plugin_config.duel_compact_round:
         return base
@@ -797,7 +791,7 @@ def format_round_status_line(
     *,
     round_start: CombatSnapshot | None = None,
 ) -> Message:
-    """双方 HP/DP 简报（附在本幕 flush 末尾；round_start 用于括号标本幕变动）。"""
+    """双方 HP/DP 简报。"""
     hp0_a = round_start.challenger_hp if round_start else None
     dp0_a = round_start.challenger_dp if round_start else None
     hp0_b = round_start.defender_hp if round_start else None
@@ -887,7 +881,7 @@ async def run_exchange_bout(
     defender_is_bot: bool,
 ) -> bool:
     """兵刃交锋：双方共用对击；可附带 QTE。若本段改动了 HP/DP 则返回 True。"""
-    from src.plugins.duel.duel_qte import run_event_qte_if_any
+    from src.plugins.duel.duel_qte import build_exchange_auto_qte, run_event_qte_if_any
     from src.plugins.duel.duel_send import send_duel_line
 
     ev = _pick_weighted(exchange_pool, qte_mult=plugin_config.duel_qte_event_weight_mult)
@@ -929,14 +923,7 @@ async def run_exchange_bout(
                 weight=ev.weight,
                 describe=ev.describe,
                 effects=[],
-                qte={
-                    "target": qte_actor,
-                    "keys": ["格挡", "盾反", "架开", "闪避"],
-                    "window_sec": 10,
-                    "prompt": EXCHANGE_QTE_DEFAULT_PROMPT,
-                    "on_success_effects": [{"type": "add_dp", "target": qte_actor, "value": 1}],
-                    "on_fail_effects": [{"type": "deal_damage", "target": qte_actor, "value": 2}],
-                },
+                qte=build_exchange_auto_qte(qte_actor),
             )
         else:
             qte_actor = qte_actor_from_target(qte_ev.qte, qte_actor)
@@ -999,7 +986,7 @@ async def _play_clash_side(
     narr_key: str,
     skip_describe: bool = False,
 ) -> None:
-    """单攻或单守台词（双牛分号、乱入专场）。"""
+    """单攻或单守台词。"""
     from src.plugins.duel.duel_qte import run_event_qte_if_any
     from src.plugins.duel.duel_send import send_duel_line
 
@@ -1233,7 +1220,7 @@ async def play_clash_hero_events(
 
 
 async def pause_between_duel_rounds(round_index: int, pause_lo: float, pause_hi: float) -> None:
-    """幕间停顿；第 1 幕前不等待（开演说明后立刻进入第一幕）。"""
+    """幕间停顿；第 1 幕前不等待。"""
     if round_index <= 1:
         return
     if pause_lo <= 0 and pause_hi <= 0:

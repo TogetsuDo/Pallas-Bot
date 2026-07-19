@@ -2,7 +2,6 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-from src.common.utils.github_release import github_release_asset_url
 from src.plugins.pallas_protocol.runtime.installer import (
     _asset_name_from_url,
     _looks_like_http_url,
@@ -17,6 +16,7 @@ from src.plugins.pallas_protocol.runtime.installer import (
     find_onekey_post_install_program_dir,
     resolve_program_dir_under_extract,
 )
+from src.shared.utils.github_release import github_release_asset_url
 
 
 def test_github_release_asset_url_latest() -> None:
@@ -88,7 +88,7 @@ def test_resolve_onekey_skips_root_bootmain_when_installer_present(tmp_path: Pat
 
 
 def test_resolve_onekey_without_installer_falls_back_to_bootmain(tmp_path: Path) -> None:
-    """无安装器的一键布局（旧包或测试）仍可从浅层 bootmain 解析。"""
+    """无安装器的一键布局仍可从浅层 bootmain 解析。"""
     root = tmp_path / "e"
     boot = root / "bootmain"
     boot.mkdir(parents=True)

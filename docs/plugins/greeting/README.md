@@ -1,21 +1,36 @@
 # greeting（牛牛欢迎）
 
-- **入群**：若已设本群自定义欢迎则发送该内容；否则牛牛为群管理时用默认欢迎；牛牛自己入群时自我介绍。
-- **好友**：新好友通过后发送欢迎（可配置自定义）。
-- **私聊命令**：`设置好友欢迎` / `清除好友欢迎`（文本、图片或混合）；谁可用见帮助内触发条件或 WebUI「命令权限」。
-- **群内命令**：`设置群欢迎` / `清除群欢迎`（文本、图片或混合）；同上。
-- **被踢**：可选 **自动拉黑** 该群与操作人（`enable_kick_ban`）。
-- **长时间禁言**：若牛牛被禁言超过约 36 小时，自动退群。
+入群/好友欢迎、戳一戳回应；支持自定义欢迎图文。
+
+## 用户命令
+
+| 口令 / 触发 | 场景 | 说明 |
+| --- | --- | --- |
+| 新人入群 | 自动 | 默认或本群自定义欢迎 |
+| 新好友 | 自动 | 默认或号主自定义欢迎 |
+| 设置好友欢迎 / 清除好友欢迎 | 私聊 | 号主维护好友欢迎 |
+| 设置群欢迎 / 清除群欢迎 | 群内 | 群管维护入群欢迎 |
+
+## 命令权限
+
+| 命令 ID | 默认等级 |
+| --- | --- |
+| `greeting.set_friend_welcome` | bot_moderator |
+| `greeting.clear_friend_welcome` | bot_moderator |
+| `greeting.set_group_welcome` | group_moderator |
+| `greeting.clear_group_welcome` | group_moderator |
 
 ## 配置
 
-见 [`src/plugins/greeting/config.py`](../../../src/plugins/greeting/config.py)：`enable_kick_ban` 控制被踢是否拉黑。
+[`config.py`](../../../src/plugins/greeting/config.py)（如 `enable_kick_ban`）。素材与持久化目录 **`data/greeting/`**；语音资源 **`resource/voices/`**。
 
 ## 排障
 
-| 现象 | 说明 |
-|------|------|
-| 入群无欢迎 | 未设本群欢迎时牛牛需为群管理才会发默认欢迎；或插件被帮助系统关闭。 |
-| 好友欢迎未发送 | 是否已 `设置好友欢迎`；协议是否上报好友事件。 |
+| 现象 | 处理 |
+| --- | --- |
+| 自定义未生效 | 确认命令权限与群管身份 |
+| 图片失败 | 检查下载与存储路径 |
 
-实现见 [`src/plugins/greeting/__init__.py`](../../../src/plugins/greeting/__init__.py)。
+## 实现
+
+[`src/plugins/greeting/`](../../../src/plugins/greeting/)

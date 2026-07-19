@@ -1,27 +1,67 @@
 import hashlib
 import io
+import time
 from pathlib import Path
 
 import pillowmd
-from nonebot import get_plugin_config, logger
+from nonebot import logger
 from nonebot.adapters.onebot.v11 import MessageSegment
 from nonebot.matcher import Matcher
 from PIL import Image
 
-from src.common.paths import plugin_data_dir, project_path
+from src.foundation.paths import plugin_data_dir, project_path
 
-from .config import Config
+from .pillowmd_bold import apply_help_light_bold_patch
 from .styles import get_default_style
 
+apply_help_light_bold_patch()
 
-def _help_image_cache_suffix() -> str:
-    cfg = get_plugin_config(Config)
+_STYLE_SUFFIX_TTL_SEC = 60.0
+_style_suffix_cache: tuple[float, str] = (0.0, "")
+_HELP_CACHE_FILES_PER_DIR_MAX = 20
+
+
+def invalidate_help_image_cache_suffix() -> None:
+    global _style_suffix_cache
+    _style_suffix_cache = (0.0, "")
+
+
+def _help_style_files_revision() -> str:
+    """样式目录内 setting/elements 变更时使帮助图缓存失效。"""
+    from .config import get_help_config
+
+    cfg = get_help_config()
+    parts: list[str] = []
+    for style_cfg in cfg.default_styles or []:
+        style_dir = project_path(style_cfg.path)
+        for filename in (
+            "setting.yml",
+            "setting.json",
+            "elements.yml",
+            "elements.json",
+            "style.py",
+        ):
+            path = style_dir / filename
+            if not path.is_file():
+                continue
+            try:
+                parts.append(f"{filename}:{int(path.stat().st_mtime)}")
+            except OSError:
+                parts.append(f"{filename}:0")
+    return ";".join(parts) if parts else "none"
+
+
+def _compute_help_image_cache_suffix() -> str:
+    from .config import get_help_config
+
+    cfg = get_help_config()
     base = (
         f"spaint={int(cfg.side_paint_enabled)}"
         f"|fn={cfg.side_paint_filename}"
         f"|sc={cfg.side_paint_scale:.4f}"
         f"|ap={int(cfg.side_paint_auto_page)}"
-        f"|enc=v2"
+        f"|enc=v3"
+        f"|sty={_help_style_files_revision()}"
     )
     if not cfg.side_paint_enabled:
         return base
@@ -35,7 +75,18 @@ def _help_image_cache_suffix() -> str:
     return f"{base}|pm={paint_mtime}"
 
 
-def resize_image_if_needed(image, max_width=1200, max_height=2000):
+def _help_image_cache_suffix() -> str:
+    now = time.monotonic()
+    global _style_suffix_cache
+    cached_at, cached = _style_suffix_cache
+    if cached and now - cached_at < _STYLE_SUFFIX_TTL_SEC:
+        return cached
+    suffix = _compute_help_image_cache_suffix()
+    _style_suffix_cache = (now, suffix)
+    return suffix
+
+
+def resize_image_if_needed(image, max_width=1200, max_height=2800):
     """调整图像大小"""
     if image.width > max_width or image.height > max_height:
         ratio = min(max_width / image.width, max_height / image.height)
@@ -44,7 +95,7 @@ def resize_image_if_needed(image, max_width=1200, max_height=2000):
     return image
 
 
-# NapCat 等协议端对超大 base64 图片经 WS 发送不稳定；控制原始体积（约 2.5MiB，base64 后约 3.4MiB）
+# NapCat 等协议端对超大 base64 图片经 WS 发送不稳定；控制原始体积
 _HELP_IMAGE_MAX_SEND_BYTES = 2_500_000
 _HELP_IMAGE_MIN_SIDE = 360
 
@@ -137,6 +188,50 @@ def save_image_to_cache(image_data: bytes, markdown_content: str, style_name: st
     """将图片保存到本地"""
     cache_path = get_cache_path(markdown_content, style_name, group_id)
     cache_path.write_bytes(image_data)
+    _prune_help_cache_dir(cache_path.parent, keep=_HELP_CACHE_FILES_PER_DIR_MAX, current=cache_path)
+
+
+def _prune_help_cache_dir(cache_dir: Path, *, keep: int, current: Path) -> None:
+    if keep < 1:
+        keep = 1
+    try:
+        pngs = [p for p in cache_dir.glob("*.png") if p.is_file()]
+    except OSError:
+        return
+    if len(pngs) <= keep:
+        return
+
+    def _sort_key(path: Path) -> tuple[int, str]:
+        try:
+            mtime_ns = path.stat().st_mtime_ns
+        except OSError:
+            mtime_ns = 0
+        return (mtime_ns, path.name)
+
+    try:
+        current_resolved = current.resolve()
+    except OSError:
+        current_resolved = current
+    survivors = {current_resolved}
+    remaining = keep - 1
+    if remaining > 0:
+        for path in sorted(pngs, key=_sort_key, reverse=True):
+            try:
+                resolved = path.resolve()
+            except OSError:
+                resolved = path
+            if resolved == current_resolved:
+                continue
+            survivors.add(resolved)
+            remaining -= 1
+            if remaining == 0:
+                break
+    for path in pngs:
+        try:
+            if path.resolve() not in survivors:
+                path.unlink(missing_ok=True)
+        except OSError:
+            continue
 
 
 async def _render_markdown(
@@ -145,7 +240,9 @@ async def _render_markdown(
     """核心渲染函数"""
     default_style_name = get_default_style(None)
     style = available_styles.get(style_name, available_styles.get(default_style_name, pillowmd.MdStyle()))
-    help_cfg = get_plugin_config(Config)
+    from .config import get_help_config
+
+    help_cfg = get_help_config()
 
     paint_arg = None
     auto_page = False
@@ -209,6 +306,5 @@ async def render_markdown_to_image(
 async def send_markdown_as_image(
     markdown_content: str, style_name: str, available_styles: dict, matcher: Matcher, group_id: int | None = None
 ) -> None:
-    # 获取缓存的图片或渲染新图片
     image_data = await render_markdown_to_image(markdown_content, style_name, available_styles, group_id)
     await matcher.finish(MessageSegment.image(image_data))

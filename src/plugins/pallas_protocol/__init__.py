@@ -1,39 +1,41 @@
 # ruff: noqa: E501
 import logging
 
-from nonebot import get_app, get_driver, get_plugin_config, logger
+from nonebot import get_app, get_driver, logger
 from nonebot.plugin import PluginMetadata
 
-from src.common.pallas_console_login import prime_shared_console_login
-from src.common.paths import plugin_data_dir
-from src.common.web import public_base_url
+from src.console.web import public_base_url
+from src.console.webui.console_login import prime_shared_console_login
+from src.features.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.features.cmd_perm.metadata_text import join_usage, usage_line
+from src.foundation.paths import plugin_data_dir
 
-from .config import Config, resolve_protocol_webui_base_path
+from .config import Config, get_pallas_protocol_config, plugin_config, resolve_protocol_webui_base_path
 from .service import PallasProtocolService
 from .web import register_pallas_protocol_routes
 
 __plugin_meta__ = PluginMetadata(
-    name="Pallas-Bot 协议端",
-    description="提供协议端账号管理与启动控制页面。",
-    usage="""
-默认挂载：
-/protocol/console
-
-常用能力：
-新增账号、启动/停止/重启账号、查看日志、同步配置
-
-鉴权方式：
-X-Pallas-Protocol-Token 或 ?token=
-""".strip(),
+    name="协议端管理",
+    description="NapCat/SnowLuma 协议端账号管理与 Web 控制台。",
+    usage=join_usage(
+        usage_line("/protocol/console", "协议端管理页"),
+        usage_line("X-Pallas-Protocol-Token / ?token=", "API 鉴权"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot/Pallas-Bot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "0.3.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "menu_data": [
             {
                 "func": "协议端管理页",
                 "trigger_method": "http",
+                "help_audience": "maintainer",
                 "trigger_condition": "/protocol/console",
                 "brief_des": "管理协议账号与进程",
                 "detail_des": "可在页面执行创建账号、启动、停止、重启与日志查看。",
@@ -41,6 +43,7 @@ X-Pallas-Protocol-Token 或 ?token=
             {
                 "func": "协议端 API",
                 "trigger_method": "http",
+                "help_audience": "maintainer",
                 "trigger_condition": "/protocol/*",
                 "brief_des": "提供协议管理接口",
                 "detail_des": "提供账号、配置、协议端发行包下载与状态查询接口。",
@@ -49,10 +52,9 @@ X-Pallas-Protocol-Token 或 ?token=
     },
 )
 
-plugin_config = get_plugin_config(Config)
 app = get_app()
 driver = get_driver()
-manager = PallasProtocolService(plugin_data_dir("pallas_protocol"), plugin_config)
+manager = PallasProtocolService(plugin_data_dir("pallas_protocol"), get_pallas_protocol_config())
 
 register_pallas_protocol_routes(app, manager=manager, plugin_config=plugin_config)
 

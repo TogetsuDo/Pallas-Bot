@@ -1,20 +1,16 @@
 from __future__ import annotations
 
-import os
-from threading import Lock
-from typing import Any, Self
+from typing import Self
 
-from nonebot import get_plugin_config
 from pydantic import BaseModel, Field, model_validator
 
-from src.common.env_dotenv import merged_repo_dotenv_upper, repo_layered_dotenv_files_exist
-from src.common.webui.registry import PluginWebuiConfigHooks, register_plugin_webui_config
+from src.console.webui import install_hot_reload_config, plugin_config_proxy
 
 
 class Config(BaseModel, extra="ignore"):
-    """决斗插件配置（WebUI 插件配置页可读写，写入 .env 大写键名）。"""
+    """决斗插件配置。"""
 
-    # —— 胜负惩罚 ——
+    # 胜负惩罚
     duel_penalty_minutes: int = Field(
         default=10,
         ge=1,
@@ -49,10 +45,10 @@ class Config(BaseModel, extra="ignore"):
         default="有一点噪音产生了..",
         min_length=1,
         max_length=200,
-        description="人类局败者消息被撤回后，由处理决斗的牛代发的文案。",
+        description="人类局败者惩罚开始时由处理决斗的牛在群内代发一次的文案（不撤回消息）。",
     )
 
-    # —— 流程与节奏 ——
+    # 流程与节奏
     duel_bot_cooldown_sec: int = Field(
         default=5,
         ge=0,
@@ -88,7 +84,7 @@ class Config(BaseModel, extra="ignore"):
         description="玩家指令「牛牛决斗 … N幕」可指定的幕数上限。",
     )
 
-    # —— 事件与 QTE 权重 ——
+    # 事件与 QTE 权重
     duel_public_round_weight: float = Field(
         default=0.32,
         ge=0.0,
@@ -99,7 +95,7 @@ class Config(BaseModel, extra="ignore"):
         default=1.5,
         ge=0.1,
         le=10.0,
-        description="歌咏场内泰拉公共事件（非乱入）权重倍率，相对 JSON weight 再抬高。",
+        description="歌咏场内泰拉公共事件（非乱入）权重倍率",
     )
     duel_operator_intrusion_chance: float = Field(
         default=0.1,
@@ -111,13 +107,13 @@ class Config(BaseModel, extra="ignore"):
         default=0.06,
         ge=0.0,
         le=1.0,
-        description="乱入事件 public_ark_intrusion 中，随机抽中帕拉斯而非其他干员的概率。",
+        description="乱入事件中，随机抽中帕拉斯的概率。",
     )
     duel_qte_event_weight_mult: float = Field(
         default=1.6,
         ge=0.1,
         le=10.0,
-        description="交锋/兵刃等池中「关键词 QTE」事件的权重倍率（不含歌咏乱入）。",
+        description="交锋/兵刃等池中「关键词 QTE」事件的权重倍率（不含乱入）。",
     )
     duel_exchange_qte_chance: float = Field(
         default=0.32,
@@ -125,8 +121,20 @@ class Config(BaseModel, extra="ignore"):
         le=1.0,
         description="兵刃对击幕在无内置 QTE 时，额外触发关键词 QTE 的概率。",
     )
+    duel_exchange_qte_race_chance: float = Field(
+        default=0.38,
+        ge=0.0,
+        le=1.0,
+        description="兵刃随机 QTE 中，生成双方发生抢答事件的概率。",
+    )
+    duel_intrusion_race_chance: float = Field(
+        default=0.45,
+        ge=0.0,
+        le=1.0,
+        description="干员乱入 QTE 中，双方抢先咏名而非仅 target 指定单方应答的概率。",
+    )
 
-    # —— 泰拉干员资源（resource/arknights） ——
+    # 泰拉干员资源
     duel_auto_sync_operators: bool = Field(
         default=True,
         description="缺 operators_6star.json 时启动自动拉取干员表（与 scripts/fetch_arknights_duel_data.py 同源）。",
@@ -140,12 +148,12 @@ class Config(BaseModel, extra="ignore"):
         description="启动时批量补全缺失头像（约百张，耗时长；建议用脚本预拉或仅开按需下载）。",
     )
 
-    # —— 牛自动咏名/拆招 ——
+    # 牛自动咏名/拆招
     duel_bot_qte_intrusion_success_rate: float = Field(
         default=0.68,
         ge=0.0,
         le=1.0,
-        description="应答方为牛时，干员唤名（咏名）QTE 自动答对概率。",
+        description="应答方为牛时，干员唤名QTE 自动答对概率。",
     )
     duel_bot_qte_keyword_success_rate: float = Field(
         default=0.74,
@@ -157,13 +165,13 @@ class Config(BaseModel, extra="ignore"):
         default=0.72,
         ge=0.0,
         le=1.0,
-        description="自动 QTE 失败时，仍发出错误答案（嘴瓢）的概率。",
+        description="自动 QTE 时嘴瓢的概率。",
     )
     duel_bot_qte_fail_silent_chance: float = Field(
         default=0.18,
         ge=0.0,
         le=1.0,
-        description="自动 QTE 失败时，完全不发言的概率。",
+        description="自动 QTE 时完全不发言的概率。",
     )
 
     @model_validator(mode="after")
@@ -173,70 +181,9 @@ class Config(BaseModel, extra="ignore"):
             raise ValueError(msg)
         return self
 
-    @classmethod
-    def from_env(cls) -> Self:
-        merged = merged_repo_dotenv_upper()
-        data: dict[str, Any] = {}
-        for name, field in cls.model_fields.items():
-            key = name.upper()
-            raw: str | None = None
-            if key in os.environ:
-                raw = os.environ.get(key)
-            elif key in merged:
-                raw = merged[key]
-            if raw is None:
-                continue
-            text = str(raw).strip()
-            ann_text = str(field.annotation).lower()
-            if "float" in ann_text:
-                data[name] = float(text)
-            elif "int" in ann_text:
-                data[name] = int(text)
-            else:
-                data[name] = text
-        return cls.model_validate(data)
 
-
-_config_lock = Lock()
-_cached_duel_config: Config | None = None
-
-
-def clear_duel_config_cache() -> None:
-    global _cached_duel_config
-    with _config_lock:
-        _cached_duel_config = None
-
-
-def get_duel_config() -> Config:
-    global _cached_duel_config
-    with _config_lock:
-        if _cached_duel_config is None:
-            if repo_layered_dotenv_files_exist():
-                _cached_duel_config = Config.from_env()
-            else:
-                _cached_duel_config = get_plugin_config(Config)
-        return _cached_duel_config
-
-
-def reload_duel_plugin_config() -> Config:
-    """WebUI 写入 .env 后调用，使惩罚/权重/幕间停顿等立即生效（不重载 JSON 剧目）。"""
-    clear_duel_config_cache()
-    return get_duel_config()
-
-
-class _DuelConfigProxy:
-    """兼容 ``plugin_config.xxx`` 写法，每次访问读取最新缓存。"""
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(get_duel_config(), name)
-
-
-plugin_config = _DuelConfigProxy()
-
-_duel_webui_hooks = PluginWebuiConfigHooks(
-    get=get_duel_config,
-    reload=reload_duel_plugin_config,
-    clear_cache=clear_duel_config_cache,
-)
-register_plugin_webui_config(__name__, _duel_webui_hooks)
-register_plugin_webui_config("src.plugins.duel", _duel_webui_hooks)
+plugin_webui = install_hot_reload_config(Config, config_module=__name__)
+get_duel_config = plugin_webui.get
+reload_duel_plugin_config = plugin_webui.reload
+clear_duel_config_cache = plugin_webui.clear_cache
+plugin_config = plugin_config_proxy(get_duel_config)

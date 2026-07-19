@@ -1,3 +1,5 @@
+import pytest
+
 from src.plugins.dream.dedupe_keys import dream_image_dedupe_key, dream_text_dedupe_key
 from src.plugins.dream.echo_sample import random_echo_nickname
 from src.plugins.dream.runtime import drift_at_nickname
@@ -29,3 +31,32 @@ def test_dream_image_dedupe_key_stable() -> None:
     a = b"\x00\x01\xff"
     assert dream_image_dedupe_key(a) == dream_image_dedupe_key(a)
     assert dream_image_dedupe_key(a) != dream_image_dedupe_key(b"\x00\x01\xfe")
+
+
+@pytest.mark.asyncio
+async def test_log_dream_chat_to_db_reuses_precomputed_plain_and_nick(monkeypatch) -> None:
+    from src.plugins.dream import runtime as mod
+
+    captured = {}
+
+    class _Event:
+        group_id = 1
+        user_id = 2
+        self_id = 3
+        raw_message = "plain"
+        sender = object()
+
+        def get_plaintext(self):  # pragma: no cover - should not be called
+            raise AssertionError("plain should be provided explicitly")
+
+    class _Repo:
+        async def bulk_insert(self, rows):
+            captured["rows"] = rows
+
+    monkeypatch.setattr(mod, "message_repo", _Repo())
+
+    await mod.log_dream_chat_to_db(_Event(), plain="plain", nick="nick")
+
+    row = captured["rows"][0]
+    assert row.plain_text == "plain"
+    assert row.keywords

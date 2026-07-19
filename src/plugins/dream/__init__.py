@@ -8,9 +8,16 @@ from nonebot.exception import ActionFailed
 from nonebot.plugin import PluginMetadata
 from nonebot.rule import Rule
 
-from src.common.config import BotConfig, GroupConfig
-from src.common.message_scrub import is_message_scrub_blocked_async
-from src.common.message_scrub.log_preview import scrub_intercept_log_preview
+from src.features.cmd_perm.metadata_defaults import (
+    PLUGIN_EXTRA_VERSION,
+    PLUGIN_HOMEPAGE,
+    PLUGIN_MENU_TEMPLATE,
+)
+from src.features.cmd_perm.metadata_text import SCENE_AUTO, SCENE_GROUP, join_usage, usage_line
+from src.features.message_scrub import is_message_scrub_blocked_async
+from src.features.message_scrub.log_preview import scrub_intercept_log_preview
+from src.foundation.config import BotConfig, GroupConfig
+from src.platform.ingress.dream_host_gate import dream_session_ingress_passes
 
 from . import ban_handlers as _dream_ban_handlers  # noqa: F401 — 注册梦库「不可以」/撤回清理
 from .capture_filter import dream_capture_blocked_by_substrings
@@ -26,23 +33,18 @@ from .runtime import (
 
 __plugin_meta__ = PluginMetadata(
     name="牛牛做梦",
-    description=("牛牛的梦话：多群同时做梦时同 Bot 漂流互通，随机间隔推送与复读共用管理员的「不可以」触发梦库删除。"),
-    usage="""
-指令：
-- 牛牛做梦 — 进入做梦（持续约 5～15 分钟；未醉酒时推送梦话间隔约 15～135）
-- 牛牛醒梦 / 牛牛别做梦 / 牛牛醒一醒（醒酒指令）— 结束本群做梦
-
-做梦中采集群消息入梦库，并向同 Bot 其它正在做梦的群漂流（图/文有上限）。
-
-本群醉酒期间做梦推送间隔全程约 5～20s；首场醉酒另有一次夺舍名片 + 受害者历史句（每场梦最多一次）。
-管理员（与复读「不可以」相同，见帮助内触发条件）：
-回复牛牛消息后发送「不可以」，或撤回牛牛消息 — 从梦库删除与所针对内容匹配的记录。
-    """.strip(),
+    description="跨群梦话漂流与历史梦推送，醉酒时更密。",
+    usage=join_usage(
+        usage_line("牛牛做梦", "进入做梦约 5～15 分钟，可收他群漂流"),
+        usage_line("牛牛醒梦 / 牛牛别做梦", "结束本群做梦"),
+        usage_line("牛牛醒一醒", "醒酒时亦会醒梦"),
+    ),
     type="application",
-    homepage="https://github.com/PallasBot",
+    homepage=PLUGIN_HOMEPAGE,
     supported_adapters={"~onebot.v11"},
     extra={
-        "version": "3.0.0",
+        "version": PLUGIN_EXTRA_VERSION,
+        "menu_template": PLUGIN_MENU_TEMPLATE,
         "command_permissions": [
             {"id": "dream.ban_cleanup", "label": "梦库清理（不可以）", "default": "staff"},
         ],
@@ -50,54 +52,40 @@ __plugin_meta__ = PluginMetadata(
             {
                 "func": "牛牛做梦",
                 "trigger_method": "on_message",
+                "trigger_scene": SCENE_GROUP,
                 "trigger_condition": "牛牛做梦",
-                "brief_des": "进入做梦漂流状态",
+                "brief_des": "进入做梦漂流",
                 "detail_des": (
-                    "进梦后可收到他群漂流、历史梦（本进程多账号并库抽样）、归档图或已学句；"
-                    "同一场内已发正文/图片去重。未醉酒时间隔约 15～135s，醉酒整段约 5～20s。"
-                    "默认本会话最多发 3 张图，首场醉酒联动后提升至 5 张。多 Bot 同群时有群级冷却。"
+                    "持续约 5～15 分钟；可收到他群漂流、历史梦话或图片。"
+                    "未醉酒时梦话间隔较长，醉酒时更密；每场有发图上限。"
                 ),
             },
             {
                 "func": "牛牛醒梦",
                 "trigger_method": "on_message",
-                "trigger_condition": "牛牛醒梦/牛牛别做梦/牛牛醒一醒/牛牛别喝了",
+                "trigger_scene": SCENE_GROUP,
+                "trigger_condition": "牛牛醒梦 / 牛牛别做梦",
                 "brief_des": "结束做梦",
-                "detail_des": "立即结束本群的做梦状态并停止后台推送；发送「……梦醒了。」。",
+                "detail_des": "立即停止梦话；也可通过「牛牛醒一醒」醒酒时一并结束。",
             },
             {
-                "func": "梦话采集",
+                "func": "梦话与漂流",
                 "trigger_method": "on_message",
-                "trigger_condition": "本群处于做梦中",
-                "brief_des": "群聊写入梦库并可跨群漂流",
-                "detail_des": (
-                    "做梦期间群友消息异步写入 message（keywords 以 is_dream 为前缀）；"
-                    "纯文本与最多 2 张图可随机投递到同 Bot 其它正在做梦的群。"
-                    "明文或 raw 含「不可以」时不采集、不漂流。"
-                ),
+                "trigger_scene": SCENE_AUTO,
+                "trigger_condition": "本群做梦中",
+                "brief_des": "采集群聊并跨群漂流",
+                "detail_des": "做梦中群友文字与图片会进入梦库，并可能漂到其它正在做梦的群。",
             },
             {
-                "func": "做梦×醉酒",
-                "trigger_method": "worker",
-                "trigger_condition": "本群做梦中且醉酒度>0",
-                "brief_des": "醉酒全程短间隔；首场另有一次夺舍与历史一句",
-                "detail_des": (
-                    "醉酒度>0 时每一轮等待均为约 5～20 秒；"
-                    "首场醉酒另有一轮不发常规梦话：尝试与 take_name 醉酒夺舍一致的改名片并 update_taken_name，"
-                    "若选中成员再随机发其近 90 天内非梦库纯文本历史一句；本场发图上限 3→5 在该轮后保持。"
-                    "牛牛非群管或无可用成员/历史时仍消耗首场夺舍轮。"
-                ),
-            },
-            {
-                "func": "梦库清理（不可以）",
+                "func": "梦库清理",
                 "trigger_method": "on_message",
-                "trigger_condition": "回复消息后 @牛牛 发送不可以",
+                "trigger_scene": SCENE_GROUP,
+                "trigger_condition": "@牛牛 回复某条消息：不可以",
                 "command_permission": "dream.ban_cleanup",
-                "brief_des": "按所回复内容删除梦库记录",
-                "detail_des": ("与复读「不可以」操作方式相同"),
+                "brief_des": "删除梦库中匹配内容",
+                "detail_des": "与复读「不可以」相同：回复目标消息后 @牛牛 说「不可以」。",
             },
         ],
-        "menu_template": "default",
     },
 )
 
@@ -139,7 +127,9 @@ async def _(event: GroupMessageEvent):
 
 
 async def is_dream_wake(event: GroupMessageEvent) -> bool:
-    return event.get_plaintext().strip() in {"牛牛醒梦", "牛牛别做梦"}
+    if event.get_plaintext().strip() not in {"牛牛醒梦", "牛牛别做梦"}:
+        return False
+    return await dream_session_ingress_passes(int(event.self_id), int(event.group_id))
 
 
 dream_wake = on_message(
@@ -164,7 +154,9 @@ async def is_dream_capture(event: GroupMessageEvent) -> bool:
     if event.user_id == event.self_id:
         return False
     cfg = BotConfig(event.self_id, event.group_id)
-    return await cfg.is_dreaming()
+    if not await cfg.is_dreaming():
+        return False
+    return await dream_session_ingress_passes(int(event.self_id), int(event.group_id))
 
 
 dream_capture = on_message(
@@ -182,7 +174,11 @@ async def _(event: GroupMessageEvent):
         return
     if dream_capture_blocked_by_substrings(plain, event.raw_message):
         return
-    norm_raw = re.sub(r"\[CQ:image,[^\]]*\]", "[CQ:image]", event.raw_message)
+    norm_raw = (
+        re.sub(r"\[CQ:image,[^\]]*\]", "[CQ:image]", event.raw_message)
+        if "[CQ:image," in event.raw_message
+        else event.raw_message
+    )
     if await is_message_scrub_blocked_async(plain_text=plain, raw_message=norm_raw):
         pv = scrub_intercept_log_preview(plain, norm_raw)
         logger.info(
@@ -190,15 +186,15 @@ async def _(event: GroupMessageEvent):
             f"user [{event.user_id}] msg_id [{event.message_id}] preview [{pv}]"
         )
         return
+    nick = (event.sender.card or event.sender.nickname or str(event.user_id)).strip() or str(event.user_id)
 
     try:
-        await log_dream_chat_to_db(event)
+        await log_dream_chat_to_db(event, plain=plain, nick=nick)
     except Exception as e:
         logger.debug(f"bot [{event.self_id}] dream capture db insert failed in group [{event.group_id}]: {e}")
 
     async def drift_job():
         try:
-            nick = (event.sender.card or event.sender.nickname or str(event.user_id)).strip() or str(event.user_id)
             img_n = 0
             for seg in event.message:
                 if seg.type != "image":
