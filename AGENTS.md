@@ -128,3 +128,27 @@ pre-commit 策略：**全仓**基础文件卫生检查；**Ruff 仅 `src/`**；`
 2. 确保仓库根目录包含：
    - `.pre-commit-config.yaml`
    - `.pre-commit-ci.yaml`
+
+## Cursor Cloud specific instructions
+
+面向后续 Cloud Agent（依赖已由 update script 装好）的启动/运行要点。常规命令见 README 与上文，此处只记非显然项。
+
+### 前置服务（默认 MongoDB）
+
+- 默认后端 MongoDB；`bot.py` 启动时 `init_db()` 连不上库会直接抛错、启动失败。本环境用本地 `mongod`（无需 Docker，非 systemd 服务，需自行拉起，进程不随会话持久）：
+  - 启动：`sudo mongod --dbpath /var/lib/mongodb --bind_ip 127.0.0.1 --port 27017`（建议放 tmux 后台）。
+  - 校验：`mongosh --quiet --eval "db.adminCommand('ping')"` 返回 `{ ok: 1 }`。
+- 首次运行需 `config/pallas.toml`（已 gitignore，勿提交）。从 `config/pallas.example.toml` 复制即可；最小可启动：`[bootstrap] db_backend="mongodb"` + `[bootstrap.mongo]` 的 host/port/db。
+
+### 运行应用
+
+- 开发启动：`uv run nb run`（单进程 unified）；就绪后控制台在 `http://127.0.0.1:8088/pallas/`。
+- 控制台为**纯口令登录**：默认口令见启动日志 `默认口令: ...`，也落盘于 `data/pallas_console/default_login_password.txt`；改密后旧会话失效。
+- 首次启动会联网下载 WebUI 前端 dist 到 `data/pallas_webui/public` 与语音资源；无网络时控制台 API 仍在，仅前端页面缺失。
+- OneBot/NapCat 协议端、Redis、Pallas-Bot-AI 均为**可选**，不连也能启动并登录控制台。
+
+### 测试注意（历史遗留，非本环境所致）
+
+- `uv run pytest` 全量会卡死：`src/platform/shard/registry/store.py` 的 `get_shard_registry()` 持有 `_lock` 后又调用 `save_shard_registry()` 重复获取同一非重入 `threading.Lock`，在「registry.json 不存在且缓存为空」时死锁。跑分片注册相关用例前需留意。
+- `tests/plugins/{maa,who_is_spy}/test_store.py` 同名且缺 `__init__.py`，prepend 导入模式下 collection 冲突；全量跑需 `--ignore=tests/plugins/who_is_spy/test_store.py`（或另一个）。
+- PostgreSQL / Redis 相关用例依赖可选 extra（`pg`、`coord-redis`），update script 已随 `--extra` 装好；非上述两类的绝大多数用例可正常通过。
